@@ -2,7 +2,10 @@ pub const MD_HEADER_SIGNATURE : u32 = 0x504d444d;
 
 pub type MDRVA = u32;
 
-#[derive(Copy, Clone)] #[packed] #[allow(dead_code)]
+#[derive(Copy, Clone)]
+#[repr(C)]
+#[packed]
+#[allow(dead_code)]
 pub struct MDRawHeader {
   pub signature            : u32,
   pub version              : u32,
