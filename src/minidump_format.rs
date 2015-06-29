@@ -4,7 +4,6 @@ pub type MDRVA = u32;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-#[packed]
 #[allow(dead_code)]
 pub struct MDRawHeader {
   pub signature            : u32,
