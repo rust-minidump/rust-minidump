@@ -3,6 +3,8 @@ use std::fs::File;
 use std::mem;
 use std::ptr;
 
+extern crate libc;
+
 pub mod minidump_format;
 use minidump_format as fmt;
 

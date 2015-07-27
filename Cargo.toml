@@ -2,3 +2,6 @@
 name = "minidump-processor"
 version = "0.1.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
+
+[dependencies]
+libc = "0.1.*"
