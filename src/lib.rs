@@ -68,7 +68,7 @@ pub struct MinidumpModuleList {
 //======================================================
 // Implementations
 
-fn read<T>(mut f : &File) -> std::io::Result<T> {
+fn read<T : Copy>(mut f : &File) -> std::io::Result<T> {
     let size = mem::size_of::<T>();
     let mut buf = vec!(0; size);
     let bytes = &mut buf[..];
@@ -95,7 +95,7 @@ fn read_string(mut f : &File, offset : u64) -> Result<String, Error> {
 
 impl MinidumpModule {
     pub fn read(f : &File, raw : fmt::MDRawModule) -> Result<MinidumpModule, Error> {
-        let name = try!(read_string(f, raw.module_name_rva as u64));//.or(Err(Error::ModuleReadFailure)));
+        let name = try!(read_string(f, raw.module_name_rva as u64));
         // TODO: read debug info
         Ok(MinidumpModule { raw: raw, name: name})
     }
