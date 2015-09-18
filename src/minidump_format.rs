@@ -149,7 +149,7 @@ pub type uintptr_t = ::libc::c_ulong;
 pub type intmax_t = ::libc::c_long;
 pub type uintmax_t = ::libc::c_ulong;
 pub type __gwchar_t = ::libc::c_int;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed1 {
     pub quot: ::libc::c_long,
@@ -162,7 +162,7 @@ impl ::std::default::Default for Struct_Unnamed1 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type imaxdiv_t = Struct_Unnamed1;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed2 {
     pub high: uint64_t,
@@ -176,7 +176,7 @@ impl ::std::default::Default for Struct_Unnamed2 {
 }
 pub type uint128_struct = Struct_Unnamed2;
 pub type breakpad_time_t = uint64_t;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed3 {
     pub data1: uint32_t,
@@ -191,7 +191,7 @@ impl ::std::default::Default for Struct_Unnamed3 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDGUID = Struct_Unnamed3;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed4 {
     pub context_flags: uint32_t,
@@ -203,7 +203,7 @@ impl ::std::default::Default for Struct_Unnamed4 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawContextBase = Struct_Unnamed4;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed5 {
     pub control_word: uint16_t,
@@ -230,7 +230,7 @@ impl ::std::default::Default for Struct_Unnamed5 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDXmmSaveArea32AMD64 = Struct_Unnamed5;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed6 {
     pub p1_home: uint64_t,
@@ -296,7 +296,7 @@ impl ::std::clone::Clone for Struct_Unnamed6 {
 impl ::std::default::Default for Struct_Unnamed6 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed7 {
     pub header: [uint128_struct; 2usize],
@@ -325,7 +325,7 @@ impl ::std::default::Default for Struct_Unnamed7 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawContextAMD64 = Struct_Unnamed6;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed8 {
     pub fpscr: uint64_t,
@@ -339,7 +339,7 @@ impl ::std::default::Default for Struct_Unnamed8 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaARM = Struct_Unnamed8;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed9 {
     pub context_flags: uint32_t,
@@ -360,7 +360,7 @@ pub const MD_CONTEXT_ARM_REG_FP: ::libc::c_uint = 11;
 pub const MD_CONTEXT_ARM_REG_SP: ::libc::c_uint = 13;
 pub const MD_CONTEXT_ARM_REG_LR: ::libc::c_uint = 14;
 pub const MD_CONTEXT_ARM_REG_PC: ::libc::c_uint = 15;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed10 {
     pub fpsr: uint32_t,
@@ -374,7 +374,7 @@ impl ::std::default::Default for Struct_Unnamed10 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaARM64 = Struct_Unnamed10;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed11 {
     pub context_flags: uint64_t,
@@ -394,7 +394,7 @@ pub const MD_CONTEXT_ARM64_REG_FP: ::libc::c_uint = 29;
 pub const MD_CONTEXT_ARM64_REG_LR: ::libc::c_uint = 30;
 pub const MD_CONTEXT_ARM64_REG_SP: ::libc::c_uint = 31;
 pub const MD_CONTEXT_ARM64_REG_PC: ::libc::c_uint = 32;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed12 {
     pub regs: [uint64_t; 32usize],
@@ -408,7 +408,7 @@ impl ::std::default::Default for Struct_Unnamed12 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaMIPS = Struct_Unnamed12;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed13 {
     pub context_flags: uint32_t,
@@ -446,7 +446,7 @@ pub const MD_CONTEXT_MIPS_REG_GP: ::libc::c_uint = 28;
 pub const MD_CONTEXT_MIPS_REG_SP: ::libc::c_uint = 29;
 pub const MD_CONTEXT_MIPS_REG_FP: ::libc::c_uint = 30;
 pub const MD_CONTEXT_MIPS_REG_RA: ::libc::c_uint = 31;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed14 {
     pub fpregs: [uint64_t; 32usize],
@@ -460,7 +460,7 @@ impl ::std::default::Default for Struct_Unnamed14 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaPPC = Struct_Unnamed14;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed15 {
     pub save_vr: [uint128_struct; 32usize],
@@ -476,7 +476,7 @@ impl ::std::default::Default for Struct_Unnamed15 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDVectorSaveAreaPPC = Struct_Unnamed15;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed16 {
     pub context_flags: uint32_t,
@@ -503,7 +503,7 @@ pub type Enum_MDPPCRegisterNumbers = ::libc::c_uint;
 pub const MD_CONTEXT_PPC_REG_SP: ::libc::c_uint = 1;
 pub type MDFloatingSaveAreaPPC64 = MDFloatingSaveAreaPPC;
 pub type MDVectorSaveAreaPPC64 = MDVectorSaveAreaPPC;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed17 {
     pub context_flags: uint64_t,
@@ -527,7 +527,7 @@ impl ::std::default::Default for Struct_Unnamed17 {
 pub type MDRawContextPPC64 = Struct_Unnamed17;
 pub type Enum_MDPPC64RegisterNumbers = ::libc::c_uint;
 pub const MD_CONTEXT_PPC64_REG_SP: ::libc::c_uint = 1;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed18 {
     pub regs: [uint64_t; 32usize],
@@ -541,7 +541,7 @@ impl ::std::default::Default for Struct_Unnamed18 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaSPARC = Struct_Unnamed18;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed19 {
     pub context_flags: uint32_t,
@@ -564,7 +564,7 @@ impl ::std::default::Default for Struct_Unnamed19 {
 pub type MDRawContextSPARC = Struct_Unnamed19;
 pub type Enum_MDSPARCRegisterNumbers = ::libc::c_uint;
 pub const MD_CONTEXT_SPARC_REG_SP: ::libc::c_uint = 14;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed20 {
     pub control_word: uint32_t,
@@ -584,7 +584,7 @@ impl ::std::default::Default for Struct_Unnamed20 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDFloatingSaveAreaX86 = Struct_Unnamed20;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed21 {
     pub context_flags: uint32_t,
@@ -620,7 +620,7 @@ impl ::std::default::Default for Struct_Unnamed21 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawContextX86 = Struct_Unnamed21;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed22 {
     pub signature: uint32_t,
@@ -645,7 +645,7 @@ impl ::std::default::Default for Struct_Unnamed22 {
 }
 pub type MDVSFixedFileInfo = Struct_Unnamed22;
 pub type MDRVA = uint32_t;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed23 {
     pub data_size: uint32_t,
@@ -658,7 +658,7 @@ impl ::std::default::Default for Struct_Unnamed23 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDLocationDescriptor = Struct_Unnamed23;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed24 {
     pub start_of_memory_range: uint64_t,
@@ -671,7 +671,7 @@ impl ::std::default::Default for Struct_Unnamed24 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDMemoryDescriptor = Struct_Unnamed24;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed25 {
     pub signature: uint32_t,
@@ -711,7 +711,7 @@ pub const MD_WITH_PRIVATE_WRITE_COPY_MEMORY: ::libc::c_uint = 65536;
 pub const MD_IGNORE_INACCESSIBLE_MEMORY: ::libc::c_uint = 131072;
 pub const MD_WITH_TOKEN_INFORMATION: ::libc::c_uint = 262144;
 pub type MDType = Enum_Unnamed26;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed27 {
     pub stream_type: uint32_t,
@@ -756,7 +756,7 @@ pub const MD_LINUX_AUXV: ::libc::c_uint = 1197932552;
 pub const MD_LINUX_MAPS: ::libc::c_uint = 1197932553;
 pub const MD_LINUX_DSO_DEBUG: ::libc::c_uint = 1197932554;
 pub type MDStreamType = Enum_Unnamed28;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed29 {
     pub length: uint32_t,
@@ -769,7 +769,7 @@ impl ::std::default::Default for Struct_Unnamed29 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDString = Struct_Unnamed29;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed30 {
     pub thread_id: uint32_t,
@@ -787,7 +787,7 @@ impl ::std::default::Default for Struct_Unnamed30 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawThread = Struct_Unnamed30;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed31 {
     pub number_of_threads: uint32_t,
@@ -800,7 +800,7 @@ impl ::std::default::Default for Struct_Unnamed31 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawThreadList = Struct_Unnamed31;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed32 {
     pub base_of_image: uint64_t,
@@ -821,7 +821,7 @@ impl ::std::default::Default for Struct_Unnamed32 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawModule = Struct_Unnamed32;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed33 {
     pub signature: uint32_t,
@@ -834,7 +834,7 @@ impl ::std::default::Default for Struct_Unnamed33 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDCVHeader = Struct_Unnamed33;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed34 {
     pub cv_header: MDCVHeader,
@@ -849,7 +849,7 @@ impl ::std::default::Default for Struct_Unnamed34 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDCVInfoPDB20 = Struct_Unnamed34;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed35 {
     pub cv_signature: uint32_t,
@@ -864,7 +864,7 @@ impl ::std::default::Default for Struct_Unnamed35 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDCVInfoPDB70 = Struct_Unnamed35;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed36 {
     pub data1: [uint32_t; 2usize],
@@ -881,7 +881,7 @@ impl ::std::default::Default for Struct_Unnamed36 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDCVInfoELF = Struct_Unnamed36;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed37 {
     pub data_type: uint32_t,
@@ -897,7 +897,7 @@ impl ::std::default::Default for Struct_Unnamed37 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDImageDebugMisc = Struct_Unnamed37;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed38 {
     pub number_of_modules: uint32_t,
@@ -910,7 +910,7 @@ impl ::std::default::Default for Struct_Unnamed38 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawModuleList = Struct_Unnamed38;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed39 {
     pub number_of_memory_ranges: uint32_t,
@@ -923,7 +923,7 @@ impl ::std::default::Default for Struct_Unnamed39 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawMemoryList = Struct_Unnamed39;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed40 {
     pub exception_code: uint32_t,
@@ -5519,7 +5519,7 @@ pub const MD_IN_PAGE_ERROR_WIN_READ: ::libc::c_uint = 0;
 pub const MD_IN_PAGE_ERROR_WIN_WRITE: ::libc::c_uint = 1;
 pub const MD_IN_PAGE_ERROR_WIN_EXEC: ::libc::c_uint = 8;
 pub type MDInPageErrorTypeWin = Enum_Unnamed49;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed50 {
     pub thread_id: uint32_t,
@@ -5534,7 +5534,7 @@ impl ::std::default::Default for Struct_Unnamed50 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawExceptionStream = Struct_Unnamed50;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Union_Unnamed51 {
     pub _bindgen_data_: [u64; 3usize],
@@ -5559,7 +5559,7 @@ impl ::std::clone::Clone for Union_Unnamed51 {
 impl ::std::default::Default for Union_Unnamed51 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed52 {
     pub vendor_id: [uint32_t; 3usize],
@@ -5573,7 +5573,7 @@ impl ::std::clone::Clone for Struct_Unnamed52 {
 impl ::std::default::Default for Struct_Unnamed52 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed53 {
     pub cpuid: uint32_t,
@@ -5585,7 +5585,7 @@ impl ::std::clone::Clone for Struct_Unnamed53 {
 impl ::std::default::Default for Struct_Unnamed53 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed54 {
     pub processor_features: [uint64_t; 2usize],
@@ -5618,7 +5618,7 @@ pub const MD_CPU_ARM_ELF_HWCAP_VFPv4: ::libc::c_uint = 65536;
 pub const MD_CPU_ARM_ELF_HWCAP_IDIVA: ::libc::c_uint = 131072;
 pub const MD_CPU_ARM_ELF_HWCAP_IDIVT: ::libc::c_uint = 262144;
 pub type MDCPUInformationARMElfHwCaps = Enum_Unnamed55;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed56 {
     pub processor_architecture: uint16_t,
@@ -5673,7 +5673,7 @@ pub const MD_OS_ANDROID: ::libc::c_uint = 33283;
 pub const MD_OS_PS3: ::libc::c_uint = 33284;
 pub const MD_OS_NACL: ::libc::c_uint = 33285;
 pub type MDOSPlatform = Enum_Unnamed58;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed59 {
     pub year: uint16_t,
@@ -5692,7 +5692,7 @@ impl ::std::default::Default for Struct_Unnamed59 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDSystemTime = Struct_Unnamed59;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed60 {
     pub bias: int32_t,
@@ -5710,7 +5710,7 @@ impl ::std::default::Default for Struct_Unnamed60 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDTimeZoneInformation = Struct_Unnamed60;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed61 {
     pub size_of_info: uint32_t,
@@ -5749,7 +5749,7 @@ pub const MD_MISCINFO_FLAGS1_TIMEZONE: ::libc::c_uint = 64;
 pub const MD_MISCINFO_FLAGS1_PROTECTED_PROCESS: ::libc::c_uint = 128;
 pub const MD_MISCINFO_FLAGS1_BUILDSTRING: ::libc::c_uint = 256;
 pub type MDMiscInfoFlags1 = Enum_Unnamed62;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed63 {
     pub size_of_header: uint32_t,
@@ -5763,7 +5763,7 @@ impl ::std::default::Default for Struct_Unnamed63 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawMemoryInfoList = Struct_Unnamed63;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed64 {
     pub base_address: uint64_t,
@@ -5806,7 +5806,7 @@ pub const MD_MEMORY_TYPE_PRIVATE: ::libc::c_uint = 131072;
 pub const MD_MEMORY_TYPE_MAPPED: ::libc::c_uint = 262144;
 pub const MD_MEMORY_TYPE_IMAGE: ::libc::c_uint = 16777216;
 pub type MDMemoryType = Enum_Unnamed67;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed68 {
     pub validity: uint32_t,
@@ -5824,7 +5824,7 @@ pub type Enum_Unnamed69 = ::libc::c_uint;
 pub const MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID: ::libc::c_uint = 1;
 pub const MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID: ::libc::c_uint = 2;
 pub type MDBreakpadInfoValidity = Enum_Unnamed69;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed70 {
     pub expression: [uint16_t; 128usize],
@@ -5845,7 +5845,7 @@ pub const MD_ASSERTION_INFO_TYPE_UNKNOWN: ::libc::c_uint = 0;
 pub const MD_ASSERTION_INFO_TYPE_INVALID_PARAMETER: ::libc::c_uint = 1;
 pub const MD_ASSERTION_INFO_TYPE_PURE_VIRTUAL_CALL: ::libc::c_uint = 2;
 pub type MDAssertionInfoData = Enum_Unnamed71;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed72 {
     pub addr: uint32_t,
@@ -5859,7 +5859,7 @@ impl ::std::default::Default for Struct_Unnamed72 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawLinkMap32 = Struct_Unnamed72;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed73 {
     pub version: uint32_t,
@@ -5876,7 +5876,7 @@ impl ::std::default::Default for Struct_Unnamed73 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawDebug32 = Struct_Unnamed73;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed74 {
     pub addr: uint64_t,
@@ -5890,7 +5890,7 @@ impl ::std::default::Default for Struct_Unnamed74 {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
 pub type MDRawLinkMap64 = Struct_Unnamed74;
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed75 {
     pub version: uint32_t,
