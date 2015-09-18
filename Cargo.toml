@@ -5,3 +5,4 @@ authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 
 [dependencies]
 libc = "0.1.*"
+encoding = "0.2"
