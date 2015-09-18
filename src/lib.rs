@@ -2,6 +2,7 @@ use std::io::prelude::*;
 use std::fs::File;
 use std::mem;
 use std::ptr;
+use std::collections::HashMap;
 
 extern crate libc;
 
@@ -12,6 +13,7 @@ use minidump_format as fmt;
 pub struct Minidump {
     file : File,
     header : fmt::MDRawHeader,
+    streams : HashMap<u32, fmt::MDRawDirectory>,
     swap : bool,
 }
 
@@ -19,6 +21,10 @@ pub struct Minidump {
 pub enum Error {
     MissingHeader,
     HeaderMismatch,
+    SwapNotImplemented,
+    VersionMismatch,
+    MissingDirectory,
+    StreamReadFailure,
 }
 
 fn read<T>(mut f : &File) -> std::io::Result<T> {
@@ -36,14 +42,33 @@ fn read<T>(mut f : &File) -> std::io::Result<T> {
 impl Minidump {
     pub fn read(f : File) -> Result<Minidump, Error> {
         let header = try!(read::<fmt::MDRawHeader>(&f).or(Err(Error::MissingHeader)));
-        let mut swap = false;
+        let swap = false;
         if header.signature != fmt::MD_HEADER_SIGNATURE {
             if header.signature.swap_bytes() != fmt::MD_HEADER_SIGNATURE {
                 return Err(Error::HeaderMismatch);
             }
-            swap = true;
+            return Err(Error::SwapNotImplemented);
+            // TODO: implement swapping
+            //swap = true;
         }
-        Ok(Minidump { file: f, header: header, swap: swap })
+        if (header.version & 0x0000ffff) != fmt::MD_HEADER_VERSION {
+            return Err(Error::VersionMismatch);
+        }
+        let mut streams = HashMap::with_capacity(header.stream_count as usize);
+        if header.stream_count != 0 {
+            for _ in 0..header.stream_count {
+                let dir = try!(read::<fmt::MDRawDirectory>(&f).or(Err(Error::MissingDirectory)));
+                if dir.stream_type != fmt::MD_UNUSED_STREAM {
+                    streams.insert(dir.stream_type, dir);
+                }
+            }
+        }
+        Ok(Minidump {
+            file: f,
+            header: header,
+            streams: streams,
+            swap: swap
+        })
     }
 }
 
@@ -59,6 +84,7 @@ mod tests {
         path.pop();
         path.push("testdata/test.dmp");
         let f = File::open(&path).ok().expect(&format!("failed to open file: {:?}", path));
-        Minidump::read(f).unwrap();
+        let dump = Minidump::read(f).unwrap();
+        assert_eq!(dump.streams.len(), 7);
     }
 }
