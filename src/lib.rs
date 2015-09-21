@@ -34,6 +34,7 @@ pub enum Error {
     StreamNotFound,
     ModuleReadFailure,
     DataError,
+    CodeViewReadFailure,
 }
 
 pub struct MinidumpThreadList;
@@ -54,11 +55,33 @@ pub trait MinidumpStream {
 pub trait Module {
     fn base_address(&self) -> u64;
     fn size(&self) -> u64;
+    fn code_file<'a>(&'a self) -> &'a String;
+    //fn code_identifier(&self) -> Option<String>;
+    //fn debug_file<'a>(&'a self) -> Option<&'a String>;
+    //fn debug_identifier(&self) -> Option<String>;
+    //fn version(&self) -> Option<String>;
+}
+
+pub enum CodeViewPDBRaw {
+    PDB20(fmt::MDCVInfoPDB20),
+    PDB70(fmt::MDCVInfoPDB70),
+}
+
+pub struct CodeViewPDB {
+    pub raw : CodeViewPDBRaw,
+    pub file : String,
+}
+
+pub enum CodeView {
+    PDB(CodeViewPDB),
+    Unknown { bytes: Vec<u8> },
 }
 
 pub struct MinidumpModule {
     pub raw : fmt::MDRawModule,
-    pub name : String,
+    name : String,
+    pub codeview_info : Option<CodeView>,
+    pub misc_info : Option<fmt::MDImageDebugMisc>,
 }
 
 pub struct MinidumpModuleList {
@@ -68,11 +91,16 @@ pub struct MinidumpModuleList {
 //======================================================
 // Implementations
 
-fn read<T : Copy>(mut f : &File) -> std::io::Result<T> {
+fn read_bytes(f : &File, count : usize) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(count);
+    try!(f.take(count as u64).read_to_end(&mut buf));
+    Ok(buf)
+}
+
+fn read<T : Copy>(f : &File) -> std::io::Result<T> {
     let size = mem::size_of::<T>();
-    let mut buf = vec!(0; size);
+    let mut buf = try!(read_bytes(f, size));
     let bytes = &mut buf[..];
-    try!(f.read(bytes));
     Ok(unsafe {
         let mut val : T = mem::uninitialized();
         ptr::copy(bytes.as_mut_ptr(), &mut val as *mut T as *mut u8, size);
@@ -80,30 +108,98 @@ fn read<T : Copy>(mut f : &File) -> std::io::Result<T> {
     })
 }
 
-fn read_string(mut f : &File, offset : u64) -> Result<String, Error> {
+fn read_string_utf16(mut f : &File, offset : u64) -> Result<String, Error> {
     try!(f.seek(SeekFrom::Start(offset)).or(Err(Error::DataError)));
     let size = try!(read::<u32>(f).or(Err(Error::DataError))) as usize;
     // TODO: swap
     if size % 2 != 0 {
         return Err(Error::DataError);
     }
-    let mut buf = vec!(0; size);
-    let bytes = &mut buf[..];
-    try!(f.read(bytes).or(Err(Error::DataError)));
+    let buf = try!(read_bytes(f, size).or(Err(Error::DataError)));
+    let bytes = &buf[..];
     UTF_16LE.decode(bytes, DecoderTrap::Strict).or(Err(Error::DataError))
+}
+
+fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result<CodeView, Error> {
+    let raw = match signature {
+        fmt::MD_CVINFOPDB70_SIGNATURE => {
+            size = size - mem::size_of::<fmt::MDCVInfoPDB70>() + 1;
+            CodeViewPDBRaw::PDB70(try!(read::<fmt::MDCVInfoPDB70>(f).or(Err(Error::CodeViewReadFailure))))
+        },
+        fmt::MD_CVINFOPDB20_SIGNATURE => {
+            size = size -mem::size_of::<fmt::MDCVInfoPDB20>() + 1;
+            CodeViewPDBRaw::PDB20(try!(read::<fmt::MDCVInfoPDB20>(f).or(Err(Error::CodeViewReadFailure))))
+        },
+        _ => return Err(Error::CodeViewReadFailure),
+    };
+    // Both structs define a variable-length string with a placeholder
+    // 1-byte array at the end, so seek back one byte and read the remaining
+    // data as the string.
+    try!(f.seek(SeekFrom::Current(-1)).or(Err(Error::CodeViewReadFailure)));
+    let bytes = try!(read_bytes(f, size).or(Err(Error::CodeViewReadFailure)));
+    // The string should have at least one trailing NUL.
+    let file = String::from(String::from_utf8(bytes).unwrap().trim_right_matches('\0'));
+    Ok(CodeView::PDB(CodeViewPDB { raw: raw, file: file}))
+}
+
+fn read_codeview(mut f : &File, location : fmt::MDLocationDescriptor) -> Result<CodeView, Error> {
+    let size = location.data_size as usize;
+    try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
+    // The CodeView data can contain a variable-length string at the end
+    // and also can be one of a few different formats. Try to read the
+    // signature first to figure out what format the data is.
+    // TODO: swap
+    let signature = try!(read::<u32>(f).or(Err(Error::CodeViewReadFailure)));
+    // Seek back because the signature is part of the CV data.
+    try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
+    match signature {
+        fmt::MD_CVINFOPDB70_SIGNATURE | fmt::MD_CVINFOPDB20_SIGNATURE => {
+            read_codeview_pdb(f, signature, size)
+        },
+        _ =>
+            // Other formats aren't handled, but save the raw bytes.
+            Ok(CodeView::Unknown { bytes: try!(read_bytes(f, size).or(Err(Error::CodeViewReadFailure))) })
+    }
 }
 
 impl MinidumpModule {
     pub fn read(f : &File, raw : fmt::MDRawModule) -> Result<MinidumpModule, Error> {
-        let name = try!(read_string(f, raw.module_name_rva as u64));
-        // TODO: read debug info
-        Ok(MinidumpModule { raw: raw, name: name})
+        let name = try!(read_string_utf16(f, raw.module_name_rva as u64));
+        let cv = if raw.cv_record.data_size > 0 {
+            Some(try!(read_codeview(f, raw.cv_record).or(Err(Error::CodeViewReadFailure))))
+        } else {
+            None
+        };
+        Ok(MinidumpModule {
+            raw: raw,
+            name: name,
+            codeview_info: cv,
+            misc_info: None,
+        })
     }
 }
 
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
+    fn code_file<'a>(&'a self) -> &'a String { &self.name }
+/*
+    fn code_identifier(&self) -> Option<String> {
+        unimplemented!()
+    }
+    fn debug_file<'a>(&'a self) -> Option<&'a String> {
+        match self.codeview_info {
+            Some(CodeView::PDB(_)) => Some(self.codeview_info.file),
+            _ => None,
+        }
+    }
+    fn debug_identifier(&self) -> Option<String> {
+        unimplemented!()
+    }
+    fn version(&self) -> Option<String> {
+        unimplemented!()
+    }
+*/
 }
 
 impl MinidumpStream for MinidumpModuleList {
@@ -207,10 +303,10 @@ mod tests {
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.modules;
         assert_eq!(modules.len(), 13);
-        assert_eq!(modules[0].name, "c:\\test_app.exe");
+        assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
         assert_eq!(modules[0].base_address(), 0x400000);
         assert_eq!(modules[0].size(), 0x2d000);
-        assert_eq!(modules[12].name, "C:\\WINDOWS\\system32\\psapi.dll");
+        assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
         assert_eq!(modules[12].base_address(), 0x76bf0000);
         assert_eq!(modules[12].size(), 0xb000);
     }
