@@ -55,9 +55,9 @@ pub trait MinidumpStream {
 pub trait Module {
     fn base_address(&self) -> u64;
     fn size(&self) -> u64;
-    fn code_file<'a>(&'a self) -> &'a String;
+    fn code_file(&self) -> &String;
     //fn code_identifier(&self) -> Option<String>;
-    //fn debug_file<'a>(&'a self) -> Option<&'a String>;
+    fn debug_file(&self) -> Option<&String>;
     //fn debug_identifier(&self) -> Option<String>;
     //fn version(&self) -> Option<String>;
 }
@@ -182,17 +182,19 @@ impl MinidumpModule {
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
-    fn code_file<'a>(&'a self) -> &'a String { &self.name }
+    fn code_file(&self) -> &String { &self.name }
 /*
     fn code_identifier(&self) -> Option<String> {
         unimplemented!()
     }
-    fn debug_file<'a>(&'a self) -> Option<&'a String> {
+*/
+    fn debug_file(&self) -> Option<&String> {
         match self.codeview_info {
-            Some(CodeView::PDB(_)) => Some(self.codeview_info.file),
+            Some(CodeView::PDB(ref cv)) => Some(&cv.file),
             _ => None,
         }
     }
+/*
     fn debug_identifier(&self) -> Option<String> {
         unimplemented!()
     }
@@ -306,8 +308,10 @@ mod tests {
         assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
         assert_eq!(modules[0].base_address(), 0x400000);
         assert_eq!(modules[0].size(), 0x2d000);
+        assert_eq!(modules[0].debug_file().unwrap(), "c:\\test_app.pdb");
         assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
         assert_eq!(modules[12].base_address(), 0x76bf0000);
         assert_eq!(modules[12].size(), 0xb000);
+        assert_eq!(modules[12].debug_file().unwrap(), "psapi.pdb");
     }
 }
