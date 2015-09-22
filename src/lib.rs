@@ -42,7 +42,6 @@ pub struct MinidumpThreadList;
 pub struct MinidumpMemoryList;
 pub struct MinidumpException;
 pub struct MinidumpAssertion;
-pub struct MinidumpSystemInfo;
 pub struct MinidumpMiscInfo;
 pub struct MinidumpBreakpadInfo;
 pub struct MinidumpMemoryInfoList;
@@ -82,6 +81,10 @@ pub struct MinidumpModule {
 
 pub struct MinidumpModuleList {
     pub modules : Vec<MinidumpModule>,
+}
+
+pub struct MinidumpSystemInfo {
+    pub raw : fmt::MDRawSystemInfo,
 }
 
 //======================================================
@@ -273,6 +276,44 @@ impl MinidumpStream for MinidumpModuleList {
     }
 }
 
+impl MinidumpSystemInfo {
+    pub fn os(&self) -> &'static str {
+        match self.raw.platform_id {
+            fmt::MD_OS_WIN32_NT | fmt::MD_OS_WIN32_WINDOWS => "windows",
+            fmt::MD_OS_MAC_OS_X => "mac",
+            fmt::MD_OS_IOS => "ios",
+            fmt::MD_OS_LINUX => "linux",
+            fmt::MD_OS_SOLARIS => "solaris",
+            fmt::MD_OS_ANDROID => "android",
+            fmt::MD_OS_PS3 => "ps3",
+            fmt::MD_OS_NACL => "nacl",
+            _ => "unknown",
+        }
+    }
+
+    pub fn cpu(&self) -> &'static str {
+        match self.raw.processor_architecture as u32 {
+            fmt::MD_CPU_ARCHITECTURE_X86 | fmt::MD_CPU_ARCHITECTURE_X86_WIN64 => "x86",
+            fmt::MD_CPU_ARCHITECTURE_AMD64 => "x86-64",
+            fmt::MD_CPU_ARCHITECTURE_PPC => "ppc",
+            fmt::MD_CPU_ARCHITECTURE_PPC64 => "ppc64",
+            fmt::MD_CPU_ARCHITECTURE_SPARC => "sparc",
+            fmt::MD_CPU_ARCHITECTURE_ARM => "arm",
+            fmt::MD_CPU_ARCHITECTURE_ARM64 => "arm64",
+            _ => "unknown",
+        }
+    }
+}
+
+impl MinidumpStream for MinidumpSystemInfo {
+    fn stream_type() -> u32 { fmt::MD_SYSTEM_INFO_STREAM }
+    fn read(f : &File, expected_size : usize) -> Result<MinidumpSystemInfo, Error> {
+        assert_eq!(expected_size, mem::size_of::<fmt::MDRawSystemInfo>());
+        let raw = try!(read::<fmt::MDRawSystemInfo>(f).or(Err(Error::StreamReadFailure)));
+        Ok(MinidumpSystemInfo { raw: raw })
+    }
+}
+
 impl Minidump {
     pub fn read(f : File) -> Result<Minidump, Error> {
         let header = try!(read::<fmt::MDRawHeader>(&f).or(Err(Error::MissingHeader)));
@@ -361,5 +402,13 @@ mod tests {
                    "A5C3A1F9689F43D8AD228A09293889702");
         assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
 
+    }
+
+    #[test]
+    fn test_system_info() {
+        let mut dump = read_test_minidump().unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        assert_eq!(system_info.os(), "windows");
+        assert_eq!(system_info.cpu(), "x86");
     }
 }
