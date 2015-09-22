@@ -323,15 +323,23 @@ mod tests {
     use std::fs::File;
     use super::*;
 
-    #[test]
-    fn test_read_minidump() {
+    fn read_test_minidump() -> Result<Minidump, Error> {
         let mut path = PathBuf::from(file!());
         path.pop();
         path.push("testdata/test.dmp");
         let f = File::open(&path).ok().expect(&format!("failed to open file: {:?}", path));
-        let mut dump = Minidump::read(f).unwrap();
-        assert_eq!(dump.streams.len(), 7);
+        Minidump::read(f)
+    }
 
+    #[test]
+    fn test_read_minidump() {
+        let dump = read_test_minidump().unwrap();
+        assert_eq!(dump.streams.len(), 7);
+    }
+
+    #[test]
+    fn test_module_list() {
+        let mut dump = read_test_minidump().unwrap();
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.modules;
         assert_eq!(modules.len(), 13);
