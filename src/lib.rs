@@ -1,4 +1,5 @@
 use std::io::prelude::*;
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::mem;
@@ -55,11 +56,11 @@ pub trait MinidumpStream {
 pub trait Module {
     fn base_address(&self) -> u64;
     fn size(&self) -> u64;
-    fn code_file(&self) -> &String;
-    //fn code_identifier(&self) -> Option<String>;
-    fn debug_file(&self) -> Option<&String>;
-    //fn debug_identifier(&self) -> Option<String>;
-    //fn version(&self) -> Option<String>;
+    fn code_file(&self) -> Cow<str>;
+    fn code_identifier(&self) -> Option<Cow<str>>;
+    fn debug_file(&self) -> Option<Cow<str>>;
+    fn debug_identifier(&self) -> Option<Cow<str>>;
+    fn version(&self) -> Option<Cow<str>>;
 }
 
 pub enum CodeViewPDBRaw {
@@ -67,13 +68,8 @@ pub enum CodeViewPDBRaw {
     PDB70(fmt::MDCVInfoPDB70),
 }
 
-pub struct CodeViewPDB {
-    pub raw : CodeViewPDBRaw,
-    pub file : String,
-}
-
 pub enum CodeView {
-    PDB(CodeViewPDB),
+    PDB { raw: CodeViewPDBRaw, file: String },
     Unknown { bytes: Vec<u8> },
 }
 
@@ -139,7 +135,7 @@ fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result
     let bytes = try!(read_bytes(f, size).or(Err(Error::CodeViewReadFailure)));
     // The string should have at least one trailing NUL.
     let file = String::from(String::from_utf8(bytes).unwrap().trim_right_matches('\0'));
-    Ok(CodeView::PDB(CodeViewPDB { raw: raw, file: file}))
+    Ok(CodeView::PDB { raw: raw, file: file})
 }
 
 fn read_codeview(mut f : &File, location : fmt::MDLocationDescriptor) -> Result<CodeView, Error> {
@@ -182,26 +178,60 @@ impl MinidumpModule {
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
-    fn code_file(&self) -> &String { &self.name }
-/*
-    fn code_identifier(&self) -> Option<String> {
-        unimplemented!()
+    fn code_file(&self) -> Cow<str> { Cow::Borrowed(&self.name) }
+    fn code_identifier(&self) -> Option<Cow<str>> {
+        Some(Cow::Owned(format!("{0:08X}{1:x}", self.raw.time_date_stamp,
+                                self.raw.size_of_image)))
     }
-*/
-    fn debug_file(&self) -> Option<&String> {
+    fn debug_file(&self) -> Option<Cow<str>> {
         match self.codeview_info {
-            Some(CodeView::PDB(ref cv)) => Some(&cv.file),
+            Some(CodeView::PDB { raw: _, ref file }) => Some(Cow::Borrowed(&file)),
+            // TODO: support misc record
             _ => None,
         }
     }
-/*
-    fn debug_identifier(&self) -> Option<String> {
-        unimplemented!()
+    fn debug_identifier(&self) -> Option<Cow<str>> {
+        match self.codeview_info {
+            Some(CodeView::PDB { raw: CodeViewPDBRaw::PDB70(ref raw), file: _ }) => {
+                let id = format!("{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:x}",
+                                 raw.signature.data1,
+                                 raw.signature.data2,
+                                 raw.signature.data3,
+                                 raw.signature.data4[0],
+                                 raw.signature.data4[1],
+                                 raw.signature.data4[2],
+                                 raw.signature.data4[3],
+                                 raw.signature.data4[4],
+                                 raw.signature.data4[5],
+                                 raw.signature.data4[6],
+                                 raw.signature.data4[7],
+                                 raw.age);
+                Some(Cow::Owned(id))
+            },
+            Some(CodeView::PDB { raw: CodeViewPDBRaw::PDB20(ref raw), file: _ }) => {
+                let id = format!("{:08X}{:x}",
+                                 raw.signature,
+                                 raw.age);
+                Some(Cow::Owned(id))
+            },
+            _ => None,
+        }
     }
-    fn version(&self) -> Option<String> {
-        unimplemented!()
+    fn version(&self) -> Option<Cow<str>> {
+        if self.raw.version_info.signature == fmt::MD_VSFIXEDFILEINFO_SIGNATURE &&
+            (self.raw.version_info.struct_version & fmt::MD_VSFIXEDFILEINFO_VERSION) == fmt::MD_VSFIXEDFILEINFO_VERSION {
+                let ver =
+                    format!("{}.{}.{}.{}",
+                            self.raw.version_info.file_version_hi >> 16,
+                            self.raw.version_info.file_version_hi & 0xffff,
+                            self.raw.version_info.file_version_lo >> 16,
+                            self.raw.version_info.file_version_lo & 0xffff);
+                Some(Cow::Owned(ver))
+            }
+        else {
+            None
+        }
     }
-*/
 }
 
 impl MinidumpStream for MinidumpModuleList {
@@ -305,13 +335,23 @@ mod tests {
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.modules;
         assert_eq!(modules.len(), 13);
-        assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
         assert_eq!(modules[0].base_address(), 0x400000);
         assert_eq!(modules[0].size(), 0x2d000);
+        assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
+        assert_eq!(modules[0].code_identifier().unwrap(), "45D35F6C2d000");
         assert_eq!(modules[0].debug_file().unwrap(), "c:\\test_app.pdb");
-        assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
+        assert_eq!(modules[0].debug_identifier().unwrap(),
+                   "5A9832E5287241C1838ED98914E9B7FF1");
+        assert!(modules[0].version().is_none());
+
         assert_eq!(modules[12].base_address(), 0x76bf0000);
         assert_eq!(modules[12].size(), 0xb000);
+        assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
+        assert_eq!(modules[12].code_identifier().unwrap(), "411096CAb000");
         assert_eq!(modules[12].debug_file().unwrap(), "psapi.pdb");
+        assert_eq!(modules[12].debug_identifier().unwrap(),
+                   "A5C3A1F9689F43D8AD228A09293889702");
+        assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
+
     }
 }
