@@ -10,7 +10,7 @@ fn print_minidump_dump(path : &str) {
     let f = File::open(&path).ok().expect(&format!("failed to open file: {:?}", path));
     match Minidump::read(f) {
         Ok(dump) => {
-            println!("OK");
+            dump.print(&mut std::io::stdout()).unwrap();
         },
         Err(err) => {
             let mut stderr = std::io::stderr();

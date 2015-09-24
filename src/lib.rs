@@ -19,7 +19,7 @@ use minidump_format as fmt;
 pub struct Minidump {
     file : File,
     header : fmt::MDRawHeader,
-    streams : HashMap<u32, fmt::MDRawDirectory>,
+    streams : HashMap<u32, (u32, fmt::MDRawDirectory)>,
     swap : bool,
 }
 
@@ -330,12 +330,10 @@ impl Minidump {
             return Err(Error::VersionMismatch);
         }
         let mut streams = HashMap::with_capacity(header.stream_count as usize);
-        if header.stream_count != 0 {
-            for _ in 0..header.stream_count {
-                let dir = try!(read::<fmt::MDRawDirectory>(&f).or(Err(Error::MissingDirectory)));
-                if dir.stream_type != fmt::MD_UNUSED_STREAM {
-                    streams.insert(dir.stream_type, dir);
-                }
+        for i in 0..header.stream_count {
+            let dir = try!(read::<fmt::MDRawDirectory>(&f).or(Err(Error::MissingDirectory)));
+            if dir.stream_type != fmt::MD_UNUSED_STREAM {
+                streams.insert(dir.stream_type, (i, dir));
             }
         }
         Ok(Minidump {
@@ -349,12 +347,59 @@ impl Minidump {
     pub fn get_stream<T: MinidumpStream>(&mut self) -> Result<T, Error> {
         match self.streams.get_mut(&T::stream_type()) {
             None => Err(Error::StreamNotFound),
-            Some(dir) => {
+            Some(&mut (_, dir)) => {
                 try!(self.file.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
                 // TODO: cache result
                 T::read(&self.file, dir.location.data_size as usize)
             }
         }
+    }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        try!(write!(f, r#"MDRawHeader
+  signature            = {:#x}
+  version              = {:#x}
+  stream_count         = {}
+  stream_directory_rva = {:#x}
+  checksum             = {:#x}
+  time_date_stamp      = {:#x}
+  flags                = {:#x}
+
+"#,
+                    self.header.signature,
+                    self.header.version,
+                    self.header.stream_count,
+                    self.header.stream_directory_rva,
+                    self.header.checksum,
+                    self.header.time_date_stamp,
+                    // TODO: strftime(self.header.time_date_stamp)
+                    self.header.flags,
+                    ));
+        let mut streams = self.streams.iter().collect::<Vec<_>>();
+        streams.sort_by(|&(&_, &(a, _)), &(&_, &(b, _))| a.cmp(&b));
+        for &(_, &(i, stream)) in streams.iter() {
+            try!(write!(f, r#"mDirectory[{}]
+MDRawDirectory
+  stream_type        = {:#x} ({})
+  location.data_size = {}
+  location.rva       = {:#x}
+
+"#,
+                        i,
+                        stream.stream_type,
+                        "TODO",
+                        stream.location.data_size,
+                        stream.location.rva));
+        }
+        try!(write!(f, "Streams:\n"));
+        streams.sort_by(|&(&a, &(_, _)), &(&b, &(_, _))| a.cmp(&b));
+        for (_, &(i, stream)) in streams {
+            try!(write!(f, "  stream type {:#x} ({}) at index {}\n",
+                        stream.stream_type,
+                        "TODO",
+                        i));
+        }
+        Ok(())
     }
 }
 
