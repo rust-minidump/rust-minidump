@@ -313,6 +313,43 @@ impl MinidumpThreadList {
             Some(&index) => Some(&self.threads[index]),
         }
     }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        try!(write!(f, r#"MinidumpThreadList
+  thread_count = {}
+
+"#, self.threads.len()));
+
+        for (i, thread) in self.threads.iter().enumerate() {
+            try!(write!(f, r#"thread[{}]
+MDRawThread
+  thread_id                   = {:#x}
+  suspend_count               = {}
+  priority_class              = {:#x}
+  priority                    = {:#x}
+  teb                         = {:#x}
+  stack.start_of_memory_range = {:#x}
+  stack.memory.data_size      = {:#x}
+  stack.memory.rva            = {:#x}
+  thread_context.data_size    = {:#x}
+  thread_context.rva          = {:#x}
+
+"#,
+                    i,
+                    thread.raw.thread_id,
+                    thread.raw.suspend_count,
+                    thread.raw.priority_class,
+                    thread.raw.priority,
+                    thread.raw.teb,
+                    thread.raw.stack.start_of_memory_range,
+                    thread.raw.stack.memory.data_size,
+                    thread.raw.stack.memory.rva,
+                    thread.raw.thread_context.data_size,
+                    thread.raw.thread_context.rva,
+                    ));
+    }
+            Ok(())
+    }
 }
 
 impl MinidumpSystemInfo {
@@ -504,6 +541,7 @@ MDRawDirectory
                         get_stream_name(stream.stream_type),
                         i));
         }
+        try!(write!(f, "\n"));
         Ok(())
     }
 }
