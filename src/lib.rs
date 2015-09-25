@@ -356,6 +356,72 @@ impl Minidump {
     }
 
     pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        fn get_stream_name(stream_type : u32) -> &'static str {
+            match stream_type {
+                fmt::MD_UNUSED_STREAM =>
+                    "MD_UNUSED_STREAM",
+                fmt::MD_RESERVED_STREAM_0 =>
+                    "MD_RESERVED_STREAM_0",
+                fmt::MD_RESERVED_STREAM_1 =>
+                    "MD_RESERVED_STREAM_1",
+                fmt::MD_THREAD_LIST_STREAM =>
+                    "MD_THREAD_LIST_STREAM",
+                fmt::MD_MODULE_LIST_STREAM =>
+                    "MD_MODULE_LIST_STREAM",
+                fmt::MD_MEMORY_LIST_STREAM =>
+                    "MD_MEMORY_LIST_STREAM",
+                fmt::MD_EXCEPTION_STREAM =>
+                    "MD_EXCEPTION_STREAM",
+                fmt::MD_SYSTEM_INFO_STREAM =>
+                    "MD_SYSTEM_INFO_STREAM",
+                fmt::MD_THREAD_EX_LIST_STREAM =>
+                    "MD_THREAD_EX_LIST_STREAM",
+                fmt::MD_MEMORY_64_LIST_STREAM =>
+                    "MD_MEMORY_64_LIST_STREAM",
+                fmt::MD_COMMENT_STREAM_A =>
+                    "MD_COMMENT_STREAM_A",
+                fmt::MD_COMMENT_STREAM_W =>
+                    "MD_COMMENT_STREAM_W",
+                fmt::MD_HANDLE_DATA_STREAM =>
+                    "MD_HANDLE_DATA_STREAM",
+                fmt::MD_FUNCTION_TABLE_STREAM =>
+                    "MD_FUNCTION_TABLE_STREAM",
+                fmt::MD_UNLOADED_MODULE_LIST_STREAM =>
+                    "MD_UNLOADED_MODULE_LIST_STREAM",
+                fmt::MD_MISC_INFO_STREAM =>
+                    "MD_MISC_INFO_STREAM",
+                fmt::MD_MEMORY_INFO_LIST_STREAM =>
+                    "MD_MEMORY_INFO_LIST_STREAM",
+                fmt::MD_THREAD_INFO_LIST_STREAM =>
+                    "MD_THREAD_INFO_LIST_STREAM",
+                fmt::MD_HANDLE_OPERATION_LIST_STREAM =>
+                    "MD_HANDLE_OPERATION_LIST_STREAM",
+                fmt::MD_LAST_RESERVED_STREAM =>
+                    "MD_LAST_RESERVED_STREAM",
+                fmt::MD_BREAKPAD_INFO_STREAM =>
+                    "MD_BREAKPAD_INFO_STREAM",
+                fmt::MD_ASSERTION_INFO_STREAM =>
+                    "MD_ASSERTION_INFO_STREAM",
+                fmt::MD_LINUX_CPU_INFO =>
+                    "MD_LINUX_CPU_INFO",
+                fmt::MD_LINUX_PROC_STATUS =>
+                    "MD_LINUX_PROC_STATUS",
+                fmt::MD_LINUX_LSB_RELEASE =>
+                    "MD_LINUX_LSB_RELEASE",
+                fmt::MD_LINUX_CMD_LINE =>
+                    "MD_LINUX_CMD_LINE",
+                fmt::MD_LINUX_ENVIRON =>
+                    "MD_LINUX_ENVIRON",
+                fmt::MD_LINUX_AUXV =>
+                    "MD_LINUX_AUXV",
+                fmt::MD_LINUX_MAPS =>
+                    "MD_LINUX_MAPS",
+                fmt::MD_LINUX_DSO_DEBUG =>
+                    "MD_LINUX_DSO_DEBUG",
+                _ => "unknown",
+            }
+        }
+
         try!(write!(f, r#"MDRawHeader
   signature            = {:#x}
   version              = {:#x}
@@ -387,7 +453,7 @@ MDRawDirectory
 "#,
                         i,
                         stream.stream_type,
-                        "TODO",
+                        get_stream_name(stream.stream_type),
                         stream.location.data_size,
                         stream.location.rva));
         }
@@ -396,7 +462,7 @@ MDRawDirectory
         for (_, &(i, stream)) in streams {
             try!(write!(f, "  stream type {:#x} ({}) at index {}\n",
                         stream.stream_type,
-                        "TODO",
+                        get_stream_name(stream.stream_type),
                         i));
         }
         Ok(())
