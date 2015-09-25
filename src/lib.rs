@@ -38,7 +38,6 @@ pub enum Error {
     CodeViewReadFailure,
 }
 
-pub struct MinidumpThreadList;
 pub struct MinidumpMemoryList;
 pub struct MinidumpException;
 pub struct MinidumpAssertion;
@@ -81,6 +80,15 @@ pub struct MinidumpModule {
 
 pub struct MinidumpModuleList {
     pub modules : Vec<MinidumpModule>,
+}
+
+pub struct MinidumpThread {
+    pub raw : fmt::MDRawThread,
+}
+
+pub struct MinidumpThreadList {
+    pub threads : Vec<MinidumpThread>,
+    thread_ids : HashMap<u32, usize>,
 }
 
 pub struct MinidumpSystemInfo {
@@ -237,26 +245,37 @@ impl Module for MinidumpModule {
     }
 }
 
+fn read_stream_list<T : Copy>(f : &File, expected_size : usize) -> Result<Vec<T>, Error> {
+    if expected_size < mem::size_of::<u32>() {
+        return Err(Error::StreamSizeMismatch);
+    }
+
+    // TODO: swap
+    let count = try!(read::<u32>(&f).or(Err(Error::StreamReadFailure))) as usize;
+    match expected_size - (mem::size_of::<u32>() + count * mem::size_of::<T>()) {
+        0 => {},
+        4 => {
+            // 4 bytes of padding.
+            try!(read::<u32>(&f).or(Err(Error::StreamReadFailure)));
+        },
+        _ => return Err(Error::StreamSizeMismatch)
+    };
+    // read count T raw stream entries
+    let mut raw_entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let raw = try!(read::<T>(f).or(Err(Error::StreamReadFailure)));
+        raw_entries.push(raw);
+    }
+    Ok(raw_entries)
+}
+
 impl MinidumpStream for MinidumpModuleList {
     fn stream_type() -> u32 { fmt::MD_MODULE_LIST_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpModuleList, Error> {
-        if expected_size < mem::size_of::<u32>() {
-            return Err(Error::StreamSizeMismatch);
-        }
-        // TODO: swap
-        let count = try!(read::<u32>(&f).or(Err(Error::StreamReadFailure))) as usize;
-        match expected_size - (mem::size_of::<u32>() + count * fmt::MD_MODULE_SIZE as usize) {
-            0 => {},
-            4 => {
-                // 4 bytes of padding.
-                try!(read::<u32>(&f).or(Err(Error::StreamReadFailure)));
-            },
-            _ => return Err(Error::StreamSizeMismatch)
-        };
-        // read count MDRawModule
-        let mut raw_modules = Vec::with_capacity(count);
-        for _ in 0..count {
-            let raw = try!(read::<fmt::MDRawModule>(f).or(Err(Error::ModuleReadFailure)));
+        let raw_modules = try!(read_stream_list::<fmt::MDRawModule>(f, expected_size));
+        // read auxiliary data for each module
+        let mut modules = Vec::with_capacity(raw_modules.len());
+        for raw in raw_modules.into_iter() {
             // TODO: swap
             if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image) {
                 // Bad image size.
@@ -264,15 +283,35 @@ impl MinidumpStream for MinidumpModuleList {
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
             }
-            raw_modules.push(raw);
-        }
-        // read auxiliary data for each module
-        let mut modules = Vec::with_capacity(count);
-        for raw in raw_modules.into_iter() {
             modules.push(try!(MinidumpModule::read(f, raw)));
         }
         // store modules by address (interval?)
         Ok(MinidumpModuleList { modules: modules })
+    }
+}
+
+impl MinidumpStream for MinidumpThreadList {
+    fn stream_type() -> u32 { fmt::MD_THREAD_LIST_STREAM }
+    fn read(f : &File, expected_size : usize) -> Result<MinidumpThreadList, Error> {
+        let raw_threads = try!(read_stream_list::<fmt::MDRawThread>(f, expected_size));
+        let mut threads = Vec::with_capacity(raw_threads.len());
+        let mut thread_ids = HashMap::with_capacity(raw_threads.len());
+        for raw in raw_threads.into_iter() {
+            // TODO: swap
+            thread_ids.insert(raw.thread_id, threads.len());
+            // TODO: check memory region
+            threads.push(MinidumpThread { raw: raw });
+        }
+        Ok(MinidumpThreadList { threads: threads, thread_ids: thread_ids })
+    }
+}
+
+impl MinidumpThreadList {
+    pub fn get_thread(&self, id : u32) -> Option<&MinidumpThread> {
+        match self.thread_ids.get(&id) {
+            None => None,
+            Some(&index) => Some(&self.threads[index]),
+        }
     }
 }
 
@@ -512,7 +551,6 @@ mod tests {
         assert_eq!(modules[12].debug_identifier().unwrap(),
                    "A5C3A1F9689F43D8AD228A09293889702");
         assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
-
     }
 
     #[test]
@@ -521,5 +559,17 @@ mod tests {
         let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
         assert_eq!(system_info.os(), "windows");
         assert_eq!(system_info.cpu(), "x86");
+    }
+
+    #[test]
+    fn test_thread_list() {
+        let mut dump = read_test_minidump().unwrap();
+        let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+        let ref threads = thread_list.threads;
+        assert_eq!(threads.len(), 2);
+        assert_eq!(threads[0].raw.thread_id, 0xbf4);
+        assert_eq!(threads[1].raw.thread_id, 0x11c0);
+        let id = threads[1].raw.thread_id;
+        assert_eq!(thread_list.get_thread(id).unwrap().raw.thread_id, id);
     }
 }
