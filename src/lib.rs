@@ -38,6 +38,7 @@ pub enum Error {
     ModuleReadFailure,
     DataError,
     CodeViewReadFailure,
+    UnknownCPUContext,
 }
 
 pub struct MinidumpMemoryList;
@@ -88,6 +89,7 @@ pub struct MinidumpModuleList {
 
 pub struct MinidumpThread {
     pub raw : fmt::MDRawThread,
+    pub context : Option<MinidumpContext>,
 }
 
 pub struct MinidumpThreadList {
@@ -97,6 +99,21 @@ pub struct MinidumpThreadList {
 
 pub struct MinidumpSystemInfo {
     pub raw : fmt::MDRawSystemInfo,
+}
+
+pub enum MinidumpRawContext {
+    X86(fmt::MDRawContextX86),
+    PPC(fmt::MDRawContextPPC),
+    PPC64(fmt::MDRawContextPPC64),
+    AMD64(fmt::MDRawContextAMD64),
+    SPARC(fmt::MDRawContextSPARC),
+    ARM(fmt::MDRawContextARM),
+    ARM64(fmt::MDRawContextARM64),
+    MIPS(fmt::MDRawContextMIPS),
+}
+
+pub struct MinidumpContext {
+    pub raw : MinidumpRawContext,
 }
 
 //======================================================
@@ -129,6 +146,13 @@ fn read_string_utf16(mut f : &File, offset : u64) -> Result<String, Error> {
     let buf = try!(read_bytes(f, size).or(Err(Error::DataError)));
     let bytes = &buf[..];
     UTF_16LE.decode(bytes, DecoderTrap::Strict).or(Err(Error::DataError))
+}
+
+fn write_bytes<T : Write>(f : &mut T, bytes : &[u8]) -> std::io::Result<()> {
+    for b in bytes {
+        try!(write!(f, "{:02x}", b));
+    }
+    Ok(())
 }
 
 fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result<CodeView, Error> {
@@ -309,6 +333,219 @@ impl MinidumpStream for MinidumpModuleList {
     }
 }
 
+impl MinidumpContext {
+    pub fn read(mut f : &File, location : &fmt::MDLocationDescriptor) -> Result<MinidumpContext, Error> {
+        try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::StreamReadFailure)));
+        let expected_size = location.data_size as usize;
+        // Some contexts don't have a context flags word at the beginning,
+        // so special-case them by size.
+        if expected_size == mem::size_of::<fmt::MDRawContextAMD64>() {
+            Err(Error::StreamReadFailure)
+        } else if expected_size == mem::size_of::<fmt::MDRawContextPPC64>() {
+            Err(Error::StreamReadFailure)
+        } else if expected_size == mem::size_of::<fmt::MDRawContextARM64>() {
+            Err(Error::StreamReadFailure)
+        } else {
+            // For everything else, read the flags and determine context
+            // type from that.
+            // TODO: swap
+            let flags = try!(read::<u32>(&f).or(Err(Error::StreamReadFailure)));
+            try!(f.seek(SeekFrom::Current(-4)).or(Err(Error::StreamReadFailure)));
+            let cpu_type = flags & fmt::MD_CONTEXT_CPU_MASK;
+            // TODO: handle dumps with MD_CONTEXT_ARM_OLD
+            if let Some(ctx) = match cpu_type {
+                fmt::MD_CONTEXT_X86 => {
+                    let ctx = try!(read::<fmt::MDRawContextX86>(&f).or(Err(Error::StreamReadFailure)));
+                    Some(MinidumpRawContext::X86(ctx))
+                },
+                fmt::MD_CONTEXT_PPC => {
+                    let ctx = try!(read::<fmt::MDRawContextPPC>(&f).or(Err(Error::StreamReadFailure)));
+                    Some(MinidumpRawContext::PPC(ctx))
+                },
+                fmt::MD_CONTEXT_SPARC => {
+                    let ctx = try!(read::<fmt::MDRawContextSPARC>(&f).or(Err(Error::StreamReadFailure)));
+                    Some(MinidumpRawContext::SPARC(ctx))
+                },
+                fmt::MD_CONTEXT_ARM => {
+                    let ctx = try!(read::<fmt::MDRawContextARM>(&f).or(Err(Error::StreamReadFailure)));
+                    Some(MinidumpRawContext::ARM(ctx))
+                },
+                fmt::MD_CONTEXT_MIPS => {
+                    let ctx = try!(read::<fmt::MDRawContextMIPS>(&f).or(Err(Error::StreamReadFailure)));
+                    Some(MinidumpRawContext::MIPS(ctx))
+                },
+                _ => None,
+            } {
+                return Ok(MinidumpContext { raw: ctx })
+            }
+            return Err(Error::UnknownCPUContext)
+        }
+    }
+
+    pub fn get_instruction_pointer(&self) -> u64 {
+        match self.raw {
+            MinidumpRawContext::AMD64(ctx) => ctx.rip,
+            MinidumpRawContext::ARM(ctx) => ctx.iregs[fmt::MD_CONTEXT_ARM_REG_PC as usize] as u64,
+            MinidumpRawContext::ARM64(ctx) => ctx.iregs[fmt::MD_CONTEXT_ARM64_REG_PC as usize],
+            MinidumpRawContext::PPC(ctx) => ctx.srr0 as u64,
+            MinidumpRawContext::PPC64(ctx) => ctx.srr0,
+            MinidumpRawContext::SPARC(ctx) => ctx.pc,
+            MinidumpRawContext::X86(ctx) => ctx.eip as u64,
+            MinidumpRawContext::MIPS(ctx) => ctx.epc,
+        }
+    }
+
+    pub fn get_stack_pointer(&self) -> u64 {
+        match self.raw {
+            MinidumpRawContext::AMD64(ctx) => ctx.rsp,
+            MinidumpRawContext::ARM(ctx) => ctx.iregs[fmt::MD_CONTEXT_ARM_REG_SP as usize] as u64,
+            MinidumpRawContext::ARM64(ctx) => ctx.iregs[fmt::MD_CONTEXT_ARM64_REG_SP as usize],
+            MinidumpRawContext::PPC(ctx) => ctx.gpr[fmt::MD_CONTEXT_PPC_REG_SP as usize] as u64,
+            MinidumpRawContext::PPC64(ctx) => ctx.gpr[fmt::MD_CONTEXT_PPC64_REG_SP as usize],
+            MinidumpRawContext::SPARC(ctx) => ctx.g_r[fmt::MD_CONTEXT_SPARC_REG_SP as usize],
+            MinidumpRawContext::X86(ctx) => ctx.esp as u64,
+            MinidumpRawContext::MIPS(ctx) => ctx.iregs[fmt::MD_CONTEXT_MIPS_REG_SP as usize],
+        }
+    }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        match self.raw {
+            MinidumpRawContext::X86(raw) => {
+                try!(write!(f, r#"MDRawContextX86
+  context_flags                = {:#x}
+  dr0                          = {:#x}
+  dr1                          = {:#x}
+  dr2                          = {:#x}
+  dr3                          = {:#x}
+  dr6                          = {:#x}
+  dr7                          = {:#x}
+  float_save.control_word      = {:#x}
+  float_save.status_word       = {:#x}
+  float_save.tag_word          = {:#x}
+  float_save.error_offset      = {:#x}
+  float_save.error_selector    = {:#x}
+  float_save.data_offset       = {:#x}
+  float_save.data_selector     = {:#x}
+  float_save.register_area[{:2}] = 0x"#,
+                            raw.context_flags,
+                            raw.dr0,
+                            raw.dr1,
+                            raw.dr2,
+                            raw.dr3,
+                            raw.dr6,
+                            raw.dr7,
+                            raw.float_save.control_word,
+                            raw.float_save.status_word,
+                            raw.float_save.tag_word,
+                            raw.float_save.error_offset,
+                            raw.float_save.error_selector,
+                            raw.float_save.data_offset,
+                            raw.float_save.data_selector,
+                            fmt::MD_FLOATINGSAVEAREA_X86_REGISTERAREA_SIZE,
+                            ));
+                try!(write_bytes(f, &raw.float_save.register_area));
+                try!(write!(f, "\n"));
+                try!(write!(f, r#"  float_save.cr0_npx_state     = {:#x}
+  gs                           = {:#x}
+  fs                           = {:#x}
+  es                           = {:#x}
+  ds                           = {:#x}
+  edi                          = {:#x}
+  esi                          = {:#x}
+  ebx                          = {:#x}
+  edx                          = {:#x}
+  ecx                          = {:#x}
+  eax                          = {:#x}
+  ebp                          = {:#x}
+  eip                          = {:#x}
+  cs                           = {:#x}
+  eflags                       = {:#x}
+  esp                          = {:#x}
+  ss                           = {:#x}
+  extended_registers[{:3}]      = 0x"#,
+                            raw.float_save.cr0_npx_state,
+                            raw.gs,
+                            raw.fs,
+                            raw.es,
+                            raw.ds,
+                            raw.edi,
+                            raw.esi,
+                            raw.ebx,
+                            raw.edx,
+                            raw.ecx,
+                            raw.eax,
+                            raw.ebp,
+                            raw.eip,
+                            raw.cs,
+                            raw.eflags,
+                            raw.esp,
+                            raw.ss,
+                            fmt::MD_CONTEXT_X86_EXTENDED_REGISTERS_SIZE,
+                            ));
+                try!(write_bytes(f, &raw.extended_registers));
+                try!(write!(f, "\n\n"));
+            },
+            MinidumpRawContext::PPC(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::PPC64(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::AMD64(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::SPARC(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::ARM(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::ARM64(raw) => {
+                unimplemented!();
+            },
+            MinidumpRawContext::MIPS(raw) => {
+                unimplemented!();
+            },
+        }
+        Ok(())
+    }
+}
+
+impl MinidumpThread {
+    pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        try!(write!(f, r#"MDRawThread
+  thread_id                   = {:#x}
+  suspend_count               = {}
+  priority_class              = {:#x}
+  priority                    = {:#x}
+  teb                         = {:#x}
+  stack.start_of_memory_range = {:#x}
+  stack.memory.data_size      = {:#x}
+  stack.memory.rva            = {:#x}
+  thread_context.data_size    = {:#x}
+  thread_context.rva          = {:#x}
+
+"#,
+                    self.raw.thread_id,
+                    self.raw.suspend_count,
+                    self.raw.priority_class,
+                    self.raw.priority,
+                    self.raw.teb,
+                    self.raw.stack.start_of_memory_range,
+                    self.raw.stack.memory.data_size,
+                    self.raw.stack.memory.rva,
+                    self.raw.thread_context.data_size,
+                    self.raw.thread_context.rva,
+                    ));
+        if let Some(ref ctx) = self.context {
+            try!(ctx.print(f));
+        } else {
+            try!(write!(f, "  (no context)\n\n"));
+        }
+        Ok(())
+    }
+}
+
 impl MinidumpStream for MinidumpThreadList {
     fn stream_type() -> u32 { fmt::MD_THREAD_LIST_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpThreadList, Error> {
@@ -319,7 +556,9 @@ impl MinidumpStream for MinidumpThreadList {
             // TODO: swap
             thread_ids.insert(raw.thread_id, threads.len());
             // TODO: check memory region
-            threads.push(MinidumpThread { raw: raw });
+            // TODO: read thread context
+            let context = MinidumpContext::read(f, &raw.thread_context).ok();
+            threads.push(MinidumpThread { raw: raw, context: context });
         }
         Ok(MinidumpThreadList { threads: threads, thread_ids: thread_ids })
     }
@@ -340,34 +579,10 @@ impl MinidumpThreadList {
 "#, self.threads.len()));
 
         for (i, thread) in self.threads.iter().enumerate() {
-            try!(write!(f, r#"thread[{}]
-MDRawThread
-  thread_id                   = {:#x}
-  suspend_count               = {}
-  priority_class              = {:#x}
-  priority                    = {:#x}
-  teb                         = {:#x}
-  stack.start_of_memory_range = {:#x}
-  stack.memory.data_size      = {:#x}
-  stack.memory.rva            = {:#x}
-  thread_context.data_size    = {:#x}
-  thread_context.rva          = {:#x}
-
-"#,
-                    i,
-                    thread.raw.thread_id,
-                    thread.raw.suspend_count,
-                    thread.raw.priority_class,
-                    thread.raw.priority,
-                    thread.raw.teb,
-                    thread.raw.stack.start_of_memory_range,
-                    thread.raw.stack.memory.data_size,
-                    thread.raw.stack.memory.rva,
-                    thread.raw.thread_context.data_size,
-                    thread.raw.thread_context.rva,
-                    ));
-    }
-            Ok(())
+            try!(write!(f, "thread[{}]\n", i));
+            try!(thread.print(f));
+        }
+        Ok(())
     }
 }
 
@@ -631,5 +846,16 @@ mod tests {
         assert_eq!(threads[1].raw.thread_id, 0x11c0);
         let id = threads[1].raw.thread_id;
         assert_eq!(thread_list.get_thread(id).unwrap().raw.thread_id, id);
+        if let Some(ref ctx) = threads[0].context {
+            assert_eq!(ctx.get_instruction_pointer(), 0x7c90eb94);
+            assert_eq!(ctx.get_stack_pointer(), 0x12f320);
+            if let &MinidumpContext { raw: MinidumpRawContext::X86(raw) } = ctx {
+                assert_eq!(raw.eip, 0x7c90eb94);
+            } else {
+                assert!(false, "Wrong context type");
+            }
+        } else {
+            assert!(false, "Missing context");
+        }
     }
 }
