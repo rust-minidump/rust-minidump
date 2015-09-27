@@ -14,6 +14,8 @@ use encoding::all::UTF_16LE;
 
 pub mod minidump_format;
 use minidump_format as fmt;
+mod range_map;
+use range_map::RangeMap;
 
 #[allow(dead_code)]
 pub struct Minidump {
@@ -80,6 +82,8 @@ pub struct MinidumpModule {
 
 pub struct MinidumpModuleList {
     pub modules : Vec<MinidumpModule>,
+    // Map from address range to index in modules.
+    modules_by_addr : RangeMap<usize>,
 }
 
 pub struct MinidumpThread {
@@ -269,12 +273,23 @@ fn read_stream_list<T : Copy>(f : &File, expected_size : usize) -> Result<Vec<T>
     Ok(raw_entries)
 }
 
+impl MinidumpModuleList {
+    pub fn module_at_address(&self, addr : u64) -> Option<&MinidumpModule> {
+        return if let Some(index) = self.modules_by_addr.lookup(addr) {
+            Some(&self.modules[index])
+        } else {
+            None
+        }
+    }
+}
+
 impl MinidumpStream for MinidumpModuleList {
     fn stream_type() -> u32 { fmt::MD_MODULE_LIST_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpModuleList, Error> {
         let raw_modules = try!(read_stream_list::<fmt::MDRawModule>(f, expected_size));
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
+        let mut map = RangeMap::<usize>::new();
         for raw in raw_modules.into_iter() {
             // TODO: swap
             if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image) {
@@ -283,10 +298,14 @@ impl MinidumpStream for MinidumpModuleList {
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
             }
+            if let Err(_) = map.insert((raw.base_of_image, raw.base_of_image + raw.size_of_image as u64), modules.len()) {
+                // Better error? Module overlaps existing module.
+                // TODO: just drop this module, keep the rest?
+                return Err(Error::ModuleReadFailure);
+            }
             modules.push(try!(MinidumpModule::read(f, raw)));
         }
-        // store modules by address (interval?)
-        Ok(MinidumpModuleList { modules: modules })
+        Ok(MinidumpModuleList { modules: modules, modules_by_addr: map })
     }
 }
 
@@ -570,6 +589,8 @@ mod tests {
     fn test_module_list() {
         let mut dump = read_test_minidump().unwrap();
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        assert_eq!(module_list.module_at_address(0x400000).unwrap().code_file(),
+                   "c:\\test_app.exe");
         let modules = module_list.modules;
         assert_eq!(modules.len(), 13);
         assert_eq!(modules[0].base_address(), 0x400000);
@@ -589,6 +610,7 @@ mod tests {
         assert_eq!(modules[12].debug_identifier().unwrap(),
                    "A5C3A1F9689F43D8AD228A09293889702");
         assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
+
     }
 
     #[test]
