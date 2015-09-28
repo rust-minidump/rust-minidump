@@ -24,6 +24,7 @@ fn print_minidump_dump(path : &Path) {
     }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 fn main() {
     if let Some(dump_arg) = env::args().nth(1) {
         let path = Path::new(&dump_arg);

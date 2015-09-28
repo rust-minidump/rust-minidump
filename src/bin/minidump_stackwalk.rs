@@ -27,6 +27,7 @@ fn print_minidump_process(path : &Path, _symbol_paths : Vec<PathBuf>) {
     }
 }
 
+#[cfg_attr(test, allow(dead_code))]
 fn main() {
     if let Some(arg) = env::args().nth(1) {
         let path = Path::new(&arg);
