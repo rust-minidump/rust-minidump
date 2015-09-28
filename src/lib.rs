@@ -554,51 +554,67 @@ impl MinidumpContext {
   rip           = {:#x}
 
 "#,
-  raw.p1_home,
-  raw.p2_home,
-  raw.p3_home,
-  raw.p4_home,
-  raw.p5_home,
-  raw.p6_home,
-  raw.context_flags,
-  raw.mx_csr,
-  raw.cs,
-  raw.ds,
-  raw.es,
-  raw.fs,
-  raw.gs,
-  raw.ss,
-  raw.eflags,
-  raw.dr0,
-  raw.dr1,
-  raw.dr2,
-  raw.dr3,
-  raw.dr6,
-  raw.dr7,
-  raw.rax,
-  raw.rcx,
-  raw.rdx,
-  raw.rbx,
-  raw.rsp,
-  raw.rbp,
-  raw.rsi,
-  raw.rdi,
-  raw.r8,
-  raw.r9,
-  raw.r10,
-  raw.r11,
-  raw.r12,
-  raw.r13,
-  raw.r14,
-  raw.r15,
-  raw.rip,
-));
+                            raw.p1_home,
+                            raw.p2_home,
+                            raw.p3_home,
+                            raw.p4_home,
+                            raw.p5_home,
+                            raw.p6_home,
+                            raw.context_flags,
+                            raw.mx_csr,
+                            raw.cs,
+                            raw.ds,
+                            raw.es,
+                            raw.fs,
+                            raw.gs,
+                            raw.ss,
+                            raw.eflags,
+                            raw.dr0,
+                            raw.dr1,
+                            raw.dr2,
+                            raw.dr3,
+                            raw.dr6,
+                            raw.dr7,
+                            raw.rax,
+                            raw.rcx,
+                            raw.rdx,
+                            raw.rbx,
+                            raw.rsp,
+                            raw.rbp,
+                            raw.rsi,
+                            raw.rdi,
+                            raw.r8,
+                            raw.r9,
+                            raw.r10,
+                            raw.r11,
+                            raw.r12,
+                            raw.r13,
+                            raw.r14,
+                            raw.r15,
+                            raw.rip,
+                            ));
             },
             MinidumpRawContext::SPARC(raw) => {
                 unimplemented!();
             },
             MinidumpRawContext::ARM(raw) => {
-                unimplemented!();
+                try!(write!(f, r#"MDRawContextARM
+  context_flags       = {:#x}
+"#, raw.context_flags));
+                for (i, reg) in raw.iregs.iter().enumerate() {
+                    try!(writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg));
+                }
+                try!(write!(f, r#"  cpsr                = {:#x}
+  float_save.fpscr     = {:#x}
+"#,
+                            raw.cpsr,
+                            raw.float_save.fpscr));
+                for (i, reg) in raw.float_save.regs.iter().enumerate() {
+                    try!(writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg));
+                }
+                for (i, reg) in raw.float_save.extra.iter().enumerate() {
+                    try!(writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg));
+                }
             },
             MinidumpRawContext::ARM64(raw) => {
                 unimplemented!();
