@@ -90,6 +90,7 @@ pub struct MinidumpModuleList {
 pub struct MinidumpThread {
     pub raw : fmt::MDRawThread,
     pub context : Option<MinidumpContext>,
+    pub stack : Option<MinidumpMemory>,
 }
 
 pub struct MinidumpThreadList {
@@ -114,6 +115,12 @@ pub enum MinidumpRawContext {
 
 pub struct MinidumpContext {
     pub raw : MinidumpRawContext,
+}
+
+pub struct MinidumpMemory {
+    pub base_address : u64,
+    pub size : u64,
+    pub bytes : Vec<u8>,
 }
 
 //======================================================
@@ -627,6 +634,27 @@ impl MinidumpContext {
     }
 }
 
+impl MinidumpMemory {
+    pub fn read(mut f : &File, desc : &fmt::MDMemoryDescriptor) -> Result<MinidumpMemory, Error> {
+        try!(f.seek(SeekFrom::Start(desc.memory.rva as u64)).or(Err(Error::StreamReadFailure)));
+        let bytes = try!(read_bytes(f, desc.memory.data_size as usize).or(Err(Error::DataError)));
+        Ok(MinidumpMemory {
+            base_address: desc.start_of_memory_range,
+            size: desc.memory.data_size as u64,
+            bytes: bytes,
+        })
+    }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
+        try!(write!(f, "0x"));
+        for byte in self.bytes.iter() {
+            try!(write!(f, "{:02x}", byte));
+        }
+        try!(write!(f, "\n"));
+        Ok(())
+    }
+}
+
 impl MinidumpThread {
     pub fn print<T : Write>(&self, f : &mut T) -> std::io::Result<()> {
         try!(write!(f, r#"MDRawThread
@@ -658,6 +686,14 @@ impl MinidumpThread {
         } else {
             try!(write!(f, "  (no context)\n\n"));
         }
+
+        if let Some(ref stack) = self.stack {
+            try!(writeln!(f, "Stack"));
+            try!(stack.print(f));
+        } else {
+            try!(writeln!(f, "No stack"));
+        }
+        try!(write!(f, "\n"));
         Ok(())
     }
 }
@@ -671,10 +707,14 @@ impl MinidumpStream for MinidumpThreadList {
         for raw in raw_threads.into_iter() {
             // TODO: swap
             thread_ids.insert(raw.thread_id, threads.len());
-            // TODO: check memory region
-            // TODO: read thread context
             let context = MinidumpContext::read(f, &raw.thread_context).ok();
-            threads.push(MinidumpThread { raw: raw, context: context });
+            // TODO: check memory region
+            let stack = MinidumpMemory::read(f, &raw.stack).ok();
+            threads.push(MinidumpThread {
+                raw: raw,
+                context: context,
+                stack: stack,
+            });
         }
         Ok(MinidumpThreadList { threads: threads, thread_ids: thread_ids })
     }
