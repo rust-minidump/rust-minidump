@@ -1,7 +1,7 @@
 //! The state of a process.
 
 use std::io::prelude::*;
-use std::io::Result;
+use std::io;
 
 use chrono::*;
 
@@ -46,7 +46,7 @@ impl ProcessState {
     ///
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
-    pub fn print<T : Write>(&self, _f : &mut T) -> Result<()> {
+    pub fn print<T : Write>(&self, _f : &mut T) -> io::Result<()> {
         Ok(())
     }
 }
