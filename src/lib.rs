@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::mem;
+use std::path::Path;
 use std::ptr;
 use std::collections::HashMap;
 
@@ -14,6 +15,10 @@ use encoding::all::UTF_16LE;
 
 pub mod minidump_format;
 use minidump_format as fmt;
+
+pub mod process_state;
+pub use process_state::ProcessState;
+
 mod range_map;
 use range_map::RangeMap;
 
@@ -27,6 +32,7 @@ pub struct Minidump {
 
 #[derive(Debug)]
 pub enum Error {
+    FileNotFound,
     MissingHeader,
     HeaderMismatch,
     SwapNotImplemented,
@@ -39,6 +45,11 @@ pub enum Error {
     DataError,
     CodeViewReadFailure,
     UnknownCPUContext,
+}
+
+#[derive(Debug)]
+pub enum ProcessError {
+    UnknownError,
 }
 
 pub struct MinidumpMemoryList;
@@ -513,10 +524,10 @@ impl MinidumpContext {
                 try!(write_bytes(f, &raw.extended_registers));
                 try!(write!(f, "\n\n"));
             },
-            MinidumpRawContext::PPC(raw) => {
+            MinidumpRawContext::PPC(_raw) => {
                 unimplemented!();
             },
-            MinidumpRawContext::PPC64(raw) => {
+            MinidumpRawContext::PPC64(_raw) => {
                 unimplemented!();
             },
             MinidumpRawContext::AMD64(raw) => {
@@ -601,7 +612,7 @@ impl MinidumpContext {
                             raw.rip,
                             ));
             },
-            MinidumpRawContext::SPARC(raw) => {
+            MinidumpRawContext::SPARC(_raw) => {
                 unimplemented!();
             },
             MinidumpRawContext::ARM(raw) => {
@@ -623,10 +634,10 @@ impl MinidumpContext {
                     try!(writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg));
                 }
             },
-            MinidumpRawContext::ARM64(raw) => {
+            MinidumpRawContext::ARM64(_raw) => {
                 unimplemented!();
             },
-            MinidumpRawContext::MIPS(raw) => {
+            MinidumpRawContext::MIPS(_raw) => {
                 unimplemented!();
             },
         }
@@ -781,6 +792,11 @@ impl MinidumpStream for MinidumpSystemInfo {
 }
 
 impl Minidump {
+    pub fn read_path(path : &Path) -> Result<Minidump, Error> {
+        let f = try!(File::open(path).or(Err(Error::FileNotFound)));
+        Minidump::read(f)
+    }
+
     pub fn read(f : File) -> Result<Minidump, Error> {
         let header = try!(read::<fmt::MDRawHeader>(&f).or(Err(Error::MissingHeader)));
         let swap = false;
@@ -808,6 +824,10 @@ impl Minidump {
             streams: streams,
             swap: swap
         })
+    }
+
+    pub fn process(&mut self) -> Result<ProcessState, ProcessError> {
+        Err(ProcessError::UnknownError)
     }
 
     pub fn get_stream<T: MinidumpStream>(&mut self) -> Result<T, Error> {
@@ -939,15 +959,13 @@ MDRawDirectory
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use std::fs::File;
     use super::*;
 
     fn read_test_minidump() -> Result<Minidump, Error> {
         let mut path = PathBuf::from(file!());
         path.pop();
         path.push("testdata/test.dmp");
-        let f = File::open(&path).ok().expect(&format!("failed to open file: {:?}", path));
-        Minidump::read(f)
+        Minidump::read_path(&path)
     }
 
     #[test]
