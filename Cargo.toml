@@ -7,3 +7,4 @@ license = "BSD-2-Clause"
 [dependencies]
 libc = "0.1.*"
 encoding = "0.2"
+chrono = "0.2.16"

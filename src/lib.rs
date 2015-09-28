@@ -1,3 +1,7 @@
+extern crate chrono;
+extern crate encoding;
+extern crate libc;
+
 use std::io::prelude::*;
 use std::borrow::Cow;
 use std::fs::File;
@@ -6,9 +10,6 @@ use std::mem;
 use std::path::Path;
 use std::ptr;
 use std::collections::HashMap;
-
-extern crate libc;
-extern crate encoding;
 
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::UTF_16LE;
