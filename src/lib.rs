@@ -340,11 +340,32 @@ impl MinidumpContext {
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         if expected_size == mem::size_of::<fmt::MDRawContextAMD64>() {
-            Err(Error::StreamReadFailure)
+            let ctx = try!(read::<fmt::MDRawContextAMD64>(f).or(Err(Error::StreamReadFailure)));
+            if ctx.context_flags & fmt::MD_CONTEXT_CPU_MASK != fmt::MD_CONTEXT_AMD64 {
+                return Err(Error::StreamReadFailure);
+            } else {
+                return Ok(MinidumpContext {
+                    raw: MinidumpRawContext::AMD64(ctx)
+                })
+            }
         } else if expected_size == mem::size_of::<fmt::MDRawContextPPC64>() {
-            Err(Error::StreamReadFailure)
+            let ctx = try!(read::<fmt::MDRawContextPPC64>(f).or(Err(Error::StreamReadFailure)));
+            if ctx.context_flags & (fmt::MD_CONTEXT_CPU_MASK as u64) != fmt::MD_CONTEXT_PPC64 as u64 {
+                return Err(Error::StreamReadFailure);
+            } else {
+                return Ok(MinidumpContext {
+                    raw: MinidumpRawContext::PPC64(ctx)
+                })
+            }
         } else if expected_size == mem::size_of::<fmt::MDRawContextARM64>() {
-            Err(Error::StreamReadFailure)
+            let ctx = try!(read::<fmt::MDRawContextARM64>(f).or(Err(Error::StreamReadFailure)));
+            if ctx.context_flags & (fmt::MD_CONTEXT_CPU_MASK as u64) != fmt::MD_CONTEXT_ARM64 as u64 {
+                return Err(Error::StreamReadFailure);
+            } else {
+                return Ok(MinidumpContext {
+                    raw: MinidumpRawContext::ARM64(ctx)
+                })
+            }
         } else {
             // For everything else, read the flags and determine context
             // type from that.
@@ -492,7 +513,86 @@ impl MinidumpContext {
                 unimplemented!();
             },
             MinidumpRawContext::AMD64(raw) => {
-                unimplemented!();
+                try!(write!(f, r#"MDRawContextAMD64
+  p1_home       = {:#x}
+  p2_home       = {:#x}
+  p3_home       = {:#x}
+  p4_home       = {:#x}
+  p5_home       = {:#x}
+  p6_home       = {:#x}
+  context_flags = {:#x}
+  mx_csr        = {:#x}
+  cs            = {:#x}
+  ds            = {:#x}
+  es            = {:#x}
+  fs            = {:#x}
+  gs            = {:#x}
+  ss            = {:#x}
+  eflags        = {:#x}
+  dr0           = {:#x}
+  dr1           = {:#x}
+  dr2           = {:#x}
+  dr3           = {:#x}
+  dr6           = {:#x}
+  dr7           = {:#x}
+  rax           = {:#x}
+  rcx           = {:#x}
+  rdx           = {:#x}
+  rbx           = {:#x}
+  rsp           = {:#x}
+  rbp           = {:#x}
+  rsi           = {:#x}
+  rdi           = {:#x}
+  r8            = {:#x}
+  r9            = {:#x}
+  r10           = {:#x}
+  r11           = {:#x}
+  r12           = {:#x}
+  r13           = {:#x}
+  r14           = {:#x}
+  r15           = {:#x}
+  rip           = {:#x}
+
+"#,
+  raw.p1_home,
+  raw.p2_home,
+  raw.p3_home,
+  raw.p4_home,
+  raw.p5_home,
+  raw.p6_home,
+  raw.context_flags,
+  raw.mx_csr,
+  raw.cs,
+  raw.ds,
+  raw.es,
+  raw.fs,
+  raw.gs,
+  raw.ss,
+  raw.eflags,
+  raw.dr0,
+  raw.dr1,
+  raw.dr2,
+  raw.dr3,
+  raw.dr6,
+  raw.dr7,
+  raw.rax,
+  raw.rcx,
+  raw.rdx,
+  raw.rbx,
+  raw.rsp,
+  raw.rbp,
+  raw.rsi,
+  raw.rdi,
+  raw.r8,
+  raw.r9,
+  raw.r10,
+  raw.r11,
+  raw.r12,
+  raw.r13,
+  raw.r14,
+  raw.r15,
+  raw.rip,
+));
             },
             MinidumpRawContext::SPARC(raw) => {
                 unimplemented!();
