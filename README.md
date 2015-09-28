@@ -4,4 +4,6 @@ This Rust crate implements a parser for the [minidump](https://msdn.microsoft.co
 
 It is nowhere near complete, it's primarily a means for me to learn Rust in an area I'm familiar with.
 
+[Documentation](http://luser.github.io/rust-project-docs/minidump-processor/minidump_processor/)
+
 This software is provided under the MIT license. See [LICENSE](LICENSE).
