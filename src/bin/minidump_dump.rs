@@ -19,6 +19,9 @@ fn print_minidump_dump(path : &Path) {
             if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList>() {
                 thread_list.print(stdout).unwrap();
             }
+            if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
+                module_list.print(stdout).unwrap();
+            }
         },
         Err(err) => {
             let mut stderr = std::io::stderr();

@@ -90,7 +90,7 @@ pub trait Module {
     fn base_address(&self) -> u64;
     fn size(&self) -> u64;
     fn code_file(&self) -> Cow<str>;
-    fn code_identifier(&self) -> Option<Cow<str>>;
+    fn code_identifier(&self) -> Cow<str>;
     fn debug_file(&self) -> Option<Cow<str>>;
     fn debug_identifier(&self) -> Option<Cow<str>>;
     fn version(&self) -> Option<Cow<str>>;
@@ -194,6 +194,14 @@ fn write_bytes<T : Write>(f : &mut T, bytes : &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+fn format_time_t(t : u32) -> String {
+    if let Some(datetime) = NaiveDateTime::from_timestamp_opt(t as i64, 0) {
+        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+    } else {
+        String::new()
+    }
+}
+
 fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result<CodeView, Error> {
     let raw = match signature {
         md::MD_CVINFOPDB70_SIGNATURE => {
@@ -251,15 +259,86 @@ impl MinidumpModule {
             misc_info: None,
         })
     }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, r#"MDRawModule
+  base_of_image                   = {:#x}
+  size_of_image                   = {:#x}
+  checksum                        = {:#x}
+  time_date_stamp                 = {:#x} {}
+  module_name_rva                 = {:#x}
+  version_info.signature          = {:#x}
+  version_info.struct_version     = {:#x}
+  version_info.file_version       = {:#x}:{:#x}
+  version_info.product_version    = {:#x}:{:#x}
+  version_info.file_flags_mask    = {:#x}
+  version_info.file_flags         = {:#x}
+  version_info.file_os            = {:#x}
+  version_info.file_type          = {:#x}
+  version_info.file_subtype       = {:#x}
+  version_info.file_date          = {:#x}:{:#x}
+  cv_record.data_size             = {}
+  cv_record.rva                   = {:#x}
+  misc_record.data_size           = {}
+  misc_record.rva                 = {:#x}
+  (code_file)                     = "{}"
+  (code_identifier)               = "{}"
+  (cv_record).cv_signature        = {:#x}
+  (cv_record).signature           = {}
+  (cv_record).age                 = {}
+  (cv_record).pdb_file_name       = {}
+  (misc_record)                   = {}
+  (debug_file)                    = "{}"
+  (debug_identifier)              = "{}"
+  (version)                       = {}
+
+"#,
+                    self.raw.base_of_image,
+                    self.raw.size_of_image,
+                    self.raw.checksum,
+                    self.raw.time_date_stamp,
+                    format_time_t(self.raw.time_date_stamp),
+                    self.raw.module_name_rva,
+                    self.raw.version_info.signature,
+                    self.raw.version_info.struct_version,
+                    self.raw.version_info.file_version_hi,
+                    self.raw.version_info.file_version_lo,
+                    self.raw.version_info.product_version_hi,
+                    self.raw.version_info.product_version_lo,
+                    self.raw.version_info.file_flags_mask,
+                    self.raw.version_info.file_flags,
+                    self.raw.version_info.file_os,
+                    self.raw.version_info.file_type,
+                    self.raw.version_info.file_subtype,
+                    self.raw.version_info.file_date_hi,
+                    self.raw.version_info.file_date_lo,
+                    self.raw.cv_record.data_size,
+                    self.raw.cv_record.rva,
+                    self.raw.misc_record.data_size,
+                    self.raw.misc_record.rva,
+                    self.code_file(),
+                    self.code_identifier(),
+                    0, //TODO: cv_record.cv_signature
+                    "", //TODO: cv_record.signature
+                    0, //TODO: cv_record.age
+                    "", //TODO: cv_record.pdb_file_name
+                    "", //TODO: misc_record
+                    "", //TODO: debug_file
+                    "", //TODO: debug_identifier
+                    "", //TODO: version
+                    ));
+        Ok(())
+    }
 }
 
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
     fn code_file(&self) -> Cow<str> { Cow::Borrowed(&self.name) }
-    fn code_identifier(&self) -> Option<Cow<str>> {
-        Some(Cow::Owned(format!("{0:08X}{1:x}", self.raw.time_date_stamp,
-                                self.raw.size_of_image)))
+    fn code_identifier(&self) -> Cow<str> {
+        // TODO: Breakpad stubs this out on non-Windows.
+        Cow::Owned(format!("{0:08X}{1:x}", self.raw.time_date_stamp,
+                           self.raw.size_of_image))
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         match self.codeview_info {
@@ -343,6 +422,18 @@ impl MinidumpModuleList {
         } else {
             None
         }
+    }
+
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, "MinidumpModuleList
+  module_count = {}
+
+", self.modules.len()));
+        for (i, module) in self.modules.iter().enumerate() {
+            try!(writeln!(f, "module[{}]", i));
+            try!(module.print(f));
+        }
+        Ok(())
     }
 }
 
@@ -937,11 +1028,7 @@ impl Minidump {
             }
         }
 
-        let mut formatted_time = String::new();
-        if let Some(datetime) =
-            NaiveDateTime::from_timestamp_opt(self.header.time_date_stamp as i64, 0) {
-                formatted_time = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-        }
+
         try!(write!(f, r#"MDRawHeader
   signature            = {:#x}
   version              = {:#x}
@@ -958,7 +1045,7 @@ impl Minidump {
                     self.header.stream_directory_rva,
                     self.header.checksum,
                     self.header.time_date_stamp,
-                    formatted_time,
+                    format_time_t(self.header.time_date_stamp),
                     self.header.flags,
                     ));
         let mut streams = self.streams.iter().collect::<Vec<_>>();
