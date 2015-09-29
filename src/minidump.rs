@@ -837,9 +837,7 @@ impl Minidump {
         let mut streams = HashMap::with_capacity(header.stream_count as usize);
         for i in 0..header.stream_count {
             let dir = try!(read::<md::MDRawDirectory>(&f).or(Err(Error::MissingDirectory)));
-            if dir.stream_type != md::MD_UNUSED_STREAM {
-                streams.insert(dir.stream_type, (i, dir));
-            }
+            streams.insert(dir.stream_type, (i, dir));
         }
         Ok(Minidump {
             file: f,
