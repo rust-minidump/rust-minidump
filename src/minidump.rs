@@ -2,6 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use std::io::prelude::*;
+use chrono::NaiveDateTime;
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
@@ -938,13 +939,18 @@ impl Minidump {
             }
         }
 
+        let mut formatted_time = String::new();
+        if let Some(datetime) =
+            NaiveDateTime::from_timestamp_opt(self.header.time_date_stamp as i64, 0) {
+                formatted_time = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+        }
         try!(write!(f, r#"MDRawHeader
   signature            = {:#x}
   version              = {:#x}
   stream_count         = {}
   stream_directory_rva = {:#x}
   checksum             = {:#x}
-  time_date_stamp      = {:#x}
+  time_date_stamp      = {:#x} {}
   flags                = {:#x}
 
 "#,
@@ -954,7 +960,7 @@ impl Minidump {
                     self.header.stream_directory_rva,
                     self.header.checksum,
                     self.header.time_date_stamp,
-                    // TODO: strftime(self.header.time_date_stamp)
+                    formatted_time,
                     self.header.flags,
                     ));
         let mut streams = self.streams.iter().collect::<Vec<_>>();
