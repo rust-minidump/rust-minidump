@@ -1,3 +1,6 @@
+// Copyright 2015 Ted Mielczarek. See the COPYRIGHT
+// file at the top-level directory of this distribution.
+
 use std::io::prelude::*;
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
@@ -14,6 +17,29 @@ use minidump_format as md;
 use range_map::RangeMap;
 use process_state::ProcessState;
 
+/// An index into the contents of a minidump.
+///
+/// The `Minidump` struct represents the parsed header and
+/// indices contained at the start of a minidump file. It can be instantiated
+/// by calling the [`Minidump::read`][read] or
+/// [`Minidump::read_path`][read_path] methods.
+///
+/// # Examples
+///
+/// ```
+/// use minidump_processor::Minidump;
+/// use std::fs::File;
+/// # use std::io;
+///
+/// # fn foo() -> io::Result<()> {
+/// let file = try!(File::open("../testdata/test.dmp"));
+/// let dump = Minidump::read(file);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [read]: struct.Minidump.html#method.read
+/// [read_path]: struct.Minidump.html#method.read_path
 #[allow(dead_code)]
 pub struct Minidump {
     file : File,
@@ -786,11 +812,13 @@ impl MinidumpStream for MinidumpSystemInfo {
 }
 
 impl Minidump {
+    /// Read a `Minidump` from a `Path` to a file on disk.
     pub fn read_path(path : &Path) -> Result<Minidump, Error> {
         let f = try!(File::open(path).or(Err(Error::FileNotFound)));
         Minidump::read(f)
     }
 
+    /// Read a `Minidump` from an open `File`.
     pub fn read(f : File) -> Result<Minidump, Error> {
         let header = try!(read::<md::MDRawHeader>(&f).or(Err(Error::MissingHeader)));
         let swap = false;
@@ -824,6 +852,13 @@ impl Minidump {
         Err(ProcessError::UnknownError)
     }
 
+    /// Get a known stream of data from the minidump.
+    ///
+    /// For streams known to this module whose types implement the
+    /// [`MinidumpStream`][stream] trait, this method allows reading
+    /// the stream data as a specific type.
+    ///
+    /// [stream]: trait.MinidumpStream.html
     pub fn get_stream<T: MinidumpStream>(&mut self) -> Result<T, Error> {
         match self.streams.get_mut(&T::stream_type()) {
             None => Err(Error::StreamNotFound),
@@ -835,6 +870,7 @@ impl Minidump {
         }
     }
 
+    /// Write a verbose description of the `Minidump` to `f`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         fn get_stream_name(stream_type : u32) -> &'static str {
             match stream_type {

@@ -1,3 +1,6 @@
+// Copyright 2015 Ted Mielczarek. See the COPYRIGHT
+// file at the top-level directory of this distribution.
+
 use std::env;
 use std::path::Path;
 use std::io::Write;
