@@ -48,8 +48,8 @@ fn test_module_list() {
 fn test_system_info() {
     let mut dump = read_test_minidump().unwrap();
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
-    assert_eq!(system_info.os.unwrap(), OS::Windows);
-    assert_eq!(system_info.cpu.unwrap(), CPU::X86);
+    assert_eq!(system_info.os, OS::Windows);
+    assert_eq!(system_info.cpu, CPU::X86);
 }
 
 #[test]

@@ -127,7 +127,7 @@ pub struct MinidumpThreadList {
 
 /// Derive an enum value from a primitive.
 trait EnumFromPrimitive {
-    fn from_u32(u : u32) -> Option<Self>;
+    fn from_u32(u : u32) -> Self;
 }
 
 /// Known operating systems.
@@ -142,6 +142,7 @@ pub enum OS {
     Android,
     Ps3,
     NaCl,
+    Unknown(u32),
 }
 
 /// Known CPU types.
@@ -156,16 +157,17 @@ pub enum CPU {
     Sparc,
     ARM,
     ARM64,
+    Unknown(u32),
 }
 
 /// Information about the system that generated the minidump.
 pub struct MinidumpSystemInfo {
     /// The `MDRawSystemInfo` direct from the minidump.
     pub raw : md::MDRawSystemInfo,
-    /// The operating system that generated the minidump, if known.
-    pub os : Option<OS>,
-    /// The CPU on which the minidump was generated, if known.
-    pub cpu : Option<CPU>,
+    /// The operating system that generated the minidump.
+    pub os : OS,
+    /// The CPU on which the minidump was generated.
+    pub cpu : CPU,
 }
 
 pub enum MinidumpRawContext {
@@ -900,17 +902,17 @@ impl MinidumpThreadList {
 }
 
 impl EnumFromPrimitive for OS {
-    fn from_u32(u : u32) -> Option<OS> {
+    fn from_u32(u : u32) -> OS {
         match u {
-            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => Some(OS::Windows),
-            md::MD_OS_MAC_OS_X => Some(OS::MacOSX),
-            md::MD_OS_IOS => Some(OS::Ios),
-            md::MD_OS_LINUX => Some(OS::Linux),
-            md::MD_OS_SOLARIS => Some(OS::Solaris),
-            md::MD_OS_ANDROID => Some(OS::Android),
-            md::MD_OS_PS3 => Some(OS::Ps3),
-            md::MD_OS_NACL => Some(OS::NaCl),
-            _ => None,
+            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => OS::Windows,
+            md::MD_OS_MAC_OS_X => OS::MacOSX,
+            md::MD_OS_IOS => OS::Ios,
+            md::MD_OS_LINUX => OS::Linux,
+            md::MD_OS_SOLARIS => OS::Solaris,
+            md::MD_OS_ANDROID => OS::Android,
+            md::MD_OS_PS3 => OS::Ps3,
+            md::MD_OS_NACL => OS::NaCl,
+            _ => OS::Unknown(u),
         }
     }
 }
@@ -926,21 +928,22 @@ impl fmt::Display for OS {
             OS::Android => "android",
             OS::Ps3 => "ps3",
             OS::NaCl => "nacl",
+            OS::Unknown(_) => "unknown",
         })
     }
 }
 
 impl EnumFromPrimitive for CPU {
-    fn from_u32(u : u32) -> Option<CPU> {
+    fn from_u32(u : u32) -> CPU {
         match u {
-            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => Some(CPU::X86),
-            md::MD_CPU_ARCHITECTURE_AMD64 => Some(CPU::X86_64),
-            md::MD_CPU_ARCHITECTURE_PPC => Some(CPU::PPC),
-            md::MD_CPU_ARCHITECTURE_PPC64 => Some(CPU::PPC64),
-            md::MD_CPU_ARCHITECTURE_SPARC => Some(CPU::Sparc),
-            md::MD_CPU_ARCHITECTURE_ARM => Some(CPU::ARM),
-            md::MD_CPU_ARCHITECTURE_ARM64 => Some(CPU::ARM64),
-            _ => None,
+            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => CPU::X86,
+            md::MD_CPU_ARCHITECTURE_AMD64 => CPU::X86_64,
+            md::MD_CPU_ARCHITECTURE_PPC => CPU::PPC,
+            md::MD_CPU_ARCHITECTURE_PPC64 => CPU::PPC64,
+            md::MD_CPU_ARCHITECTURE_SPARC => CPU::Sparc,
+            md::MD_CPU_ARCHITECTURE_ARM => CPU::ARM,
+            md::MD_CPU_ARCHITECTURE_ARM64 => CPU::ARM64,
+            _ => CPU::Unknown(u),
         }
     }
 }
@@ -955,6 +958,7 @@ impl fmt::Display for CPU {
             CPU::Sparc => "sparc",
             CPU::ARM => "arm",
             CPU::ARM64 => "arm64",
+            CPU::Unknown(_) => "unknown",
         })
     }
 }
