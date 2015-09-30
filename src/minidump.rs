@@ -7,6 +7,7 @@ use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
@@ -16,7 +17,6 @@ use std::ptr;
 
 use minidump_format as md;
 use range_map::RangeMap;
-use process_state::ProcessState;
 
 /// An index into the contents of a minidump.
 ///
@@ -44,7 +44,7 @@ use process_state::ProcessState;
 #[allow(dead_code)]
 pub struct Minidump {
     file : File,
-    header : md::MDRawHeader,
+    pub header : md::MDRawHeader,
     streams : HashMap<u32, (u32, md::MDRawDirectory)>,
     swap : bool,
 }
@@ -64,11 +64,6 @@ pub enum Error {
     DataError,
     CodeViewReadFailure,
     UnknownCPUContext,
-}
-
-#[derive(Debug)]
-pub enum ProcessError {
-    UnknownError,
 }
 
 /* TODO
@@ -130,8 +125,47 @@ pub struct MinidumpThreadList {
     thread_ids : HashMap<u32, usize>,
 }
 
+/// Derive an enum value from a primitive.
+trait EnumFromPrimitive {
+    fn from_u32(u : u32) -> Option<Self>;
+}
+
+/// Known operating systems.
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub enum OS {
+    Windows,
+    MacOSX,
+    Ios,
+    Linux,
+    Solaris,
+    Android,
+    Ps3,
+    NaCl,
+}
+
+/// Known CPU types.
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub enum CPU {
+    X86,
+    X86_64,
+    PPC,
+    PPC64,
+    Sparc,
+    ARM,
+    ARM64,
+}
+
+/// Information about the system that generated the minidump.
 pub struct MinidumpSystemInfo {
+    /// The `MDRawSystemInfo` direct from the minidump.
     pub raw : md::MDRawSystemInfo,
+    /// The operating system that generated the minidump, if known.
+    pub os : Option<OS>,
+    /// The CPU on which the minidump was generated, if known.
+    pub cpu : Option<CPU>,
 }
 
 pub enum MinidumpRawContext {
@@ -865,32 +899,63 @@ impl MinidumpThreadList {
     }
 }
 
-impl MinidumpSystemInfo {
-    pub fn os(&self) -> &'static str {
-        match self.raw.platform_id {
-            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => "windows",
-            md::MD_OS_MAC_OS_X => "mac",
-            md::MD_OS_IOS => "ios",
-            md::MD_OS_LINUX => "linux",
-            md::MD_OS_SOLARIS => "solaris",
-            md::MD_OS_ANDROID => "android",
-            md::MD_OS_PS3 => "ps3",
-            md::MD_OS_NACL => "nacl",
-            _ => "unknown",
+impl EnumFromPrimitive for OS {
+    fn from_u32(u : u32) -> Option<OS> {
+        match u {
+            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => Some(OS::Windows),
+            md::MD_OS_MAC_OS_X => Some(OS::MacOSX),
+            md::MD_OS_IOS => Some(OS::Ios),
+            md::MD_OS_LINUX => Some(OS::Linux),
+            md::MD_OS_SOLARIS => Some(OS::Solaris),
+            md::MD_OS_ANDROID => Some(OS::Android),
+            md::MD_OS_PS3 => Some(OS::Ps3),
+            md::MD_OS_NACL => Some(OS::NaCl),
+            _ => None,
         }
     }
+}
 
-    pub fn cpu(&self) -> &'static str {
-        match self.raw.processor_architecture as u32 {
-            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => "x86",
-            md::MD_CPU_ARCHITECTURE_AMD64 => "x86-64",
-            md::MD_CPU_ARCHITECTURE_PPC => "ppc",
-            md::MD_CPU_ARCHITECTURE_PPC64 => "ppc64",
-            md::MD_CPU_ARCHITECTURE_SPARC => "sparc",
-            md::MD_CPU_ARCHITECTURE_ARM => "arm",
-            md::MD_CPU_ARCHITECTURE_ARM64 => "arm64",
-            _ => "unknown",
+impl fmt::Display for OS {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            OS::Windows => "windows",
+            OS::MacOSX => "mac",
+            OS::Ios => "ios",
+            OS::Linux => "linux",
+            OS::Solaris => "solaris",
+            OS::Android => "android",
+            OS::Ps3 => "ps3",
+            OS::NaCl => "nacl",
+        })
+    }
+}
+
+impl EnumFromPrimitive for CPU {
+    fn from_u32(u : u32) -> Option<CPU> {
+        match u {
+            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => Some(CPU::X86),
+            md::MD_CPU_ARCHITECTURE_AMD64 => Some(CPU::X86_64),
+            md::MD_CPU_ARCHITECTURE_PPC => Some(CPU::PPC),
+            md::MD_CPU_ARCHITECTURE_PPC64 => Some(CPU::PPC64),
+            md::MD_CPU_ARCHITECTURE_SPARC => Some(CPU::Sparc),
+            md::MD_CPU_ARCHITECTURE_ARM => Some(CPU::ARM),
+            md::MD_CPU_ARCHITECTURE_ARM64 => Some(CPU::ARM64),
+            _ => None,
         }
+    }
+}
+
+impl fmt::Display for CPU {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            CPU::X86 => "x86",
+            CPU::X86_64 => "x86-64",
+            CPU::PPC => "ppc",
+            CPU::PPC64 => "ppc64",
+            CPU::Sparc => "sparc",
+            CPU::ARM => "arm",
+            CPU::ARM64 => "arm64",
+        })
     }
 }
 
@@ -899,7 +964,11 @@ impl MinidumpStream for MinidumpSystemInfo {
     fn read(f : &File, expected_size : usize) -> Result<MinidumpSystemInfo, Error> {
         assert_eq!(expected_size, mem::size_of::<md::MDRawSystemInfo>());
         let raw = try!(read::<md::MDRawSystemInfo>(f).or(Err(Error::StreamReadFailure)));
-        Ok(MinidumpSystemInfo { raw: raw })
+        Ok(MinidumpSystemInfo {
+            raw: raw,
+            os: OS::from_u32(raw.platform_id),
+            cpu: CPU::from_u32(raw.processor_architecture as u32),
+        })
     }
 }
 
@@ -936,10 +1005,6 @@ impl Minidump {
             streams: streams,
             swap: swap
         })
-    }
-
-    pub fn process(&mut self) -> Result<ProcessState, ProcessError> {
-        Err(ProcessError::UnknownError)
     }
 
     /// Get a known stream of data from the minidump.

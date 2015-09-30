@@ -15,8 +15,8 @@ const USAGE : &'static str =
 
 fn print_minidump_process(path : &Path, _symbol_paths : Vec<PathBuf>) {
     let mut stderr = std::io::stderr();
-    if let Ok(mut dump) = Minidump::read_path(path) {
-        match dump.process() {
+    if let Ok(dump) = Minidump::read_path(path) {
+        match process_minidump(&dump) {
             Ok(state) => {
                 let mut stdout = std::io::stdout();
                 state.print(&mut stdout).unwrap();

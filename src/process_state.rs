@@ -6,7 +6,7 @@
 use std::io::prelude::*;
 use std::io;
 
-use chrono::*;
+use chrono::{DateTime,UTC};
 
 /// The state of a process as recorded by a `Minidump`.
 pub struct ProcessState {
