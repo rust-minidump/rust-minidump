@@ -7,7 +7,6 @@ use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
@@ -17,6 +16,7 @@ use std::ptr;
 
 use minidump_format as md;
 use range_map::RangeMap;
+use system_info::*;
 
 /// An index into the contents of a minidump.
 ///
@@ -123,41 +123,6 @@ pub struct MinidumpThread {
 pub struct MinidumpThreadList {
     pub threads : Vec<MinidumpThread>,
     thread_ids : HashMap<u32, usize>,
-}
-
-/// Derive an enum value from a primitive.
-trait EnumFromPrimitive {
-    fn from_u32(u : u32) -> Self;
-}
-
-/// Known operating systems.
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub enum OS {
-    Windows,
-    MacOSX,
-    Ios,
-    Linux,
-    Solaris,
-    Android,
-    Ps3,
-    NaCl,
-    Unknown(u32),
-}
-
-/// Known CPU types.
-#[allow(non_camel_case_types)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub enum CPU {
-    X86,
-    X86_64,
-    PPC,
-    PPC64,
-    Sparc,
-    ARM,
-    ARM64,
-    Unknown(u32),
 }
 
 /// Information about the system that generated the minidump.
@@ -898,68 +863,6 @@ impl MinidumpThreadList {
             try!(thread.print(f));
         }
         Ok(())
-    }
-}
-
-impl EnumFromPrimitive for OS {
-    fn from_u32(u : u32) -> OS {
-        match u {
-            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => OS::Windows,
-            md::MD_OS_MAC_OS_X => OS::MacOSX,
-            md::MD_OS_IOS => OS::Ios,
-            md::MD_OS_LINUX => OS::Linux,
-            md::MD_OS_SOLARIS => OS::Solaris,
-            md::MD_OS_ANDROID => OS::Android,
-            md::MD_OS_PS3 => OS::Ps3,
-            md::MD_OS_NACL => OS::NaCl,
-            _ => OS::Unknown(u),
-        }
-    }
-}
-
-impl fmt::Display for OS {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            OS::Windows => "windows",
-            OS::MacOSX => "mac",
-            OS::Ios => "ios",
-            OS::Linux => "linux",
-            OS::Solaris => "solaris",
-            OS::Android => "android",
-            OS::Ps3 => "ps3",
-            OS::NaCl => "nacl",
-            OS::Unknown(_) => "unknown",
-        })
-    }
-}
-
-impl EnumFromPrimitive for CPU {
-    fn from_u32(u : u32) -> CPU {
-        match u {
-            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => CPU::X86,
-            md::MD_CPU_ARCHITECTURE_AMD64 => CPU::X86_64,
-            md::MD_CPU_ARCHITECTURE_PPC => CPU::PPC,
-            md::MD_CPU_ARCHITECTURE_PPC64 => CPU::PPC64,
-            md::MD_CPU_ARCHITECTURE_SPARC => CPU::Sparc,
-            md::MD_CPU_ARCHITECTURE_ARM => CPU::ARM,
-            md::MD_CPU_ARCHITECTURE_ARM64 => CPU::ARM64,
-            _ => CPU::Unknown(u),
-        }
-    }
-}
-
-impl fmt::Display for CPU {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            CPU::X86 => "x86",
-            CPU::X86_64 => "x86-64",
-            CPU::PPC => "ppc",
-            CPU::PPC64 => "ppc64",
-            CPU::Sparc => "sparc",
-            CPU::ARM => "arm",
-            CPU::ARM64 => "arm64",
-            CPU::Unknown(_) => "unknown",
-        })
     }
 }
 

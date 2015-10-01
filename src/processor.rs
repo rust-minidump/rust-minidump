@@ -4,25 +4,42 @@
 use chrono::{TimeZone,UTC};
 use minidump::*;
 use process_state::ProcessState;
+use system_info::SystemInfo;
 
 /// An error encountered during minidump processing.
 #[derive(Debug)]
 pub enum ProcessError {
     /// An unknown error.
     UnknownError,
+    /// Missing system info stream.
+    MissingSystemInfo,
 }
 
 /// Unwind all threads in `dump` and return a `ProcessState`.
-pub fn process_minidump(mut dump : &Minidump) -> Result<ProcessState, ProcessError> {
+pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessError> {
     // Get process create time
-    let process_create_time = 0;
+    let process_create_time = if true {
+        None
+    } else {
+        let timestamp = 0;
+        Some(UTC.timestamp(timestamp, 0))
+    };
+    let dump_system_info = try!(dump.get_stream::<MinidumpSystemInfo>().or(Err(ProcessError::MissingSystemInfo)));
+    let system_info = SystemInfo {
+        os: dump_system_info.os,
+        // TODO
+        os_version: None,
+        cpu: dump_system_info.cpu,
+        // TODO
+        cpu_info: None,
+        cpu_count: dump_system_info.raw.number_of_processors as usize,
+    };
     // Get CPU info
     // Get OS info
     // Get Breakpad info
     // - Get dump thread ID
     // - Get requesting thread ID
     // Get exception
-    let crashed = false;
     // - Get crashing thread
     // - Get crash reason
     let crash_reason = None;
@@ -44,10 +61,10 @@ pub fn process_minidump(mut dump : &Minidump) -> Result<ProcessState, ProcessErr
     }
     Ok(ProcessState {
         time: UTC.timestamp(dump.header.time_date_stamp as i64, 0),
-        process_create_time: UTC.timestamp(process_create_time as i64, 0),
-        crashed: crashed,
+        process_create_time: process_create_time,
         crash_reason: crash_reason,
         crash_address: crash_address,
         assertion: assertion,
+        system_info: system_info,
     })
 }
