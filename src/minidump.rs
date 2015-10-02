@@ -35,7 +35,7 @@ use system_info::*;
 ///
 /// # fn foo() -> io::Result<()> {
 /// let file = try!(File::open("../testdata/test.dmp"));
-/// let dump = Minidump::read(file);
+/// let dump = Minidump::read(file).unwrap();
 /// # Ok(())
 /// # }
 /// ```
@@ -134,6 +134,7 @@ pub struct MinidumpSystemInfo {
     pub cpu : CPU,
 }
 
+/// The CPU-specific context structure.
 pub enum MinidumpRawContext {
     X86(md::MDRawContextX86),
     PPC(md::MDRawContextPPC),
@@ -145,6 +146,16 @@ pub enum MinidumpRawContext {
     MIPS(md::MDRawContextMIPS),
 }
 
+/// MinidumpContext carries a CPU-specific MDRawContext structure, which
+/// contains CPU context such as register states.  Each thread has its
+/// own context, and the exception record, if present, also has its own
+/// context.  Note that if the exception record is present, the context it
+/// refers to is probably what the user wants to use for the exception
+/// thread, instead of that thread's own context.  The exception thread's
+/// context (as opposed to the exception record's context) will contain
+/// context for the exception handler (which performs minidump generation),
+/// and not the context that caused the exception (which is probably what the
+/// user wants).
 pub struct MinidumpContext {
     pub raw : MinidumpRawContext,
 }
