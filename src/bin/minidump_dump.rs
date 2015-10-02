@@ -22,6 +22,9 @@ fn print_minidump_dump(path : &Path) {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
+            if let Ok(system_info) = dump.get_stream::<MinidumpSystemInfo>() {
+                system_info.print(stdout).unwrap();
+            }
         },
         Err(err) => {
             let mut stderr = std::io::stderr();

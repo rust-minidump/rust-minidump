@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use std::io::prelude::*;
-use chrono::NaiveDateTime;
+use chrono::*;
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
@@ -70,7 +70,6 @@ pub enum Error {
 pub struct MinidumpMemoryList;
 pub struct MinidumpException;
 pub struct MinidumpAssertion;
-pub struct MinidumpMiscInfo;
 pub struct MinidumpBreakpadInfo;
 pub struct MinidumpMemoryInfoList;
 */
@@ -156,6 +155,14 @@ pub struct MinidumpMemory {
     pub bytes : Vec<u8>,
 }
 
+/// Miscellaneous information about the process that wrote the minidump.
+pub struct MinidumpMiscInfo {
+    /// The `MDRawMiscInfo` struct direct from the minidump.
+    pub raw : md::MDRawMiscInfo,
+    /// When the process started, if available.
+    pub process_create_time : Option<DateTime<UTC>>,
+}
+
 //======================================================
 // Implementations
 
@@ -165,15 +172,18 @@ fn read_bytes(f : &File, count : usize) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+fn transmogrify<T : Copy>(bytes : &mut [u8]) -> T {
+    unsafe {
+        let mut val : T = mem::uninitialized();
+        ptr::copy(bytes.as_mut_ptr(), &mut val as *mut T as *mut u8, bytes.len());
+        val
+    }
+}
+
 fn read<T : Copy>(f : &File) -> io::Result<T> {
     let size = mem::size_of::<T>();
     let mut buf = try!(read_bytes(f, size));
-    let bytes = &mut buf[..];
-    Ok(unsafe {
-        let mut val : T = mem::uninitialized();
-        ptr::copy(bytes.as_mut_ptr(), &mut val as *mut T as *mut u8, size);
-        val
-    })
+    Ok(transmogrify::<T>(&mut buf[..]))
 }
 
 fn read_string_utf16(mut f : &File, offset : u64) -> Result<String, Error> {
@@ -875,6 +885,61 @@ impl MinidumpStream for MinidumpSystemInfo {
             raw: raw,
             os: OS::from_u32(raw.platform_id),
             cpu: CPU::from_u32(raw.processor_architecture as u32),
+        })
+    }
+}
+
+impl MinidumpSystemInfo {
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, "MDRawSystemInfo
+  processor_architecture                     = {:#x}
+  processor_level                            = {}
+  processor_revision                         = {:#x}
+  number_of_processors                       = {}
+  product_type                               = {}
+  major_version                              = {}
+  minor_version                              = {}
+  build_number                               = {}
+  platform_id                                = {:#x}
+  csd_version_rva                            = {:#x}
+  suite_mask                                 = {:#x}
+",
+                    self.raw.processor_architecture,
+                    self.raw.processor_level,
+                    self.raw.processor_revision,
+                    self.raw.number_of_processors,
+                    self.raw.product_type,
+                    self.raw.major_version,
+                    self.raw.minor_version,
+                    self.raw.build_number,
+                    self.raw.platform_id,
+                    self.raw.csd_version_rva,
+                    self.raw.suite_mask));
+        // TODO: cpu info etc
+        Ok(())
+    }
+}
+
+impl MinidumpStream for MinidumpMiscInfo {
+    fn stream_type() -> u32 { md::MD_MISC_INFO_STREAM }
+    fn read(f : &File, expected_size : usize) -> Result<MinidumpMiscInfo, Error> {
+        // Breakpad uses a single MDRawMiscInfo to represent several structs
+        // of progressively larger sizes which are supersets of the smaller
+        // ones.
+        let mut bytes = try!(read_bytes(f, expected_size).or(Err(Error::StreamReadFailure)));
+        if bytes.len() < mem::size_of::<md::MDRawMiscInfo>() {
+            let padding = vec![0; mem::size_of::<md::MDRawMiscInfo>() - bytes.len()];
+            bytes.extend(padding.into_iter());
+        }
+        let raw = transmogrify::<md::MDRawMiscInfo>(&mut bytes[..]);
+        let process_create_time = if (raw.flags1 & md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) == md::MD_MISCINFO_FLAGS1_PROCESS_TIMES {
+            Some(UTC.timestamp(raw.process_create_time as i64, 0))
+        } else {
+            None
+        };
+        Ok(MinidumpMiscInfo {
+            raw: raw,
+            process_create_time: process_create_time
         })
     }
 }

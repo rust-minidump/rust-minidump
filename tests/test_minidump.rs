@@ -1,5 +1,7 @@
 extern crate minidump_processor;
+extern crate chrono;
 
+use chrono::*;
 use std::path::PathBuf;
 use minidump_processor::*;
 
@@ -50,6 +52,16 @@ fn test_system_info() {
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
     assert_eq!(system_info.os, OS::Windows);
     assert_eq!(system_info.cpu, CPU::X86);
+}
+
+#[test]
+fn test_misc_info() {
+    let mut dump = read_test_minidump().unwrap();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().unwrap();
+    assert_eq!(misc_info.raw.process_id, 3932);
+    assert_eq!(misc_info.raw.process_create_time, 0x45d35f73);
+    assert_eq!(misc_info.process_create_time.unwrap(),
+               UTC.ymd(2007, 02, 14).and_hms(19, 13, 55));
 }
 
 #[test]
