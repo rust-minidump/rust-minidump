@@ -17,12 +17,10 @@ pub enum ProcessError {
 
 /// Unwind all threads in `dump` and return a `ProcessState`.
 pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessError> {
-    // Get process create time
-    let process_create_time = if true {
-        None
+    let process_create_time = if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
+        misc_info.process_create_time
     } else {
-        let timestamp = 0;
-        Some(UTC.timestamp(timestamp, 0))
+        None
     };
     let dump_system_info = try!(dump.get_stream::<MinidumpSystemInfo>().or(Err(ProcessError::MissingSystemInfo)));
     let system_info = SystemInfo {
@@ -56,9 +54,6 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     // - walk stack using stackwalker
     // - save call stack
     // if exploitability enabled, run exploitability analysis
-    if true {
-        return Err(ProcessError::UnknownError);
-    }
     Ok(ProcessState {
         time: UTC.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time: process_create_time,
