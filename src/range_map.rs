@@ -47,6 +47,14 @@ impl<T : Copy> RangeMap<T> {
     }
 }
 
+impl<T : Copy> Clone for RangeMap<T> {
+    fn clone(&self) -> RangeMap<T> {
+        RangeMap::<T> {
+            entries: self.entries.clone(),
+        }
+    }
+}
+
 #[test]
 fn test_range_map() {
     let mut map = RangeMap::<u32>::new();

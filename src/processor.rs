@@ -3,7 +3,7 @@
 
 use chrono::{TimeZone,UTC};
 use minidump::*;
-use process_state::{CallStack,ProcessState};
+use process_state::ProcessState;
 use stackwalker;
 use system_info::SystemInfo;
 
@@ -70,23 +70,26 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     // Get exception
     // - Get crashing thread
     // - Get crash reason
+    // - Get exception context
     let crash_reason = None;
     let crash_address = None;
     // Get assertion
     let assertion = None;
-    // Get module list
-    let module_list = dump.get_stream::<MinidumpModuleList>().ok();
+    let modules = if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
+        module_list.clone()
+    } else {
+        // Just give an empty list, simplifies things.
+        MinidumpModuleList::new()
+    };
     // Get memory list
     let mut threads = vec!();
     for thread in thread_list.threads {
         // - if dump thread, skip
         // - if requesting thread and have exception, use exception context,
         //   else use thread context
-        // - walk stack using stackwalker
-        let frames = stackwalker::walk_stack(&thread.context,
-                                             &thread.stack,
-                                             &module_list);
-        let stack = CallStack { frames: frames };
+        let stack = stackwalker::walk_stack(&thread.context,
+                                            &thread.stack,
+                                            &modules);
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis
@@ -100,5 +103,6 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
         requesting_thread: None,
         system_info: system_info,
         threads: threads,
+        modules: modules,
     })
 }

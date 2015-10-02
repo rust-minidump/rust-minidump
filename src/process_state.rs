@@ -7,12 +7,13 @@ use std::io::prelude::*;
 use std::io;
 
 use chrono::*;
-use minidump::MinidumpModule;
+use minidump::{MinidumpContext,MinidumpModule,MinidumpModuleList};
 use system_info::SystemInfo;
 
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
+#[derive(Debug)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -79,6 +80,22 @@ pub struct StackFrame {
     /// Amount of trust the stack walker has in the instruction pointer
     /// of this frame.
     pub trust : FrameTrust,
+
+    /// The CPU context containing register state for this frame.
+    pub context : MinidumpContext,
+}
+
+/// Information about the results of unwinding a thread's stack.
+#[derive(Debug, PartialEq)]
+pub enum CallStackInfo {
+    /// Everything went great.
+    Ok,
+    /// No `MinidumpContext` was provided, couldn't do anything.
+    MissingContext,
+    /// No stack memory was provided, couldn't unwind past the top frame.
+    MissingMemory,
+    /// The CPU type is unsupported.
+    UnsupportedCPU,
 }
 
 /// A stack of `StackFrame`s produced as a result of unwinding a thread.
@@ -88,6 +105,8 @@ pub struct CallStack {
     /// and the frame at the highest index in a call stack is the outermost
     /// caller.
     pub frames : Vec<StackFrame>,
+    /// Information about this `CallStack`.
+    pub info : CallStackInfo,
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -129,7 +148,9 @@ pub struct ProcessState {
     // thread_memory_regions
     /// Information about the system on which the minidump was written.
     pub system_info : SystemInfo,
-    // modules
+    /// The modules that were loaded into the process represented by the
+    /// `ProcessState`.
+    pub modules : MinidumpModuleList,
     // modules_without_symbols
     // modules_with_corrupt_symbols
     // exploitability
@@ -152,6 +173,20 @@ impl FrameTrust {
 }
 
 impl StackFrame {
+    pub fn from_context(context : &MinidumpContext) -> StackFrame {
+        StackFrame {
+            instruction: context.get_instruction_pointer(),
+            module: None,
+            function_name: None,
+            function_base: None,
+            source_file_name: None,
+            source_line: None,
+            source_line_base: None,
+            trust: FrameTrust::Context,
+            context: context.clone(),
+        }
+    }
+
     /// Return the actual return address, as saved on the stack or in a
     /// register. See the comments for `StackFrame::instruction` for details.
     pub fn return_address(&self) -> u64 {

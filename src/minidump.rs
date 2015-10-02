@@ -80,13 +80,33 @@ pub trait MinidumpStream {
     fn read(f : &File, expected_size : usize) -> Result<Self, Error>;
 }
 
+/// An executable or shared library loaded in a process.
 pub trait Module {
+    /// The base address of this code module as it was loaded by the process.
     fn base_address(&self) -> u64;
+    /// The size of the code module.
     fn size(&self) -> u64;
+    /// The path or file name that the code module was loaded from.
     fn code_file(&self) -> Cow<str>;
+    /// An identifying string used to discriminate between multiple versions and
+    /// builds of the same code module.  This may contain a uuid, timestamp,
+    /// version number, or any combination of this or other information, in an
+    /// implementation-defined format.
     fn code_identifier(&self) -> Cow<str>;
+    /// The filename containing debugging information associated with the code
+    /// module.  If debugging information is stored in a file separate from the
+    /// code module itself (as is the case when .pdb or .dSYM files are used),
+    /// this will be different from code_file.  If debugging information is
+    /// stored in the code module itself (possibly prior to stripping), this
+    /// will be the same as code_file.
     fn debug_file(&self) -> Option<Cow<str>>;
+    /// An identifying string similar to code_identifier, but identifies a
+    /// specific version and build of the associated debug file.  This may be
+    /// the same as code_identifier when the debug_file and code_file are
+    /// identical or when the same identifier is used to identify distinct
+    /// debug and code files.
     fn debug_identifier(&self) -> Option<Cow<str>>;
+    /// A human-readable representation of the code module's version.
     fn version(&self) -> Option<Cow<str>>;
 }
 
@@ -100,16 +120,23 @@ pub enum CodeView {
     Unknown { bytes: Vec<u8> },
 }
 
+/// An executable or shared library loaded in the process at the time the `Minidump` was written.
 pub struct MinidumpModule {
+    /// The `MDRawModule` direct from the minidump file.
     pub raw : md::MDRawModule,
+    /// The module name. This is stored separately in the minidump.
     name : String,
+    /// A `CodeView` record, if one is present.
     pub codeview_info : Option<CodeView>,
+    /// A misc debug record, if one is present.
     pub misc_info : Option<md::MDImageDebugMisc>,
 }
 
+/// A list of `MinidumpModule`s contained in a `Minidump`.
 pub struct MinidumpModuleList {
+    /// The modules, in the order they were stored in the minidump.
     pub modules : Vec<MinidumpModule>,
-    // Map from address range to index in modules.
+    /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
     modules_by_addr : RangeMap<usize>,
 }
 
@@ -135,6 +162,7 @@ pub struct MinidumpSystemInfo {
 }
 
 /// The CPU-specific context structure.
+#[derive(Clone)]
 pub enum MinidumpRawContext {
     X86(md::MDRawContextX86),
     PPC(md::MDRawContextPPC),
@@ -146,6 +174,8 @@ pub enum MinidumpRawContext {
     MIPS(md::MDRawContextMIPS),
 }
 
+/// CPU context such as register states.
+///
 /// MinidumpContext carries a CPU-specific MDRawContext structure, which
 /// contains CPU context such as register states.  Each thread has its
 /// own context, and the exception record, if present, also has its own
@@ -156,6 +186,7 @@ pub enum MinidumpRawContext {
 /// context for the exception handler (which performs minidump generation),
 /// and not the context that caused the exception (which is probably what the
 /// user wants).
+#[derive(Clone)]
 pub struct MinidumpContext {
     pub raw : MinidumpRawContext,
 }
@@ -174,6 +205,8 @@ pub struct MinidumpMiscInfo {
     pub process_create_time : Option<DateTime<UTC>>,
 }
 
+/// Additional information about process state.
+///
 /// MinidumpBreakpadInfo wraps MDRawBreakpadInfo, which is an optional stream
 /// in a minidump that provides additional information about the process state
 /// at the time the minidump was generated.
@@ -293,6 +326,9 @@ impl MinidumpModule {
         })
     }
 
+    /// Write a human-readable description of this `MinidumpModule` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, r#"MDRawModule
   base_of_image                   = {:#x}
@@ -478,6 +514,14 @@ fn read_stream_list<T : Copy>(f : &File, expected_size : usize) -> Result<Vec<T>
 }
 
 impl MinidumpModuleList {
+    /// Return an empty MinidumpModuleList.
+    pub fn new() -> MinidumpModuleList {
+        MinidumpModuleList {
+            modules: vec!(),
+            modules_by_addr: RangeMap::<usize>::new()
+        }
+    }
+    /// Return a `MinidumpModule` whose address range covers `addr`.
     pub fn module_at_address(&self, addr : u64) -> Option<&MinidumpModule> {
         return if let Some(index) = self.modules_by_addr.lookup(addr) {
             Some(&self.modules[index])
@@ -486,6 +530,9 @@ impl MinidumpModuleList {
         }
     }
 
+    /// Write a human-readable description of this `MinidumpModuleList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, "MinidumpModuleList
   module_count = {}
@@ -522,6 +569,15 @@ impl MinidumpStream for MinidumpModuleList {
             modules.push(try!(MinidumpModule::read(f, raw)));
         }
         Ok(MinidumpModuleList { modules: modules, modules_by_addr: map })
+    }
+}
+
+impl Clone for MinidumpModuleList {
+    fn clone(&self) -> MinidumpModuleList {
+        MinidumpModuleList {
+            modules: self.modules.clone(),
+            modules_by_addr: self.modules_by_addr.clone(),
+        }
     }
 }
 
