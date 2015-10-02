@@ -7,6 +7,7 @@ use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
@@ -70,7 +71,6 @@ pub enum Error {
 pub struct MinidumpMemoryList;
 pub struct MinidumpException;
 pub struct MinidumpAssertion;
-pub struct MinidumpBreakpadInfo;
 pub struct MinidumpMemoryInfoList;
 */
 
@@ -161,6 +161,17 @@ pub struct MinidumpMiscInfo {
     pub raw : md::MDRawMiscInfo,
     /// When the process started, if available.
     pub process_create_time : Option<DateTime<UTC>>,
+}
+
+/// MinidumpBreakpadInfo wraps MDRawBreakpadInfo, which is an optional stream
+/// in a minidump that provides additional information about the process state
+/// at the time the minidump was generated.
+pub struct MinidumpBreakpadInfo {
+    raw : md::MDRawBreakpadInfo,
+    /// The thread that wrote the minidump.
+    pub dump_thread_id : Option<u32>,
+    /// The thread that requested that a minidump be written.
+    pub requesting_thread_id : Option<u32>,
 }
 
 //======================================================
@@ -879,7 +890,9 @@ impl MinidumpThreadList {
 impl MinidumpStream for MinidumpSystemInfo {
     fn stream_type() -> u32 { md::MD_SYSTEM_INFO_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpSystemInfo, Error> {
-        assert_eq!(expected_size, mem::size_of::<md::MDRawSystemInfo>());
+        if expected_size != mem::size_of::<md::MDRawSystemInfo>() {
+            return Err(Error::StreamReadFailure);
+        }
         let raw = try!(read::<md::MDRawSystemInfo>(f).or(Err(Error::StreamReadFailure)));
         Ok(MinidumpSystemInfo {
             raw: raw,
@@ -903,6 +916,7 @@ impl MinidumpSystemInfo {
   platform_id                                = {:#x}
   csd_version_rva                            = {:#x}
   suite_mask                                 = {:#x}
+
 ",
                     self.raw.processor_architecture,
                     self.raw.processor_level,
@@ -942,6 +956,53 @@ impl MinidumpStream for MinidumpMiscInfo {
             process_create_time: process_create_time
         })
     }
+}
+
+impl MinidumpStream for MinidumpBreakpadInfo {
+    fn stream_type() -> u32 { md::MD_BREAKPAD_INFO_STREAM }
+    fn read(f : &File, expected_size : usize) -> Result<MinidumpBreakpadInfo, Error> {
+        if expected_size != mem::size_of::<md::MDRawBreakpadInfo>() {
+            return Err(Error::StreamReadFailure);
+        }
+        let raw = try!(read::<md::MDRawBreakpadInfo>(f).or(Err(Error::StreamReadFailure)));
+        let dump_thread = if (raw.validity & md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) == md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID {
+            Some(raw.dump_thread_id)
+        } else {
+            None
+        };
+        let requesting_thread = if (raw.validity & md::MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID) == md::MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID {
+            Some(raw.requesting_thread_id)
+        } else {
+            None
+        };
+        Ok(MinidumpBreakpadInfo {
+            raw: raw,
+            dump_thread_id: dump_thread,
+            requesting_thread_id: requesting_thread,
+        })
+    }
+}
+
+fn option_or_invalid<T : fmt::LowerHex>(what : &Option<T>) -> Cow<str> {
+    match *what {
+        Some(ref val) => Cow::Owned(format!("{:#x}", val)),
+        None => Cow::Borrowed("(invalid)"),
+    }
+}
+
+impl MinidumpBreakpadInfo {
+     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, "MDRawBreakpadInfo
+  validity             = {:#x}
+  dump_thread_id       = {}
+  requesting_thread_id = {}
+",
+                    self.raw.validity,
+                    option_or_invalid(&self.dump_thread_id),
+                    option_or_invalid(&self.requesting_thread_id),
+                    ));
+         Ok(())
+     }
 }
 
 impl Minidump {

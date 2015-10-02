@@ -34,6 +34,7 @@ mod system_info;
 pub use minidump::Minidump;
 pub use minidump::Error;
 pub use minidump::Module;
+pub use minidump::MinidumpBreakpadInfo;
 pub use minidump::MinidumpMiscInfo;
 pub use minidump::MinidumpModule;
 pub use minidump::MinidumpModuleList;

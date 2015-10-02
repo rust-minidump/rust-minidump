@@ -25,6 +25,9 @@ fn print_minidump_dump(path : &Path) {
             if let Ok(system_info) = dump.get_stream::<MinidumpSystemInfo>() {
                 system_info.print(stdout).unwrap();
             }
+            if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {
+                breakpad_info.print(stdout).unwrap();
+            }
         },
         Err(err) => {
             let mut stderr = std::io::stderr();

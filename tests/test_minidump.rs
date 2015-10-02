@@ -65,6 +65,14 @@ fn test_misc_info() {
 }
 
 #[test]
+fn test_breakpad_info() {
+    let mut dump = read_test_minidump().unwrap();
+    let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>().unwrap();
+    assert_eq!(breakpad_info.dump_thread_id.unwrap(), 0x11c0);
+    assert_eq!(breakpad_info.requesting_thread_id.unwrap(), 0xbf4);
+}
+
+#[test]
 fn test_thread_list() {
     let mut dump = read_test_minidump().unwrap();
     let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
