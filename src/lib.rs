@@ -28,6 +28,7 @@ mod minidump;
 mod processor;
 mod process_state;
 mod range_map;
+mod stackwalker;
 mod system_info;
 
 // Stable Rust has a bug where `pub use minidump::*;` doesn't work.

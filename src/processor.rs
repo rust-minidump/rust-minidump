@@ -4,6 +4,7 @@
 use chrono::{TimeZone,UTC};
 use minidump::*;
 use process_state::{CallStack,ProcessState};
+use stackwalker;
 use system_info::SystemInfo;
 
 /// An error encountered during minidump processing.
@@ -82,7 +83,9 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
         // - if requesting thread and have exception, use exception context,
         //   else use thread context
         // - walk stack using stackwalker
-        let frames = vec!();
+        let frames = stackwalker::walk_stack(&thread.context,
+                                             &thread.stack,
+                                             &module_list);
         let stack = CallStack { frames: frames };
         threads.push(stack);
     }

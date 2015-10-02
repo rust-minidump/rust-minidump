@@ -7,6 +7,7 @@ use std::io::prelude::*;
 use std::io;
 
 use chrono::*;
+use minidump::MinidumpModule;
 use system_info::SystemInfo;
 
 /// Indicates how well the instruction pointer derived during
@@ -55,7 +56,7 @@ pub struct StackFrame {
     pub instruction : u64,
 
     // The module in which the instruction resides.
-    //pub module : Option<Module>,
+    pub module : Option<MinidumpModule>,
 
     /// The function name, may be omitted if debug symbols are not available.
     pub function_name : Option<String>,

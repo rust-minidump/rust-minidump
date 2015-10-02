@@ -364,6 +364,35 @@ impl MinidumpModule {
     }
 }
 
+impl Clone for CodeViewPDBRaw {
+    fn clone(&self) -> CodeViewPDBRaw {
+        match self {
+            &CodeViewPDBRaw::PDB20(raw) => CodeViewPDBRaw::PDB20(raw.clone()),
+            &CodeViewPDBRaw::PDB70(raw) => CodeViewPDBRaw::PDB70(raw.clone()),
+        }
+    }
+}
+
+impl Clone for CodeView {
+    fn clone(&self) -> CodeView {
+        match self {
+            &CodeView::PDB { ref raw, ref file } => CodeView::PDB { raw: raw.clone(), file: file.clone() },
+            &CodeView::Unknown { ref bytes } => CodeView::Unknown { bytes: bytes.clone() },
+        }
+    }
+}
+
+impl Clone for MinidumpModule {
+    fn clone(&self) -> MinidumpModule {
+        MinidumpModule {
+            raw: self.raw.clone(),
+            name: self.name.clone(),
+            codeview_info: self.codeview_info.clone(),
+            misc_info: self.misc_info.clone(),
+        }
+    }
+}
+
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
