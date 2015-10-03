@@ -36,6 +36,7 @@ pub use minidump::Minidump;
 pub use minidump::Error;
 pub use minidump::Module;
 pub use minidump::MinidumpBreakpadInfo;
+pub use minidump::MinidumpException;
 pub use minidump::MinidumpMiscInfo;
 pub use minidump::MinidumpModule;
 pub use minidump::MinidumpModuleList;

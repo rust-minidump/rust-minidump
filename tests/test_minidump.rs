@@ -73,6 +73,26 @@ fn test_breakpad_info() {
 }
 
 #[test]
+fn test_exception() {
+    let mut dump = read_test_minidump().unwrap();
+    let exception = dump.get_stream::<MinidumpException>().unwrap();
+    assert_eq!(exception.thread_id, 0xbf4);
+    assert_eq!(exception.raw.exception_record.exception_code,
+               0xc0000005);
+    if let Some(ref ctx) = exception.context {
+        assert_eq!(ctx.get_instruction_pointer(), 0x40429e);
+        assert_eq!(ctx.get_stack_pointer(), 0x12fe84);
+        if let &MinidumpContext { raw: MinidumpRawContext::X86(raw) } = ctx {
+            assert_eq!(raw.eip, 0x40429e);
+        } else {
+            assert!(false, "Wrong context type");
+        }
+    } else {
+        assert!(false, "Missing context");
+    }
+}
+
+#[test]
 fn test_thread_list() {
     let mut dump = read_test_minidump().unwrap();
     let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();

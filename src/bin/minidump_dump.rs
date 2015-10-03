@@ -22,12 +22,22 @@ fn print_minidump_dump(path : &Path) {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
+            // TODO: MemoryList
+            if let Ok(exception) = dump.get_stream::<MinidumpException>() {
+                exception.print(stdout).unwrap();
+            }
+            // TODO: Assertion
             if let Ok(system_info) = dump.get_stream::<MinidumpSystemInfo>() {
                 system_info.print(stdout).unwrap();
+            }
+            if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
+                misc_info.print(stdout).unwrap();
             }
             if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {
                 breakpad_info.print(stdout).unwrap();
             }
+            // TODO: MemoryInfoList
+            // TODO: raw Linux streams
         },
         Err(err) => {
             let mut stderr = std::io::stderr();

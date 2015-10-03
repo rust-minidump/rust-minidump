@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
 use std::mem;
+use std::ops::BitAnd;
 use std::path::Path;
 use std::ptr;
 
@@ -50,6 +51,7 @@ pub struct Minidump {
     swap : bool,
 }
 
+/// Errors encountered while reading a `Minidump`.
 #[derive(Debug)]
 pub enum Error {
     FileNotFound,
@@ -69,14 +71,16 @@ pub enum Error {
 
 /* TODO
 pub struct MinidumpMemoryList;
-pub struct MinidumpException;
 pub struct MinidumpAssertion;
 pub struct MinidumpMemoryInfoList;
 */
 
+/// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream {
     //TODO: associated_consts when that stabilizes.
+    /// The stream type constant used in the `md::MDRawDirectory` entry.
     fn stream_type() -> u32;
+    /// Read this `MinidumpStream` type from `f`.
     fn read(f : &File, expected_size : usize) -> Result<Self, Error>;
 }
 
@@ -218,6 +222,20 @@ pub struct MinidumpBreakpadInfo {
     pub requesting_thread_id : Option<u32>,
 }
 
+/// Information about the exception that caused the minidump to be generated.
+///
+/// MinidumpException wraps MDRawExceptionStream, which contains information
+/// about the exception that caused the minidump to be generated, if the
+/// minidump was generated in an exception handler called as a result of an
+/// exception.  It also provides access to a MinidumpContext object, which
+/// contains the CPU context for the exception thread at the time the exception
+/// occurred.
+pub struct MinidumpException {
+    pub raw : md::MDRawExceptionStream,
+    pub thread_id : u32,
+    pub context : Option<MinidumpContext>,
+}
+
 //======================================================
 // Implementations
 
@@ -266,6 +284,10 @@ fn format_time_t(t : u32) -> String {
     } else {
         String::new()
     }
+}
+
+fn flag(bits : u32, flag : u32) -> bool {
+    (bits & flag) == flag
 }
 
 fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result<CodeView, Error> {
@@ -474,7 +496,7 @@ impl Module for MinidumpModule {
     }
     fn version(&self) -> Option<Cow<str>> {
         if self.raw.version_info.signature == md::MD_VSFIXEDFILEINFO_SIGNATURE &&
-            (self.raw.version_info.struct_version & md::MD_VSFIXEDFILEINFO_VERSION) == md::MD_VSFIXEDFILEINFO_VERSION {
+            flag(self.raw.version_info.struct_version, md::MD_VSFIXEDFILEINFO_VERSION) {
                 let ver =
                     format!("{}.{}.{}.{}",
                             self.raw.version_info.file_version_hi >> 16,
@@ -1042,7 +1064,7 @@ impl MinidumpStream for MinidumpMiscInfo {
             bytes.extend(padding.into_iter());
         }
         let raw = transmogrify::<md::MDRawMiscInfo>(&mut bytes[..]);
-        let process_create_time = if (raw.flags1 & md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) == md::MD_MISCINFO_FLAGS1_PROCESS_TIMES {
+        let process_create_time = if flag(raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
             Some(UTC.timestamp(raw.process_create_time as i64, 0))
         } else {
             None
@@ -1054,6 +1076,46 @@ impl MinidumpStream for MinidumpMiscInfo {
     }
 }
 
+impl MinidumpMiscInfo {
+     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, "MDRawMiscInfo
+  size_of_info                 = {}
+  flags1                       = {:#x}
+  process_id                   = ",
+                    self.raw.size_of_info,
+                    self.raw.flags1));
+         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_ID) {
+             try!(writeln!(f, "{}", self.raw.process_id));
+         } else {
+             try!(writeln!(f, "(invalid)"));
+         }
+         try!(write!(f, "  process_create_time          = "));
+         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+             try!(writeln!(f, "{:#x} {}",
+                           self.raw.process_create_time,
+                           format_time_t(self.raw.process_create_time),
+                           ));
+         } else {
+             try!(writeln!(f, "(invalid)"));
+         }
+         try!(write!(f, "  process_user_time            = "));
+         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+             try!(writeln!(f, "{}", self.raw.process_user_time));
+         } else {
+             try!(writeln!(f, "(invalid)"));
+         }
+         try!(write!(f, "  process_kernel_time          = "));
+         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+             try!(writeln!(f, "{}", self.raw.process_kernel_time));
+         } else {
+             try!(writeln!(f, "(invalid)"));
+         }
+         // TODO: version 2-4 fields
+         try!(writeln!(f, ""));
+         Ok(())
+     }
+}
+
 impl MinidumpStream for MinidumpBreakpadInfo {
     fn stream_type() -> u32 { md::MD_BREAKPAD_INFO_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpBreakpadInfo, Error> {
@@ -1061,12 +1123,12 @@ impl MinidumpStream for MinidumpBreakpadInfo {
             return Err(Error::StreamReadFailure);
         }
         let raw = try!(read::<md::MDRawBreakpadInfo>(f).or(Err(Error::StreamReadFailure)));
-        let dump_thread = if (raw.validity & md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) == md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID {
+        let dump_thread = if flag(raw.validity, md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) {
             Some(raw.dump_thread_id)
         } else {
             None
         };
-        let requesting_thread = if (raw.validity & md::MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID) == md::MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID {
+        let requesting_thread = if flag(raw.validity, md::MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID) {
             Some(raw.requesting_thread_id)
         } else {
             None
@@ -1099,6 +1161,64 @@ impl MinidumpBreakpadInfo {
                     ));
          Ok(())
      }
+}
+
+impl MinidumpStream for MinidumpException {
+    fn stream_type() -> u32 { md::MD_EXCEPTION_STREAM }
+    fn read(f : &File, expected_size : usize) -> Result<MinidumpException, Error> {
+        if expected_size != mem::size_of::<md::MDRawExceptionStream>() {
+            return Err(Error::StreamReadFailure);
+        }
+        let raw = try!(read::<md::MDRawExceptionStream>(f).or(Err(Error::StreamReadFailure)));
+        let context = MinidumpContext::read(f, &raw.thread_context).ok();
+        Ok(MinidumpException {
+            raw: raw,
+            thread_id: raw.thread_id,
+            context: context,
+        })
+    }
+}
+
+impl MinidumpException {
+    /// Write a human-readable description of this `MinidumpException` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        try!(write!(f, "MDException
+  thread_id                                  = {:#x}
+  exception_record.exception_code            = {:#x}
+  exception_record.exception_flags           = {:#x}
+  exception_record.exception_record          = {:#x}
+  exception_record.exception_address         = {:#x}
+  exception_record.number_parameters         = {}
+",
+                    self.thread_id,
+                    self.raw.exception_record.exception_code,
+                    self.raw.exception_record.exception_flags,
+                    self.raw.exception_record.exception_record,
+                    self.raw.exception_record.exception_address,
+                    self.raw.exception_record.number_parameters,
+                    ));
+        for i in 0..self.raw.exception_record.number_parameters as usize {
+            try!(writeln!(f, "  exception_record.exception_information[{:2}] = {:#x}",
+                          i,
+                          self.raw.exception_record.exception_information[i]));
+        }
+        try!(write!(f, "  thread_context.data_size                   = {}
+  thread_context.rva                         = {:#x}
+",
+                    self.raw.thread_context.data_size,
+                    self.raw.thread_context.rva));
+        if let Some(ref context) = self.context {
+            try!(writeln!(f, ""));
+            try!(context.print(f));
+        } else {
+            try!(write!(f, "  (no context)
+
+"));
+        }
+        Ok(())
+    }
 }
 
 impl Minidump {
