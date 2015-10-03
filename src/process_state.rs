@@ -96,6 +96,8 @@ pub enum CallStackInfo {
     MissingMemory,
     /// The CPU type is unsupported.
     UnsupportedCPU,
+    /// This thread wrote the minidump, it was skipped.
+    DumpThreadSkipped,
 }
 
 /// A stack of `StackFrame`s produced as a result of unwinding a thread.
@@ -173,6 +175,7 @@ impl FrameTrust {
 }
 
 impl StackFrame {
+    /// Create a `StackFrame` from a `MinidumpContext`.
     pub fn from_context(context : &MinidumpContext) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
@@ -191,6 +194,16 @@ impl StackFrame {
     /// register. See the comments for `StackFrame::instruction` for details.
     pub fn return_address(&self) -> u64 {
         self.instruction
+    }
+}
+
+impl CallStack {
+    /// Create a `CallStack` with `info` and no frames.
+    pub fn with_info(info : CallStackInfo) -> CallStack {
+        CallStack {
+            info: info,
+            frames: vec!(),
+        }
     }
 }
 

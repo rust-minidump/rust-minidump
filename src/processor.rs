@@ -3,7 +3,7 @@
 
 use chrono::{TimeZone,UTC};
 use minidump::*;
-use process_state::ProcessState;
+use process_state::{CallStack,CallStackInfo,ProcessState};
 use stackwalker;
 use system_info::SystemInfo;
 
@@ -57,15 +57,10 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     };
     // If Breakpad info exists in dump, get dump and requesting thread ids.
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
-    let dump_thread_id = if let Ok(ref info) = breakpad_info {
-        info.dump_thread_id
+    let (dump_thread_id, requesting_thread_id) = if let Ok(info) = breakpad_info {
+        (info.dump_thread_id, info.requesting_thread_id)
     } else {
-        None
-    };
-    let requesting_thread_id = if let Ok(ref info) = breakpad_info {
-        info.requesting_thread_id
-    } else {
-        None
+        (None, None)
     };
     // Get exception
     // - Get crashing thread
@@ -84,7 +79,11 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     // Get memory list
     let mut threads = vec!();
     for thread in thread_list.threads {
-        // - if dump thread, skip
+        // If this is the thread that wrote the dump, skip processing it.
+        if dump_thread_id.is_some() && dump_thread_id.unwrap() == thread.raw.thread_id {
+            threads.push(CallStack::with_info(CallStackInfo::DumpThreadSkipped));
+            continue;
+        }
         // - if requesting thread and have exception, use exception context,
         //   else use thread context
         let stack = stackwalker::walk_stack(&thread.context,

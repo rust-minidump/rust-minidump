@@ -30,5 +30,6 @@ fn test_processor() {
     // TODO: this should work when we use the exception context
     //let m1 = state.threads[0].frames[0].module.as_ref().unwrap();
     //assert_eq!(m1.code_file(), "c:\\test_app.exe");
-    assert_eq!(state.threads[1].frames.len(), 1);
+    assert_eq!(state.threads[1].info, CallStackInfo::DumpThreadSkipped);
+    assert_eq!(state.threads[1].frames.len(), 0);
 }
