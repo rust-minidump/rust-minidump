@@ -144,14 +144,21 @@ pub struct MinidumpModuleList {
     modules_by_addr : RangeMap<usize>,
 }
 
+/// The state of a thread from the process when the minidump was written.
 pub struct MinidumpThread {
+    /// The `MDRawThread` direct from the minidump file.
     pub raw : md::MDRawThread,
+    /// The CPU context for the thread, if present.
     pub context : Option<MinidumpContext>,
+    /// The stack memory for the thread, if present.
     pub stack : Option<MinidumpMemory>,
 }
 
+/// A list of `MinidumpThread`s contained in a `Minidump`.
 pub struct MinidumpThreadList {
+    /// The threads, in the order they were present in the `Minidump`.
     pub threads : Vec<MinidumpThread>,
+    /// A map of thread id to index in `threads`.
     thread_ids : HashMap<u32, usize>,
 }
 
@@ -220,6 +227,12 @@ pub struct MinidumpBreakpadInfo {
     pub dump_thread_id : Option<u32>,
     /// The thread that requested that a minidump be written.
     pub requesting_thread_id : Option<u32>,
+}
+
+/// The reason for a process crash.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum CrashReason {
+    Unknown,
 }
 
 /// Information about the exception that caused the minidump to be generated.
@@ -1163,6 +1176,29 @@ impl MinidumpBreakpadInfo {
      }
 }
 
+impl CrashReason {
+    /// Get a `CrashReason` from a `MDRawExceptionStream` for a given `OS`.
+    fn from_exception(raw : &md::MDRawExceptionStream,
+                      os : OS) -> CrashReason {
+        // TODO: flesh this out
+        CrashReason::Unknown
+    }
+}
+
+impl fmt::Display for CrashReason {
+    /// A string describing the crash reason.
+    ///
+    /// This is OS- and possibly CPU-specific.
+    /// For example, "EXCEPTION_ACCESS_VIOLATION" (Windows),
+    /// "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV"
+    /// (other Unix).
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            CrashReason::Unknown => "unknown",
+        })
+    }
+}
+
 impl MinidumpStream for MinidumpException {
     fn stream_type() -> u32 { md::MD_EXCEPTION_STREAM }
     fn read(f : &File, expected_size : usize) -> Result<MinidumpException, Error> {
@@ -1180,6 +1216,24 @@ impl MinidumpStream for MinidumpException {
 }
 
 impl MinidumpException {
+    /// Get the crash address for an exception.
+    pub fn get_crash_address(&self, os : OS) -> u64 {
+        let mut addr = self.raw.exception_record.exception_address;
+        match os {
+            OS::Windows => {
+                if (self.raw.exception_record.exception_code == md::MD_EXCEPTION_CODE_WIN_ACCESS_VIOLATION || self.raw.exception_record.exception_code == md::MD_EXCEPTION_CODE_WIN_IN_PAGE_ERROR) && self.raw.exception_record.number_parameters >= 2 {
+                    addr = self.raw.exception_record.exception_information[1];
+                }
+            },
+            _ => {}
+        }
+        addr
+    }
+    /// Get the crash reason for an exception.
+    pub fn get_crash_reason(&self, os : OS) -> CrashReason {
+        CrashReason::from_exception(&self.raw, os)
+    }
+
     /// Write a human-readable description of this `MinidumpException` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.

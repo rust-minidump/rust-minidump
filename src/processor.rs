@@ -62,12 +62,19 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     } else {
         (None, None)
     };
-    // Get exception
-    // - Get crashing thread
-    // - Get crash reason
-    // - Get exception context
-    let crash_reason = None;
-    let crash_address = None;
+    // Get exception info if it exists.
+    let exception_stream = dump.get_stream::<MinidumpException>().ok();
+    let exception_ref = exception_stream.as_ref();
+    let (crashing_thread_id,
+         crash_reason,
+         crash_address) = if let Some(exception) = exception_ref {
+        (Some(exception.thread_id),
+         Some(exception.get_crash_reason(system_info.os)),
+         Some(exception.get_crash_address(system_info.os)))
+    } else {
+        (None, None, None)
+    };
+    let exception_context = exception_ref.and_then(|e| e.context.as_ref());
     // Get assertion
     let assertion = None;
     let modules = if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
@@ -78,15 +85,22 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     };
     // Get memory list
     let mut threads = vec!();
-    for thread in thread_list.threads {
+    let mut requesting_thread = None;
+    for (i, thread) in thread_list.threads.iter().enumerate() {
         // If this is the thread that wrote the dump, skip processing it.
         if dump_thread_id.is_some() && dump_thread_id.unwrap() == thread.raw.thread_id {
             threads.push(CallStack::with_info(CallStackInfo::DumpThreadSkipped));
             continue;
         }
-        // - if requesting thread and have exception, use exception context,
-        //   else use thread context
-        let stack = stackwalker::walk_stack(&thread.context,
+        // If this thread requested the dump then try to use the exception
+        // context if it exists.
+        let context = if requesting_thread_id.is_some() && requesting_thread_id.unwrap() == thread.raw.thread_id {
+            requesting_thread = Some(i);
+            exception_context.or(thread.context.as_ref())
+        } else {
+            thread.context.as_ref()
+        };
+        let stack = stackwalker::walk_stack(&context,
                                             &thread.stack,
                                             &modules);
         threads.push(stack);
@@ -98,8 +112,7 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
         crash_reason: crash_reason,
         crash_address: crash_address,
         assertion: assertion,
-        // TODO: fill this once we have a threads vector
-        requesting_thread: None,
+        requesting_thread: requesting_thread,
         system_info: system_info,
         threads: threads,
         modules: modules,

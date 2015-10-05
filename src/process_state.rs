@@ -3,11 +3,12 @@
 
 //! The state of a process.
 
+use std::borrow::Cow;
 use std::io::prelude::*;
 use std::io;
 
 use chrono::*;
-use minidump::{MinidumpContext,MinidumpModule,MinidumpModuleList};
+use minidump::{CrashReason,MinidumpContext,MinidumpModule,MinidumpModuleList,Module};
 use system_info::SystemInfo;
 
 /// Indicates how well the instruction pointer derived during
@@ -117,13 +118,8 @@ pub struct ProcessState {
     pub time : DateTime<UTC>,
     /// When the process started, if available
     pub process_create_time : Option<DateTime<UTC>>,
-    /// If the process crashed, a `String` describing the crash reason.
-    ///
-    /// This is OS- and possibly CPU-specific.
-    /// For example, "EXCEPTION_ACCESS_VIOLATION" (Windows),
-    /// "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV"
-    /// (other Unix).
-    pub crash_reason : Option<String>,
+    /// If the process crashed, a `CrashReason` describing the crash reason.
+    pub crash_reason : Option<CrashReason>,
     /// The memory address implicated in the crash.
     ///
     /// If the process crashed, and if the crash reason implicates memory,
@@ -197,6 +193,13 @@ impl StackFrame {
     }
 }
 
+fn basename(f : &str) -> &str {
+    match f.rfind(|c| c == '/' || c == '\\') {
+        None => f,
+        Some(index) => &f[(index+1)..],
+    }
+}
+
 impl CallStack {
     /// Create a `CallStack` with `info` and no frames.
     pub fn with_info(info : CallStackInfo) -> CallStack {
@@ -204,6 +207,55 @@ impl CallStack {
             info: info,
             frames: vec!(),
         }
+    }
+
+    /// Write a human-readable description of the call stack to `f`.
+    ///
+    /// This is very verbose, it implements the output format used by
+    /// minidump_stackwalk.
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+        if self.frames.len() == 0 {
+            try!(writeln!(f, "<no frames>"));
+        }
+        for (i, frame) in self.frames.iter().enumerate() {
+            let addr = frame.return_address();
+            try!(write!(f, "{:2} ", i));
+            if let Some(ref module) = frame.module {
+                try!(write!(f, "{}", basename(&module.code_file())));
+                if let (&Some(ref function),
+                        &Some(ref function_base)) = (&frame.function_name,
+                                                     &frame.function_base) {
+                    try!(write!(f, "!{}", function));
+                    if let (&Some(ref source_file),
+                            &Some(ref source_line),
+                            &Some(ref source_line_base)) = (&frame.source_file_name,
+                                                            &frame.source_line,
+                                                            &frame.source_line_base) {
+                        try!(write!(f, " [{} : {} + {:#x}]",
+                                    basename(&source_file),
+                                    source_line,
+                                    addr - source_line_base));
+                    } else {
+                        try!(write!(f, " + {:#x}", addr - function_base));
+                    }
+                } else {
+                    try!(write!(f, " + {:#x}", addr - module.base_address()));
+                }
+            } else {
+                try!(writeln!(f, "{:#x}", addr));
+            }
+            try!(writeln!(f, ""));
+            // TODO: print register state
+            try!(writeln!(f, "   Found by: {}", frame.trust.description()));
+        }
+        Ok(())
+    }
+}
+
+fn eq_some<T : PartialEq>(opt : Option<T>, val : T) -> bool {
+    match opt {
+        Some(v) => v == val,
+        None => false,
     }
 }
 
@@ -227,9 +279,11 @@ impl ProcessState {
         }
         try!(writeln!(f, "     {} CPU{}", self.system_info.cpu_count,
                       if self.system_info.cpu_count > 1 { "s" } else { "" }));
+        try!(writeln!(f, ""));
+
         if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason,
                                                           &self.crash_address) {
-            try!(writeln!(f, "Crash reason: {}
+            try!(write!(f, "Crash reason:  {}
 Crash address: {:#x}
 ",
                           reason, address));
@@ -245,6 +299,27 @@ Crash address: {:#x}
                           uptime.num_seconds()));
         } else {
             try!(writeln!(f, "Process uptime: not available"));
+        }
+        try!(writeln!(f, ""));
+
+        if let Some(requesting_thread) = self.requesting_thread {
+            try!(writeln!(f, "Thread {} ({})",
+                          requesting_thread,
+                          if self.crashed() { "crashed" } else { "requested dump, did not crash" }));
+            try!(self.threads[requesting_thread].print(f));
+            try!(writeln!(f, ""));
+        }
+        for (i, stack) in self.threads.iter().enumerate() {
+            if eq_some(self.requesting_thread, i) {
+                // Don't print the requesting thread again,
+                continue;
+            }
+            if stack.info == CallStackInfo::DumpThreadSkipped {
+                continue;
+            }
+            try!(writeln!(f, "Thread {}", i));
+            try!(stack.print(f));
+            try!(writeln!(f, ""));
         }
         Ok(())
     }

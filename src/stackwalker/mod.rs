@@ -27,7 +27,7 @@ fn fill_source_line_info(frame : &mut StackFrame,
     }
 }
 
-pub fn walk_stack(maybe_context : &Option<MinidumpContext>,
+pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
                   stack_memory : &Option<MinidumpMemory>,
                   modules : &MinidumpModuleList) -> CallStack {
     // context, memory, modules, symbolizer

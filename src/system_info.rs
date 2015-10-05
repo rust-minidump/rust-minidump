@@ -15,8 +15,7 @@ pub trait EnumFromPrimitive {
 }
 
 /// Known operating systems.
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum OS {
     Windows,
     MacOSX,
@@ -31,8 +30,7 @@ pub enum OS {
 
 /// Known CPU types.
 #[allow(non_camel_case_types)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CPU {
     X86,
     X86_64,
