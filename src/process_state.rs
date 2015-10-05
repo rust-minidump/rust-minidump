@@ -321,6 +321,18 @@ Crash address: {:#x}
             try!(stack.print(f));
             try!(writeln!(f, ""));
         }
+        try!(write!(f, "
+Loaded modules:
+"));
+        for ref module in &self.modules.modules {
+            // TODO: main module
+            // TODO: missing symbols, corrupt symbols
+            try!(writeln!(f, "{:#08x} - {:#08x} {} {}",
+                          module.base_address(),
+                          module.base_address() + module.size(),
+                          basename(&module.code_file()),
+                          module.version().unwrap_or(Cow::Borrowed("???"))));
+        }
         Ok(())
     }
 }
