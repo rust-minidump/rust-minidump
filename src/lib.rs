@@ -50,6 +50,7 @@ pub use processor::process_minidump;
 pub use processor::ProcessError;
 pub use process_state::CallStack;
 pub use process_state::CallStackInfo;
+pub use process_state::FrameTrust;
 pub use process_state::ProcessState;
 pub use process_state::StackFrame;
 pub use system_info::CPU;

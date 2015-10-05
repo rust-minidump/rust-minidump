@@ -12,12 +12,11 @@ use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
 use std::mem;
-use std::ops::BitAnd;
 use std::path::Path;
 use std::ptr;
 
 use minidump_format as md;
-use range_map::RangeMap;
+use range_map;
 use system_info::*;
 
 /// An index into the contents of a minidump.
@@ -141,7 +140,7 @@ pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     pub modules : Vec<MinidumpModule>,
     /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
-    modules_by_addr : RangeMap<usize>,
+    modules_by_addr : range_map::RangeMap<usize>,
 }
 
 /// The state of a thread from the process when the minidump was written.
@@ -557,9 +556,21 @@ impl MinidumpModuleList {
     pub fn new() -> MinidumpModuleList {
         MinidumpModuleList {
             modules: vec!(),
-            modules_by_addr: RangeMap::<usize>::new()
+            modules_by_addr: range_map::RangeMap::<usize>::new()
         }
     }
+
+    /// Returns the module corresponding to the main executable.
+    pub fn main_module(&self) -> Option<&MinidumpModule> {
+        // The main code module is the first one present in a minidump file's
+        // MDRawModuleList.
+        if self.modules.len() > 0 {
+            Some(&self.modules[0])
+        } else {
+            None
+        }
+    }
+
     /// Return a `MinidumpModule` whose address range covers `addr`.
     pub fn module_at_address(&self, addr : u64) -> Option<&MinidumpModule> {
         return if let Some(index) = self.modules_by_addr.lookup(addr) {
@@ -567,6 +578,13 @@ impl MinidumpModuleList {
         } else {
             None
         }
+    }
+
+    /// Return modules in order by memory address.
+    pub fn by_addr(&self) -> Vec<&MinidumpModule> {
+        // TODO: would be nice to return an iterator here, but the type
+        // ergonomics are horrible.
+        self.modules_by_addr.iter().map(|&((_, _), index)| &self.modules[index]).collect()
     }
 
     /// Write a human-readable description of this `MinidumpModuleList` to `f`.
@@ -591,7 +609,7 @@ impl MinidumpStream for MinidumpModuleList {
         let raw_modules = try!(read_stream_list::<md::MDRawModule>(f, expected_size));
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
-        let mut map = RangeMap::<usize>::new();
+        let mut map = range_map::RangeMap::<usize>::new();
         for raw in raw_modules.into_iter() {
             // TODO: swap
             if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image) {
@@ -1182,8 +1200,8 @@ impl MinidumpBreakpadInfo {
 
 impl CrashReason {
     /// Get a `CrashReason` from a `MDRawExceptionStream` for a given `OS`.
-    fn from_exception(raw : &md::MDRawExceptionStream,
-                      os : OS) -> CrashReason {
+    fn from_exception(_raw : &md::MDRawExceptionStream,
+                      _os : OS) -> CrashReason {
         // TODO: flesh this out
         CrashReason::Unknown
     }

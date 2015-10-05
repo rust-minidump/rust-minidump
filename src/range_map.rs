@@ -2,6 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use std::cmp::Ordering;
+use std::slice::Iter;
 
 pub type Addr = u64;
 pub type Range = (Addr, Addr);
@@ -16,9 +17,9 @@ fn compare_address_to_entry<T>(addr : Addr, entry : &Entry<T>) -> Ordering {
     return if start <= addr && end > addr {
         Ordering::Equal
     } else if start > addr {
-        Ordering::Less
-    } else {
         Ordering::Greater
+    } else {
+        Ordering::Less
     }
 }
 
@@ -44,6 +45,10 @@ impl<T : Copy> RangeMap<T> {
         } else {
             None
         }
+    }
+
+    pub fn iter(&self) -> Iter<Entry<T>> {
+        self.entries.iter()
     }
 }
 
@@ -71,4 +76,9 @@ fn test_range_map() {
     assert_eq!(map.lookup(6), None);
     assert_eq!(map.lookup(10), None);
     assert_eq!(map.lookup(16), None);
+
+    let items : Vec<_> = map.iter().collect();
+    assert_eq!(*items[0], ((0,4), 1));
+    assert_eq!(*items[1], ((7,10), 2));
+    assert_eq!(*items[2], ((15,16), 3));
 }

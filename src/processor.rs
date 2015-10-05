@@ -65,14 +65,12 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
-    let (crashing_thread_id,
-         crash_reason,
+    let (crash_reason,
          crash_address) = if let Some(exception) = exception_ref {
-        (Some(exception.thread_id),
-         Some(exception.get_crash_reason(system_info.os)),
+        (Some(exception.get_crash_reason(system_info.os)),
          Some(exception.get_crash_address(system_info.os)))
     } else {
-        (None, None, None)
+        (None, None)
     };
     let exception_context = exception_ref.and_then(|e| e.context.as_ref());
     // Get assertion

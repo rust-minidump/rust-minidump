@@ -8,8 +8,8 @@ use process_state::{CallStack,CallStackInfo,StackFrame};
 
 // TODO: this probably needs to be on a trait so we can have per-CPU
 // implementations.
-fn get_caller_frame(frame : &StackFrame,
-                    stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
+fn get_caller_frame(_frame : &StackFrame,
+                    _stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
     None
 }
 

@@ -219,7 +219,7 @@ impl CallStack {
         }
         for (i, frame) in self.frames.iter().enumerate() {
             let addr = frame.return_address();
-            try!(write!(f, "{:2} ", i));
+            try!(write!(f, "{:2}  ", i));
             if let Some(ref module) = frame.module {
                 try!(write!(f, "{}", basename(&module.code_file())));
                 if let (&Some(ref function),
@@ -246,7 +246,7 @@ impl CallStack {
             }
             try!(writeln!(f, ""));
             // TODO: print register state
-            try!(writeln!(f, "   Found by: {}", frame.trust.description()));
+            try!(writeln!(f, "    Found by: {}", frame.trust.description()));
         }
         Ok(())
     }
@@ -319,19 +319,22 @@ Crash address: {:#x}
             }
             try!(writeln!(f, "Thread {}", i));
             try!(stack.print(f));
-            try!(writeln!(f, ""));
         }
         try!(write!(f, "
 Loaded modules:
 "));
-        for ref module in &self.modules.modules {
-            // TODO: main module
+        let main_address = self.modules.main_module().and_then(|m| Some(m.base_address()));
+        for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
-            try!(writeln!(f, "{:#08x} - {:#08x} {} {}",
-                          module.base_address(),
-                          module.base_address() + module.size(),
-                          basename(&module.code_file()),
-                          module.version().unwrap_or(Cow::Borrowed("???"))));
+            try!(write!(f, "{:#010x} - {:#010x}  {}  {}",
+                        module.base_address(),
+                        module.base_address() + module.size() - 1,
+                        basename(&module.code_file()),
+                        module.version().unwrap_or(Cow::Borrowed("???"))));
+            if eq_some(main_address, module.base_address()) {
+                try!(write!(f, "  (main)"));
+            }
+            try!(writeln!(f, ""));
         }
         Ok(())
     }
