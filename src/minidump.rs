@@ -202,9 +202,13 @@ pub struct MinidumpContext {
     pub raw : MinidumpRawContext,
 }
 
+/// A region of memory from the process that wrote the minidump.
 pub struct MinidumpMemory {
+    /// The starting address of this range of memory.
     pub base_address : u64,
+    /// The length of this range of memory.
     pub size : u64,
+    /// The contents of the memory.
     pub bytes : Vec<u8>,
 }
 
