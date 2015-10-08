@@ -24,6 +24,8 @@ extern crate encoding;
 extern crate libc;
 
 pub mod minidump_format;
+mod context;
+mod iostuff;
 mod minidump;
 mod processor;
 mod process_state;
