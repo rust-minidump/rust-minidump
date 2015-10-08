@@ -82,8 +82,10 @@ fn test_exception() {
     if let Some(ref ctx) = exception.context {
         assert_eq!(ctx.get_instruction_pointer(), 0x40429e);
         assert_eq!(ctx.get_stack_pointer(), 0x12fe84);
-        if let &MinidumpContext { raw: MinidumpRawContext::X86(raw) } = ctx {
+        if let &MinidumpContext { raw: MinidumpRawContext::X86(raw),
+                                  ref valid} = ctx {
             assert_eq!(raw.eip, 0x40429e);
+            assert_eq!(*valid, MinidumpContextValidity::All);
         } else {
             assert!(false, "Wrong context type");
         }
@@ -105,12 +107,30 @@ fn test_thread_list() {
     if let Some(ref ctx) = threads[0].context {
         assert_eq!(ctx.get_instruction_pointer(), 0x7c90eb94);
         assert_eq!(ctx.get_stack_pointer(), 0x12f320);
-        if let &MinidumpContext { raw: MinidumpRawContext::X86(raw) } = ctx {
+        if let &MinidumpContext { raw: MinidumpRawContext::X86(raw),
+                                  ref valid } = ctx {
             assert_eq!(raw.eip, 0x7c90eb94);
+            assert_eq!(*valid, MinidumpContextValidity::All);
         } else {
             assert!(false, "Wrong context type");
         }
     } else {
         assert!(false, "Missing context");
+    }
+    if let Some(ref stack) = threads[0].stack {
+        // Try the beginning
+        assert_eq!(stack.get_memory_at_address::<u8>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u16>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u32>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u64>(0x12f31c).unwrap(),
+                   0x7c90e9c000000000);
+        // And the end
+        assert_eq!(stack.get_memory_at_address::<u8>(0x12ffff).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u16>(0x12fffe).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u32>(0x12fffc).unwrap(), 0);
+        assert_eq!(stack.get_memory_at_address::<u64>(0x12fff8).unwrap(),
+                   0x405443);
+    } else {
+        assert!(false, "Missing stack memory");
     }
 }

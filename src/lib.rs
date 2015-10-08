@@ -45,6 +45,7 @@ pub use minidump::MinidumpThreadList;
 pub use minidump::MinidumpSystemInfo;
 pub use minidump::MinidumpRawContext;
 pub use minidump::MinidumpContext;
+pub use minidump::MinidumpContextValidity;
 pub use minidump::MinidumpMemory;
 pub use processor::process_minidump;
 pub use processor::ProcessError;

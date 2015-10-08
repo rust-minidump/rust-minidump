@@ -6,7 +6,7 @@ use chrono::*;
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use std::fmt;
 use std::fs::File;
 use std::io;
@@ -184,6 +184,16 @@ pub enum MinidumpRawContext {
     MIPS(md::MDRawContextMIPS),
 }
 
+/// Information about which registers are valid in a `MinidumpContext`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MinidumpContextValidity {
+    // All registers are valid.
+    All,
+    // The registers in this set are valid.
+    Some(HashSet<&'static str>),
+}
+
+
 /// CPU context such as register states.
 ///
 /// MinidumpContext carries a CPU-specific MDRawContext structure, which
@@ -198,7 +208,10 @@ pub enum MinidumpRawContext {
 /// user wants).
 #[derive(Clone)]
 pub struct MinidumpContext {
+    /// The raw CPU register state.
     pub raw : MinidumpRawContext,
+    /// Which registers are valid in `raw`.
+    pub valid : MinidumpContextValidity,
 }
 
 /// A region of memory from the process that wrote the minidump.
@@ -261,18 +274,18 @@ fn read_bytes(f : &File, count : usize) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-fn transmogrify<T : Copy>(bytes : &mut [u8]) -> T {
+fn transmogrify<T : Copy + Sized>(bytes : &[u8]) -> T {
     unsafe {
         let mut val : T = mem::uninitialized();
-        ptr::copy(bytes.as_mut_ptr(), &mut val as *mut T as *mut u8, bytes.len());
+        ptr::copy(bytes.as_ptr(), &mut val as *mut T as *mut u8, bytes.len());
         val
     }
 }
 
-fn read<T : Copy>(f : &File) -> io::Result<T> {
+fn read<T : Copy + Sized>(f : &File) -> io::Result<T> {
     let size = mem::size_of::<T>();
-    let mut buf = try!(read_bytes(f, size));
-    Ok(transmogrify::<T>(&mut buf[..]))
+    let buf = try!(read_bytes(f, size));
+    Ok(transmogrify::<T>(&buf[..]))
 }
 
 fn read_string_utf16(mut f : &File, offset : u64) -> Result<String, Error> {
@@ -639,6 +652,15 @@ impl Clone for MinidumpModuleList {
 }
 
 impl MinidumpContext {
+    /// Return a MinidumpContext given a `MinidumpRawContext`.
+    pub fn from_raw(raw : MinidumpRawContext) -> MinidumpContext {
+        MinidumpContext {
+            raw: raw,
+            valid: MinidumpContextValidity::All,
+        }
+    }
+
+    /// Read a `MinidumpContext` from a file.
     pub fn read(mut f : &File, location : &md::MDLocationDescriptor) -> Result<MinidumpContext, Error> {
         try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::StreamReadFailure)));
         let expected_size = location.data_size as usize;
@@ -649,27 +671,21 @@ impl MinidumpContext {
             if ctx.context_flags & md::MD_CONTEXT_CPU_MASK != md::MD_CONTEXT_AMD64 {
                 return Err(Error::StreamReadFailure);
             } else {
-                return Ok(MinidumpContext {
-                    raw: MinidumpRawContext::AMD64(ctx)
-                })
+                return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextPPC64>() {
             let ctx = try!(read::<md::MDRawContextPPC64>(f).or(Err(Error::StreamReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_PPC64 as u64 {
                 return Err(Error::StreamReadFailure);
             } else {
-                return Ok(MinidumpContext {
-                    raw: MinidumpRawContext::PPC64(ctx)
-                })
+                return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextARM64>() {
             let ctx = try!(read::<md::MDRawContextARM64>(f).or(Err(Error::StreamReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_ARM64 as u64 {
                 return Err(Error::StreamReadFailure);
             } else {
-                return Ok(MinidumpContext {
-                    raw: MinidumpRawContext::ARM64(ctx)
-                })
+                return Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM64(ctx)));
             }
         } else {
             // For everything else, read the flags and determine context
@@ -702,7 +718,7 @@ impl MinidumpContext {
                 },
                 _ => None,
             } {
-                return Ok(MinidumpContext { raw: ctx })
+                return Ok(MinidumpContext::from_raw(ctx));
             }
             return Err(Error::UnknownCPUContext)
         }
@@ -734,6 +750,9 @@ impl MinidumpContext {
         }
     }
 
+    /// Write a human-readable description of this `MinidumpContext` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         match self.raw {
             MinidumpRawContext::X86(raw) => {
@@ -943,6 +962,26 @@ impl MinidumpMemory {
         })
     }
 
+    /// Get `mem::size_of::<T>()` bytes of memory at `addr` from this region.
+    ///
+    /// Return `None` if the requested address range falls out of the bounds
+    /// of this memory region.
+    pub fn get_memory_at_address<T : Copy + Sized>(&self, addr : u64) -> Option<T> {
+        let in_range = |a : u64| {
+            a >= self.base_address && a < (self.base_address + self.size)
+        };
+        let size = mem::size_of::<T>();
+        if !in_range(addr) || !in_range(addr + size as u64 - 1) {
+            return None;
+        }
+        let start = (addr - self.base_address) as usize;
+        let end = start + size;
+        Some(transmogrify::<T>(&self.bytes[start..end]))
+    }
+
+    /// Write a human-readable description of this `MinidumpMemory` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, "0x"));
         for byte in self.bytes.iter() {
@@ -954,6 +993,9 @@ impl MinidumpMemory {
 }
 
 impl MinidumpThread {
+    /// Write a human-readable description of this `MinidumpThread` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, r#"MDRawThread
   thread_id                   = {:#x}
@@ -1019,6 +1061,7 @@ impl MinidumpStream for MinidumpThreadList {
 }
 
 impl MinidumpThreadList {
+    /// Get the thread with id `id` from this thread list if it exists.
     pub fn get_thread(&self, id : u32) -> Option<&MinidumpThread> {
         match self.thread_ids.get(&id) {
             None => None,
@@ -1026,6 +1069,9 @@ impl MinidumpThreadList {
         }
     }
 
+    /// Write a human-readable description of this `MinidumpThreadList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, r#"MinidumpThreadList
   thread_count = {}
@@ -1056,6 +1102,9 @@ impl MinidumpStream for MinidumpSystemInfo {
 }
 
 impl MinidumpSystemInfo {
+    /// Write a human-readable description of this `MinidumpSystemInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, "MDRawSystemInfo
   processor_architecture                     = {:#x}
@@ -1098,7 +1147,7 @@ impl MinidumpStream for MinidumpMiscInfo {
             let padding = vec![0; mem::size_of::<md::MDRawMiscInfo>() - bytes.len()];
             bytes.extend(padding.into_iter());
         }
-        let raw = transmogrify::<md::MDRawMiscInfo>(&mut bytes[..]);
+        let raw = transmogrify::<md::MDRawMiscInfo>(&bytes[..]);
         let process_create_time = if flag(raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
             Some(UTC.timestamp(raw.process_create_time as i64, 0))
         } else {
@@ -1112,43 +1161,46 @@ impl MinidumpStream for MinidumpMiscInfo {
 }
 
 impl MinidumpMiscInfo {
-     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    /// Write a human-readable description of this `MinidumpMiscInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, "MDRawMiscInfo
   size_of_info                 = {}
   flags1                       = {:#x}
   process_id                   = ",
                     self.raw.size_of_info,
                     self.raw.flags1));
-         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_ID) {
-             try!(writeln!(f, "{}", self.raw.process_id));
-         } else {
-             try!(writeln!(f, "(invalid)"));
-         }
-         try!(write!(f, "  process_create_time          = "));
-         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
-             try!(writeln!(f, "{:#x} {}",
-                           self.raw.process_create_time,
-                           format_time_t(self.raw.process_create_time),
-                           ));
-         } else {
-             try!(writeln!(f, "(invalid)"));
-         }
-         try!(write!(f, "  process_user_time            = "));
-         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
-             try!(writeln!(f, "{}", self.raw.process_user_time));
-         } else {
-             try!(writeln!(f, "(invalid)"));
-         }
-         try!(write!(f, "  process_kernel_time          = "));
-         if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
-             try!(writeln!(f, "{}", self.raw.process_kernel_time));
-         } else {
-             try!(writeln!(f, "(invalid)"));
-         }
-         // TODO: version 2-4 fields
-         try!(writeln!(f, ""));
-         Ok(())
-     }
+        if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_ID) {
+            try!(writeln!(f, "{}", self.raw.process_id));
+        } else {
+            try!(writeln!(f, "(invalid)"));
+        }
+        try!(write!(f, "  process_create_time          = "));
+        if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+            try!(writeln!(f, "{:#x} {}",
+                          self.raw.process_create_time,
+                          format_time_t(self.raw.process_create_time),
+                          ));
+        } else {
+            try!(writeln!(f, "(invalid)"));
+        }
+        try!(write!(f, "  process_user_time            = "));
+        if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+            try!(writeln!(f, "{}", self.raw.process_user_time));
+        } else {
+            try!(writeln!(f, "(invalid)"));
+        }
+        try!(write!(f, "  process_kernel_time          = "));
+        if flag(self.raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
+            try!(writeln!(f, "{}", self.raw.process_kernel_time));
+        } else {
+            try!(writeln!(f, "(invalid)"));
+        }
+        // TODO: version 2-4 fields
+        try!(writeln!(f, ""));
+        Ok(())
+    }
 }
 
 impl MinidumpStream for MinidumpBreakpadInfo {
@@ -1184,7 +1236,10 @@ fn option_or_invalid<T : fmt::LowerHex>(what : &Option<T>) -> Cow<str> {
 }
 
 impl MinidumpBreakpadInfo {
-     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    /// Write a human-readable description of this `MinidumpBreakpadInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
         try!(write!(f, "MDRawBreakpadInfo
   validity             = {:#x}
   dump_thread_id       = {}
@@ -1194,8 +1249,8 @@ impl MinidumpBreakpadInfo {
                     option_or_invalid(&self.dump_thread_id),
                     option_or_invalid(&self.requesting_thread_id),
                     ));
-         Ok(())
-     }
+        Ok(())
+    }
 }
 
 impl CrashReason {

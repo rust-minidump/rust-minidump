@@ -3,14 +3,30 @@
 
 //! Unwind stack frames for a thread.
 
-use minidump::*;
-use process_state::{CallStack,CallStackInfo,StackFrame};
+mod x86;
+mod unwind;
 
-// TODO: this probably needs to be on a trait so we can have per-CPU
-// implementations.
-fn get_caller_frame(_frame : &StackFrame,
-                    _stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
-    None
+use minidump::*;
+use process_state::*;
+
+use self::unwind::Unwind;
+
+fn get_caller_frame(frame : &StackFrame,
+                    stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
+    match frame.context.raw {
+        /*
+        MinidumpRawContext::AMD64(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::ARM64(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::PPC64(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
+        MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
+         */
+        MinidumpRawContext::X86(ctx) => ctx.get_caller_frame(&frame.context.valid, stack_memory),
+        _ => None,
+
+    }
 }
 
 fn fill_source_line_info(frame : &mut StackFrame,
@@ -35,14 +51,15 @@ pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
     // no more.
     let mut frames = vec!();
     let mut info = CallStackInfo::Ok;
-    if let &Some(ref context) = maybe_context {
-        let mut maybe_frame = Some(StackFrame::from_context(&context));
+    if let &Some(context) = maybe_context {
+        let ctx = context.clone();
+        let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
             // TODO: provide a SourceLineResolver trait?
             fill_source_line_info(&mut frame, modules);
             frames.push(frame);
-            maybe_frame = get_caller_frame(&frames.last().unwrap(),
-                                           stack_memory);
+            let last_frame = &frames.last().unwrap();
+            maybe_frame = get_caller_frame(last_frame, stack_memory);
         }
     } else {
         info = CallStackInfo::MissingContext;

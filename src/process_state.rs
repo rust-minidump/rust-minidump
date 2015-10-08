@@ -14,7 +14,7 @@ use system_info::SystemInfo;
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -172,7 +172,8 @@ impl FrameTrust {
 
 impl StackFrame {
     /// Create a `StackFrame` from a `MinidumpContext`.
-    pub fn from_context(context : &MinidumpContext) -> StackFrame {
+    pub fn from_context(context : MinidumpContext,
+                        trust : FrameTrust) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
             module: None,
@@ -181,8 +182,8 @@ impl StackFrame {
             source_file_name: None,
             source_line: None,
             source_line_base: None,
-            trust: FrameTrust::Context,
-            context: context.clone(),
+            trust: trust,
+            context: context,
         }
     }
 
