@@ -64,6 +64,10 @@ pub enum ContextError {
     UnknownCPUContext,
 }
 
+/// General-purpose registers for x86.
+static X86_REGS : [&'static str; 10] =
+    ["eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl"];
+
 //======================================================
 // Implementations
 
@@ -165,6 +169,51 @@ impl MinidumpContext {
             MinidumpRawContext::MIPS(ctx) => ctx.iregs[md::MD_CONTEXT_MIPS_REG_SP as usize],
         }
     }
+
+    //TODO: want an associated type to set register size per-context!
+    pub fn get_register(&self, reg : &str) -> Option<u64> {
+        if let MinidumpContextValidity::Some(ref which) = self.valid {
+            if !which.contains(reg) {
+                return None;
+            }
+        }
+        match self.raw {
+            MinidumpRawContext::AMD64(_) => unimplemented!(),
+            MinidumpRawContext::ARM(_) => unimplemented!(),
+            MinidumpRawContext::ARM64(_) => unimplemented!(),
+            MinidumpRawContext::PPC(_) => unimplemented!(),
+            MinidumpRawContext::PPC64(_) => unimplemented!(),
+            MinidumpRawContext::SPARC(_) => unimplemented!(),
+            MinidumpRawContext::X86(raw) => match reg {
+                "eip" => Some(raw.eip),
+                "esp" => Some(raw.esp),
+                "ebp" => Some(raw.ebp),
+                "ebx" => Some(raw.ebx),
+                "esi" => Some(raw.esi),
+                "edi" => Some(raw.edi),
+                "eax" => Some(raw.eax),
+                "ecx" => Some(raw.ecx),
+                "edx" => Some(raw.edx),
+                "efl" => Some(raw.eflags),
+                _ => None
+            }.and_then(|r| Some(r as u64)),
+            MinidumpRawContext::MIPS(_) => unimplemented!(),
+        }
+    }
+
+    pub fn general_purpose_registers(&self) -> &'static [&'static str] {
+        match self.raw {
+            MinidumpRawContext::AMD64(_) => unimplemented!(),
+            MinidumpRawContext::ARM(_) => unimplemented!(),
+            MinidumpRawContext::ARM64(_) => unimplemented!(),
+            MinidumpRawContext::PPC(_) => unimplemented!(),
+            MinidumpRawContext::PPC64(_) => unimplemented!(),
+            MinidumpRawContext::SPARC(_) => unimplemented!(),
+            MinidumpRawContext::X86(_) => &X86_REGS[..],
+            MinidumpRawContext::MIPS(_) => unimplemented!(),
+        }
+    }
+
 
     /// Write a human-readable description of this `MinidumpContext` to `f`.
     ///

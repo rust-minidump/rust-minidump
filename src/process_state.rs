@@ -4,11 +4,12 @@
 //! The state of a process.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::prelude::*;
 use std::io;
 
 use chrono::*;
-use minidump::{CrashReason,MinidumpContext,MinidumpModule,MinidumpModuleList,Module};
+use minidump::*;
 use system_info::SystemInfo;
 
 /// Indicates how well the instruction pointer derived during
@@ -201,6 +202,37 @@ fn basename(f : &str) -> &str {
     }
 }
 
+fn print_registers<T : Write>(f : &mut T,
+                              ctx : &MinidumpContext) -> io::Result<()> {
+    let registers : Cow<HashSet<&str>> = match ctx.valid {
+        MinidumpContextValidity::All => {
+            let gpr = ctx.general_purpose_registers();
+            let set : HashSet<&str>  = gpr.iter().cloned().collect();
+            Cow::Owned(set)
+        },
+        MinidumpContextValidity::Some(ref which) => Cow::Borrowed(which),
+    };
+
+    // Iterate over registers in a known order.
+    let mut output = String::new();
+    for reg in ctx.general_purpose_registers() {
+        if registers.contains(reg) {
+            let reg_val = ctx.get_register(reg).and_then(|v| Some(format!("{:#010x}", v))).unwrap_or(String::from("??????????"));
+            let next = format!("   {} = {}", reg, reg_val);
+            if output.chars().count() + next.chars().count() > 80 {
+                // Flush the buffer.
+                try!(writeln!(f, " {}", output));
+                output.truncate(0);
+            }
+            output.push_str(&next);
+        }
+    }
+    if !output.is_empty() {
+        try!(writeln!(f, " {}", output));
+    }
+    Ok(())
+}
+
 impl CallStack {
     /// Create a `CallStack` with `info` and no frames.
     pub fn with_info(info : CallStackInfo) -> CallStack {
@@ -246,7 +278,7 @@ impl CallStack {
                 try!(writeln!(f, "{:#x}", addr));
             }
             try!(writeln!(f, ""));
-            // TODO: print register state
+            try!(print_registers(f, &frame.context));
             try!(writeln!(f, "    Found by: {}", frame.trust.description()));
         }
         Ok(())
