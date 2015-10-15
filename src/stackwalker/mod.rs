@@ -66,3 +66,8 @@ pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
     }
     CallStack { frames: frames, info: info }
 }
+
+#[cfg(test)]
+mod tests {
+    mod x86_unittest;
+}

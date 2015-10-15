@@ -22,6 +22,8 @@
 extern crate chrono;
 extern crate encoding;
 extern crate libc;
+#[cfg(test)]
+extern crate test_assembler;
 
 pub mod minidump_format;
 mod context;

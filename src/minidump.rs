@@ -279,6 +279,22 @@ fn read_codeview(mut f : &File, location : md::MDLocationDescriptor) -> Result<C
 }
 
 impl MinidumpModule {
+    /// Create a `MinidumpModule` with some basic info.
+    ///
+    /// Useful for testing.
+    pub fn new(base : u64, size : u32, name : &str) -> MinidumpModule {
+        MinidumpModule {
+            raw: md::MDRawModule {
+                base_of_image: base,
+                size_of_image: size,
+                .. md::MDRawModule::default()
+            },
+            name: String::from(name),
+            codeview_info: None,
+            misc_info: None,
+        }
+    }
+
     pub fn read(f : &File, raw : md::MDRawModule) -> Result<MinidumpModule, Error> {
         let name = try!(read_string_utf16(f, raw.module_name_rva as u64)
                         .or(Err(Error::CodeViewReadFailure)));
@@ -484,12 +500,22 @@ fn read_stream_list<T : Copy>(f : &File, expected_size : usize) -> Result<Vec<T>
 }
 
 impl MinidumpModuleList {
-    /// Return an empty MinidumpModuleList.
+    /// Return an empty `MinidumpModuleList`.
     pub fn new() -> MinidumpModuleList {
         MinidumpModuleList {
             modules: vec!(),
             modules_by_addr: range_map::RangeMap::<usize>::new()
         }
+    }
+    /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
+    pub fn from_modules(modules : Vec<MinidumpModule>) -> MinidumpModuleList {
+        let mut map = range_map::RangeMap::<usize>::new();
+        for (i, module) in modules.iter().enumerate() {
+            if let Err(_) = map.insert((module.base_address(), module.base_address() + module.size()), i) {
+                //TODO: Ignoring errors here from overlapping modules.
+            }
+        }
+        MinidumpModuleList { modules: modules, modules_by_addr: map }
     }
 
     /// Returns the module corresponding to the main executable.
@@ -541,23 +567,16 @@ impl MinidumpStream for MinidumpModuleList {
         let raw_modules = try!(read_stream_list::<md::MDRawModule>(f, expected_size));
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
-        let mut map = range_map::RangeMap::<usize>::new();
         for raw in raw_modules.into_iter() {
             // TODO: swap
             if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image) {
                 // Bad image size.
-                //println!("image {}: bad image size: {}", i, raw.size_of_image);
-                // TODO: just drop this module, keep the rest?
-                return Err(Error::ModuleReadFailure);
-            }
-            if let Err(_) = map.insert((raw.base_of_image, raw.base_of_image + raw.size_of_image as u64), modules.len()) {
-                // Better error? Module overlaps existing module.
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
             }
             modules.push(try!(MinidumpModule::read(f, raw)));
         }
-        Ok(MinidumpModuleList { modules: modules, modules_by_addr: map })
+        Ok(MinidumpModuleList::from_modules(modules))
     }
 }
 

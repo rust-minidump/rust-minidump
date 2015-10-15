@@ -16,3 +16,7 @@ exclude = [
 libc = "0.1.*"
 encoding = "0.2"
 chrono = "0.2.16"
+
+
+[dev-dependencies]
+test-assembler = "0.1.0"
