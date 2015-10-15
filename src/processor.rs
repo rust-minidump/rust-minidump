@@ -23,7 +23,7 @@ pub enum ProcessError {
 /// # Examples
 ///
 /// ```
-/// use minidump_processor::{Minidump,process_minidump};
+/// use minidump::{Minidump,process_minidump};
 /// use std::fs::File;
 /// # use std::io;
 ///

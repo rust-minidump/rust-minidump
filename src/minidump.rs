@@ -28,7 +28,7 @@ use system_info::*;
 /// # Examples
 ///
 /// ```
-/// use minidump_processor::Minidump;
+/// use minidump::Minidump;
 /// use std::fs::File;
 /// # use std::io;
 ///

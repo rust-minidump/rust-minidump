@@ -3,7 +3,7 @@
 
 //! A parser for the minidump file format.
 //!
-//! The `minidump_processor` module provides a parser for the
+//! The `minidump` module provides a parser for the
 //! [minidump][minidump] file format as produced by Microsoft's
 //! [`MinidumpWriteDump`][minidumpwritedump] API and the
 //! [Google Breakpad][breakpad] library.

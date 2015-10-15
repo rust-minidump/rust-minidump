@@ -1,7 +1,7 @@
-extern crate minidump_processor;
+extern crate minidump;
 
 use std::path::PathBuf;
-use minidump_processor::*;
+use minidump::*;
 
 fn read_test_minidump() -> Result<Minidump, Error> {
     let mut path = PathBuf::from(file!());

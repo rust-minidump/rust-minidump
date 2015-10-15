@@ -6,9 +6,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::io::Write;
 
-extern crate minidump_processor;
+extern crate minidump;
 
-use minidump_processor::*;
+use minidump::*;
 
 const USAGE : &'static str =
     "usage: minidump_stackwalk <minidump-file> [symbol-path ...]";

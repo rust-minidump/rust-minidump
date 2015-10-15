@@ -5,9 +5,9 @@ use std::env;
 use std::path::Path;
 use std::io::Write;
 
-extern crate minidump_processor;
+extern crate minidump;
 
-use minidump_processor::*;
+use minidump::*;
 
 const USAGE : &'static str = "Usage: minidump_dump <minidump>";
 
