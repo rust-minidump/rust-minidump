@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use minidump::*;
 use minidump_format::MDRawContextX86;
 use process_state::*;

@@ -68,6 +68,4 @@ pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
 }
 
 #[cfg(test)]
-mod tests {
-    mod x86_unittest;
-}
+mod x86_unittest;
