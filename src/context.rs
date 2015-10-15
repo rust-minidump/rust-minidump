@@ -5,7 +5,6 @@
 
 use std::io::prelude::*;
 use std::collections::HashSet;
-use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
 use std::mem;
@@ -81,27 +80,27 @@ impl MinidumpContext {
     }
 
     /// Read a `MinidumpContext` from a file.
-    pub fn read(mut f : &File, location : &md::MDLocationDescriptor) -> Result<MinidumpContext, ContextError> {
+    pub fn read<T : Readable>(f : &mut T, location : &md::MDLocationDescriptor) -> Result<MinidumpContext, ContextError> {
         try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(ContextError::ReadFailure)));
         let expected_size = location.data_size as usize;
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         if expected_size == mem::size_of::<md::MDRawContextAMD64>() {
-            let ctx = try!(read::<md::MDRawContextAMD64>(f).or(Err(ContextError::ReadFailure)));
+            let ctx : md::MDRawContextAMD64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & md::MD_CONTEXT_CPU_MASK != md::MD_CONTEXT_AMD64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextPPC64>() {
-            let ctx = try!(read::<md::MDRawContextPPC64>(f).or(Err(ContextError::ReadFailure)));
+            let ctx : md::MDRawContextPPC64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_PPC64 as u64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextARM64>() {
-            let ctx = try!(read::<md::MDRawContextARM64>(f).or(Err(ContextError::ReadFailure)));
+            let ctx : md::MDRawContextARM64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_ARM64 as u64 {
                 return Err(ContextError::ReadFailure);
             } else {
@@ -111,29 +110,29 @@ impl MinidumpContext {
             // For everything else, read the flags and determine context
             // type from that.
             // TODO: swap
-            let flags = try!(read::<u32>(&f).or(Err(ContextError::ReadFailure)));
+            let flags : u32 = try!(read(f).or(Err(ContextError::ReadFailure)));
             try!(f.seek(SeekFrom::Current(-4)).or(Err(ContextError::ReadFailure)));
             let cpu_type = flags & md::MD_CONTEXT_CPU_MASK;
             // TODO: handle dumps with MD_CONTEXT_ARM_OLD
             if let Some(ctx) = match cpu_type {
                 md::MD_CONTEXT_X86 => {
-                    let ctx = try!(read::<md::MDRawContextX86>(&f).or(Err(ContextError::ReadFailure)));
+                    let ctx : md::MDRawContextX86 = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::X86(ctx))
                 },
                 md::MD_CONTEXT_PPC => {
-                    let ctx = try!(read::<md::MDRawContextPPC>(&f).or(Err(ContextError::ReadFailure)));
+                    let ctx : md::MDRawContextPPC = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::PPC(ctx))
                 },
                 md::MD_CONTEXT_SPARC => {
-                    let ctx = try!(read::<md::MDRawContextSPARC>(&f).or(Err(ContextError::ReadFailure)));
+                    let ctx : md::MDRawContextSPARC = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::SPARC(ctx))
                 },
                 md::MD_CONTEXT_ARM => {
-                    let ctx = try!(read::<md::MDRawContextARM>(&f).or(Err(ContextError::ReadFailure)));
+                    let ctx : md::MDRawContextARM = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::ARM(ctx))
                 },
                 md::MD_CONTEXT_MIPS => {
-                    let ctx = try!(read::<md::MDRawContextMIPS>(&f).or(Err(ContextError::ReadFailure)));
+                    let ctx : md::MDRawContextMIPS = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::MIPS(ctx))
                 },
                 _ => None,

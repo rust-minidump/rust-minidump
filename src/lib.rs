@@ -36,6 +36,7 @@ mod stackwalker;
 mod system_info;
 
 // Stable Rust has a bug where `pub use minidump::*;` doesn't work.
+pub use iostuff::Readable;
 pub use minidump::Minidump;
 pub use minidump::Error;
 pub use minidump::Module;

@@ -4,6 +4,7 @@
 use std::io::prelude::*;
 use chrono::*;
 use std::borrow::Cow;
+use std::boxed::Box;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -43,7 +44,7 @@ use system_info::*;
 /// [read_path]: struct.Minidump.html#method.read_path
 #[allow(dead_code)]
 pub struct Minidump {
-    file : File,
+    reader : Box<Readable + 'static>,
     pub header : md::MDRawHeader,
     streams : HashMap<u32, (u32, md::MDRawDirectory)>,
     swap : bool,
@@ -78,7 +79,7 @@ pub trait MinidumpStream {
     /// The stream type constant used in the `md::MDRawDirectory` entry.
     fn stream_type() -> u32;
     /// Read this `MinidumpStream` type from `f`.
-    fn read(f : &File, expected_size : usize) -> Result<Self, Error>;
+    fn read<T : Readable>(f : &mut T, expected_size : usize) -> Result<Self, Error>;
 }
 
 /// An executable or shared library loaded in a process.
@@ -236,15 +237,17 @@ fn flag(bits : u32, flag : u32) -> bool {
     (bits & flag) == flag
 }
 
-fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result<CodeView, Error> {
+fn read_codeview_pdb<T : Readable>(f : &mut T, signature : u32, mut size : usize) -> Result<CodeView, Error> {
     let raw = match signature {
         md::MD_CVINFOPDB70_SIGNATURE => {
             size = size - mem::size_of::<md::MDCVInfoPDB70>() + 1;
-            CodeViewPDBRaw::PDB70(try!(read::<md::MDCVInfoPDB70>(f).or(Err(Error::CodeViewReadFailure))))
+            // ::<md::MDCVInfoPDB70>
+            CodeViewPDBRaw::PDB70(try!(read(f).or(Err(Error::CodeViewReadFailure))))
         },
         md::MD_CVINFOPDB20_SIGNATURE => {
             size = size -mem::size_of::<md::MDCVInfoPDB20>() + 1;
-            CodeViewPDBRaw::PDB20(try!(read::<md::MDCVInfoPDB20>(f).or(Err(Error::CodeViewReadFailure))))
+            // ::<md::MDCVInfoPDB20>
+            CodeViewPDBRaw::PDB20(try!(read(f).or(Err(Error::CodeViewReadFailure))))
         },
         _ => return Err(Error::CodeViewReadFailure),
     };
@@ -258,14 +261,14 @@ fn read_codeview_pdb(mut f : &File, signature : u32, mut size : usize) -> Result
     Ok(CodeView::PDB { raw: raw, file: file})
 }
 
-fn read_codeview(mut f : &File, location : md::MDLocationDescriptor) -> Result<CodeView, Error> {
+fn read_codeview<T : Readable>(f : &mut T, location : md::MDLocationDescriptor) -> Result<CodeView, Error> {
     let size = location.data_size as usize;
     try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
     // The CodeView data can contain a variable-length string at the end
     // and also can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
     // TODO: swap
-    let signature = try!(read::<u32>(f).or(Err(Error::CodeViewReadFailure)));
+    let signature : u32 = try!(read(f).or(Err(Error::CodeViewReadFailure)));
     // Seek back because the signature is part of the CV data.
     try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
     match signature {
@@ -295,7 +298,7 @@ impl MinidumpModule {
         }
     }
 
-    pub fn read(f : &File, raw : md::MDRawModule) -> Result<MinidumpModule, Error> {
+    pub fn read<T: Readable>(f : &mut T, raw : md::MDRawModule) -> Result<MinidumpModule, Error> {
         let name = try!(read_string_utf16(f, raw.module_name_rva as u64)
                         .or(Err(Error::CodeViewReadFailure)));
         let cv = if raw.cv_record.data_size > 0 {
@@ -475,25 +478,26 @@ impl Module for MinidumpModule {
     }
 }
 
-fn read_stream_list<T : Copy>(f : &File, expected_size : usize) -> Result<Vec<T>, Error> {
+fn read_stream_list<T : Copy, U: Readable>(f : &mut U, expected_size : usize) -> Result<Vec<T>, Error> {
     if expected_size < mem::size_of::<u32>() {
         return Err(Error::StreamSizeMismatch);
     }
 
     // TODO: swap
-    let count = try!(read::<u32>(&f).or(Err(Error::StreamReadFailure))) as usize;
+    let u : u32 = try!(read(f).or(Err(Error::StreamReadFailure)));
+    let count = u as usize;
     match expected_size - (mem::size_of::<u32>() + count * mem::size_of::<T>()) {
         0 => {},
         4 => {
             // 4 bytes of padding.
-            try!(read::<u32>(&f).or(Err(Error::StreamReadFailure)));
+            let _pad = try!(read_bytes(f, 4).or(Err(Error::StreamReadFailure)));
         },
         _ => return Err(Error::StreamSizeMismatch)
     };
     // read count T raw stream entries
     let mut raw_entries = Vec::with_capacity(count);
     for _ in 0..count {
-        let raw = try!(read::<T>(f).or(Err(Error::StreamReadFailure)));
+        let raw : T = try!(read(f).or(Err(Error::StreamReadFailure)));
         raw_entries.push(raw);
     }
     Ok(raw_entries)
@@ -563,8 +567,8 @@ impl MinidumpModuleList {
 
 impl MinidumpStream for MinidumpModuleList {
     fn stream_type() -> u32 { md::MD_MODULE_LIST_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpModuleList, Error> {
-        let raw_modules = try!(read_stream_list::<md::MDRawModule>(f, expected_size));
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpModuleList, Error> {
+        let raw_modules : Vec<md::MDRawModule> = try!(read_stream_list(f, expected_size));
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
         for raw in raw_modules.into_iter() {
@@ -590,7 +594,7 @@ impl Clone for MinidumpModuleList {
 }
 
 impl MinidumpMemory {
-    pub fn read(mut f : &File, desc : &md::MDMemoryDescriptor) -> Result<MinidumpMemory, Error> {
+    pub fn read<T : Readable>(f : &mut T, desc : &md::MDMemoryDescriptor) -> Result<MinidumpMemory, Error> {
         try!(f.seek(SeekFrom::Start(desc.memory.rva as u64)).or(Err(Error::StreamReadFailure)));
         let bytes = try!(read_bytes(f, desc.memory.data_size as usize).or(Err(Error::DataError)));
         Ok(MinidumpMemory {
@@ -678,8 +682,8 @@ impl MinidumpThread {
 
 impl MinidumpStream for MinidumpThreadList {
     fn stream_type() -> u32 { md::MD_THREAD_LIST_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpThreadList, Error> {
-        let raw_threads = try!(read_stream_list::<md::MDRawThread>(f, expected_size));
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpThreadList, Error> {
+        let raw_threads : Vec<md::MDRawThread> = try!(read_stream_list(f, expected_size));
         let mut threads = Vec::with_capacity(raw_threads.len());
         let mut thread_ids = HashMap::with_capacity(raw_threads.len());
         for raw in raw_threads.into_iter() {
@@ -726,11 +730,11 @@ impl MinidumpThreadList {
 
 impl MinidumpStream for MinidumpSystemInfo {
     fn stream_type() -> u32 { md::MD_SYSTEM_INFO_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpSystemInfo, Error> {
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpSystemInfo, Error> {
         if expected_size != mem::size_of::<md::MDRawSystemInfo>() {
             return Err(Error::StreamReadFailure);
         }
-        let raw = try!(read::<md::MDRawSystemInfo>(f).or(Err(Error::StreamReadFailure)));
+        let raw : md::MDRawSystemInfo = try!(read(f).or(Err(Error::StreamReadFailure)));
         Ok(MinidumpSystemInfo {
             raw: raw,
             os: OS::from_u32(raw.platform_id),
@@ -776,7 +780,7 @@ impl MinidumpSystemInfo {
 
 impl MinidumpStream for MinidumpMiscInfo {
     fn stream_type() -> u32 { md::MD_MISC_INFO_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpMiscInfo, Error> {
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpMiscInfo, Error> {
         // Breakpad uses a single MDRawMiscInfo to represent several structs
         // of progressively larger sizes which are supersets of the smaller
         // ones.
@@ -843,11 +847,11 @@ impl MinidumpMiscInfo {
 
 impl MinidumpStream for MinidumpBreakpadInfo {
     fn stream_type() -> u32 { md::MD_BREAKPAD_INFO_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpBreakpadInfo, Error> {
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpBreakpadInfo, Error> {
         if expected_size != mem::size_of::<md::MDRawBreakpadInfo>() {
             return Err(Error::StreamReadFailure);
         }
-        let raw = try!(read::<md::MDRawBreakpadInfo>(f).or(Err(Error::StreamReadFailure)));
+        let raw : md::MDRawBreakpadInfo = try!(read(f).or(Err(Error::StreamReadFailure)));
         let dump_thread = if flag(raw.validity, md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) {
             Some(raw.dump_thread_id)
         } else {
@@ -916,11 +920,11 @@ impl fmt::Display for CrashReason {
 
 impl MinidumpStream for MinidumpException {
     fn stream_type() -> u32 { md::MD_EXCEPTION_STREAM }
-    fn read(f : &File, expected_size : usize) -> Result<MinidumpException, Error> {
+    fn read<T: Readable>(f : &mut T, expected_size : usize) -> Result<MinidumpException, Error> {
         if expected_size != mem::size_of::<md::MDRawExceptionStream>() {
             return Err(Error::StreamReadFailure);
         }
-        let raw = try!(read::<md::MDRawExceptionStream>(f).or(Err(Error::StreamReadFailure)));
+        let raw : md::MDRawExceptionStream = try!(read(f).or(Err(Error::StreamReadFailure)));
         let context = MinidumpContext::read(f, &raw.thread_context).ok();
         Ok(MinidumpException {
             raw: raw,
@@ -997,9 +1001,11 @@ impl Minidump {
         Minidump::read(f)
     }
 
-    /// Read a `Minidump` from an open `File`.
-    pub fn read(f : File) -> Result<Minidump, Error> {
-        let header = try!(read::<md::MDRawHeader>(&f).or(Err(Error::MissingHeader)));
+    /// Read a `Minidump` from a [`Readable`][readable].
+    ///
+    /// [readable]: trait.Readable.html
+    pub fn read<T : Readable + 'static>(mut f : T) -> Result<Minidump, Error> {
+        let header : md::MDRawHeader = try!(read(&mut f).or(Err(Error::MissingHeader)));
         let swap = false;
         if header.signature != md::MD_HEADER_SIGNATURE {
             if header.signature.swap_bytes() != md::MD_HEADER_SIGNATURE {
@@ -1014,11 +1020,11 @@ impl Minidump {
         }
         let mut streams = HashMap::with_capacity(header.stream_count as usize);
         for i in 0..header.stream_count {
-            let dir = try!(read::<md::MDRawDirectory>(&f).or(Err(Error::MissingDirectory)));
+            let dir : md::MDRawDirectory = try!(read(&mut f).or(Err(Error::MissingDirectory)));
             streams.insert(dir.stream_type, (i, dir));
         }
         Ok(Minidump {
-            file: f,
+            reader: Box::new(f),
             header: header,
             streams: streams,
             swap: swap
@@ -1036,9 +1042,9 @@ impl Minidump {
         match self.streams.get_mut(&T::stream_type()) {
             None => Err(Error::StreamNotFound),
             Some(&mut (_, dir)) => {
-                try!(self.file.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
+                try!(self.reader.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
                 // TODO: cache result
-                T::read(&self.file, dir.location.data_size as usize)
+                T::read(&mut self.reader, dir.location.data_size as usize)
             }
         }
     }

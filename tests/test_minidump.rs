@@ -2,20 +2,33 @@ extern crate minidump;
 extern crate chrono;
 
 use chrono::*;
+use std::fs::File;
 use std::path::PathBuf;
 use minidump::*;
 
-fn read_test_minidump() -> Result<Minidump, Error> {
+fn get_test_minidump_path() -> PathBuf {
     let mut path = PathBuf::from(file!());
     path.pop();
     path.pop();
     path.push("testdata/test.dmp");
+    path
+}
+
+fn read_test_minidump() -> Result<Minidump, Error> {
+    let path = get_test_minidump_path();
     Minidump::read_path(&path)
 }
 
 #[test]
-fn test_read_minidump() {
+fn test_minidump_read_path() {
     read_test_minidump().unwrap();
+}
+
+#[test]
+fn test_minidump_read() {
+    let path = get_test_minidump_path();
+    let f = File::open(path).unwrap();
+    let _dump = Minidump::read(f).unwrap();
 }
 
 #[test]

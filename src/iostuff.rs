@@ -6,14 +6,17 @@
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use std::io::prelude::*;
-use std::fs::File;
 use std::io;
 use std::io::SeekFrom;
 use std::mem;
 use std::ptr;
 
+/// Shorthand for Read + Seek
+pub trait Readable : Read + Seek {}
+impl<T : Read + Seek> Readable for T {}
+
 /// Read `count` bytes from `f` and return a `Vec<u8>` of them.
-pub fn read_bytes(f : &File, count : usize) -> io::Result<Vec<u8>> {
+pub fn read_bytes<T : Read>(f : &mut T, count : usize) -> io::Result<Vec<u8>> {
     let mut buf = Vec::with_capacity(count);
     try!(f.take(count as u64).read_to_end(&mut buf));
     Ok(buf)
@@ -31,16 +34,17 @@ pub fn transmogrify<T : Copy + Sized>(bytes : &[u8]) -> T {
 }
 
 /// Read a `T` from `f`.
-pub fn read<T : Copy + Sized>(f : &File) -> io::Result<T> {
+pub fn read<T : Copy + Sized, U : Read>(f : &mut U) -> io::Result<T> {
     let size = mem::size_of::<T>();
     let buf = try!(read_bytes(f, size));
     Ok(transmogrify::<T>(&buf[..]))
 }
 
 /// Read a UTF-16 string from `f` at `offset`.
-pub fn read_string_utf16(mut f : &File, offset : u64) -> io::Result<String> {
+pub fn read_string_utf16<T : Readable>(f : &mut T, offset : u64) -> io::Result<String> {
     try!(f.seek(SeekFrom::Start(offset)));
-    let size = try!(read::<u32>(f)) as usize;
+    let u : u32 = try!(read(f));
+    let size = u as usize;
     // TODO: swap
     if size % 2 != 0 {
         return Err(io::Error::new(io::ErrorKind::InvalidData,
