@@ -4,6 +4,7 @@
 //! A collection for storing data associated with a range of values.
 
 use std::cmp::Ordering;
+use std::iter::FromIterator;
 use std::slice::Iter;
 
 /// The value type for the endpoints of ranges.
@@ -12,7 +13,7 @@ pub type Addr = u64;
 ///
 /// The start of the range is inclusive, the end is exclusive.
 pub type Range = (Addr, Addr);
-/// Implementation detail, entries are internally a tuple.
+/// Entry type, a tuple of `Range` and `T`.
 pub type Entry<T> = (Range, T);
 
 /// A `RangeMap` stores values of `T` that map to `Range`s.
@@ -38,12 +39,18 @@ impl<T> RangeMap<T> {
         RangeMap::<T> { entries: Vec::new() }
     }
 
-    /// Insert `value` in the range `(start, end)`.
-    pub fn insert(&mut self, (start, end) : Range, value : T) -> Result<(),()> {
-        match self.entries.binary_search_by(|ref entry| compare_address_to_entry(start, entry)) {
+    /// Create a `RangeMap` with `entries`.
+    pub fn from(mut entries : Vec<Entry<T>>) -> RangeMap<T> {
+        entries.sort_by(|&(a, _), &(b, _)| a.cmp(&b));
+        RangeMap::<T> { entries: entries }
+    }
+
+    /// Insert `value` in `range`.
+    pub fn insert(&mut self, range : Range, value : T) -> Result<(),()> {
+        match self.entries.binary_search_by(|&(ref r, ref _v)| r.cmp(&range)) {
             Ok(_) => Err(()),
             Err(index) => {
-                self.entries.insert(index, ((start, end), value));
+                self.entries.insert(index, (range, value));
                 Ok(())
             }
         }
@@ -62,6 +69,20 @@ impl<T> RangeMap<T> {
     /// Return an iterator over the entries of the `RangeMap`.
     pub fn iter(&self) -> Iter<Entry<T>> {
         self.entries.iter()
+    }
+}
+
+impl<T> IntoIterator for RangeMap<T> {
+    type Item = Entry<T>;
+    type IntoIter = <Vec<Entry<T>> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.into_iter()
+    }
+}
+
+impl<T> FromIterator<Entry<T>> for RangeMap<T> {
+    fn from_iter<U>(iterator: U) -> RangeMap<T> where U: IntoIterator<Item=Entry<T>> {
+        RangeMap::from(iterator.into_iter().collect())
     }
 }
 
@@ -90,8 +111,28 @@ fn test_range_map() {
     assert_eq!(map.lookup(10), None);
     assert_eq!(map.lookup(16), None);
 
-    let items : Vec<_> = map.iter().collect();
-    assert_eq!(*items[0], ((0,4), 1));
-    assert_eq!(*items[1], ((7,10), 2));
-    assert_eq!(*items[2], ((15,16), 3));
+    let items : Vec<_> = map.into_iter().collect();
+    assert_eq!(items, vec!(
+        ((0,4), 1),
+        ((7,10), 2),
+        ((15,16), 3),
+        ));
+}
+
+#[test]
+fn test_from_iter() {
+    let v = vec!(
+        ((10, 20), 1),
+        ((5, 6), 2),
+        ((20, 22), 3),
+        ((8, 10), 4),
+        );
+    let map = v.into_iter().collect::<RangeMap<u32>>();
+    let items : Vec<_> = map.into_iter().collect();
+    assert_eq!(items, vec!(
+        ((5, 6), 2),
+        ((8, 10), 4),
+        ((10, 20), 1),
+        ((20, 22), 3),
+        ));
 }
