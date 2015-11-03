@@ -46,6 +46,9 @@ impl<T> RangeMap<T> {
         RangeMap::<T> { entries: entries }
     }
 
+    /// Returns the number of entries in the `RangeMap`.
+    pub fn len(&self) -> usize { self.entries.len() }
+
     /// Insert `value` in `range`.
     pub fn insert(&mut self, range : Range, value : T) -> Result<(),()> {
         match self.entries.binary_search_by(|&(ref r, ref _v)| r.cmp(&range)) {
@@ -102,6 +105,8 @@ fn test_range_map() {
     map.insert((0,4), 1).unwrap();
     map.insert((15,16), 3).unwrap();
 
+    assert_eq!(map.len(), 3);
+
     assert_eq!(map.lookup(7).unwrap(), &2);
     assert_eq!(map.lookup(9).unwrap(), &2);
     assert_eq!(map.lookup(0).unwrap(), &1);
@@ -129,6 +134,8 @@ fn test_from_iter() {
         ((8, 10), 4),
         );
     let map = v.into_iter().collect::<RangeMap<u32>>();
+    assert_eq!(map.len(), 4);
+
     let items : Vec<_> = map.into_iter().collect();
     assert_eq!(items, vec!(
         ((5, 6), 2),
