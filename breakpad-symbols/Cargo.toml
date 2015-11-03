@@ -1,0 +1,8 @@
+[package]
+name = "breakpad-symbols"
+version = "0.1.0"
+authors = ["Ted Mielczarek <ted@mielczarek.org>"]
+license = "MIT"
+
+[dependencies]
+nom = "~0.5.0"
