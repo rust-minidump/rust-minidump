@@ -535,7 +535,7 @@ impl MinidumpModuleList {
 
     /// Return a `MinidumpModule` whose address range covers `addr`.
     pub fn module_at_address(&self, addr : u64) -> Option<&MinidumpModule> {
-        return if let Some(index) = self.modules_by_addr.lookup(addr) {
+        return if let Some(&index) = self.modules_by_addr.lookup(addr) {
             Some(&self.modules[index])
         } else {
             None
