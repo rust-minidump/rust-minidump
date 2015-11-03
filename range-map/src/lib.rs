@@ -126,6 +126,24 @@ fn test_range_map() {
 }
 
 #[test]
+fn test_clone() {
+    let mut map = RangeMap::<u32>::new();
+    map.insert((7,10), 2).unwrap();
+    map.insert((0,4), 1).unwrap();
+    map.insert((15,16), 3).unwrap();
+
+    assert_eq!(map.len(), 3);
+
+    let map2 = map.clone();
+    let items : Vec<_> = map2.into_iter().collect();
+    assert_eq!(items, vec!(
+        ((0,4), 1),
+        ((7,10), 2),
+        ((15,16), 3),
+        ));
+}
+
+#[test]
 fn test_from_iter() {
     let v = vec!(
         ((10, 20), 1),
