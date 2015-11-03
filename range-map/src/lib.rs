@@ -17,6 +17,7 @@ pub type Range = (Addr, Addr);
 pub type Entry<T> = (Range, T);
 
 /// A `RangeMap` stores values of `T` that map to `Range`s.
+#[derive(Debug, PartialEq)]
 pub struct RangeMap<T> {
     /// Entries are stored in a sorted list internally.
     entries: Vec<Entry<T>>,
