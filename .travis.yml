@@ -3,6 +3,7 @@ script:
   - cargo build --verbose
   - cargo test --verbose
   - cargo test -p range-map --verbose
+  - cargo test -p breakpad-symbols --verbose
   - cargo doc --verbose
 sudo: false
 after_success: sh scripts/travis-doc-upload.sh

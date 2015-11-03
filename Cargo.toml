@@ -14,6 +14,7 @@ exclude = [
 
 [dependencies]
 range-map = { path = "range-map" }
+breakpad-symbols = { path = "breakpad-symbols" }
 libc = "0.1.*"
 encoding = "0.2"
 chrono = "0.2.16"

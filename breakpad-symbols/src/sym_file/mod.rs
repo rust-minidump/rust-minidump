@@ -21,9 +21,15 @@ mod test {
     use super::*;
     use std::path::PathBuf;
 
+    fn abs_file() -> PathBuf {
+        let mut path = PathBuf::from(env!("PWD"));
+        path.push(file!());
+        path
+    }
+
     #[test]
     fn test_symbolfile_from_file() {
-        let mut path = PathBuf::from(file!());
+        let mut path = abs_file();
         path.pop();
         path.pop();
         path.pop();
