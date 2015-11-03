@@ -74,7 +74,7 @@ pub struct MinidumpMemoryInfoList;
 */
 
 /// The fundamental unit of data in a `Minidump`.
-pub trait MinidumpStream {
+pub trait MinidumpStream : Sized {
     //TODO: associated_consts when that stabilizes.
     /// The stream type constant used in the `md::MDRawDirectory` entry.
     fn stream_type() -> u32;
