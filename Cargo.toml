@@ -13,6 +13,7 @@ exclude = [
 
 
 [dependencies]
+range-map = { path = "range-map" }
 libc = "0.1.*"
 encoding = "0.2"
 chrono = "0.2.16"

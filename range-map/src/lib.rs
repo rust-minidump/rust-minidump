@@ -1,14 +1,23 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+//! A collection for storing data associated with a range of values.
+
 use std::cmp::Ordering;
 use std::slice::Iter;
 
+/// The value type for the endpoints of ranges.
 pub type Addr = u64;
+/// Entries are indexed by a `Range` of `Addr`s.
+///
+/// The start of the range is inclusive, the end is exclusive.
 pub type Range = (Addr, Addr);
+/// Implementation detail, entries are internally a tuple.
 pub type Entry<T> = (Range, T);
 
+/// A `RangeMap` stores values of `T` that map to `Range`s.
 pub struct RangeMap<T> {
+    /// Entries are stored in a sorted list internally.
     entries: Vec<Entry<T>>,
 }
 
@@ -24,10 +33,12 @@ fn compare_address_to_entry<T>(addr : Addr, entry : &Entry<T>) -> Ordering {
 }
 
 impl<T> RangeMap<T> {
+    /// Create a new, empty `RangeMap`.
     pub fn new() -> RangeMap<T> {
         RangeMap::<T> { entries: Vec::new() }
     }
 
+    /// Insert `value` in the range `(start, end)`.
     pub fn insert(&mut self, (start, end) : Range, value : T) -> Result<(),()> {
         match self.entries.binary_search_by(|ref entry| compare_address_to_entry(start, entry)) {
             Ok(_) => Err(()),
@@ -38,6 +49,7 @@ impl<T> RangeMap<T> {
         }
     }
 
+    /// Find an entry whose `Range` encompasses `addr`.
     pub fn lookup(&self, addr : Addr) -> Option<&T> {
         if let Ok(index) = self.entries.binary_search_by(|ref entry| compare_address_to_entry(addr, entry)) {
             let ((_, _), ref value) = self.entries[index];
@@ -47,6 +59,7 @@ impl<T> RangeMap<T> {
         }
     }
 
+    /// Return an iterator over the entries of the `RangeMap`.
     pub fn iter(&self) -> Iter<Entry<T>> {
         self.entries.iter()
     }

@@ -22,6 +22,7 @@
 extern crate chrono;
 extern crate encoding;
 extern crate libc;
+extern crate range_map;
 #[cfg(test)]
 extern crate test_assembler;
 
@@ -31,7 +32,6 @@ mod iostuff;
 mod minidump;
 mod processor;
 mod process_state;
-mod range_map;
 mod stackwalker;
 mod system_info;
 
