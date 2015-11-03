@@ -1,10 +1,12 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use range_map::RangeMap;
 
 /// A publicly visible linker symbol.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct PublicSymbol {
     /// The symbol's address relative to the module's load address.
     pub address : u64,
@@ -14,8 +16,32 @@ pub struct PublicSymbol {
     pub name : String,
 }
 
+impl Ord for PublicSymbol {
+    fn cmp(&self, other: &PublicSymbol) -> Ordering {
+        let o = self.address.cmp(&other.address);
+        if o != Ordering::Equal {
+            o
+        } else {
+            // Fall back to sorting by name if addresses are equal.
+            let nameo = self.name.cmp(&other.name);
+            if nameo != Ordering::Equal {
+                nameo
+            } else {
+                // Compare parameter size just for sanity.
+                self.parameter_size.cmp(&other.parameter_size)
+            }
+        }
+    }
+}
+
+impl PartialOrd for PublicSymbol {
+    fn partial_cmp(&self, other: &PublicSymbol) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// A mapping from machine code bytes to source line and file.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SourceLine {
     /// The start address relative to the module's load address.
     pub address : u64,
@@ -30,7 +56,7 @@ pub struct SourceLine {
 }
 
 /// A source-language function.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     /// The function's start address relative to the module's load address.
     pub address : u64,
@@ -41,11 +67,11 @@ pub struct Function {
     /// The name of the function as declared in the source.
     pub name : String,
     /// Source line information for this function.
-    pub lines : Vec<SourceLine>, // TODO: RangeMap
+    pub lines : RangeMap<SourceLine>,
 }
 
 /// DWARF CFI rules for recovering registers at a specific address.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CFIRules {
     /// The address in question.
     pub address : u64,
@@ -54,7 +80,7 @@ pub struct CFIRules {
 }
 
 /// Information used for unwinding stack frames using DWARF CFI.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StackInfoCFI {
     /// The initial rules for this address range.
     pub init : CFIRules,
@@ -65,7 +91,7 @@ pub struct StackInfoCFI {
 }
 
 /// Specific details about whether hte frame uses a base pointer or has a program string to evaluate.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum WinFrameType {
     /// This frame uses FPO-style data.
     FPO { allocates_base_pointer : bool },
@@ -74,7 +100,7 @@ pub enum WinFrameType {
 }
 
 /// Information used for unwinding stack frames using Windows frame info.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StackInfoWin {
     /// The address in question.
     pub address : u64,
@@ -102,9 +128,11 @@ pub struct SymbolFile {
     /// The set of source files involved in compilation.
     pub files : HashMap<u32, String>,
     /// Publicly visible symbols.
-    pub publics : Vec<PublicSymbol>, // TODO: RangeMap
+    pub publics : Vec<PublicSymbol>,
     /// Functions.
-    pub functions : Vec<Function>, // TODO: RangeMap
-    pub cfi_stack_info : Vec<StackInfoCFI>, // TODO: RangeMap
-    pub win_stack_info : Vec<StackInfoWin>, // TODO: RangeMap
+    pub functions : RangeMap<Function>,
+    /// DWARF CFI unwind information.
+    pub cfi_stack_info : RangeMap<StackInfoCFI>,
+    /// Windows unwind information.
+    pub win_stack_info : RangeMap<StackInfoWin>,
 }

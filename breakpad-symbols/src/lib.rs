@@ -3,6 +3,7 @@
 
 #[macro_use]
 extern crate nom;
+extern crate range_map;
 
 mod sym_file;
 

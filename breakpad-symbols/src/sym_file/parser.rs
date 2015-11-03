@@ -11,6 +11,8 @@ use std::str;
 use std::str::FromStr;
 
 use sym_file::types::*;
+#[cfg(test)]
+use range_map::RangeMap;
 
 enum Line<'a> {
     Info,
@@ -153,7 +155,9 @@ named!(func_lines<&[u8], Function>,
               size: size,
               parameter_size: parameter_size,
               name: name.to_string(),
-              lines: lines,
+              lines: lines.into_iter()
+                  .map(|l| ((l.address, l.address + l.size as u64), l))
+                  .collect(),
           }
       }
       ));
@@ -248,9 +252,10 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
 named!(stack_cfi_lines<&[u8], StackInfoCFI>,
   chain!(
     init: stack_cfi_init ~
-    add_rules: many0!(stack_cfi) ,
+    mut add_rules: many0!(stack_cfi) ,
       move || {
           let (init_rules, size) = init;
+          add_rules.sort();
           StackInfoCFI {
               init: init_rules,
               size: size,
@@ -290,12 +295,19 @@ fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
             Line::StackCFI(s) => { stack_cfi.push(s); },
         }
     }
+    publics.sort();
     SymbolFile {
         files: files,
         publics: publics,
-        functions: funcs,
-        cfi_stack_info: stack_cfi,
-        win_stack_info: stack_win,
+        functions: funcs.into_iter()
+            .map(|f| ((f.address, f.address + f.size as u64), f))
+            .collect(),
+        cfi_stack_info: stack_cfi.into_iter()
+            .map(|s| ((s.init.address, s.init.address + s.size as u64), s))
+            .collect(),
+        win_stack_info: stack_win.into_iter()
+            .map(|s| ((s.address, s.address + s.size as u64), s))
+            .collect(),
     }
 }
 
@@ -390,7 +402,7 @@ fn test_func_lines_no_lines() {
         size: 0x30,
         parameter_size: 0,
         name: "nsQueryInterfaceWithError::operator()(nsID const&, void**) const".to_string(),
-        lines: vec!(),
+        lines: RangeMap::new(),
     }));
 }
 
@@ -401,18 +413,23 @@ fn test_func_lines_and_lines() {
 1010 10 52 8
 1020 10 62 15
 ";
-    let rest = &b""[..];
-    assert_eq!(func_lines(data), Done(rest, Function {
-        address: 0x1000,
-        size: 0x30,
-        parameter_size: 0x10,
-        name: "some func".to_string(),
-        lines: vec!(
-            SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42},
-            SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52},
-            SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62},
-            )
-    }));
+    if let Done(rest, f) = func_lines(data) {
+        assert_eq!(rest, &b""[..]);
+        assert_eq!(f.address, 0x1000);
+        assert_eq!(f.size, 0x30);
+        assert_eq!(f.parameter_size, 0x10);
+        assert_eq!(f.name, "some func".to_string());
+        assert_eq!(f.lines.lookup(0x1000).unwrap(),
+                   &SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42});
+        assert_eq!(f.lines.into_iter().collect::<Vec<_>>(),
+                   vec!(
+                       ((0x1000,0x1010), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
+                       ((0x1010, 0x1020), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
+                       ((0x1020, 0x1030), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
+                       ));
+    } else {
+        assert!(false, "Failed to parse!");
+    }
 }
 
 #[test]
@@ -494,8 +511,8 @@ STACK CFI deadbeef more rules
         init: CFIRules { address: 0xbadf00d, rules: "init rules".to_string() },
         size: 0xabc,
         add_rules: vec!(
-            CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
             CFIRules { address: 0xdeadbeef, rules: "more rules".to_string() },
+            CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
             ),
     }));
 }
@@ -539,8 +556,10 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(p.name, "func 2".to_string());
     }
     assert_eq!(sym.functions.len(), 3);
+    let funcs = sym.functions.clone().into_iter()
+        .map(|(_, f)| f).collect::<Vec<_>>();
     {
-        let f = &sym.functions[0];
+        let f = &funcs[0];
         assert_eq!(f.address, 0x900);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
@@ -548,19 +567,20 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.lines.len(), 0);
     }
     {
-        let f = &sym.functions[1];
+        let f = &funcs[1];
         assert_eq!(f.address, 0x1000);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-        assert_eq!(f.lines, vec!(
-            SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42},
-            SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52},
-            SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62},
-            ));
+        assert_eq!(f.lines.clone().into_iter().collect::<Vec<_>>(),
+                   vec!(
+                       ((0x1000,0x1010), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
+                       ((0x1010, 0x1020), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
+                       ((0x1020, 0x1030), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
+                       ));
     }
     {
-        let f = &sym.functions[2];
+        let f = &funcs[2];
         assert_eq!(f.address, 0x1100);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
@@ -568,8 +588,10 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.lines.len(), 0);
     }
     assert_eq!(sym.win_stack_info.len(), 2);
+    let ws = sym.win_stack_info.clone().into_iter()
+        .map(|(_, s)| s).collect::<Vec<_>>();
     {
-        let stack = &sym.win_stack_info[0];
+        let stack = &ws[0];
         assert_eq!(stack.address, 0x900);
         assert_eq!(stack.size, 0x30);
         assert_eq!(stack.prologue_size, 0xa1);
@@ -585,7 +607,7 @@ STACK CFI INIT f00f f0 more init rules
         }
     }
     {
-        let stack = &sym.win_stack_info[1];
+        let stack = &ws[1];
         assert_eq!(stack.address, 0x1000);
         assert_eq!(stack.size, 0x30);
         assert_eq!(stack.prologue_size, 0xa1);
@@ -601,20 +623,22 @@ STACK CFI INIT f00f f0 more init rules
         }
     }
     assert_eq!(sym.cfi_stack_info.len(), 2);
-    assert_eq!(sym.cfi_stack_info[0],
-               StackInfoCFI {
-                   init: CFIRules { address: 0xbadf00d, rules: "init rules".to_string() },
-                   size: 0xabc,
-                   add_rules: vec!(
-                       CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
-                       CFIRules { address: 0xdeadbeef, rules: "more rules".to_string() },
-                       ),
-               });
-    assert_eq!(sym.cfi_stack_info[1],
+    let cs = sym.cfi_stack_info.clone().into_iter()
+        .map(|(_, s)| s).collect::<Vec<_>>();
+    assert_eq!(cs[0],
                StackInfoCFI {
                    init: CFIRules { address: 0xf00f,
                                     rules: "more init rules".to_string() },
                    size: 0xf0,
                    add_rules: vec!(),
+               });
+    assert_eq!(cs[1],
+               StackInfoCFI {
+                   init: CFIRules { address: 0xbadf00d, rules: "init rules".to_string() },
+                   size: 0xabc,
+                   add_rules: vec!(
+                       CFIRules { address: 0xdeadbeef, rules: "more rules".to_string() },
+                       CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
+                       ),
                });
 }
