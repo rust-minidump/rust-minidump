@@ -321,8 +321,13 @@ named!(symbol_file<&[u8], SymbolFile>,
 
 /// Parse a `SymbolFile` from `bytes`.
 pub fn parse_symbol_bytes(bytes : &[u8])  -> Result<SymbolFile, &'static str> {
-    if let Done(_, symfile) = symbol_file(&bytes) {
-        Ok(symfile)
+    if let Done(rest, symfile) = symbol_file(&bytes) {
+        if rest == b"" {
+            Ok(symfile)
+        } else {
+            // Junk left over, or maybe didn't parse anything.
+            Err("Failed to parse file")
+        }
     } else {
         Err("Failed to parse file")
     }
@@ -641,4 +646,38 @@ STACK CFI INIT f00f f0 more init rules
                        CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
                        ),
                });
+}
+
+#[test]
+fn test_parse_symbol_bytes_malformed() {
+    assert!(parse_symbol_bytes(&b"this is not a symbol file\n"[..]).is_err(),
+            "Should fail to parse junk");
+
+    assert!(parse_symbol_bytes(&b"MODULE Linux x86 xxxxxx
+FILE 0 foo.c
+"[..]).is_err(),
+            "Should fail to parse malformed MODULE line");
+
+    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+FILE x foo.c
+"[..]).is_err(),
+            "Should fail to parse malformed FILE line");
+
+    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+FUNC xx 1 2 foo
+"[..]).is_err(),
+            "Should fail to parse malformed FUNC line");
+
+    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+this is some junk
+"[..]).is_err(),
+            "Should fail to parse malformed file");
+
+    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+FILE 0 foo.c
+FILE"[..]).is_err(),
+            "Should fail to parse truncated file");
+
+    assert!(parse_symbol_bytes(&b""[..]).is_err(),
+            "Should fail to parse empty file");
 }
