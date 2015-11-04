@@ -23,6 +23,7 @@ extern crate chrono;
 extern crate encoding;
 extern crate libc;
 extern crate range_map;
+extern crate breakpad_symbols;
 #[cfg(test)]
 extern crate test_assembler;
 
@@ -39,7 +40,7 @@ mod system_info;
 pub use iostuff::Readable;
 pub use minidump::Minidump;
 pub use minidump::Error;
-pub use minidump::Module;
+pub use breakpad_symbols::Module;
 pub use minidump::MinidumpBreakpadInfo;
 pub use minidump::MinidumpException;
 pub use minidump::MinidumpMiscInfo;

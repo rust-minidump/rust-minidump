@@ -7,3 +7,6 @@ license = "MIT"
 [dependencies]
 range-map = { path = "../range-map" }
 nom = "~0.5.0"
+# This is technically test-dependencies, but cargo can't handle that
+# when running `cargo test -p breakpad-symbols` from the repository root.
+tempdir = "0.3"
