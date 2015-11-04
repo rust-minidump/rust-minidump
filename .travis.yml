@@ -1,7 +1,7 @@
 language: rust
 script:
   - cargo build --verbose
-  - ./test-all.sh
+  - ./test-all.sh --verbose
   - cargo doc --verbose
 sudo: false
 after_success: sh scripts/travis-doc-upload.sh

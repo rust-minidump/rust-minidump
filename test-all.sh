@@ -2,6 +2,6 @@
 
 set -v -e -x
 
-cargo test --verbose
-cargo test -p range-map --verbose
-cargo test -p breakpad-symbols --verbose
+cargo test -p range-map $*
+cargo test -p breakpad-symbols $*
+cargo test $*
