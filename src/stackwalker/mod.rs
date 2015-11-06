@@ -6,6 +6,7 @@
 mod x86;
 mod unwind;
 
+use breakpad_symbols::Symbolizer;
 use minidump::*;
 use process_state::*;
 
@@ -30,23 +31,21 @@ fn get_caller_frame(frame : &StackFrame,
 }
 
 fn fill_source_line_info(frame : &mut StackFrame,
-                         modules : &MinidumpModuleList) {
-    // get module at frame instruction
+                         modules : &MinidumpModuleList,
+                         symbolizer : &Symbolizer) {
+    // Find the module whose address range covers this frame's instruction.
     if let &Some(module) = &modules.module_at_address(frame.instruction) {
         // FIXME: this shouldn't need to clone, we should be able to use
         // the same lifetime as the module list that's passed in.
         frame.module = Some(module.clone());
-        // see if we have symbols for this module
-        // - if not, see if we can find symbols for this module
-        // -- if so, load them
-        // - fill in info using symbols
+        symbolizer.fill_symbol(module, frame);
     }
 }
 
 pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
                   stack_memory : &Option<MinidumpMemory>,
-                  modules : &MinidumpModuleList) -> CallStack {
-    // context, memory, modules, symbolizer
+                  modules : &MinidumpModuleList,
+                  symbolizer : &Symbolizer) -> CallStack {
     // Begin with the context frame, and keep getting callers until there are
     // no more.
     let mut frames = vec!();
@@ -55,8 +54,7 @@ pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
-            // TODO: provide a SourceLineResolver trait?
-            fill_source_line_info(&mut frame, modules);
+            fill_source_line_info(&mut frame, modules, symbolizer);
             frames.push(frame);
             let last_frame = &frames.last().unwrap();
             maybe_frame = get_caller_frame(last_frame, stack_memory);

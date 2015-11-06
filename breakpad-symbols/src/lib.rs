@@ -10,8 +10,10 @@ extern crate tempdir;
 mod sym_file;
 
 use std::borrow::Cow;
+use std::boxed::Box;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
-use std::ops::Deref;
 use std::path::PathBuf;
 pub use sym_file::SymbolFile;
 
@@ -50,49 +52,66 @@ pub trait Module {
 /// This can be useful for getting symbols for a module when you
 /// have a debug id and filename but not an actual minidump.
 #[derive(Default)]
-pub struct SimpleModule<'a> {
+pub struct SimpleModule {
     pub base_address : Option<u64>,
     pub size : Option<u64>,
-    pub code_file : Option<Cow<'a, str>>,
-    pub code_identifier : Option<Cow<'a, str>>,
-    pub debug_file : Option<Cow<'a, str>>,
-    pub debug_id : Option<Cow<'a, str>>,
-    pub version : Option<Cow<'a, str>>,
+    pub code_file : Option<String>,
+    pub code_identifier : Option<String>,
+    pub debug_file : Option<String>,
+    pub debug_id : Option<String>,
+    pub version : Option<String>,
 }
 
-impl<'a> SimpleModule<'a> {
+impl SimpleModule {
     /// Create a `SimpleModule` with the given `debug_file` and `debug_id`.
     ///
     /// Uses `default` for the remaining fields.
-    pub fn new(debug_file : &'a str, debug_id : &'a str) -> SimpleModule<'a> {
+    pub fn new(debug_file : &str, debug_id : &str) -> SimpleModule {
         SimpleModule {
-            debug_file: Some(Cow::Borrowed(debug_file)),
-            debug_id: Some(Cow::Borrowed(debug_id)),
+            debug_file: Some(String::from(debug_file)),
+            debug_id: Some(String::from(debug_id)),
             ..SimpleModule::default()
         }
     }
 }
 
-impl<'a> Module for SimpleModule<'a> {
+impl Module for SimpleModule {
     fn base_address(&self) -> u64 { self.base_address.unwrap_or(0) }
     fn size(&self) -> u64 { self.size.unwrap_or(0) }
     fn code_file(&self) -> Cow<str> {
-        self.code_file.as_ref().map_or(Cow::from(""), |s| s.clone())
+        self.code_file.as_ref().map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
     }
     fn code_identifier(&self) -> Cow<str> {
-        self.code_identifier.as_ref().map_or(Cow::from(""), |s| s.clone())
+        self.code_identifier.as_ref().map_or(Cow::from(""),
+                                             |s| Cow::Borrowed(&s[..]))
     }
     fn debug_file(&self) -> Option<Cow<str>> {
-        self.debug_file.as_ref().map(|s| s.clone())
+        self.debug_file.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
     fn debug_identifier(&self) -> Option<Cow<str>> {
-        self.debug_id.as_ref().map(|s| s.clone())
+        self.debug_id.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
     fn version(&self) -> Option<Cow<str>> {
-        self.version.as_ref().map(|s| s.clone())
+        self.version.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
 }
 
+/// Like `PathBuf::file_name`, but try to work on Windows or POSIX-style paths.
+fn leafname(path : &str) -> &str {
+    path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path)
+}
+
+/// If `filename` ends with `match_extension`, remove it. Append `new_extension` to the result.
+fn replace_or_add_extension(filename : &str,
+                            match_extension : &str,
+                            new_extension : &str) -> String {
+    let mut bits = filename.split('.').collect::<Vec<_>>();
+    if bits.len() > 1 && bits.last().map_or(false, |e| e.to_lowercase() == match_extension) {
+        bits.pop();
+    }
+    bits.push(new_extension);
+    bits.join(".")
+}
 
 /// Get a relative symbol path at which to locate symbols for `module`.
 ///
@@ -107,16 +126,11 @@ pub fn relative_symbol_path(module : &Module, extension : &str)
                             -> Option<String> {
     module.debug_file().and_then(|debug_file| {
         module.debug_identifier().map(|debug_id| {
-            let mut path = PathBuf::from(debug_file.deref());
-            // For files ending in .pdb, swap it for the extension.
-            let filename = if path.extension().map_or(false, |e| e.to_string_lossy().to_lowercase() == "pdb") {
-                path.set_extension(extension);
-                path.to_string_lossy()
-            } else {
-                // Just tack on the extension.
-                Cow::from([debug_file.deref(), extension].join("."))
-            };
-            [debug_file, debug_id, filename].join("/")
+            // Can't use PathBuf::file_name here, it doesn't handle
+            // Windows file paths on non-Windows.
+            let leaf = leafname(&debug_file);
+            let filename = replace_or_add_extension(leaf, "pdb", extension);
+            [leaf, &debug_id[..], &filename[..]].join("/")
         })
     })
 }
@@ -138,19 +152,19 @@ pub trait SymbolSupplier {
     fn locate_symbols(&self, module : &Module) -> SymbolResult;
 }
 
-/// Locate symbols in local disk paths.
-pub struct LocalSymbolSupplier {
+/// Locate Breakpad text-format symbols in local disk paths.
+pub struct SimpleSymbolSupplier {
     /// Local disk paths to search for symbols.
     paths : Vec<PathBuf>,
 }
 
-impl LocalSymbolSupplier {
-    pub fn new(paths : Vec<PathBuf>) -> LocalSymbolSupplier {
-        LocalSymbolSupplier { paths : paths }
+impl SimpleSymbolSupplier {
+    pub fn new(paths : Vec<PathBuf>) -> SimpleSymbolSupplier {
+        SimpleSymbolSupplier { paths : paths }
     }
 }
 
-impl SymbolSupplier for LocalSymbolSupplier {
+impl SymbolSupplier for SimpleSymbolSupplier {
     fn locate_symbols(&self, module : &Module) -> SymbolResult {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for ref path in self.paths.iter() {
@@ -167,11 +181,141 @@ impl SymbolSupplier for LocalSymbolSupplier {
     }
 }
 
+pub trait FrameSymbolizer {
+    /// Get the program counter value for this frame.
+    fn get_instruction(&self) -> u64;
+    /// Set the name and base address of the function in which this frame is executing.
+    fn set_function(&mut self, name : &str, base : u64);
+    /// Set the source file and (1-based) line number this frame represents.
+    fn set_source_file(&mut self, file : &str, line : u32);
+}
+
+#[derive(Default)]
+pub struct SimpleFrame {
+    pub instruction : u64,
+    pub function : Option<String>,
+    pub function_base : Option<u64>,
+    pub source_file : Option<String>,
+    pub source_line : Option<u32>,
+}
+
+impl SimpleFrame {
+    pub fn with_instruction(instruction : u64) -> SimpleFrame {
+        SimpleFrame {
+            instruction: instruction,
+            ..SimpleFrame::default()
+        }
+    }
+}
+
+impl FrameSymbolizer for SimpleFrame {
+    fn get_instruction(&self) -> u64 { self.instruction }
+    fn set_function(&mut self, name : &str, base : u64) {
+        self.function = Some(String::from(name));
+        self.function_base = Some(base);
+    }
+    fn set_source_file(&mut self, file : &str, line : u32) {
+        self.source_file = Some(String::from(file));
+        self.source_line = Some(line);
+    }
+}
+
+// Can't make Module derive Hash, since then it can't be used as a trait
+// object (because the hash method is generic), so this is a hacky workaround.
+type ModuleKey = (String, String, Option<String>, Option<String>);
+
+/// Helper for deriving a hash key from a `Module` for `Symbolizer`.
+fn key(module : &Module) -> ModuleKey {
+    (module.code_file().to_string(),
+     module.code_identifier().to_string(),
+     module.debug_file().map(|s| s.to_string()),
+     module.debug_identifier().map(|s| s.to_string()))
+}
+
+/// Symbolicate stack frames.
+pub struct Symbolizer {
+    /// Symbol supplier for locating symbols.
+    supplier : Box<SymbolSupplier + 'static>,
+    /// Cache of symbol locating results.
+    symbols : RefCell<HashMap<ModuleKey, SymbolResult>>,
+    /// A place to store `SimpleModule`s so callers don't have to create them.
+    local_modules : RefCell<HashMap<(String, String), SimpleModule>>,
+}
+
+impl Symbolizer {
+    /// Create a `Symbolizer` that uses `supplier` to locate symbols.
+    pub fn new<T: SymbolSupplier + 'static>(supplier : T) -> Symbolizer {
+        Symbolizer {
+            supplier: Box::new(supplier),
+            symbols: RefCell::new(HashMap::new()),
+            local_modules : RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Helper method for non-minidump-using callers.
+    ///
+    /// Pass `debug_file` and `debug_id` describing a specific module,
+    /// and `address`, a module-relative address, and get back
+    /// a symbol in that module that covers that address, or `None`.
+    pub fn get_symbol_at_address(&self,
+                                 debug_file : &str,
+                                 debug_id : &str,
+                                 address : u64) -> Option<String> {
+        let k = (debug_file.to_string(), debug_id.to_string());
+        if !self.local_modules.borrow().contains_key(&k) {
+            let module = SimpleModule::new(debug_file,
+                                           debug_id);
+            self.local_modules.borrow_mut().insert(k.clone(), module);
+        }
+        self.local_modules.borrow().get(&k).and_then(|ref module| {
+            let mut frame = SimpleFrame::with_instruction(address);
+            self.fill_symbol(*module, &mut frame);
+            frame.function
+        })
+    }
+
+    pub fn fill_symbol(&self,
+                       module : &Module,
+                       frame : &mut FrameSymbolizer) {
+        let k = key(module);
+        if !self.symbols.borrow().contains_key(&k) {
+            self.symbols
+                .borrow_mut()
+                .insert(k.clone(),
+                        self.supplier.locate_symbols(module));
+        }
+        if let Some(res) = self.symbols.borrow().get(&k) {
+            match res {
+                &SymbolResult::Ok(ref sym) => sym.fill_symbol(frame),
+                _ => {},
+            }
+        }
+    }
+}
+
+#[test]
+fn test_leafname() {
+    assert_eq!(leafname("c:\\foo\\bar\\test.pdb"), "test.pdb");
+    assert_eq!(leafname("c:/foo/bar/test.pdb"), "test.pdb");
+    assert_eq!(leafname("test.pdb"), "test.pdb");
+    assert_eq!(leafname("test"), "test");
+    assert_eq!(leafname("/path/to/test"), "test");
+}
+
+#[test]
+fn test_replace_or_add_extension() {
+    assert_eq!(replace_or_add_extension("test.pdb", "pdb", "sym"), "test.sym");
+    assert_eq!(replace_or_add_extension("TEST.PDB", "pdb", "sym"), "TEST.sym");
+    assert_eq!(replace_or_add_extension("test", "pdb", "sym"), "test.sym");
+    assert_eq!(replace_or_add_extension("test.x", "pdb", "sym"), "test.x.sym");
+    assert_eq!(replace_or_add_extension("", "pdb", "sym"), ".sym");
+    assert_eq!(replace_or_add_extension("test.x", "x", "y"), "test.y");
+}
+
 #[cfg(test)]
 mod test {
 
 use super::*;
-use std::borrow::Cow;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -199,13 +343,34 @@ fn test_relative_symbol_path() {
     let bad = SimpleModule::default();
     assert!(relative_symbol_path(&bad, "sym").is_none());
 
-    let bad2 = SimpleModule { debug_file: Some(Cow::Borrowed("foo")),
+    let bad2 = SimpleModule { debug_file: Some("foo".to_string()),
                               ..SimpleModule::default() };
     assert!(relative_symbol_path(&bad2, "sym").is_none());
 
-    let bad3 = SimpleModule { debug_id: Some(Cow::Borrowed("foo")),
+    let bad3 = SimpleModule { debug_id: Some("foo".to_string()),
                               ..SimpleModule::default() };
     assert!(relative_symbol_path(&bad3, "sym").is_none());
+}
+
+#[test]
+fn test_relative_symbol_path_abs_paths() {
+    {
+        let m = SimpleModule::new("/path/to/foo.bin", "abcd1234");
+        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
+                   "foo.bin/abcd1234/foo.bin.sym");
+    }
+
+    {
+        let m = SimpleModule::new("c:/path/to/foo.pdb", "abcd1234");
+        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
+                   "foo.pdb/abcd1234/foo.sym");
+    }
+
+    {
+        let m = SimpleModule::new("c:\\path\\to\\foo.pdb", "abcd1234");
+        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
+                   "foo.pdb/abcd1234/foo.sym");
+    }
 }
 
 fn mksubdirs(path : &Path, dirs : &[&str]) -> Vec<PathBuf> {
@@ -234,11 +399,11 @@ fn write_bad_symbol_file(path : &Path) {
 }
 
 #[test]
-fn test_local_symbol_supplier() {
+fn test_simple_symbol_supplier() {
     let t = TempDir::new("symtest").unwrap();
     let paths = mksubdirs(t.path(), &["one", "two"]);
 
-    let supplier = LocalSymbolSupplier::new(paths.clone());
+    let supplier = SimpleSymbolSupplier::new(paths.clone());
     let bad = SimpleModule::default();
     assert_eq!(supplier.locate_symbols(&bad), SymbolResult::NotFound);
 
@@ -267,10 +432,61 @@ fn test_local_symbol_supplier() {
     write_bad_symbol_file(&paths[0].join(sym));
     let res = supplier.locate_symbols(&mal);
     assert!(if let SymbolResult::LoadError(_) = res {
-            true
+        true
     } else {
-            false
+        false
     }, format!("Correctly failed to parse {}, result: {:?}", sym, res));
+}
+
+#[test]
+fn test_symbolizer() {
+    let t = TempDir::new("symtest").unwrap();
+    let path = t.path();
+
+    // TODO: This could really use a MockSupplier
+    let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from(path)));
+    let symbolizer = Symbolizer::new(supplier);
+    let m1 = SimpleModule::new("foo.pdb", "abcd1234");
+    write_symbol_file(&path.join("foo.pdb/abcd1234/foo.sym"),
+                      b"MODULE Linux x86 abcd1234 foo
+FILE 1 foo.c
+FUNC 1000 30 10 some func
+1000 30 100 1
+");
+    let mut f1 = SimpleFrame::with_instruction(0x1010);
+    symbolizer.fill_symbol(&m1, &mut f1);
+    assert_eq!(f1.function.unwrap(), "some func");
+    assert_eq!(f1.function_base.unwrap(), 0x1000);
+    assert_eq!(f1.source_file.unwrap(), "foo.c");
+    assert_eq!(f1.source_line.unwrap(), 100);
+
+    assert_eq!(symbolizer.get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
+               .unwrap(),
+               "some func");
+
+    let m2 = SimpleModule::new("bar.pdb", "ffff0000");
+    let mut f2 = SimpleFrame::with_instruction(0x1010);
+    // No symbols present, should not find anything.
+    symbolizer.fill_symbol(&m2, &mut f2);
+    assert!(f2.function.is_none());
+    assert!(f2.function_base.is_none());
+    assert!(f2.source_file.is_none());
+    assert!(f2.source_line.is_none());
+    // Results should be cached.
+    write_symbol_file(&path.join("bar.pdb/ffff0000/bar.sym"),
+                      b"MODULE Linux x86 ffff0000 bar
+FILE 53 bar.c
+FUNC 1000 30 10 another func
+1000 30 7 53
+");
+    symbolizer.fill_symbol(&m2, &mut f2);
+    assert!(f2.function.is_none());
+    assert!(f2.function_base.is_none());
+    assert!(f2.source_file.is_none());
+    assert!(f2.source_line.is_none());
+    // This should also use cached results.
+    assert!(symbolizer.get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
+            .is_none());
 }
 
 }

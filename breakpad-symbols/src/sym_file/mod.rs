@@ -7,12 +7,36 @@ mod types;
 use std::path::Path;
 
 pub use sym_file::types::*;
-use sym_file::parser::parse_symbol_file;
+use ::FrameSymbolizer;
+use sym_file::parser::{parse_symbol_file,parse_symbol_bytes};
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.
     pub fn from_file(path : &Path) -> Result<SymbolFile, &'static str> {
         parse_symbol_file(path)
+    }
+
+    /// Parse an in-memory `SymbolFile` from `bytes`.
+    pub fn from_bytes(bytes : &[u8]) -> Result<SymbolFile, &'static str> {
+        parse_symbol_bytes(bytes)
+    }
+
+    /// Fill in as much source information for `frame` as possible.
+    pub fn fill_symbol(&self, frame : &mut FrameSymbolizer) {
+        // Look for a FUNC covering the address first.
+        let addr = frame.get_instruction();
+        if let Some(ref func) = self.functions.lookup(addr) {
+            frame.set_function(&func.name, func.address);
+            // See if there's source line info as well.
+            func.lines.lookup(addr).map(|ref line| {
+                self.files.get(&line.file).map(|ref file| {
+                    frame.set_source_file(file, line.line);
+                })
+            });
+        } else if let Some(ref public) = self.find_nearest_public(addr) {
+            // Settle for a PUBLIC.
+            frame.set_function(&public.name, public.address);
+        }
     }
 
     /// Find the nearest `PublicSymbol` whose address is less than or equal to `addr`.
@@ -65,4 +89,18 @@ mod test {
                    0x41b0);
     }
 
+    #[test]
+    fn test_symbolfile_from_bytes() {
+        let sym = SymbolFile::from_bytes(b"MODULE Linux x86 ffff0000 bar
+FILE 53 bar.c
+PUBLIC 1234 10 some public
+FUNC 1000 30 10 another func
+1000 30 7 53
+").unwrap();
+        assert_eq!(sym.files.len(), 1);
+        assert_eq!(sym.publics.len(), 1);
+        assert_eq!(sym.functions.len(), 1);
+        assert_eq!(sym.functions.lookup(0x1000).unwrap().name, "another func");
+        assert_eq!(sym.functions.lookup(0x1000).unwrap().lines.len(), 1);
+    }
 }

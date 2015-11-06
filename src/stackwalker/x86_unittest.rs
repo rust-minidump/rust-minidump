@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use minidump::*;
 use minidump_format::MDRawContextX86;
 use process_state::*;
@@ -10,6 +11,7 @@ use test_assembler::*;
 struct TestFixture {
     pub raw: MDRawContextX86,
     pub modules: MinidumpModuleList,
+     pub symbolizer: Symbolizer,
 }
 
 impl TestFixture {
@@ -24,6 +26,7 @@ impl TestFixture {
                     MinidumpModule::new(0x50000000, 0x10000, "module2"),
                     ]
                 ),
+             symbolizer: Symbolizer::new(SimpleSymbolSupplier::new(vec!())),
         }
     }
 
@@ -39,7 +42,10 @@ impl TestFixture {
             size: size,
             bytes: stack.get_contents().unwrap(),
         };
-        walk_stack(&Some(&context), &Some(stack_memory), &self.modules)
+        walk_stack(&Some(&context),
+                   &Some(stack_memory),
+                   &self.modules,
+                   &self.symbolizer)
     }
 }
 

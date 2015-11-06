@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::io::prelude::*;
 use std::io;
 
+use breakpad_symbols::FrameSymbolizer;
 use chrono::*;
 use minidump::*;
 use system_info::SystemInfo;
@@ -73,7 +74,7 @@ pub struct StackFrame {
 
     /// The (1-based) source line number, may be omitted if debug symbols are
     /// not available.
-    pub source_line : Option<usize>,
+    pub source_line : Option<u32>,
 
     /// The start address of the source line, may be omitted if debug symbols
     /// are not available.
@@ -192,6 +193,21 @@ impl StackFrame {
     /// register. See the comments for `StackFrame::instruction` for details.
     pub fn return_address(&self) -> u64 {
         self.instruction
+    }
+}
+
+impl FrameSymbolizer for StackFrame {
+    fn get_instruction(&self) -> u64 {
+        self.module.as_ref().map(|m| self.instruction - m.base_address())
+            .unwrap_or(self.instruction)
+    }
+    fn set_function(&mut self, name : &str, base : u64) {
+        self.function_name = Some(String::from(name));
+        self.function_base = Some(base);
+    }
+    fn set_source_file(&mut self, file : &str, line : u32) {
+        self.source_file_name = Some(String::from(file));
+        self.source_line = Some(line);
     }
 }
 

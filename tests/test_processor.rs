@@ -1,8 +1,10 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+extern crate breakpad_symbols;
 extern crate minidump;
 
+use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use std::path::PathBuf;
 use minidump::*;
 
@@ -14,10 +16,21 @@ fn read_test_minidump() -> Result<Minidump, Error> {
     Minidump::read_path(&path)
 }
 
+fn testdata_symbol_path() -> PathBuf {
+    let mut path = PathBuf::from(file!());
+    path.pop();
+    path.pop();
+    path.push("testdata/symbols");
+    path
+}
+
 #[test]
 fn test_processor() {
     let mut dump = read_test_minidump().unwrap();
-    let state = process_minidump(&mut dump).unwrap();
+    let state = process_minidump(&mut dump,
+                                 &Symbolizer::new(
+                                     SimpleSymbolSupplier::new(vec!())))
+        .unwrap();
     assert_eq!(state.system_info.os, OS::Windows);
     // TODO
     // assert_eq!(state.system_info.os_version.unwrap(),
@@ -73,4 +86,18 @@ fn test_processor() {
     // The dump thread should have been skipped.
     assert_eq!(state.threads[1].info, CallStackInfo::DumpThreadSkipped);
     assert_eq!(state.threads[1].frames.len(), 0);
+}
+
+#[test]
+fn test_processor_symbols() {
+    let mut dump = read_test_minidump().unwrap();
+    let path = testdata_symbol_path();
+    println!("symbol path: {:?}", path);
+    let state = process_minidump(&mut dump,
+                                 &Symbolizer::new(
+                                     SimpleSymbolSupplier::new(vec!(path))))
+        .unwrap();
+    let f0 = &state.threads[0].frames[0];
+    assert_eq!(f0.function_name.as_ref().unwrap(),
+               "`anonymous namespace'::CrashFunction");
 }

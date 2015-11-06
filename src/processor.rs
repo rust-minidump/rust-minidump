@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use breakpad_symbols::Symbolizer;
 use chrono::{TimeZone,UTC};
 use minidump::*;
 use process_state::{CallStack,CallStackInfo,ProcessState};
@@ -23,19 +24,29 @@ pub enum ProcessError {
 /// # Examples
 ///
 /// ```
+/// extern crate breakpad_symbols;
+/// extern crate minidump;
 /// use minidump::{Minidump,process_minidump};
+/// use breakpad_symbols::{Symbolizer,SimpleSymbolSupplier};
 /// use std::fs::File;
+/// use std::path::PathBuf;
 /// # use std::io;
 ///
 /// # fn foo() -> io::Result<()> {
-/// let file = try!(File::open("../testdata/test.dmp"));
+/// let file = try!(File::open("testdata/test.dmp"));
 /// let mut dump = Minidump::read(file).unwrap();
-/// let state = process_minidump(&mut dump).unwrap();
+/// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("testdata/symbols")));
+/// let symbolizer = Symbolizer::new(supplier);
+/// let state = process_minidump(&mut dump, &symbolizer).unwrap();
+/// assert_eq!(state.threads.len(), 2);
 /// println!("Processed {} threads", state.threads.len());
 /// # Ok(())
 /// # }
+/// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessError> {
+pub fn process_minidump(dump : &mut Minidump,
+                        symbolizer : &Symbolizer)
+                        -> Result<ProcessState, ProcessError> {
     // Thread list is required for processing.
     let thread_list = try!(dump.get_stream::<MinidumpThreadList>().or(Err(ProcessError::MissingThreadList)));
     // System info is required for processing.
@@ -100,7 +111,8 @@ pub fn process_minidump(dump : &mut Minidump) -> Result<ProcessState, ProcessErr
         };
         let stack = stackwalker::walk_stack(&context,
                                             &thread.stack,
-                                            &modules);
+                                            &modules,
+                                            symbolizer);
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis
