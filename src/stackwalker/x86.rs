@@ -60,7 +60,16 @@ fn get_caller_by_frame_pointer(ctx : &MDRawContextX86,
             raw: MinidumpRawContext::X86(caller_ctx),
             valid: MinidumpContextValidity::Some(valid),
         };
-        Some(StackFrame::from_context(context, FrameTrust::FramePointer))
+        let mut frame =
+            StackFrame::from_context(context, FrameTrust::FramePointer);
+        // caller_eip is the return address, which is the instruction
+        // after the CALL that caused us to arrive at the callee. Set
+        // new_frame->instruction to one less than that, so it points within the
+        // CALL instruction.
+        if caller_eip > 0 {
+            frame.instruction = (caller_eip as u64) - 1;
+        }
+        Some(frame)
     } else {
         // TODO: try stack scanning
         None

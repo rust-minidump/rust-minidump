@@ -205,9 +205,10 @@ impl FrameSymbolizer for StackFrame {
         self.function_name = Some(String::from(name));
         self.function_base = Some(base);
     }
-    fn set_source_file(&mut self, file : &str, line : u32) {
+    fn set_source_file(&mut self, file : &str, line : u32, base : u64) {
         self.source_file_name = Some(String::from(file));
         self.source_line = Some(line);
+        self.source_line_base = Some(base);
     }
 }
 
@@ -267,7 +268,7 @@ impl CallStack {
             try!(writeln!(f, "<no frames>"));
         }
         for (i, frame) in self.frames.iter().enumerate() {
-            let addr = frame.return_address();
+            let addr = frame.instruction;
             try!(write!(f, "{:2}  ", i));
             if let Some(ref module) = frame.module {
                 try!(write!(f, "{}", basename(&module.code_file())));

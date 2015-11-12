@@ -7,7 +7,7 @@ mod types;
 use std::path::Path;
 
 pub use sym_file::types::*;
-use ::FrameSymbolizer;
+use ::{Module,FrameSymbolizer};
 use sym_file::parser::{parse_symbol_file,parse_symbol_bytes};
 
 impl SymbolFile {
@@ -22,20 +22,26 @@ impl SymbolFile {
     }
 
     /// Fill in as much source information for `frame` as possible.
-    pub fn fill_symbol(&self, frame : &mut FrameSymbolizer) {
+    pub fn fill_symbol(&self,
+                       module : &Module,
+                       frame : &mut FrameSymbolizer) {
         // Look for a FUNC covering the address first.
         let addr = frame.get_instruction();
         if let Some(ref func) = self.functions.lookup(addr) {
-            frame.set_function(&func.name, func.address);
+            frame.set_function(&func.name,
+                               func.address + module.base_address());
             // See if there's source line info as well.
             func.lines.lookup(addr).map(|ref line| {
                 self.files.get(&line.file).map(|ref file| {
-                    frame.set_source_file(file, line.line);
+                    frame.set_source_file(file,
+                                          line.line,
+                                          line.address + module.base_address());
                 })
             });
         } else if let Some(ref public) = self.find_nearest_public(addr) {
             // Settle for a PUBLIC.
-            frame.set_function(&public.name, public.address);
+            frame.set_function(&public.name,
+                               public.address + module.base_address());
         }
     }
 

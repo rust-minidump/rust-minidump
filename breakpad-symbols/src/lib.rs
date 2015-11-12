@@ -187,7 +187,7 @@ pub trait FrameSymbolizer {
     /// Set the name and base address of the function in which this frame is executing.
     fn set_function(&mut self, name : &str, base : u64);
     /// Set the source file and (1-based) line number this frame represents.
-    fn set_source_file(&mut self, file : &str, line : u32);
+    fn set_source_file(&mut self, file : &str, line : u32, base : u64);
 }
 
 #[derive(Default)]
@@ -197,6 +197,7 @@ pub struct SimpleFrame {
     pub function_base : Option<u64>,
     pub source_file : Option<String>,
     pub source_line : Option<u32>,
+    pub source_line_base : Option<u64>,
 }
 
 impl SimpleFrame {
@@ -214,9 +215,10 @@ impl FrameSymbolizer for SimpleFrame {
         self.function = Some(String::from(name));
         self.function_base = Some(base);
     }
-    fn set_source_file(&mut self, file : &str, line : u32) {
+    fn set_source_file(&mut self, file : &str, line : u32, base : u64) {
         self.source_file = Some(String::from(file));
         self.source_line = Some(line);
+        self.source_line_base = Some(base);
     }
 }
 
@@ -286,7 +288,7 @@ impl Symbolizer {
         }
         if let Some(res) = self.symbols.borrow().get(&k) {
             match res {
-                &SymbolResult::Ok(ref sym) => sym.fill_symbol(frame),
+                &SymbolResult::Ok(ref sym) => sym.fill_symbol(module, frame),
                 _ => {},
             }
         }
@@ -459,6 +461,7 @@ FUNC 1000 30 10 some func
     assert_eq!(f1.function_base.unwrap(), 0x1000);
     assert_eq!(f1.source_file.unwrap(), "foo.c");
     assert_eq!(f1.source_line.unwrap(), 100);
+    assert_eq!(f1.source_line_base.unwrap(), 0x1000);
 
     assert_eq!(symbolizer.get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
                .unwrap(),

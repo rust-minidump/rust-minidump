@@ -100,8 +100,7 @@ fn test_traditional() {
         let f1 = &s.frames[1];
         assert_eq!(f1.trust, FrameTrust::FramePointer);
         // ContextValidity
-        //FIXME: should be +1!
-        assert_eq!(f1.instruction, 0x40008679);
+        assert_eq!(f1.instruction, 0x40008678);
         // eip
         // ebp
     }
