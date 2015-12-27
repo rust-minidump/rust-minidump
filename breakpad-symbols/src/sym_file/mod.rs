@@ -68,13 +68,12 @@ mod test {
         path
     }
 
-    #[test]
-    fn test_symbolfile_from_file() {
+    fn test_symbolfile_from_file(rel_path: &str) {
         let mut path = abs_file();
         path.pop();
         path.pop();
         path.pop();
-        path.push("testdata/symbols/test_app.pdb/5A9832E5287241C1838ED98914E9B7FF1/test_app.sym");
+        path.push(rel_path);
         let sym = SymbolFile::from_file(&path).unwrap();
         assert_eq!(sym.files.len(), 6661);
         assert_eq!(sym.publics.len(), 5);
@@ -96,17 +95,44 @@ mod test {
     }
 
     #[test]
-    fn test_symbolfile_from_bytes() {
-        let sym = SymbolFile::from_bytes(b"MODULE Linux x86 ffff0000 bar
-FILE 53 bar.c
-PUBLIC 1234 10 some public
-FUNC 1000 30 10 another func
-1000 30 7 53
-").unwrap();
+    fn test_symbolfile_from_lf_file() {
+        test_symbolfile_from_file("testdata/symbols/test_app.pdb/5A9832E5287241C1838ED98914E9B7FF1/test_app.sym");
+    }
+
+    #[test]
+    fn test_symbolfile_from_crlf_file() {
+        test_symbolfile_from_file("testdata/symbols/test_app.pdb/6A9832E5287241C1838ED98914E9B7FF1/test_app.sym");
+    }
+
+    fn test_symbolfile_from_bytes(symbolfile_bytes: &[u8]) {
+        let sym = SymbolFile::from_bytes(symbolfile_bytes).unwrap();
+
         assert_eq!(sym.files.len(), 1);
         assert_eq!(sym.publics.len(), 1);
         assert_eq!(sym.functions.len(), 1);
         assert_eq!(sym.functions.lookup(0x1000).unwrap().name, "another func");
         assert_eq!(sym.functions.lookup(0x1000).unwrap().lines.len(), 1);
+        // test fallback
+        assert_eq!(sym.functions.lookup(0x1001).unwrap().name, "another func");
+    }
+
+    #[test]
+    fn test_symbolfile_from_bytes_with_lf() {
+        test_symbolfile_from_bytes(b"MODULE Linux x86 ffff0000 bar
+FILE 53 bar.c
+PUBLIC 1234 10 some public
+FUNC 1000 30 10 another func
+1000 30 7 53
+");
+    }
+
+    #[test]
+    fn test_symbolfile_from_bytes_with_crlf() {
+        test_symbolfile_from_bytes(b"MODULE Linux x86 ffff0000 bar
+FILE 53 bar.c
+PUBLIC 1234 10 some public
+FUNC 1000 30 10 another func
+1000 30 7 53
+");
     }
 }
