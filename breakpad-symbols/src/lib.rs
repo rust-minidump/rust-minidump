@@ -1,6 +1,38 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+//! A library for working with [Google Breakpad][breakpad]'s
+//! text-format [symbol files][symbolfiles].
+//!
+//! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/+/master/
+//! [symbolfiles]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
+//!
+//! # Examples
+//!
+//! ```
+//! use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
+//! use std::path::PathBuf;
+//! let paths = vec!(PathBuf::from("../testdata/symbols/"));
+//! let supplier = SimpleSymbolSupplier::new(paths);
+//! let symbolizer = Symbolizer::new(supplier);
+//!
+//! // Simple function name lookup with debug file, debug id, address.
+//! assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb",
+//!                                             "5A9832E5287241C1838ED98914E9B7FF1",
+//!                                             0x1010)
+//!               .unwrap(),
+//!               "vswprintf");
+//!
+//! // Pass in a module and a frame to get full information including
+//! // source file and line.
+//! let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
+//! let mut f = SimpleFrame::with_instruction(0x1010);
+//! symbolizer.fill_symbol(&m, &mut f);
+//! assert_eq!(f.function.unwrap(), "vswprintf");
+//! assert_eq!(f.source_file.unwrap(), r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
+//! assert_eq!(f.source_line.unwrap(), 51);
+//! ```
+
 #[macro_use]
 extern crate nom;
 extern crate range_map;

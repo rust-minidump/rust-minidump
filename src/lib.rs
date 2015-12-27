@@ -14,7 +14,7 @@
 //!
 //! [minidump]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680369%28v=vs.85%29.aspx
 //! [minidumpwritedump]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680360%28v=vs.85%29.aspx
-//! [breakpad]: https://code.google.com/p/google-breakpad/
+//! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/+/master/
 //! [struct_minidump]: struct.Minidump.html
 //! [read]: struct.Minidump.html#method.read
 //! [read_path]: struct.Minidump.html#method.read_path
