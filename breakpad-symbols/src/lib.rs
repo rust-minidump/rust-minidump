@@ -4,8 +4,12 @@
 //! A library for working with [Google Breakpad][breakpad]'s
 //! text-format [symbol files][symbolfiles].
 //!
+//! The highest-level API provided by this crate is to use the
+//! [`Symbolizer`][symbolizer] struct.
+//!
 //! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/+/master/
 //! [symbolfiles]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
+//! [symbolizer]: struct.Symbolizer.html
 //!
 //! # Examples
 //!
@@ -22,15 +26,6 @@
 //!                                             0x1010)
 //!               .unwrap(),
 //!               "vswprintf");
-//!
-//! // Pass in a module and a frame to get full information including
-//! // source file and line.
-//! let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
-//! let mut f = SimpleFrame::with_instruction(0x1010);
-//! symbolizer.fill_symbol(&m, &mut f);
-//! assert_eq!(f.function.unwrap(), "vswprintf");
-//! assert_eq!(f.source_file.unwrap(), r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
-//! assert_eq!(f.source_line.unwrap(), 51);
 //! ```
 
 #[macro_use]
@@ -82,7 +77,10 @@ pub trait Module {
 /// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
-/// have a debug id and filename but not an actual minidump.
+/// have a debug id and filename but not an actual minidump. If you have a
+/// minidump, you should be using [`MinidumpModule`][minidumpmodule].
+///
+/// [minidumpmodule]: ../minidump/struct.MinidumpModule.html
 #[derive(Default)]
 pub struct SimpleModule {
     pub base_address : Option<u64>,
@@ -154,6 +152,14 @@ fn replace_or_add_extension(filename : &str,
 /// removed.
 /// `extension` is the expected extension for the symbol filename, generally
 /// *sym* if Breakpad text format symbols are expected.
+///
+/// The debug filename and debug identifier can be found in the
+/// [first line][module_line] of the symbol file output by the dump_syms tool.
+/// You can use [this script][packagesymbols] to run dump_syms and put the
+/// resulting symbol files in the proper directory structure.
+///
+/// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
+/// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
 pub fn relative_symbol_path(module : &Module, extension : &str)
                             -> Option<String> {
     module.debug_file().and_then(|debug_file| {
@@ -267,6 +273,24 @@ fn key(module : &Module) -> ModuleKey {
 }
 
 /// Symbolicate stack frames.
+///
+/// A `Symbolizer` manages loading symbols and looking up symbols in them
+/// including caching so that symbols for a given module are only loaded once.
+///
+/// Call [`Symbolizer::new`][new] to instantiate a `Symbolizer`. A Symbolizer
+/// requires a [`SymbolSupplier`][supplier] to locate symbols. If you have
+/// symbols on disk in the [customary directory layout][dirlayout], a
+/// [`SimpleSymbolSupplier`][simple] will work.
+///
+/// Use [`get_symbol_at_address`][get_symbol] or [`fill_symbol`][fill_symbol] to
+/// do symbol lookup.
+///
+/// [new]: struct.Symbolizer.html#method.new
+/// [supplier]: trait.SymbolSupplier.html
+/// [dirlayout]: fn.relative_symbol_path.html
+/// [simple]: struct.SimpleSymbolSupplier.html
+/// [get_symbol]: struct.Symbolizer.html#method.get_symbol_at_address
+/// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
     supplier : Box<SymbolSupplier + 'static>,
@@ -291,6 +315,10 @@ impl Symbolizer {
     /// Pass `debug_file` and `debug_id` describing a specific module,
     /// and `address`, a module-relative address, and get back
     /// a symbol in that module that covers that address, or `None`.
+    ///
+    /// See [the module-level documentation][module] for an example.
+    ///
+    /// [module]: index.html
     pub fn get_symbol_at_address(&self,
                                  debug_file : &str,
                                  debug_id : &str,
@@ -308,6 +336,24 @@ impl Symbolizer {
         })
     }
 
+    /// Fill symbol information in `frame` using the instruction address
+    /// from `frame`, and the module information from `module`. If you're not
+    /// using a minidump module, you can use [`SimpleModule`][simplemodule] and
+    /// [`SimpleFrame`][simpleframe].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
+    /// let mut f = SimpleFrame::with_instruction(0x1010);
+    /// symbolizer.fill_symbol(&m, &mut f);
+    /// assert_eq!(f.function.unwrap(), "vswprintf");
+    /// assert_eq!(f.source_file.unwrap(), r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
+    /// assert_eq!(f.source_line.unwrap(), 51);
+    /// ```
+    ///
+    /// [simplemodule]: struct.SimpleModule.html
+    /// [simpleframe]: struct.SimpleFrame.html
     pub fn fill_symbol(&self,
                        module : &Module,
                        frame : &mut FrameSymbolizer) {
