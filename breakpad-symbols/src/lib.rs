@@ -74,12 +74,13 @@ pub trait Module {
     fn version(&self) -> Option<Cow<str>>;
 }
 
-/// A `Module` implementation that holds arbitrary data.
+/// A [`Module`][module] implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
 /// have a debug id and filename but not an actual minidump. If you have a
 /// minidump, you should be using [`MinidumpModule`][minidumpmodule].
 ///
+/// [module]: trait.Module.html
 /// [minidumpmodule]: ../minidump/struct.MinidumpModule.html
 #[derive(Default)]
 pub struct SimpleModule {
@@ -184,19 +185,23 @@ pub enum SymbolResult {
     LoadError(&'static str),
 }
 
-/// Locate symbols for a given module.
+/// A trait for things that can locate symbols for a given module.
 pub trait SymbolSupplier {
     /// Locate and load a symbol file for `module`.
+    ///
+    /// Implementations may use any strategy for locating and loading
+    /// symbols.
     fn locate_symbols(&self, module : &Module) -> SymbolResult;
 }
 
-/// Locate Breakpad text-format symbols in local disk paths.
+/// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk paths.
 pub struct SimpleSymbolSupplier {
-    /// Local disk paths to search for symbols.
+    /// Local disk paths in which to search for symbols.
     paths : Vec<PathBuf>,
 }
 
 impl SimpleSymbolSupplier {
+    /// Instantiate a new `SimpleSymbolSupplier` that will search in `paths`.
     pub fn new(paths : Vec<PathBuf>) -> SimpleSymbolSupplier {
         SimpleSymbolSupplier { paths : paths }
     }
@@ -219,6 +224,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
     }
 }
 
+/// A trait for setting symbol information on something like a stack frame.
 pub trait FrameSymbolizer {
     /// Get the program counter value for this frame.
     fn get_instruction(&self) -> u64;
@@ -228,17 +234,25 @@ pub trait FrameSymbolizer {
     fn set_source_file(&mut self, file : &str, line : u32, base : u64);
 }
 
+/// A simple implementation of `FrameSymbolizer` that just holds data.
 #[derive(Default)]
 pub struct SimpleFrame {
+    /// The program counter value for this frame.
     pub instruction : u64,
+    /// The name of the function in which the current instruction is executing.
     pub function : Option<String>,
+    /// The offset of the start of `function` from the module base.
     pub function_base : Option<u64>,
+    /// The name of the source file in which the current instruction is executing.
     pub source_file : Option<String>,
+    /// The 1-based index of the line number in `source_file` in which the current instruction is executing.
     pub source_line : Option<u32>,
+    /// The offset of the start of `source_line` from the function base.
     pub source_line_base : Option<u64>,
 }
 
 impl SimpleFrame {
+    /// Instantiate a `SimpleFrame` with instruction pointer `instruction`.
     pub fn with_instruction(instruction : u64) -> SimpleFrame {
         SimpleFrame {
             instruction: instruction,
@@ -344,6 +358,11 @@ impl Symbolizer {
     /// # Examples
     ///
     /// ```
+    /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
+    /// use std::path::PathBuf;
+    /// let paths = vec!(PathBuf::from("../testdata/symbols/"));
+    /// let supplier = SimpleSymbolSupplier::new(paths);
+    /// let symbolizer = Symbolizer::new(supplier);
     /// let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
     /// let mut f = SimpleFrame::with_instruction(0x1010);
     /// symbolizer.fill_symbol(&m, &mut f);
