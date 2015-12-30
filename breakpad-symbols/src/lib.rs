@@ -74,13 +74,12 @@ pub trait Module {
     fn version(&self) -> Option<Cow<str>>;
 }
 
-/// A [`Module`][module] implementation that holds arbitrary data.
+/// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
 /// have a debug id and filename but not an actual minidump. If you have a
 /// minidump, you should be using [`MinidumpModule`][minidumpmodule].
 ///
-/// [module]: trait.Module.html
 /// [minidumpmodule]: ../minidump/struct.MinidumpModule.html
 #[derive(Default)]
 pub struct SimpleModule {
