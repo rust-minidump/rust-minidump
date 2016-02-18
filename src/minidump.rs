@@ -84,13 +84,22 @@ pub trait MinidumpStream : Sized {
     fn read<T : Readable>(f : &mut T, expected_size : usize) -> Result<Self, Error>;
 }
 
+/// Raw bytes of CodeView data in a minidump file.
 pub enum CodeViewPDBRaw {
+    /// PDB 2.0 format data.
     PDB20(md::MDCVInfoPDB20),
+    /// PDB 7.0 format data (most common).
     PDB70(md::MDCVInfoPDB70),
 }
 
+/// CodeView data describes how to locate debug symbols.
 pub enum CodeView {
+    /// Indicates data is in a separate PDB file.
+    /// `raw` contains the raw bytes, `file` is the PDB file name.
     PDB { raw: CodeViewPDBRaw, file: String },
+    /// Indicates data is in an ELF binary with build ID `build_id`.
+    ELF { build_id: Vec<u8> },
+    /// An unknown format, `bytes` are the raw bytes of data.
     Unknown { bytes: Vec<u8> },
 }
 
@@ -233,6 +242,13 @@ fn read_codeview_pdb<T : Readable>(f : &mut T, signature : u32, mut size : usize
     Ok(CodeView::PDB { raw: raw, file: file})
 }
 
+/// Format `bytes` as a String of hex digits.
+fn bytes_to_hex(bytes : &[u8]) -> String {
+    let hex_bytes : Vec<String> = bytes.iter()
+        .map(|b| format!("{:02x}", b)).collect();
+    hex_bytes.join("")
+}
+
 fn read_codeview<T : Readable>(f : &mut T, location : md::MDLocationDescriptor) -> Result<CodeView, Error> {
     let size = location.data_size as usize;
     try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
@@ -245,7 +261,19 @@ fn read_codeview<T : Readable>(f : &mut T, location : md::MDLocationDescriptor) 
     try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(Error::CodeViewReadFailure)));
     match signature {
         md::MD_CVINFOPDB70_SIGNATURE | md::MD_CVINFOPDB20_SIGNATURE => {
+            // One of the PDB formats.
             read_codeview_pdb(f, signature, size)
+        },
+        md::MD_CVINFOELF_SIGNATURE => {
+            // Breakpad's ELF build ID format.
+            // Skip the signature we just read.
+            let sig_size = mem::size_of::<u32>();
+            try!(f.seek(SeekFrom::Current(sig_size as i64)).or(Err(Error::CodeViewReadFailure)));
+            let raw = try!(read_bytes(f, size - sig_size).or(Err(Error::CodeViewReadFailure)));
+
+            Ok(CodeView::ELF {
+                build_id: raw,
+            })
         },
         _ =>
             // Other formats aren't handled, but save the raw bytes.
@@ -291,7 +319,7 @@ impl MinidumpModule {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
-        try!(write!(f, r#"MDRawModule
+        try!(write!(f, "MDRawModule
   base_of_image                   = {:#x}
   size_of_image                   = {:#x}
   checksum                        = {:#x}
@@ -311,18 +339,9 @@ impl MinidumpModule {
   cv_record.rva                   = {:#x}
   misc_record.data_size           = {}
   misc_record.rva                 = {:#x}
-  (code_file)                     = "{}"
-  (code_identifier)               = "{}"
-  (cv_record).cv_signature        = {:#x}
-  (cv_record).signature           = {}
-  (cv_record).age                 = {}
-  (cv_record).pdb_file_name       = {}
-  (misc_record)                   = {}
-  (debug_file)                    = "{}"
-  (debug_identifier)              = "{}"
-  (version)                       = {}
-
-"#,
+  (code_file)                     = \"{}\"
+  (code_identifier)               = \"{}\"
+",
                     self.raw.base_of_image,
                     self.raw.size_of_image,
                     self.raw.checksum,
@@ -348,14 +367,84 @@ impl MinidumpModule {
                     self.raw.misc_record.rva,
                     self.code_file(),
                     self.code_identifier(),
-                    0, //TODO: cv_record.cv_signature
-                    "", //TODO: cv_record.signature
-                    0, //TODO: cv_record.age
-                    "", //TODO: cv_record.pdb_file_name
-                    "", //TODO: misc_record
-                    "", //TODO: debug_file
-                    "", //TODO: debug_identifier
-                    "", //TODO: version
+                    ));
+        // Print CodeView data.
+        match self.codeview_info {
+            Some(CodeView::PDB {  raw: CodeViewPDBRaw::PDB70(ref raw),
+                                  ref file }) => {
+                try!(write!(f, "  (cv_record).cv_signature        = {:#x}
+  (cv_record).signature           = {:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}
+  (cv_record).age                 = {}
+  (cv_record).pdb_file_name       = \"{}\"
+",
+                            raw.cv_signature,
+                            raw.signature.data1,
+                            raw.signature.data2,
+                            raw.signature.data3,
+                            raw.signature.data4[0],
+                            raw.signature.data4[1],
+                            raw.signature.data4[2],
+                            raw.signature.data4[3],
+                            raw.signature.data4[4],
+                            raw.signature.data4[5],
+                            raw.signature.data4[6],
+                            raw.signature.data4[7],
+                            raw.age,
+                            file,
+                            ));
+            },
+            Some(CodeView::PDB {  raw: CodeViewPDBRaw::PDB20(ref raw),
+                                  ref file }) => {
+                try!(write!(f, "  (cv_record).cv_header.signature = {:#x}
+  (cv_record).cv_header.offset    = {:#x}
+  (cv_record).signature           = {:#x} {}
+  (cv_record).age                 = {}
+  (cv_record).pdb_file_name       = \"{}\"
+",
+                            raw.cv_header.signature,
+                            raw.cv_header.offset,
+                            raw.signature,
+                            format_time_t(raw.signature),
+                            raw.age,
+                            file,
+                            ));
+            },
+            Some(CodeView::ELF {  ref build_id }) => {
+                // Fibbing about having cv_signature handy here.
+                try!(write!(f, "  (cv_record).cv_signature        = {:#x}
+  (cv_record).build_id            = {}
+",
+                            md::MD_CVINFOELF_SIGNATURE,
+                            bytes_to_hex(&build_id),
+                            ));
+            },
+            Some(CodeView::Unknown { ref bytes }) => {
+                try!(writeln!(f, "  (cv_record)                     = {}",
+                              bytes_to_hex(bytes),
+                              ));
+            },
+            None => {
+                try!(writeln!(f, "  (cv_record)                     = (null)"));
+            },
+        }
+
+        // Print misc record data.
+        if let Some(ref _misc) = self.misc_info {
+            //TODO, not terribly important.
+            try!(writeln!(f, "  (misc_record)                   = (unimplemented)"));
+        } else {
+            try!(writeln!(f, "  (misc_record)                   = (null)"));
+        }
+
+        // Print remaining data.
+        try!(write!(f, r#"  (debug_file)                    = "{}"
+  (debug_identifier)              = "{}"
+  (version)                       = "{}"
+
+"#,
+                    self.debug_file().unwrap_or(Cow::Borrowed("")),
+                    self.debug_identifier().unwrap_or(Cow::Borrowed("")),
+                    self.version().unwrap_or(Cow::Borrowed("")),
                     ));
         Ok(())
     }
@@ -374,6 +463,7 @@ impl Clone for CodeView {
     fn clone(&self) -> CodeView {
         match self {
             &CodeView::PDB { ref raw, ref file } => CodeView::PDB { raw: raw.clone(), file: file.clone() },
+            &CodeView::ELF { ref build_id } => CodeView::ELF { build_id : build_id.clone() },
             &CodeView::Unknown { ref bytes } => CodeView::Unknown { bytes: bytes.clone() },
         }
     }
@@ -390,44 +480,75 @@ impl Clone for MinidumpModule {
     }
 }
 
+fn guid_to_string(guid : &md::MDGUID) -> String {
+    format!("{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+            guid.data1,
+            guid.data2,
+            guid.data3,
+            guid.data4[0],
+            guid.data4[1],
+            guid.data4[2],
+            guid.data4[3],
+            guid.data4[4],
+            guid.data4[5],
+            guid.data4[6],
+            guid.data4[7],
+            )
+}
+
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 { self.raw.base_of_image }
     fn size(&self) -> u64 { self.raw.size_of_image as u64 }
     fn code_file(&self) -> Cow<str> { Cow::Borrowed(&self.name) }
     fn code_identifier(&self) -> Cow<str> {
-        // TODO: Breakpad stubs this out on non-Windows.
-        Cow::Owned(format!("{0:08X}{1:x}", self.raw.time_date_stamp,
-                           self.raw.size_of_image))
+        match self.codeview_info {
+            Some(CodeView::ELF { ref build_id }) => {
+                Cow::Owned(bytes_to_hex(build_id))
+            },
+            _ => {
+                // TODO: Breakpad stubs this out on non-Windows.
+                Cow::Owned(format!("{0:08X}{1:x}", self.raw.time_date_stamp,
+                                   self.raw.size_of_image))
+            },
+        }
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         match self.codeview_info {
             Some(CodeView::PDB { raw: _, ref file }) => Some(Cow::Borrowed(&file)),
-            // TODO: support misc record
+            Some(CodeView::ELF { build_id: _ }) => Some(Cow::Borrowed(&self.name)),
+            // TODO: support misc record? not really important.
             _ => None,
         }
     }
     fn debug_identifier(&self) -> Option<Cow<str>> {
         match self.codeview_info {
             Some(CodeView::PDB { raw: CodeViewPDBRaw::PDB70(ref raw), file: _ }) => {
-                let id = format!("{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:x}",
-                                 raw.signature.data1,
-                                 raw.signature.data2,
-                                 raw.signature.data3,
-                                 raw.signature.data4[0],
-                                 raw.signature.data4[1],
-                                 raw.signature.data4[2],
-                                 raw.signature.data4[3],
-                                 raw.signature.data4[4],
-                                 raw.signature.data4[5],
-                                 raw.signature.data4[6],
-                                 raw.signature.data4[7],
-                                 raw.age);
+                let id = format!("{}{:x}",
+                                 guid_to_string(&raw.signature),
+                                 raw.age,
+                                 );
                 Some(Cow::Owned(id))
             },
             Some(CodeView::PDB { raw: CodeViewPDBRaw::PDB20(ref raw), file: _ }) => {
                 let id = format!("{:08X}{:x}",
                                  raw.signature,
                                  raw.age);
+                Some(Cow::Owned(id))
+            },
+            Some(CodeView::ELF { ref build_id }) => {
+                // For backwards-compat (Linux minidumps have historically
+                // been written using PDB70 CodeView info), treat build_id
+                // as if the first 16 bytes were a GUID.
+                let guid_size = mem::size_of::<md::MDGUID>();
+                let mut bytes = Vec::with_capacity(guid_size);
+                bytes.extend(build_id.iter().take(guid_size));
+                // Pad the rest with zeroes.
+                while bytes.len() < guid_size {
+                    bytes.push(0);
+                }
+                // We could do this safely but I'm lazy right now.
+                let guid : &md::MDGUID = unsafe { mem::transmute(&bytes[..] as *const [u8] as *const u8 as *const md::MDGUID) };
+                let id = format!("{}0", guid_to_string(&guid));
                 Some(Cow::Owned(id))
             },
             _ => None,
