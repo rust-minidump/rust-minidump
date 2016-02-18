@@ -62,6 +62,7 @@ pub const MD_CONTEXT_MIPS_GPR_COUNT: ::libc::c_uint = 32;
 pub const MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT: ::libc::c_uint = 32;
 pub const MD_CONTEXT_MIPS_DSP_COUNT: ::libc::c_uint = 3;
 pub const MD_CONTEXT_MIPS: ::libc::c_uint = 262144;
+pub const MD_CONTEXT_MIPS64: ::libc::c_uint = 524288;
 pub const MD_FLOATINGSAVEAREA_PPC_FPR_COUNT: ::libc::c_uint = 32;
 pub const MD_VECTORSAVEAREA_PPC_VR_COUNT: ::libc::c_uint = 32;
 pub const MD_CONTEXT_PPC_GPR_COUNT: ::libc::c_uint = 32;
@@ -118,6 +119,7 @@ pub const MD_HEADER_VERSION: ::libc::c_uint = 42899;
 pub const MD_MODULE_SIZE: ::libc::c_uint = 108;
 pub const MD_CVINFOPDB20_SIGNATURE: ::libc::c_uint = 808534606;
 pub const MD_CVINFOPDB70_SIGNATURE: ::libc::c_uint = 1396986706;
+pub const MD_CVINFOELF_SIGNATURE: ::libc::c_uint = 1114654028;
 pub const MD_CVINFOCV41_SIGNATURE: ::libc::c_uint = 959464014;
 pub const MD_CVINFOCV50_SIGNATURE: ::libc::c_uint = 825311822;
 pub const MD_CVINFOUNKNOWN_SIGNATURE: ::libc::c_uint = 4294967295;
@@ -873,12 +875,8 @@ pub type MDCVInfoPDB70 = Struct_Unnamed35;
 #[repr(C, packed)]
 #[derive(Copy)]
 pub struct Struct_Unnamed36 {
-    pub data1: [uint32_t; 2usize],
-    pub data2: uint32_t,
-    pub data3: uint32_t,
-    pub data4: uint32_t,
-    pub data5: [uint32_t; 3usize],
-    pub extra: [uint8_t; 2usize],
+    pub cv_signature: uint32_t,
+    pub build_id: [uint8_t; 1usize],
 }
 impl ::std::clone::Clone for Struct_Unnamed36 {
     fn clone(&self) -> Self { *self }
@@ -5663,6 +5661,7 @@ pub const MD_CPU_ARCHITECTURE_X86_WIN64: ::libc::c_uint = 10;
 pub const MD_CPU_ARCHITECTURE_SPARC: ::libc::c_uint = 32769;
 pub const MD_CPU_ARCHITECTURE_PPC64: ::libc::c_uint = 32770;
 pub const MD_CPU_ARCHITECTURE_ARM64: ::libc::c_uint = 32771;
+pub const MD_CPU_ARCHITECTURE_MIPS64: ::libc::c_uint = 32772;
 pub const MD_CPU_ARCHITECTURE_UNKNOWN: ::libc::c_uint = 65535;
 pub type MDCPUArchitecture = Enum_Unnamed57;
 pub type Enum_Unnamed58 = ::libc::c_uint;
