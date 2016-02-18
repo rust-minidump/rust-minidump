@@ -5,6 +5,7 @@
 
 use std::io::prelude::*;
 use std::collections::HashSet;
+use std::fmt;
 use std::io;
 use std::io::SeekFrom;
 use std::mem;
@@ -23,6 +24,85 @@ pub enum MinidumpRawContext {
     ARM(md::MDRawContextARM),
     ARM64(md::MDRawContextARM64),
     MIPS(md::MDRawContextMIPS),
+}
+
+/// Generic over the specifics of a CPU context.
+pub trait CPUContext {
+    /// The word size of general-purpose registers in the context.
+    type Register : fmt::LowerHex;
+
+    /// Get a register value if it is valid.
+    ///
+    /// Get the value of the register named `reg` from this CPU context
+    /// if `valid` indicates that it has a valid value, otherwise return
+    /// `None`.
+    fn get_register(&self,
+                    reg : &str,
+                    valid : &MinidumpContextValidity) -> Option<Self::Register> {
+        if let &MinidumpContextValidity::Some(ref which) = valid {
+            if !which.contains(reg) {
+                return None;
+            }
+        }
+        Some(self.get_register_always(reg))
+    }
+
+    /// Return a String containing the value of `reg` formatted to its natural width.
+    fn format_register(&self, reg : &str) -> String {
+        format!("0x{:01$x}",
+                self.get_register_always(reg),
+                mem::size_of::<Self::Register>() * 2)
+    }
+
+    /// Get a register value regardless of whether it is valid.
+    fn get_register_always(&self, reg : &str) -> Self::Register;
+}
+
+impl CPUContext for md::MDRawContextX86 {
+    type Register = u32;
+
+    fn get_register_always(&self, reg : &str) -> u32 {
+        match reg {
+            "eip" => self.eip,
+            "esp" => self.esp,
+            "ebp" => self.ebp,
+            "ebx" => self.ebx,
+            "esi" => self.esi,
+            "edi" => self.edi,
+            "eax" => self.eax,
+            "ecx" => self.ecx,
+            "edx" => self.edx,
+            "efl" => self.eflags,
+            _ => unreachable!("Invalid x86 register!"),
+        }
+    }
+}
+
+impl CPUContext for md::MDRawContextAMD64 {
+    type Register = u64;
+
+    fn get_register_always(&self, reg : &str) -> u64 {
+        match reg {
+            "rax" => self.rax,
+            "rdx" => self.rdx,
+            "rcx" => self.rcx,
+            "rbx" => self.rbx,
+            "rsi" => self.rsi,
+            "rdi" => self.rdi,
+            "rbp" => self.rbp,
+            "rsp" => self.rsp,
+            "r8" => self.r8,
+            "r9" => self.r9,
+            "r10" => self.r10,
+            "r11" => self.r11,
+            "r12" => self.r12,
+            "r13" => self.r13,
+            "r14" => self.r14,
+            "r15" => self.r15,
+            "rip" => self.rip,
+            _ => unreachable!("Invalid x86-64 register!"),
+        }
+    }
 }
 
 /// Information about which registers are valid in a `MinidumpContext`.
@@ -66,6 +146,11 @@ pub enum ContextError {
 /// General-purpose registers for x86.
 static X86_REGS : [&'static str; 10] =
     ["eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl"];
+
+/// General-purpose registers for x86-64.
+static X86_64_REGS : [&'static str; 17] =
+    ["rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp",
+     "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15", "rip"];
 
 //======================================================
 // Implementations
@@ -169,40 +254,25 @@ impl MinidumpContext {
         }
     }
 
-    //TODO: want an associated type to set register size per-context!
-    pub fn get_register(&self, reg : &str) -> Option<u64> {
-        if let MinidumpContextValidity::Some(ref which) = self.valid {
-            if !which.contains(reg) {
-                return None;
-            }
-        }
+    pub fn format_register(&self,
+                           reg : &str) -> String {
+
         match self.raw {
-            MinidumpRawContext::AMD64(_) => unimplemented!(),
+            MinidumpRawContext::AMD64(raw) => raw.format_register(reg),
             MinidumpRawContext::ARM(_) => unimplemented!(),
             MinidumpRawContext::ARM64(_) => unimplemented!(),
             MinidumpRawContext::PPC(_) => unimplemented!(),
             MinidumpRawContext::PPC64(_) => unimplemented!(),
             MinidumpRawContext::SPARC(_) => unimplemented!(),
-            MinidumpRawContext::X86(raw) => match reg {
-                "eip" => Some(raw.eip),
-                "esp" => Some(raw.esp),
-                "ebp" => Some(raw.ebp),
-                "ebx" => Some(raw.ebx),
-                "esi" => Some(raw.esi),
-                "edi" => Some(raw.edi),
-                "eax" => Some(raw.eax),
-                "ecx" => Some(raw.ecx),
-                "edx" => Some(raw.edx),
-                "efl" => Some(raw.eflags),
-                _ => None
-            }.and_then(|r| Some(r as u64)),
+            MinidumpRawContext::X86(raw) => raw.format_register(reg),
             MinidumpRawContext::MIPS(_) => unimplemented!(),
         }
     }
 
+
     pub fn general_purpose_registers(&self) -> &'static [&'static str] {
         match self.raw {
-            MinidumpRawContext::AMD64(_) => unimplemented!(),
+            MinidumpRawContext::AMD64(_) => &X86_64_REGS[..],
             MinidumpRawContext::ARM(_) => unimplemented!(),
             MinidumpRawContext::ARM64(_) => unimplemented!(),
             MinidumpRawContext::PPC(_) => unimplemented!(),

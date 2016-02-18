@@ -234,8 +234,8 @@ fn print_registers<T : Write>(f : &mut T,
     let mut output = String::new();
     for reg in ctx.general_purpose_registers() {
         if registers.contains(reg) {
-            let reg_val = ctx.get_register(reg).and_then(|v| Some(format!("{:#010x}", v))).unwrap_or(String::from("??????????"));
-            let next = format!("   {} = {}", reg, reg_val);
+            let reg_val = ctx.format_register(reg);
+            let next = format!(" {: >5} = {}", reg, reg_val);
             if output.chars().count() + next.chars().count() > 80 {
                 // Flush the buffer.
                 try!(writeln!(f, " {}", output));
