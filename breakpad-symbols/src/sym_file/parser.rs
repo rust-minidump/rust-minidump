@@ -23,31 +23,12 @@ enum Line<'a> {
     StackCFI(StackInfoCFI),
 }
 
-#[inline]
-fn is_hexdigit(chr: u8) -> bool {
-  is_digit(chr) || (chr >= 0x41 && chr <= 0x46) || (chr >= 0x61 && chr <= 0x66)
-}
-
-/// Recognizes hex digits: 0-9A-Fa-f
-fn hexdigit(input:&[u8]) -> IResult<&[u8], &[u8]> {
-  for (idx, item) in input.iter().enumerate() {
-    if !is_hexdigit(*item) {
-      if idx == 0 {
-        return Error(Err::Position(0, input))
-      } else {
-        return Done(&input[idx..], &input[0..idx])
-      }
-    }
-  }
-  Done(b"", input)
-}
-
 //TODO: would be nice to templatize these two
 /// Match a hex string, parse it to a u64.
-named!(hex_str_u64<&[u8], u64>, map_res!(map_res!(hexdigit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
+named!(hex_str_u64<&[u8], u64>, map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
 
 /// Match a hex string, parse it to a u32.
-named!(hex_str_u32<&[u8], u32>, map_res!(map_res!(hexdigit, str::from_utf8), |s| u32::from_str_radix(s, 16)));
+named!(hex_str_u32<&[u8], u32>, map_res!(map_res!(hex_digit, str::from_utf8), |s| u32::from_str_radix(s, 16)));
 
 /// Match a decimal string, parse it to a u32.
 named!(decimal_u32<&[u8], u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
@@ -64,7 +45,7 @@ named!(module_line<&[u8], ()>,
     take_until!(" ") ~
           space ~
           // debug id
-    hexdigit ~
+    hex_digit ~
           space ~
           // filename
     not_line_ending ~
@@ -168,7 +149,7 @@ named!(stack_win_line<&[u8], StackInfoWin>,
     tag!("STACK WIN") ~
     space ~
     // Frame type
-    hexdigit ~
+    hex_digit ~
     space ~
     address: hex_str_u64 ~
     space ~
