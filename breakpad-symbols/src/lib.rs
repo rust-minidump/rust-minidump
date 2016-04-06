@@ -126,6 +126,24 @@ impl Module for SimpleModule {
     }
 }
 
+/// Implement Module for 2-tuples of &str for convenience.
+/// `Symbolizer::get_symbol_at_address` uses this.
+impl<'a> Module for (&'a str, &'a str) {
+    fn base_address(&self) -> u64 { 0 }
+    fn size(&self) -> u64 { 0 }
+    fn code_file(&self) -> Cow<str> { Cow::Borrowed("") }
+    fn code_identifier(&self) -> Cow<str> { Cow::Borrowed("") }
+    fn debug_file(&self) -> Option<Cow<str>> {
+        let &(ref file, ref _id) = self;
+        Some(Cow::Borrowed(file))
+    }
+    fn debug_identifier(&self) -> Option<Cow<str>> {
+        let &(ref _file, ref id) = self;
+        Some(Cow::Borrowed(id))
+    }
+    fn version(&self) -> Option<Cow<str>> { None }
+}
+
 /// Like `PathBuf::file_name`, but try to work on Windows or POSIX-style paths.
 fn leafname(path : &str) -> &str {
     path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path)
@@ -309,8 +327,6 @@ pub struct Symbolizer {
     supplier : Box<SymbolSupplier + 'static>,
     /// Cache of symbol locating results.
     symbols : RefCell<HashMap<ModuleKey, SymbolResult>>,
-    /// A place to store `SimpleModule`s so callers don't have to create them.
-    local_modules : RefCell<HashMap<(String, String), SimpleModule>>,
 }
 
 impl Symbolizer {
@@ -319,7 +335,6 @@ impl Symbolizer {
         Symbolizer {
             supplier: Box::new(supplier),
             symbols: RefCell::new(HashMap::new()),
-            local_modules : RefCell::new(HashMap::new()),
         }
     }
 
@@ -336,17 +351,10 @@ impl Symbolizer {
                                  debug_file : &str,
                                  debug_id : &str,
                                  address : u64) -> Option<String> {
-        let k = (debug_file.to_string(), debug_id.to_string());
-        if !self.local_modules.borrow().contains_key(&k) {
-            let module = SimpleModule::new(debug_file,
-                                           debug_id);
-            self.local_modules.borrow_mut().insert(k.clone(), module);
-        }
-        self.local_modules.borrow().get(&k).and_then(|ref module| {
-            let mut frame = SimpleFrame::with_instruction(address);
-            self.fill_symbol(*module, &mut frame);
-            frame.function
-        })
+        let k = (debug_file, debug_id);
+        let mut frame = SimpleFrame::with_instruction(address);
+        self.fill_symbol(&k, &mut frame);
+        frame.function
     }
 
     /// Fill symbol information in `frame` using the instruction address
