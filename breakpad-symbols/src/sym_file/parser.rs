@@ -23,12 +23,11 @@ enum Line<'a> {
     StackCFI(StackInfoCFI),
 }
 
-//TODO: would be nice to templatize these two
+// Nom's `eol` doesn't use complete! so it will return Incomplete.
+named!(my_eol<char>, alt!(complete!(crlf) | newline));
+
 /// Match a hex string, parse it to a u64.
 named!(hex_str_u64<&[u8], u64>, map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
-
-/// Match a hex string, parse it to a u32.
-named!(hex_str_u32<&[u8], u32>, map_res!(map_res!(hex_digit, str::from_utf8), |s| u32::from_str_radix(s, 16)));
 
 /// Match a decimal string, parse it to a u32.
 named!(decimal_u32<&[u8], u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
@@ -49,7 +48,7 @@ named!(module_line<&[u8], ()>,
           space ~
           // filename
     not_line_ending ~
-    line_ending ,
+    my_eol ,
     || {}
 ));
 
@@ -59,7 +58,7 @@ named!(info_line,
     tag!("INFO") ~
     space ~
     x: not_line_ending ~
-    line_ending,
+    my_eol,
       ||{ x }
 ));
 
@@ -71,7 +70,7 @@ named!(file_line<&[u8], (u32, &str)>,
     id: decimal_u32 ~
     space ~
     filename: map_res!(not_line_ending, str::from_utf8) ~
-    line_ending ,
+    my_eol ,
       ||{ (id, filename) }
 ));
 
@@ -82,10 +81,10 @@ named!(public_line<&[u8], PublicSymbol>,
     space ~
     address: hex_str_u64 ~
     space ~
-    parameter_size: hex_str_u32 ~
+    parameter_size: hex_u32 ~
     space ~
     name: map_res!(not_line_ending, str::from_utf8) ~
-    line_ending ,
+    my_eol ,
       || {
           PublicSymbol {
               address: address,
@@ -100,12 +99,12 @@ named!(func_line_data<&[u8], SourceLine>,
   chain!(
     address: hex_str_u64 ~
     space ~
-    size: hex_str_u32 ~
+    size: hex_u32 ~
     space ~
     line: decimal_u32 ~
     space ~
     filenum: decimal_u32 ~
-    line_ending ,
+    my_eol ,
       || {
           SourceLine {
               address: address,
@@ -123,12 +122,12 @@ named!(func_lines<&[u8], Function>,
     space ~
     address: hex_str_u64 ~
     space ~
-    size: hex_str_u32 ~
+    size: hex_u32 ~
     space ~
-    parameter_size: hex_str_u32 ~
+    parameter_size: hex_u32 ~
     space ~
     name: map_res!(not_line_ending, str::from_utf8) ~
-    line_ending ~
+    my_eol ~
     lines: many0!(func_line_data) ,
       || {
           Function {
@@ -153,24 +152,24 @@ named!(stack_win_line<&[u8], StackInfoWin>,
     space ~
     address: hex_str_u64 ~
     space ~
-    code_size: hex_str_u32 ~
+    code_size: hex_u32 ~
     space ~
-    prologue_size: hex_str_u32 ~
+    prologue_size: hex_u32 ~
     space ~
-    epilogue_size: hex_str_u32 ~
+    epilogue_size: hex_u32 ~
     space ~
-    parameter_size: hex_str_u32 ~
+    parameter_size: hex_u32 ~
     space ~
-    saved_register_size: hex_str_u32 ~
+    saved_register_size: hex_u32 ~
     space ~
-    local_size: hex_str_u32 ~
+    local_size: hex_u32 ~
     space ~
-    max_stack_size: hex_str_u32 ~
+    max_stack_size: hex_u32 ~
     space ~
     has_program_string: map_res!(map_res!(digit, str::from_utf8), |s| -> Result<bool,()> { Ok(s == "1") }) ~
     space ~
     rest: map_res!(not_line_ending, str::from_utf8) ~
-    line_ending ,
+    my_eol ,
       || {
           let frame_type = if has_program_string {
               WinFrameType::FrameData(rest.to_string())
@@ -200,7 +199,7 @@ named!(stack_cfi<&[u8], CFIRules>,
                address: hex_str_u64 ~
                space ~
                rules: map_res!(not_line_ending, str::from_utf8) ~
-               line_ending ,
+               my_eol ,
            || {
                CFIRules {
                    address: address,
@@ -216,10 +215,10 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
     space ~
     address: hex_str_u64 ~
     space ~
-    size: hex_str_u32 ~
+    size: hex_u32 ~
     space ~
     rules: map_res!(not_line_ending, str::from_utf8) ~
-    line_ending ,
+    my_eol ,
       || {
           (CFIRules {
               address: address,
