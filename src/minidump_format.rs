@@ -131,30 +131,60 @@ pub type wchar_t = ::libc::c_int;
 pub type int8_t = ::libc::c_char;
 pub type int16_t = ::libc::c_short;
 pub type int32_t = ::libc::c_int;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type int64_t = ::libc::c_longlong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type int64_t = ::libc::c_long;
 pub type uint8_t = ::libc::c_uchar;
 pub type uint16_t = ::libc::c_ushort;
 pub type uint32_t = ::libc::c_uint;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type uint64_t = ::libc::c_ulonglong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type uint64_t = ::libc::c_ulong;
 pub type int_least8_t = ::libc::c_char;
 pub type int_least16_t = ::libc::c_short;
 pub type int_least32_t = ::libc::c_int;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type int_least64_t = ::libc::c_longlong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type int_least64_t = ::libc::c_long;
 pub type uint_least8_t = ::libc::c_uchar;
 pub type uint_least16_t = ::libc::c_ushort;
 pub type uint_least32_t = ::libc::c_uint;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type uint_least64_t = ::libc::c_ulonglong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type uint_least64_t = ::libc::c_ulong;
 pub type int_fast8_t = ::libc::c_char;
 pub type int_fast16_t = ::libc::c_long;
 pub type int_fast32_t = ::libc::c_long;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type int_fast64_t = ::libc::c_longlong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type int_fast64_t = ::libc::c_long;
 pub type uint_fast8_t = ::libc::c_uchar;
 pub type uint_fast16_t = ::libc::c_ulong;
 pub type uint_fast32_t = ::libc::c_ulong;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type uint_fast64_t = ::libc::c_ulonglong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type uint_fast64_t = ::libc::c_ulong;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type intptr_t = ::libc::c_longlong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type intptr_t = ::libc::c_long;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type uintptr_t = ::libc::c_ulonglong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type uintptr_t = ::libc::c_ulong;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type intmax_t = ::libc::c_longlong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type intmax_t = ::libc::c_long;
+#[cfg(any(target_os = "windows", target_pointer_width = "32"))]
+pub type uintmax_t = ::libc::c_ulonglong;
+#[cfg(all(not(target_os = "windows"), target_pointer_width = "64"))]
 pub type uintmax_t = ::libc::c_ulong;
 pub type __gwchar_t = ::libc::c_int;
 #[repr(C, packed)]
