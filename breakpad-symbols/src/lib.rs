@@ -326,6 +326,7 @@ pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
     supplier : Box<SymbolSupplier + 'static>,
     /// Cache of symbol locating results.
+    //TODO: use lru-cache: https://crates.io/crates/lru-cache/
     symbols : RefCell<HashMap<ModuleKey, SymbolResult>>,
 }
 
