@@ -38,7 +38,7 @@ fn print_minidump_modules<T: AsRef<Path>>(path: T,
     match Minidump::read_path(path.as_ref()) {
         Ok(mut dump) => {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
-                for module in module_list.by_addr() {
+                for module in module_list.iter() {
                     match mode {
                         PrintMode::Modules => {
                             print!("{}", module.code_file());

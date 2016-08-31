@@ -40,7 +40,8 @@ fn test_module_list() {
     let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
     assert_eq!(module_list.module_at_address(0x400000).unwrap().code_file(),
                "c:\\test_app.exe");
-    let modules = module_list.modules;
+    let modules = module_list.iter().collect::<Vec<_>>();
+    let module_files = modules.iter().map(|m| m.code_file()).collect::<Vec<_>>();
     assert_eq!(modules.len(), 13);
     assert_eq!(modules[0].base_address(), 0x400000);
     assert_eq!(modules[0].size(), 0x2d000);
@@ -60,6 +61,39 @@ fn test_module_list() {
                "A5C3A1F9689F43D8AD228A09293889702");
     assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
 
+    assert_eq!(module_files,
+               vec![
+                   r"c:\test_app.exe",
+                   r"C:\WINDOWS\system32\ntdll.dll",
+                   r"C:\WINDOWS\system32\kernel32.dll",
+                   r"C:\WINDOWS\system32\ole32.dll",
+                   r"C:\WINDOWS\system32\advapi32.dll",
+                   r"C:\WINDOWS\system32\rpcrt4.dll",
+                   r"C:\WINDOWS\system32\gdi32.dll",
+                   r"C:\WINDOWS\system32\user32.dll",
+                   r"C:\WINDOWS\system32\msvcrt.dll",
+                   r"C:\WINDOWS\system32\imm32.dll",
+                   r"C:\WINDOWS\system32\dbghelp.dll",
+                   r"C:\WINDOWS\system32\version.dll",
+                   r"C:\WINDOWS\system32\psapi.dll",
+                   ]);
+
+    assert_eq!(module_list.by_addr().map(|m| m.code_file()).collect::<Vec<_>>(),
+               vec![
+                   r"c:\test_app.exe",
+                   r"C:\WINDOWS\system32\dbghelp.dll",
+                   r"C:\WINDOWS\system32\imm32.dll",
+                   r"C:\WINDOWS\system32\psapi.dll",
+                   r"C:\WINDOWS\system32\ole32.dll",
+                   r"C:\WINDOWS\system32\version.dll",
+                   r"C:\WINDOWS\system32\msvcrt.dll",
+                   r"C:\WINDOWS\system32\user32.dll",
+                   r"C:\WINDOWS\system32\advapi32.dll",
+                   r"C:\WINDOWS\system32\rpcrt4.dll",
+                   r"C:\WINDOWS\system32\gdi32.dll",
+                   r"C:\WINDOWS\system32\kernel32.dll",
+                   r"C:\WINDOWS\system32\ntdll.dll",
+                   ]);
 }
 
 #[test]

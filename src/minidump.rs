@@ -118,7 +118,7 @@ pub struct MinidumpModule {
 /// A list of `MinidumpModule`s contained in a `Minidump`.
 pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
-    pub modules : Vec<MinidumpModule>,
+    modules : Vec<MinidumpModule>,
     /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
     modules_by_addr : range_map::RangeMap<usize>,
 }
@@ -596,6 +596,19 @@ fn read_stream_list<T : Copy, U: Readable>(f : &mut U, expected_size : usize) ->
     Ok(raw_entries)
 }
 
+/// An iterator over `MinidumpModule`s.
+pub struct Modules<'a> {
+    iter: Box<Iterator<Item=&'a MinidumpModule> + 'a>,
+}
+
+impl<'a> Iterator for Modules<'a> {
+    type Item = &'a MinidumpModule;
+
+    fn next(&mut self) -> Option<&'a MinidumpModule> {
+        self.iter.next()
+    }
+}
+
 impl MinidumpModuleList {
     /// Return an empty `MinidumpModuleList`.
     pub fn new() -> MinidumpModuleList {
@@ -635,11 +648,18 @@ impl MinidumpModuleList {
         }
     }
 
-    /// Return modules in order by memory address.
-    pub fn by_addr(&self) -> Vec<&MinidumpModule> {
-        // TODO: would be nice to return an iterator here, but the type
-        // ergonomics are horrible.
-        self.modules_by_addr.iter().map(|&((_, _), index)| &self.modules[index]).collect()
+    /// Iterate over the modules in arbitrary order.
+    pub fn iter<'a>(&'a self) -> Modules<'a> {
+        Modules { iter: Box::new(self.modules.iter()) }
+    }
+
+    /// Iterate over the modules in order by memory address.
+    pub fn by_addr<'a>(&'a self) -> Modules<'a> {
+        Modules {
+            iter: Box::new(self.modules_by_addr
+                           .iter()
+                           .map(move |&((_, _), index)| &self.modules[index]))
+        }
     }
 
     /// Write a human-readable description of this `MinidumpModuleList` to `f`.
