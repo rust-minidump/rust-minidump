@@ -53,7 +53,7 @@ pub struct Minidump {
 }
 
 /// Errors encountered while reading a `Minidump`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     FileNotFound,
     MissingHeader,
@@ -1132,6 +1132,9 @@ impl Minidump {
             return Err(Error::VersionMismatch);
         }
         let mut streams = HashMap::with_capacity(header.stream_count as usize);
+        if header.stream_directory_rva != (mem::size_of::<md::MDRawHeader>() as u32) {
+            try!(f.seek(SeekFrom::Start(header.stream_directory_rva as u64)).or(Err(Error::MissingDirectory)));
+        }
         for i in 0..header.stream_count {
             let dir : md::MDRawDirectory = try!(read(&mut f).or(Err(Error::MissingDirectory)));
             streams.insert(dir.stream_type, (i, dir));
@@ -1158,6 +1161,23 @@ impl Minidump {
                 try!(self.reader.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
                 // TODO: cache result
                 T::read(&mut self.reader, dir.location.data_size as usize)
+            }
+        }
+    }
+
+    /// Get a stream of raw data from the minidump.
+    ///
+    /// This can be used to get the contents of arbitrary minidump streams.
+    /// For streams of known types you almost certainly want to use
+    /// [`get_stream`][get_stream] instead.
+    ///
+    /// [get_stream]: #get_stream
+    pub fn get_raw_stream(&mut self, stream_type: u32) -> Result<Vec<u8>, Error> {
+        match self.streams.get_mut(&stream_type) {
+            None => Err(Error::StreamNotFound),
+            Some(&mut (_, dir)) => {
+                try!(self.reader.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
+                read_bytes(&mut self.reader, dir.location.data_size as usize).or(Err(Error::StreamReadFailure))
             }
         }
     }
@@ -1276,5 +1296,34 @@ MDRawDirectory
         }
         try!(write!(f, "\n"));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Cursor;
+    use synth_minidump::*;
+    use test_assembler::*;
+
+    fn read_synth_dump(dump: SynthMinidump) -> Result<Minidump, Error> {
+        dump.finish().ok_or(Error::FileNotFound).and_then(|bytes| Minidump::read(Cursor::new(bytes)))
+    }
+
+    #[test]
+    fn test_simple_synth_dump() {
+        const STREAM_TYPE: u32 = 0x11223344;
+        let dump =
+            SynthMinidump::with_endian(Endian::Little)
+            .add_stream(SimpleStream {
+                stream_type: STREAM_TYPE,
+                section: Section::with_endian(Endian::Little).D32(0x55667788),
+            });
+        let mut dump = read_synth_dump(dump).unwrap();
+        assert_eq!(dump.get_raw_stream(STREAM_TYPE).unwrap(),
+                   vec![0x88, 0x77, 0x66, 0x55]);
+
+        assert_eq!(dump.get_raw_stream(0xaabbccdd),
+                   Err(Error::StreamNotFound));
     }
 }
