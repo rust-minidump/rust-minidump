@@ -34,6 +34,8 @@ mod minidump;
 mod processor;
 mod process_state;
 mod stackwalker;
+#[cfg(test)]
+pub mod synth_minidump;
 mod system_info;
 
 // Stable Rust has a bug where `pub use minidump::*;` doesn't work.

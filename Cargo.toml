@@ -21,6 +21,6 @@ chrono = "0.2.16"
 
 
 [dev-dependencies]
-test-assembler = "0.1.0"
+test-assembler = "0.1.5"
 
 [workspace]
