@@ -257,6 +257,76 @@ impl DumpSection for DumpString {
     }
 }
 
+/// MDRawMiscInfo stream.
+pub struct MiscStream {
+    /// The stream's contents.
+    section: Section,
+    pub process_id: Option<u32>,
+    pub process_create_time: Option<u32>,
+    pub pad_to_size: Option<usize>,
+}
+
+impl MiscStream {
+    pub fn new(endian: Endian) -> MiscStream {
+        let section = Section::with_endian(endian);
+        let size = section.final_size();
+        MiscStream {
+            section: section.D32(size),
+            process_id: None,
+            process_create_time: None,
+            pad_to_size: None,
+        }
+    }
+}
+
+impl Into<Section> for MiscStream {
+    fn into(self) -> Section {
+        let MiscStream { section, process_id, process_create_time, pad_to_size } = self;
+        let flags_label = Label::new();
+        let section = section.D32(&flags_label);
+        let mut flags = 0;
+        let section = section.D32(if let Some(pid) = process_id {
+            flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_ID;
+            pid
+        } else { 0 });
+        let section = if let Some(time) = process_create_time {
+            flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_TIMES;
+            section.D32(time)
+                // user_time
+                .D32(0)
+                // kernel_time
+                .D32(0)
+        } else {
+            section.D32(0)
+                .D32(0)
+                .D32(0)
+        };
+        flags_label.set_const(flags as u64);
+        // Pad to final size, if necessary.
+        if let Some(size) = pad_to_size {
+            let size = (size as u64 - section.size()) as usize;
+            section.append_repeated(0, size)
+        } else {
+            section
+        }
+    }
+}
+
+impl DumpSection for MiscStream {
+    fn file_offset(&self) -> Label {
+        self.section.file_offset()
+    }
+    fn file_size(&self) -> Label {
+        self.section.file_size()
+    }
+}
+
+impl Stream for MiscStream {
+    fn stream_type(&self) -> u32 {
+        md::MD_MISC_INFO_STREAM
+    }
+}
+
 #[test]
 fn test_dump_header() {
     let dump =

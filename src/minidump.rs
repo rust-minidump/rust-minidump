@@ -898,11 +898,12 @@ impl MinidumpStream for MinidumpMiscInfo {
         // of progressively larger sizes which are supersets of the smaller
         // ones.
         let mut bytes = try!(read_bytes(f, expected_size).or(Err(Error::StreamReadFailure)));
-        if bytes.len() < mem::size_of::<md::MDRawMiscInfo>() {
-            let padding = vec![0; mem::size_of::<md::MDRawMiscInfo>() - bytes.len()];
+        let struct_size = mem::size_of::<md::MDRawMiscInfo>();
+        if bytes.len() < struct_size {
+            let padding = vec![0; struct_size - bytes.len()];
             bytes.extend(padding.into_iter());
         }
-        let raw = transmogrify::<md::MDRawMiscInfo>(&bytes[..]);
+        let raw = transmogrify::<md::MDRawMiscInfo>(if bytes.len() == struct_size { &bytes[..] } else { &bytes[..struct_size] });
         let process_create_time = if flag(raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
             Some(UTC.timestamp(raw.process_create_time as i64, 0))
         } else {
@@ -1302,7 +1303,10 @@ MDRawDirectory
 #[cfg(test)]
 mod test {
     use super::*;
+    use chrono::*;
+    use ::minidump_format as md;
     use std::io::Cursor;
+    use std::mem;
     use synth_minidump::*;
     use test_assembler::*;
 
@@ -1325,5 +1329,41 @@ mod test {
 
         assert_eq!(dump.get_raw_stream(0xaabbccdd),
                    Err(Error::StreamNotFound));
+    }
+
+    #[test]
+    fn test_misc_info() {
+        const PID: u32 = 0x1234abcd;
+        const CREATE_TIME: u32 = 0xf0f0b0b0;
+        let mut misc = MiscStream::new(Endian::Little);
+        misc.process_id = Some(PID);
+        misc.process_create_time = Some(CREATE_TIME);
+        let dump =
+            SynthMinidump::with_endian(Endian::Little)
+            .add_stream(misc);
+        let mut dump = read_synth_dump(dump).unwrap();
+        let misc = dump.get_stream::<MinidumpMiscInfo>().unwrap();
+        assert_eq!(misc.raw.process_id, PID);
+        assert_eq!(misc.process_create_time.unwrap(),
+                   UTC.timestamp(CREATE_TIME as i64, 0));
+    }
+
+    #[test]
+    fn test_misc_info_large() {
+        const PID: u32 = 0x1234abcd;
+        const CREATE_TIME: u32 = 0xf0f0b0b0;
+        let mut misc = MiscStream::new(Endian::Little);
+        misc.process_id = Some(PID);
+        misc.process_create_time = Some(CREATE_TIME);
+        // Make it larger.
+        misc.pad_to_size = Some(mem::size_of::<md::MDRawMiscInfo>() + 32);
+        let dump =
+            SynthMinidump::with_endian(Endian::Little)
+            .add_stream(misc);
+        let mut dump = read_synth_dump(dump).unwrap();
+        let misc = dump.get_stream::<MinidumpMiscInfo>().unwrap();
+        assert_eq!(misc.raw.process_id, PID);
+        assert_eq!(misc.process_create_time.unwrap(),
+                   UTC.timestamp(CREATE_TIME as i64, 0));
     }
 }

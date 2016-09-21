@@ -5747,7 +5747,7 @@ impl ::std::default::Default for Struct_Unnamed60 {
 pub type MDTimeZoneInformation = Struct_Unnamed60;
 #[repr(C, packed)]
 #[derive(Copy)]
-pub struct Struct_Unnamed61 {
+pub struct MDRawMiscInfo {
     pub size_of_info: uint32_t,
     pub flags1: uint32_t,
     pub process_id: uint32_t,
@@ -5767,13 +5767,15 @@ pub struct Struct_Unnamed61 {
     pub build_string: [uint16_t; 260usize],
     pub dbg_bld_str: [uint16_t; 40usize],
 }
-impl ::std::clone::Clone for Struct_Unnamed61 {
+
+impl ::std::clone::Clone for MDRawMiscInfo {
     fn clone(&self) -> Self { *self }
 }
-impl ::std::default::Default for Struct_Unnamed61 {
+
+impl ::std::default::Default for MDRawMiscInfo {
     fn default() -> Self { unsafe { ::std::mem::zeroed() } }
 }
-pub type MDRawMiscInfo = Struct_Unnamed61;
+
 pub type Enum_Unnamed62 = ::libc::c_uint;
 pub const MD_MISCINFO_FLAGS1_PROCESS_ID: ::libc::c_uint = 1;
 pub const MD_MISCINFO_FLAGS1_PROCESS_TIMES: ::libc::c_uint = 2;
