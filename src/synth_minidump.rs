@@ -137,6 +137,19 @@ impl DumpSection for Section {
     }
 }
 
+macro_rules! impl_dumpsection {
+    ( $x:ty ) => {
+        impl DumpSection for $x {
+            fn file_offset(&self) -> Label {
+                self.section.file_offset()
+            }
+            fn file_size(&self) -> Label {
+                self.section.file_size()
+            }
+        }
+    };
+}
+
 /// A stream of arbitrary data.
 pub struct SimpleStream {
     /// The stream type.
@@ -151,14 +164,7 @@ impl Into<Section> for SimpleStream {
     }
 }
 
-impl DumpSection for SimpleStream {
-    fn file_offset(&self) -> Label {
-        self.section.file_offset()
-    }
-    fn file_size(&self) -> Label {
-        self.section.file_size()
-    }
-}
+impl_dumpsection!(SimpleStream);
 
 impl Stream for SimpleStream {
     fn stream_type(&self) -> u32 {
@@ -247,15 +253,7 @@ impl Into<Section> for DumpString {
     }
 }
 
-impl DumpSection for DumpString {
-    fn file_offset(&self) -> Label {
-        self.section.start()
-    }
-
-    fn file_size(&self) -> Label {
-        self.section.final_size()
-    }
-}
+impl_dumpsection!(DumpString);
 
 /// MDRawMiscInfo stream.
 pub struct MiscStream {
@@ -312,14 +310,7 @@ impl Into<Section> for MiscStream {
     }
 }
 
-impl DumpSection for MiscStream {
-    fn file_offset(&self) -> Label {
-        self.section.file_offset()
-    }
-    fn file_size(&self) -> Label {
-        self.section.file_size()
-    }
-}
+impl_dumpsection!(MiscStream);
 
 impl Stream for MiscStream {
     fn stream_type(&self) -> u32 {
