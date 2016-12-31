@@ -22,25 +22,51 @@ pub struct SynthMinidump {
     stream_directory_rva: Label,
     /// The contents of the stream directory.
     stream_directory: Section,
+    /// List of modules in this minidump.
+    module_list: Option<List<Module>>,
 }
 
 /// A block of data contained in a minidump.
-pub trait DumpSection : Into<Section> {
-    /// Append an `MDLocationDescriptor` to `section` referring to this section.
-    fn cite_location_in(&self, section: Section) -> Section {
-        // An MDLocationDescriptor is just a 32-bit size + 32-bit offset.
-        section
-            .D32(&self.file_size())
-            .D32(&self.file_offset())
-    }
+pub trait DumpSection: Into<Section> {
     /// A label representing this `DumpSection`'s offset in bytes from the start of the minidump.
     fn file_offset(&self) -> Label;
     /// A label representing this `DumpSection`'s size in bytes within the minidump.
     fn file_size(&self) -> Label;
 }
 
+trait CiteLocation {
+    /// Append an `MDLocationDescriptor` to `section` referring to this section.
+    fn cite_location_in(&self, section: Section) -> Section;
+}
+
+impl<T: DumpSection> CiteLocation for T {
+    fn cite_location_in(&self, section: Section) -> Section {
+        // An MDLocationDescriptor is just a 32-bit size + 32-bit offset.
+        section
+            .D32(&self.file_size())
+            .D32(&self.file_offset())
+    }
+}
+
+impl CiteLocation for (Label, Label) {
+    fn cite_location_in(&self, section: Section) -> Section {
+        section
+            .D32(&self.0)
+            .D32(&self.1)
+    }
+}
+
+impl<T: CiteLocation> CiteLocation for Option<T> {
+    fn cite_location_in(&self, section: Section) -> Section {
+        match self {
+            &Some(ref inner) => inner.cite_location_in(section),
+            &None => section.D32(0).D32(0),
+        }
+    }
+}
+
 /// A minidump stream.
-pub trait Stream : DumpSection {
+pub trait Stream: DumpSection {
     /// The stream type, used in the stream directory.
     fn stream_type(&self) -> u32;
     /// Append an `MDRawDirectory` referring to this stream to `section`.
@@ -79,6 +105,7 @@ impl SynthMinidump {
             stream_count_label: stream_count_label,
             stream_directory_rva: stream_directory_rva,
             stream_directory: Section::with_endian(endian),
+            module_list: Some(List::new(md::MD_MODULE_LIST_STREAM, endian)),
         }
     }
 
@@ -97,6 +124,12 @@ impl SynthMinidump {
         self
     }
 
+    /// Add `module` to `self`, adding it to the module list stream as well.
+    pub fn add_module(mut self, module: Module) -> SynthMinidump {
+        self.module_list = self.module_list.take().map(|module_list| module_list.add(module));
+        self
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -106,6 +139,16 @@ impl SynthMinidump {
 
     /// Finish generating the minidump and return the contents.
     pub fn finish(self) -> Option<Vec<u8>> {
+        let mut this = self;
+        // Add module list stream if any modules were added.
+        let this = match this.module_list.take() {
+            Some(module_list) => if !module_list.empty() {
+                this.add_stream(module_list)
+            } else {
+                this
+            },
+            _ => this,
+        };
         let SynthMinidump {
             section,
             flags,
@@ -114,7 +157,7 @@ impl SynthMinidump {
             stream_directory_rva,
             stream_directory,
             ..
-        } = self;
+        } = this;
         if flags.value().is_none() {
             flags.set_const(0);
         }
@@ -204,6 +247,10 @@ impl<T: DumpSection> List<T> {
             .append_section(entry);
         self
     }
+
+    pub fn empty(&self) -> bool {
+        self.count == 0
+    }
 }
 
 impl<T: DumpSection> Into<Section> for List<T> {
@@ -236,7 +283,7 @@ pub struct DumpString {
 
 impl DumpString {
     /// Create a new `DumpString` with `s` as its contents, using `endian` endianness.
-    fn new(s: &str, endian: Endian) -> DumpString {
+    pub fn new(s: &str, endian: Endian) -> DumpString {
         let u16_s = UTF_16LE.encode(s, EncoderTrap::Strict).unwrap();
         let section = Section::with_endian(endian)
             .D32(u16_s.len() as u32)
@@ -254,6 +301,92 @@ impl Into<Section> for DumpString {
 }
 
 impl_dumpsection!(DumpString);
+
+/// A fixed set of version info to use for tests.
+pub const STOCK_VERSION_INFO: md::MDVSFixedFileInfo = md::MDVSFixedFileInfo {
+    signature:          md::MD_VSFIXEDFILEINFO_SIGNATURE,
+    struct_version:     md::MD_VSFIXEDFILEINFO_VERSION,
+    file_version_hi:    0x11111111,
+    file_version_lo:    0x22222222,
+    product_version_hi: 0x33333333,
+    product_version_lo: 0x44444444,
+    file_flags_mask:    md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
+    file_flags:         md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
+    file_os:            md::MD_VSFIXEDFILEINFO_FILE_OS_NT | md::MD_VSFIXEDFILEINFO_FILE_OS__WINDOWS32,
+    file_type:          md::MD_VSFIXEDFILEINFO_FILE_TYPE_APP,
+    file_subtype:       md::MD_VSFIXEDFILEINFO_FILE_SUBTYPE_UNKNOWN,
+    file_date_hi:       0,
+    file_date_lo:       0,
+};
+
+/// A minidump module.
+pub struct Module {
+    section: Section,
+    cv_record: Option<(Label, Label)>,
+    misc_record: Option<(Label, Label)>,
+}
+
+impl Module {
+    pub fn new<'a, T: Into<Option<&'a md::MDVSFixedFileInfo>>>(endian: Endian,
+                                                               base_of_image: u64,
+                                                               size_of_image: u32,
+                                                               name: &DumpString,
+                                                               time_date_stamp: u32,
+                                                               checksum: u32,
+                                                               version_info: T) -> Module {
+        let stock_version = &STOCK_VERSION_INFO;
+        let version_info = version_info.into().unwrap_or(stock_version);
+        let section = Section::with_endian(endian)
+            .D64(base_of_image)
+            .D32(size_of_image)
+            .D32(checksum)
+            .D32(time_date_stamp)
+            .D32(name.file_offset())
+            .D32(version_info.signature)
+            .D32(version_info.struct_version)
+            .D32(version_info.file_version_hi)
+            .D32(version_info.file_version_lo)
+            .D32(version_info.product_version_hi)
+            .D32(version_info.product_version_lo)
+            .D32(version_info.file_flags_mask)
+            .D32(version_info.file_flags)
+            .D32(version_info.file_os)
+            .D32(version_info.file_type)
+            .D32(version_info.file_subtype)
+            .D32(version_info.file_date_hi)
+            .D32(version_info.file_date_lo);
+        Module {
+            section: section,
+            cv_record: None,
+            misc_record: None,
+        }
+    }
+
+    pub fn cv_record<T: DumpSection>(mut self, cv_record: &T) -> Module {
+        self.cv_record = Some((cv_record.file_size(), cv_record.file_offset()));
+        self
+    }
+
+    pub fn misc_record<T: DumpSection>(mut self, misc_record: &T) -> Module {
+        self.misc_record = Some((misc_record.file_size(), misc_record.file_offset()));
+        self
+    }
+}
+
+impl_dumpsection!(Module);
+
+impl Into<Section> for Module {
+    fn into(self) -> Section {
+        let Module { section, cv_record, misc_record } = self;
+        let section = cv_record.cite_location_in(section);
+        let section = misc_record.cite_location_in(section);
+        section
+            // reserved0
+            .D64(0)
+            // reserved1
+            .D64(0)
+    }
+}
 
 /// MDRawMiscInfo stream.
 pub struct MiscStream {

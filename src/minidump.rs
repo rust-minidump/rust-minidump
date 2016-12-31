@@ -1307,7 +1307,9 @@ mod test {
     use ::minidump_format as md;
     use std::io::Cursor;
     use std::mem;
-    use synth_minidump::*;
+    use synth_minidump::{SynthMinidump, SimpleStream, MiscStream};
+    use synth_minidump::{DumpString, STOCK_VERSION_INFO};
+    use synth_minidump::Module as SynthModule;
     use test_assembler::*;
 
     fn read_synth_dump(dump: SynthMinidump) -> Result<Minidump, Error> {
@@ -1329,6 +1331,45 @@ mod test {
 
         assert_eq!(dump.get_raw_stream(0xaabbccdd),
                    Err(Error::StreamNotFound));
+    }
+
+    #[test]
+    fn test_module_list() {
+        let name = DumpString::new("single module", Endian::Little);
+        let cv_record = Section::with_endian(Endian::Little)
+            .D32(md::MD_CVINFOPDB70_SIGNATURE)  // signature
+            // signature, a MDGUID
+            .D32(0xabcd1234)
+            .D16(0xf00d)
+            .D16(0xbeef)
+            .append_bytes(b"\x01\x02\x03\x04\x05\x06\x07\x08")
+            .D32(1) // age
+            .append_bytes(b"c:\\foo\\file.pdb\0");  // pdb_file_name
+        let module = SynthModule::new(Endian::Little,
+                                      0xa90206ca83eb2852,
+                                      0xada542bd,
+                                      &name,
+                                      0xb1054d2a,
+                                      0x34571371,
+                                      Some(&STOCK_VERSION_INFO))
+            .cv_record(&cv_record);
+        let dump =
+            SynthMinidump::with_endian(Endian::Little)
+            .add_module(module)
+            .add(name)
+            .add(cv_record);
+        let mut dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].base_address(), 0xa90206ca83eb2852);
+        assert_eq!(modules[0].size(), 0xada542bd);
+        assert_eq!(modules[0].code_file(), "single module");
+        // time_date_stamp and size_of_image concatenated
+        assert_eq!(modules[0].code_identifier(), "B1054D2Aada542bd");
+        assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
+        assert_eq!(modules[0].debug_identifier().unwrap(),
+                   "ABCD1234F00DBEEF01020304050607081");
     }
 
     #[test]
