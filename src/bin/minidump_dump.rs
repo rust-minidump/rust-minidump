@@ -38,6 +38,9 @@ fn print_minidump_dump(path : &Path) {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
+            if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList>() {
+                memory_list.print(stdout).unwrap();
+            }
             // TODO: MemoryList
             if let Ok(exception) = dump.get_stream::<MinidumpException>() {
                 exception.print(stdout).unwrap();

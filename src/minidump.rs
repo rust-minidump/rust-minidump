@@ -62,15 +62,15 @@ pub enum Error {
     VersionMismatch,
     MissingDirectory,
     StreamReadFailure,
-    StreamSizeMismatch,
+    StreamSizeMismatch { expected: usize, actual: usize},
     StreamNotFound,
     ModuleReadFailure,
+    MemoryReadFailure,
     DataError,
     CodeViewReadFailure,
 }
 
 /* TODO
-pub struct MinidumpMemoryList;
 pub struct MinidumpAssertion;
 pub struct MinidumpMemoryInfoList;
 */
@@ -116,6 +116,7 @@ pub struct MinidumpModule {
 }
 
 /// A list of `MinidumpModule`s contained in a `Minidump`.
+#[derive(Clone)]
 pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules : Vec<MinidumpModule>,
@@ -153,6 +154,8 @@ pub struct MinidumpSystemInfo {
 
 /// A region of memory from the process that wrote the minidump.
 pub struct MinidumpMemory {
+    /// The raw `MDMemoryDescriptor` from the minidump.
+    pub desc: md::MDMemoryDescriptor,
     /// The starting address of this range of memory.
     pub base_address : u64,
     /// The length of this range of memory.
@@ -200,6 +203,14 @@ pub struct MinidumpException {
     pub raw : md::MDRawExceptionStream,
     pub thread_id : u32,
     pub context : Option<MinidumpContext>,
+}
+
+/// A list of memory regions included in a minidump.
+pub struct MinidumpMemoryList {
+    /// The memory regions, in the order they were stored in the minidump.
+    regions: Vec<MinidumpMemory>,
+    /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
+    regions_by_addr: range_map::RangeMap<usize>,
 }
 
 //======================================================
@@ -573,19 +584,23 @@ impl Module for MinidumpModule {
 
 fn read_stream_list<T : Copy, U: Readable>(f : &mut U, expected_size : usize) -> Result<Vec<T>, Error> {
     if expected_size < mem::size_of::<u32>() {
-        return Err(Error::StreamSizeMismatch);
+        return Err(Error::StreamSizeMismatch { expected: mem::size_of::<u32>(), actual:  expected_size });
     }
 
     // TODO: swap
     let u : u32 = try!(read(f).or(Err(Error::StreamReadFailure)));
     let count = u as usize;
-    match expected_size - (mem::size_of::<u32>() + count * mem::size_of::<T>()) {
+    let counted_size = mem::size_of::<u32>() + count * mem::size_of::<T>();
+    if expected_size < counted_size {
+        return Err(Error::StreamSizeMismatch { expected: counted_size, actual: expected_size });
+    }
+    match expected_size - counted_size {
         0 => {},
         4 => {
             // 4 bytes of padding.
             let _pad = try!(read_bytes(f, 4).or(Err(Error::StreamReadFailure)));
         },
-        _ => return Err(Error::StreamSizeMismatch)
+        _ => return Err(Error::StreamSizeMismatch { expected: counted_size, actual: expected_size })
     };
     // read count T raw stream entries
     let mut raw_entries = Vec::with_capacity(count);
@@ -697,20 +712,13 @@ impl MinidumpStream for MinidumpModuleList {
     }
 }
 
-impl Clone for MinidumpModuleList {
-    fn clone(&self) -> MinidumpModuleList {
-        MinidumpModuleList {
-            modules: self.modules.clone(),
-            modules_by_addr: self.modules_by_addr.clone(),
-        }
-    }
-}
-
 impl MinidumpMemory {
-    pub fn read<T : Readable>(f : &mut T, desc : &md::MDMemoryDescriptor) -> Result<MinidumpMemory, Error> {
+    pub fn read<T: Readable>(f: &mut T, desc: &md::MDMemoryDescriptor) -> Result<MinidumpMemory, Error> {
+        //TODO: make this lazy
         try!(f.seek(SeekFrom::Start(desc.memory.rva as u64)).or(Err(Error::StreamReadFailure)));
         let bytes = try!(read_bytes(f, desc.memory.data_size as usize).or(Err(Error::DataError)));
         Ok(MinidumpMemory {
+            desc: desc.clone(),
             base_address: desc.start_of_memory_range,
             size: desc.memory.data_size as u64,
             bytes: bytes,
@@ -737,13 +745,111 @@ impl MinidumpMemory {
     /// Write a human-readable description of this `MinidumpMemory` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        try!(write!(f, "MDMemoryDescriptor
+  start_of_memory_range = {:#x}
+  memory.data_size      = {:#x}
+  memory.rva            = {:#x}
+Memory
+",
+                    self.desc.start_of_memory_range,
+                    self.desc.memory.data_size,
+                    self.desc.memory.rva,
+                    ));
+        try!(self.print_contents(f));
+        write!(f, "\n")
+    }
+
+    /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
+    pub fn print_contents<T: Write>(&self, f: &mut T) -> io::Result<()> {
         try!(write!(f, "0x"));
         for byte in self.bytes.iter() {
             try!(write!(f, "{:02x}", byte));
         }
         try!(write!(f, "\n"));
         Ok(())
+    }
+}
+
+/// An iterator over `MinidumpMemory`s.
+pub struct MemoryRegions<'a> {
+    iter: Box<Iterator<Item=&'a MinidumpMemory> + 'a>,
+}
+
+impl<'a> Iterator for MemoryRegions<'a> {
+    type Item = &'a MinidumpMemory;
+
+    fn next(&mut self) -> Option<&'a MinidumpMemory> {
+        self.iter.next()
+    }
+}
+
+impl MinidumpMemoryList {
+    /// Return an empty `MinidumpMemoryList`.
+    pub fn new() -> MinidumpMemoryList {
+        MinidumpMemoryList {
+            regions: vec!(),
+            regions_by_addr: range_map::RangeMap::<usize>::new()
+        }
+    }
+    /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
+    pub fn from_regions(regions: Vec<MinidumpMemory>) -> MinidumpMemoryList {
+        let mut map = range_map::RangeMap::<usize>::new();
+        for (i, region) in regions.iter().enumerate() {
+            if let Err(_) = map.insert((region.base_address, region.base_address + region.size), i) {
+                //TODO: Ignoring errors here from overlapping memory regions.
+            }
+        }
+        MinidumpMemoryList { regions: regions, regions_by_addr: map }
+    }
+
+    /// Iterate over the memory regions in the order contained in the minidump.
+    pub fn iter<'a>(&'a self) -> MemoryRegions<'a> {
+        MemoryRegions { iter: Box::new(self.regions.iter()) }
+    }
+
+    /// Iterate over the memory regions in order by memory address.
+    pub fn by_addr<'a>(&'a self) -> MemoryRegions<'a> {
+        MemoryRegions {
+            iter: Box::new(self.regions_by_addr
+                           .iter()
+                           .map(move |&((_, _), index)| &self.regions[index]))
+        }
+    }
+
+    /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        try!(write!(f, "MinidumpMemoryList
+  region_count = {}
+
+", self.regions.len()));
+        for (i, region) in self.regions.iter().enumerate() {
+            try!(writeln!(f, "region[{}]", i));
+            try!(region.print(f));
+        }
+        Ok(())
+    }
+}
+
+impl MinidumpStream for MinidumpMemoryList {
+    fn stream_type() -> u32 { md::MD_MEMORY_LIST_STREAM }
+    fn read<T: Readable>(f: &mut T, expected_size: usize) -> Result<MinidumpMemoryList, Error> {
+        let descriptors: Vec<md::MDMemoryDescriptor> = try!(read_stream_list(f, expected_size));
+        // read memory contents for each region
+        //TODO: make this lazy on `MinidumpMemory`!
+        let mut regions = Vec::with_capacity(descriptors.len());
+        for raw in descriptors.into_iter() {
+            // TODO: swap
+            if raw.memory.data_size == 0 || raw.memory.data_size as u64 > (u64::max_value() - raw.start_of_memory_range) {
+                // Bad size.
+                // TODO: just drop this memory, keep the rest?
+                return Err(Error::MemoryReadFailure);
+            }
+            regions.push(try!(MinidumpMemory::read(f, &raw)));
+        }
+        Ok(MinidumpMemoryList::from_regions(regions))
     }
 }
 
@@ -784,7 +890,7 @@ impl MinidumpThread {
 
         if let Some(ref stack) = self.stack {
             try!(writeln!(f, "Stack"));
-            try!(stack.print(f));
+            try!(stack.print_contents(f));
         } else {
             try!(writeln!(f, "No stack"));
         }
@@ -1308,7 +1414,7 @@ mod test {
     use std::io::Cursor;
     use std::mem;
     use synth_minidump::{SynthMinidump, SimpleStream, MiscStream};
-    use synth_minidump::{DumpString, STOCK_VERSION_INFO};
+    use synth_minidump::{DumpString, STOCK_VERSION_INFO, Memory};
     use synth_minidump::Module as SynthModule;
     use test_assembler::*;
 
@@ -1370,6 +1476,24 @@ mod test {
         assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
         assert_eq!(modules[0].debug_identifier().unwrap(),
                    "ABCD1234F00DBEEF01020304050607081");
+    }
+
+    #[test]
+    fn test_memory_list() {
+        const CONTENTS: &'static [u8] = b"memory_contents";
+        let memory = Memory::with_section(Section::with_endian(Endian::Little)
+                                          .append_bytes(CONTENTS),
+                                          0x309d68010bd21b2c);
+        let dump =
+            SynthMinidump::with_endian(Endian::Little)
+            .add_memory(memory);
+        let mut dump = read_synth_dump(dump).unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap();
+        let regions = memory_list.iter().collect::<Vec<_>>();
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
+        assert_eq!(regions[0].size, CONTENTS.len() as u64);
+        assert_eq!(&regions[0].bytes, &CONTENTS);
     }
 
     #[test]

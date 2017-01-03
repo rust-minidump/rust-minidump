@@ -24,6 +24,8 @@ pub struct SynthMinidump {
     stream_directory: Section,
     /// List of modules in this minidump.
     module_list: Option<List<Module>>,
+    /// List of memory regions in this minidump.
+    memory_list: Option<List<Section>>,
 }
 
 /// A block of data contained in a minidump.
@@ -106,6 +108,7 @@ impl SynthMinidump {
             stream_directory_rva: stream_directory_rva,
             stream_directory: Section::with_endian(endian),
             module_list: Some(List::new(md::MD_MODULE_LIST_STREAM, endian)),
+            memory_list: Some(List::new(md::MD_MEMORY_LIST_STREAM, endian)),
         }
     }
 
@@ -130,6 +133,16 @@ impl SynthMinidump {
         self
     }
 
+    /// Add `memory` to `self`, adding it to the memory list stream as well.
+    pub fn add_memory(mut self, memory: Memory) -> SynthMinidump {
+        // The memory list contains `MDMemoryDescriptor`s, so create one here.
+        let descriptor = memory.cite_memory_in(Section::with_endian(self.section.endian));
+        // And append that descriptor to the memory list.
+        self.memory_list = self.memory_list.take().map(|memory_list| memory_list.add(descriptor));
+        // Add the memory region itself.
+        self.add(memory)
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -141,9 +154,18 @@ impl SynthMinidump {
     pub fn finish(self) -> Option<Vec<u8>> {
         let mut this = self;
         // Add module list stream if any modules were added.
-        let this = match this.module_list.take() {
+        let mut this = match this.module_list.take() {
             Some(module_list) => if !module_list.empty() {
                 this.add_stream(module_list)
+            } else {
+                this
+            },
+            _ => this,
+        };
+        // Add memory list stream if any memory regions were added.
+        let this = match this.memory_list.take() {
+            Some(memory_list) => if !memory_list.empty() {
+                this.add_stream(memory_list)
             } else {
                 this
             },
@@ -385,6 +407,37 @@ impl Into<Section> for Module {
             .D64(0)
             // reserved1
             .D64(0)
+    }
+}
+
+/// A range of memory contents.
+pub struct Memory {
+    section: Section,
+    pub address: u64,
+}
+
+impl Memory {
+    /// Create a new `Memory` object representing memory starting at `address`,
+    /// containing the contents of `section`.
+    pub fn with_section(section: Section, address: u64) -> Memory {
+        Memory {
+            section: section,
+            address: address,
+        }
+    }
+
+    // Append an `MDMemoryDescriptor` referring to this memory range to `section`.
+    pub fn cite_memory_in(&self, section: Section) -> Section {
+        let section = section.D64(self.address);
+        self.cite_location_in(section)
+    }
+}
+
+impl_dumpsection!(Memory);
+
+impl Into<Section> for Memory {
+    fn into(self) -> Section {
+        self.section
     }
 }
 
