@@ -3,7 +3,8 @@ sudo: false
 os:
 - linux
 rust:
-  - nightly
+  # Skip nightly for now, we have some issues to work out.
+  #  - nightly
   - beta
   - stable
 script:
