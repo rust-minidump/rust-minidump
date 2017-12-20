@@ -1,7 +1,13 @@
 language: rust
+sudo: false
+os:
+- linux
+rust:
+  - nightly
+  - beta
+  - stable
 script:
   - cargo build --verbose
-  - ./test-all.sh --verbose
+  - cargo test --all --verbose
   - cargo doc --verbose
-sudo: false
 after_success: sh scripts/travis-doc-upload.sh
