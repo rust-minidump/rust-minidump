@@ -17,7 +17,7 @@ pub use breakpad_symbols::Module;
 pub use context::*;
 use iostuff::*;
 use minidump_format as md;
-use range_map;
+use range_map::{Range, RangeMap};
 use system_info::*;
 
 
@@ -121,7 +121,7 @@ pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules : Vec<MinidumpModule>,
     /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
-    modules_by_addr : range_map::RangeMap<usize>,
+    modules_by_addr: RangeMap<u64, usize>,
 }
 
 /// The state of a thread from the process when the minidump was written.
@@ -210,7 +210,7 @@ pub struct MinidumpMemoryList {
     /// The memory regions, in the order they were stored in the minidump.
     regions: Vec<MinidumpMemory>,
     /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
-    regions_by_addr: range_map::RangeMap<usize>,
+    regions_by_addr: RangeMap<u64, usize>,
 }
 
 //======================================================
@@ -459,6 +459,10 @@ impl MinidumpModule {
                     ));
         Ok(())
     }
+
+    fn memory_range(&self) -> Range<u64> {
+        Range::new(self.base_address(), self.base_address() + self.size() - 1)
+    }
 }
 
 impl Clone for CodeViewPDBRaw {
@@ -629,17 +633,27 @@ impl MinidumpModuleList {
     pub fn new() -> MinidumpModuleList {
         MinidumpModuleList {
             modules: vec!(),
-            modules_by_addr: range_map::RangeMap::<usize>::new()
+            modules_by_addr: RangeMap::new()
         }
     }
     /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
-    pub fn from_modules(modules : Vec<MinidumpModule>) -> MinidumpModuleList {
-        let mut map = range_map::RangeMap::<usize>::new();
-        for (i, module) in modules.iter().enumerate() {
-            if let Err(_) = map.insert((module.base_address(), module.base_address() + module.size()), i) {
-                //TODO: Ignoring errors here from overlapping modules.
+    pub fn from_modules(modules: Vec<MinidumpModule>) -> MinidumpModuleList {
+        let map = {
+            let mut mapped_modules: Vec<(Range<u64>, usize)> = vec![];
+            for (i, module) in modules.iter().enumerate() {
+                let this = module.memory_range();
+                if let Some(&(last, _)) = mapped_modules.last() {
+                    // Skip overlapping modules.
+                    if last.intersects(&this) {
+                        continue;
+                    }
+                }
+                mapped_modules.push((this, i));
             }
-        }
+            mapped_modules.into_iter()
+                .map(|(r, i)| (r, i))
+                .collect()
+        };
         MinidumpModuleList { modules: modules, modules_by_addr: map }
     }
 
@@ -656,7 +670,7 @@ impl MinidumpModuleList {
 
     /// Return a `MinidumpModule` whose address range covers `addr`.
     pub fn module_at_address(&self, addr : u64) -> Option<&MinidumpModule> {
-        return if let Some(&index) = self.modules_by_addr.lookup(addr) {
+        return if let Some(&index) = self.modules_by_addr.get(addr) {
             Some(&self.modules[index])
         } else {
             None
@@ -672,8 +686,8 @@ impl MinidumpModuleList {
     pub fn by_addr<'a>(&'a self) -> Modules<'a> {
         Modules {
             iter: Box::new(self.modules_by_addr
-                           .iter()
-                           .map(move |&((_, _), index)| &self.modules[index]))
+                           .ranges_values()
+                           .map(move |&(_, index)| &self.modules[index]))
         }
     }
 
@@ -769,6 +783,10 @@ Memory
         try!(write!(f, "\n"));
         Ok(())
     }
+
+    fn memory_range(&self) -> Range<u64> {
+        Range::new(self.base_address, self.base_address + self.size - 1)
+    }
 }
 
 /// An iterator over `MinidumpMemory`s.
@@ -789,17 +807,27 @@ impl MinidumpMemoryList {
     pub fn new() -> MinidumpMemoryList {
         MinidumpMemoryList {
             regions: vec!(),
-            regions_by_addr: range_map::RangeMap::<usize>::new()
+            regions_by_addr: RangeMap::new()
         }
     }
     /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
     pub fn from_regions(regions: Vec<MinidumpMemory>) -> MinidumpMemoryList {
-        let mut map = range_map::RangeMap::<usize>::new();
-        for (i, region) in regions.iter().enumerate() {
-            if let Err(_) = map.insert((region.base_address, region.base_address + region.size), i) {
-                //TODO: Ignoring errors here from overlapping memory regions.
+        let map = {
+            let mut mapped_regions: Vec<(Range<u64>, usize)> = vec![];
+            for (i, region) in regions.iter().enumerate() {
+                let this = region.memory_range();
+                if let Some(&(last, _)) = mapped_regions.last() {
+                    // Skip overlapping memory regions.
+                    if last.intersects(&this) {
+                        continue;
+                    }
+                }
+                mapped_regions.push((this, i));
             }
-        }
+            mapped_regions.into_iter()
+                .map(|(r, i)| (r, i))
+                .collect()
+        };
         MinidumpMemoryList { regions: regions, regions_by_addr: map }
     }
 
@@ -812,8 +840,8 @@ impl MinidumpMemoryList {
     pub fn by_addr<'a>(&'a self) -> MemoryRegions<'a> {
         MemoryRegions {
             iter: Box::new(self.regions_by_addr
-                           .iter()
-                           .map(move |&((_, _), index)| &self.regions[index]))
+                           .ranges_values()
+                           .map(move |&(_, index)| &self.regions[index]))
         }
     }
 
@@ -1409,7 +1437,6 @@ MDRawDirectory
 #[cfg(test)]
 mod test {
     use super::*;
-    use chrono::*;
     use ::minidump_format as md;
     use std::io::Cursor;
     use std::mem;

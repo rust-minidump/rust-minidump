@@ -13,7 +13,7 @@ exclude = [
 
 
 [dependencies]
-range-map = { path = "range-map" }
+range-map = "0.1.5"
 breakpad-symbols = { path = "breakpad-symbols" }
 libc = "0.1.*"
 encoding = "0.2"
