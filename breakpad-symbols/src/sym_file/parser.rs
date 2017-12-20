@@ -11,6 +11,7 @@ use std::str;
 use std::str::FromStr;
 
 use sym_file::types::*;
+use range_map::Range;
 #[cfg(test)]
 use range_map::RangeMap;
 
@@ -19,7 +20,7 @@ enum Line<'a> {
     File(u32, &'a str),
     Public(PublicSymbol),
     Function(Function),
-    StackWin(StackInfoWin),
+    StackWin(WinFrameType),
     StackCFI(StackInfoCFI),
 }
 
@@ -136,19 +137,27 @@ named!(func_lines<&[u8], Function>,
               parameter_size: parameter_size,
               name: name.to_string(),
               lines: lines.into_iter()
-                  .map(|l| ((l.address, l.address + l.size as u64), l))
+                  .filter_map(|l| {
+                      // Line data from PDB files often has a zero-size line entry, so just
+                      // filter those out.
+                      if l.size > 0 {
+                          Some((Range::new(l.address, l.address + l.size as u64 - 1), l))
+                      } else {
+                          None
+                      }
+                  })
                   .collect(),
           }
       }
       ));
 
 /// Matches a STACK WIN record.
-named!(stack_win_line<&[u8], StackInfoWin>,
+named!(stack_win_line<&[u8], WinFrameType>,
   chain!(
     tag!("STACK WIN") ~
     space ~
-    // Frame type
-    hex_digit ~
+    // Frame type, currently ignored.
+    ty: hex_digit ~
     space ~
     address: hex_str_u64 ~
     space ~
@@ -171,13 +180,12 @@ named!(stack_win_line<&[u8], StackInfoWin>,
     rest: map_res!(not_line_ending, str::from_utf8) ~
     my_eol ,
       || {
-          let frame_type = if has_program_string {
-              WinFrameType::FrameData(rest.to_string())
-
+          let program_string_or_base_pointer = if has_program_string {
+              WinStackThing::ProgramString(rest.to_string())
           } else {
-              WinFrameType::FPO { allocates_base_pointer: rest == "1" }
+              WinStackThing::AllocatesBasePointer(rest == "1")
           };
-          StackInfoWin {
+          let info = StackInfoWin {
               address: address,
               size: code_size,
               prologue_size: prologue_size,
@@ -186,7 +194,12 @@ named!(stack_win_line<&[u8], StackInfoWin>,
               saved_register_size: saved_register_size,
               local_size: local_size,
               max_stack_size: max_stack_size,
-              frame_type: frame_type,
+              program_string_or_base_pointer,
+          };
+          match ty {
+              b"4" => WinFrameType::FrameData(info),
+              b"0" => WinFrameType::FPO(info),
+              _ => WinFrameType::Unhandled,
           }
       }
 ));
@@ -262,7 +275,8 @@ fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
     let mut publics = vec!();
     let mut funcs = vec!();
     let mut stack_cfi = vec!();
-    let mut stack_win = vec!();
+    let mut stack_win_framedata: Vec<StackInfoWin> = vec!();
+    let mut stack_win_fpo: Vec<StackInfoWin> = vec!();
     for line in lines {
         match line {
             Line::Info => {},
@@ -271,7 +285,28 @@ fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
             },
             Line::Public(p) => { publics.push(p); },
             Line::Function(f) => { funcs.push(f); },
-            Line::StackWin(s) => { stack_win.push(s); },
+            Line::StackWin(frame_type) => {
+                // PDB files contain lots of overlapping unwind info, so we have to filter
+                // some of it out.
+                fn insert_win_stack_info(stack_win: &mut Vec<StackInfoWin>, info: StackInfoWin) {
+                    if let Some(last) = stack_win.last() {
+                        if last.memory_range().intersects(&info.memory_range()) {
+                            return;
+                        }
+                    }
+                    stack_win.push(info);
+                }
+                match frame_type {
+                    WinFrameType::FrameData(s) => {
+                        insert_win_stack_info(&mut stack_win_framedata, s);
+                    }
+                    WinFrameType::FPO(s) => {
+                        insert_win_stack_info(&mut stack_win_fpo, s);
+                    }
+                    // Just ignore other types.
+                    _ => {}
+                }
+            },
             Line::StackCFI(s) => { stack_cfi.push(s); },
         }
     }
@@ -280,13 +315,16 @@ fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
         files: files,
         publics: publics,
         functions: funcs.into_iter()
-            .map(|f| ((f.address, f.address + f.size as u64), f))
+            .map(|f| (f.memory_range(), f))
             .collect(),
         cfi_stack_info: stack_cfi.into_iter()
-            .map(|s| ((s.init.address, s.init.address + s.size as u64), s))
+            .map(|s| (s.memory_range(), s))
             .collect(),
-        win_stack_info: stack_win.into_iter()
-            .map(|s| ((s.address, s.address + s.size as u64), s))
+        win_stack_framedata_info: stack_win_framedata.into_iter()
+            .map(|s| (s.memory_range(), s))
+            .collect(),
+        win_stack_fpo_info: stack_win_fpo.into_iter()
+            .map(|s| (s.memory_range(), s))
             .collect(),
     }
 }
@@ -404,13 +442,13 @@ fn test_func_lines_and_lines() {
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-        assert_eq!(f.lines.lookup(0x1000).unwrap(),
+        assert_eq!(f.lines.get(0x1000).unwrap(),
                    &SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42});
-        assert_eq!(f.lines.into_iter().collect::<Vec<_>>(),
+        assert_eq!(f.lines.ranges_values().collect::<Vec<_>>(),
                    vec!(
-                       ((0x1000,0x1010), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
-                       ((0x1010, 0x1020), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
-                       ((0x1020, 0x1030), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
+                       &(Range::<u64>::new(0x1000, 0x100F), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
+                       &(Range::<u64>::new(0x1010, 0x101F), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
+                       &(Range::<u64>::new(0x1020, 0x102F), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
                        ));
     } else {
         assert!(false, "Failed to parse!");
@@ -421,7 +459,7 @@ fn test_func_lines_and_lines() {
 fn test_stack_win_line_program_string() {
     let line = b"STACK WIN 4 2170 14 a1 b2 c3 d4 e5 f6 1 $eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =\n";
     match stack_win_line(line) {
-        Done(rest, stack) => {
+        Done(rest, WinFrameType::FrameData(stack)) => {
             assert_eq!(rest, &b""[..]);
             assert_eq!(stack.address, 0x2170);
             assert_eq!(stack.size, 0x14);
@@ -431,14 +469,12 @@ fn test_stack_win_line_program_string() {
             assert_eq!(stack.saved_register_size, 0xd4);
             assert_eq!(stack.local_size, 0xe5);
             assert_eq!(stack.max_stack_size, 0xf6);
-            if let WinFrameType::FrameData(program_string) = stack.frame_type {
-                assert_eq!(program_string, "$eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =".to_string());
-            } else {
-                assert!(false, "Wrong frame type!");
-            }
+            assert_eq!(stack.program_string_or_base_pointer,
+                       WinStackThing::ProgramString("$eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =".to_string()));
         },
         Error(e) => { assert!(false, format!("Parse error: {:?}", e)); },
         Incomplete(_) => { assert!(false, "Incomplete parse!"); },
+        _ => assert!(false, "Something bad happened"),
     }
 }
 
@@ -446,7 +482,7 @@ fn test_stack_win_line_program_string() {
 fn test_stack_win_line_frame_data() {
     let line = b"STACK WIN 0 1000 30 a1 b2 c3 d4 e5 f6 0 1\n";
     match stack_win_line(line) {
-        Done(rest, stack) => {
+        Done(rest, WinFrameType::FPO(stack)) => {
             assert_eq!(rest, &b""[..]);
             assert_eq!(stack.address, 0x1000);
             assert_eq!(stack.size, 0x30);
@@ -456,14 +492,12 @@ fn test_stack_win_line_frame_data() {
             assert_eq!(stack.saved_register_size, 0xd4);
             assert_eq!(stack.local_size, 0xe5);
             assert_eq!(stack.max_stack_size, 0xf6);
-            if let WinFrameType::FPO { allocates_base_pointer } = stack.frame_type {
-                assert!(allocates_base_pointer);
-            } else {
-                assert!(false, "Wrong frame type!");
-            }
+            assert_eq!(stack.program_string_or_base_pointer,
+                       WinStackThing::AllocatesBasePointer(true));
         },
         Error(e) => { assert!(false, format!("Parse error: {:?}", e)); },
         Incomplete(_) => { assert!(false, "Incomplete parse!"); },
+        _ => assert!(false, "Something bad happened"),
     }
 }
 
@@ -540,16 +574,16 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(p.parameter_size, 0x3);
         assert_eq!(p.name, "func 2".to_string());
     }
-    assert_eq!(sym.functions.len(), 3);
-    let funcs = sym.functions.clone().into_iter()
-        .map(|(_, f)| f).collect::<Vec<_>>();
+    assert_eq!(sym.functions.ranges_values().count(), 3);
+    let funcs = sym.functions.ranges_values()
+        .map(|&(_, ref f)| f).collect::<Vec<_>>();
     {
         let f = &funcs[0];
         assert_eq!(f.address, 0x900);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some other func".to_string());
-        assert_eq!(f.lines.len(), 0);
+        assert_eq!(f.lines.ranges_values().count(), 0);
     }
     {
         let f = &funcs[1];
@@ -557,11 +591,11 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-        assert_eq!(f.lines.clone().into_iter().collect::<Vec<_>>(),
+        assert_eq!(f.lines.ranges_values().collect::<Vec<_>>(),
                    vec!(
-                       ((0x1000,0x1010), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
-                       ((0x1010, 0x1020), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
-                       ((0x1020, 0x1030), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
+                       &(Range::new(0x1000, 0x100F), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
+                       &(Range::new(0x1010, 0x101F), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
+                       &(Range::new(0x1020, 0x102F), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
                        ));
     }
     {
@@ -570,11 +604,11 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "a third func".to_string());
-        assert_eq!(f.lines.len(), 0);
+        assert_eq!(f.lines.ranges_values().count(), 0);
     }
-    assert_eq!(sym.win_stack_info.len(), 2);
-    let ws = sym.win_stack_info.clone().into_iter()
-        .map(|(_, s)| s).collect::<Vec<_>>();
+    assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
+    let ws = sym.win_stack_framedata_info.ranges_values()
+        .map(|&(_, ref s)| s).collect::<Vec<_>>();
     {
         let stack = &ws[0];
         assert_eq!(stack.address, 0x900);
@@ -585,14 +619,14 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(stack.saved_register_size, 0xd4);
         assert_eq!(stack.local_size, 0xe5);
         assert_eq!(stack.max_stack_size, 0xf6);
-        if let WinFrameType::FrameData(ref program_string) = stack.frame_type {
-            assert_eq!(*program_string, "prog string".to_string());
-        } else {
-            assert!(false, "Wrong frame type!");
-        }
+        assert_eq!(stack.program_string_or_base_pointer,
+                   WinStackThing::ProgramString("prog string".to_string()));
     }
+    assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
+    let ws = sym.win_stack_fpo_info.ranges_values()
+        .map(|&(_, ref s)| s).collect::<Vec<_>>();
     {
-        let stack = &ws[1];
+        let stack = &ws[0];
         assert_eq!(stack.address, 0x1000);
         assert_eq!(stack.size, 0x30);
         assert_eq!(stack.prologue_size, 0xa1);
@@ -601,15 +635,12 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(stack.saved_register_size, 0xd4);
         assert_eq!(stack.local_size, 0xe5);
         assert_eq!(stack.max_stack_size, 0xf6);
-        if let WinFrameType::FPO { ref allocates_base_pointer } = stack.frame_type {
-            assert!(allocates_base_pointer);
-        } else {
-            assert!(false, "Wrong frame type!");
-        }
+        assert_eq!(stack.program_string_or_base_pointer,
+                   WinStackThing::AllocatesBasePointer(true));
     }
-    assert_eq!(sym.cfi_stack_info.len(), 2);
-    let cs = sym.cfi_stack_info.clone().into_iter()
-        .map(|(_, s)| s).collect::<Vec<_>>();
+    assert_eq!(sym.cfi_stack_info.ranges_values().count(), 2);
+    let cs = sym.cfi_stack_info.ranges_values()
+        .map(|&(_, ref s)| s.clone()).collect::<Vec<_>>();
     assert_eq!(cs[0],
                StackInfoCFI {
                    init: CFIRules { address: 0xf00f,

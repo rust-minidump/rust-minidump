@@ -10,7 +10,7 @@ repository = "https://github.com/luser/rust-minidump"
 workspace = ".."
 
 [dependencies]
-range-map = { path = "../range-map" }
+range-map = "0.1.5"
 nom = "~1.2.2"
 # This is technically test-dependencies, but cargo can't handle that
 # when running `cargo test -p breakpad-symbols` from the repository root.

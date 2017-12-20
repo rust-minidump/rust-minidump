@@ -3,7 +3,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use range_map::RangeMap;
+use range_map::{Range, RangeMap};
 
 /// A publicly visible linker symbol.
 #[derive(Debug, Eq, PartialEq)]
@@ -41,7 +41,7 @@ impl PartialOrd for PublicSymbol {
 }
 
 /// A mapping from machine code bytes to source line and file.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceLine {
     /// The start address relative to the module's load address.
     pub address : u64,
@@ -56,7 +56,7 @@ pub struct SourceLine {
 }
 
 /// A source-language function.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     /// The function's start address relative to the module's load address.
     pub address : u64,
@@ -67,7 +67,13 @@ pub struct Function {
     /// The name of the function as declared in the source.
     pub name : String,
     /// Source line information for this function.
-    pub lines : RangeMap<SourceLine>,
+    pub lines : RangeMap<u64, SourceLine>,
+}
+
+impl Function {
+    pub fn memory_range(&self) -> Range<u64> {
+        Range::new(self.address, self.address + self.size as u64 - 1)
+    }
 }
 
 /// DWARF CFI rules for recovering registers at a specific address.
@@ -80,7 +86,7 @@ pub struct CFIRules {
 }
 
 /// Information used for unwinding stack frames using DWARF CFI.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackInfoCFI {
     /// The initial rules for this address range.
     pub init : CFIRules,
@@ -90,17 +96,32 @@ pub struct StackInfoCFI {
     pub add_rules : Vec<CFIRules>,
 }
 
-/// Specific details about whether hte frame uses a base pointer or has a program string to evaluate.
-#[derive(Clone, Debug, PartialEq)]
+impl StackInfoCFI {
+    pub fn memory_range(&self) -> Range<u64> {
+        Range::new(self.init.address, self.init.address + self.size as u64 - 1)
+    }
+}
+
+/// Specific details about whether the frame uses a base pointer or has a program string to
+/// evaluate.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WinFrameType {
     /// This frame uses FPO-style data.
-    FPO { allocates_base_pointer : bool },
+    FPO(StackInfoWin),
     /// This frame uses new-style frame data, has a program string.
-    FrameData(String),
+    FrameData(StackInfoWin),
+    /// Some other type of frame.
+    Unhandled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WinStackThing {
+    ProgramString(String),
+    AllocatesBasePointer(bool),
 }
 
 /// Information used for unwinding stack frames using Windows frame info.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackInfoWin {
     /// The address in question.
     pub address : u64,
@@ -119,7 +140,13 @@ pub struct StackInfoWin {
     /// The maximum number of bytes pushed onto the stack by this frame.
     pub max_stack_size : u32,
     /// A program string or boolean regarding a base pointer.
-    pub frame_type : WinFrameType,
+    pub program_string_or_base_pointer: WinStackThing,
+}
+
+impl StackInfoWin {
+    pub fn memory_range(&self) -> Range<u64> {
+        Range::new(self.address, self.address + self.size as u64 - 1)
+    }
 }
 
 /// A parsed .sym file containing debug symbols.
@@ -130,9 +157,11 @@ pub struct SymbolFile {
     /// Publicly visible symbols.
     pub publics : Vec<PublicSymbol>,
     /// Functions.
-    pub functions : RangeMap<Function>,
+    pub functions : RangeMap<u64, Function>,
     /// DWARF CFI unwind information.
-    pub cfi_stack_info : RangeMap<StackInfoCFI>,
-    /// Windows unwind information.
-    pub win_stack_info : RangeMap<StackInfoWin>,
+    pub cfi_stack_info : RangeMap<u64, StackInfoCFI>,
+    /// Windows unwind information (frame data).
+    pub win_stack_framedata_info: RangeMap<u64, StackInfoWin>,
+    /// Windows unwind information (FPO data).
+    pub win_stack_fpo_info: RangeMap<u64, StackInfoWin>,
 }

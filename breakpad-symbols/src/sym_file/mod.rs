@@ -27,11 +27,11 @@ impl SymbolFile {
                        frame : &mut FrameSymbolizer) {
         // Look for a FUNC covering the address first.
         let addr = frame.get_instruction();
-        if let Some(ref func) = self.functions.lookup(addr) {
+        if let Some(ref func) = self.functions.get(addr) {
             frame.set_function(&func.name,
                                func.address + module.base_address());
             // See if there's source line info as well.
-            func.lines.lookup(addr).map(|ref line| {
+            func.lines.get(addr).map(|ref line| {
                 self.files.get(&line.file).map(|ref file| {
                     frame.set_source_file(file,
                                           line.line,
@@ -85,12 +85,15 @@ mod test {
                    "__from_strstr_to_strchr");
         assert_eq!(sym.find_nearest_public(0xFFFFFFFF).unwrap().name,
                    "__from_strstr_to_strchr");
-        assert_eq!(sym.functions.len(), 1065);
-        assert_eq!(sym.functions.lookup(0x1000).unwrap().name, "vswprintf");
-        assert_eq!(sym.functions.lookup(0x1012).unwrap().name, "vswprintf");
-        assert!(sym.functions.lookup(0x1013).is_none());
-        assert_eq!(sym.win_stack_info.len(), 1815);
-        assert_eq!(sym.win_stack_info.lookup(0x41b0).unwrap().address,
+        assert_eq!(sym.functions.ranges_values().count(), 1065);
+        assert_eq!(sym.functions.get(0x1000).unwrap().name, "vswprintf");
+        assert_eq!(sym.functions.get(0x1012).unwrap().name, "vswprintf");
+        assert!(sym.functions.get(0x1013).is_none());
+        // There are 1556 `STACK WIN 4` lines in the symbol file, but only 856
+        // that don't overlap.
+        assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 856);
+        assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 259);
+        assert_eq!(sym.win_stack_framedata_info.get(0x41b0).unwrap().address,
                    0x41b0);
     }
 
@@ -109,11 +112,11 @@ mod test {
 
         assert_eq!(sym.files.len(), 1);
         assert_eq!(sym.publics.len(), 1);
-        assert_eq!(sym.functions.len(), 1);
-        assert_eq!(sym.functions.lookup(0x1000).unwrap().name, "another func");
-        assert_eq!(sym.functions.lookup(0x1000).unwrap().lines.len(), 1);
+        assert_eq!(sym.functions.ranges_values().count(), 1);
+        assert_eq!(sym.functions.get(0x1000).unwrap().name, "another func");
+        assert_eq!(sym.functions.get(0x1000).unwrap().lines.ranges_values().count(), 1);
         // test fallback
-        assert_eq!(sym.functions.lookup(0x1001).unwrap().name, "another func");
+        assert_eq!(sym.functions.get(0x1001).unwrap().name, "another func");
     }
 
     #[test]
