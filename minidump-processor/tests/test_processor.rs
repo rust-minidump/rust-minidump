@@ -11,20 +11,35 @@ use minidump::*;
 use minidump::system_info::{CPU, OS};
 use minidump_processor::{CallStackInfo, FrameTrust};
 
+fn locate_testdata() -> PathBuf {
+    // This is a little weird because while cargo will always build this code by running rustc
+    // from the crate root, if you run `cargo test --all` from the workspace root, then the test
+    // binary will be run from the crate root, so relative paths from `file!` won't work.
+    let paths = &[
+        // First, try relative to the current directory for if we're being run from the workspace.
+        Path::new("testdata"),
+        // If that doesn't work, try looking in the parent directory.
+        Path::new("../testdata"),
+    ];
+    for path in paths {
+        if path.is_dir() {
+            return path.to_path_buf()
+        }
+    }
+
+    panic!("Couldn't find testdata directory! Tried: {:?}", paths);
+}
+
 fn read_test_minidump() -> Result<Minidump, Error> {
-    let path = Path::new(file!())
-        .parent()
-        .unwrap()
-        .join("../../testdata/test.dmp");
+    let path = locate_testdata()
+        .join("test.dmp");
     println!("minidump: {:?}", path);
     Minidump::read_path(&path)
 }
 
 fn testdata_symbol_path() -> PathBuf {
-    let path = Path::new(file!())
-        .parent()
-        .unwrap()
-        .join("../../testdata/symbols");
+    let path = locate_testdata()
+        .join("symbols");
     println!("symbol path: {:?}", path);
     path
 }
