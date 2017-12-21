@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 
 [dependencies]
-breakpad-symbols = { version = "0.1.0", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
 chrono = "0.2.16"
 minidump = { version = "0.1.0", path = ".." }
 
