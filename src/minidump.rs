@@ -1244,8 +1244,10 @@ impl MinidumpException {
 
 impl Minidump {
     /// Read a `Minidump` from a `Path` to a file on disk.
-    pub fn read_path(path : &Path) -> Result<Minidump, Error> {
-        let f = try!(File::open(path).or(Err(Error::FileNotFound)));
+    pub fn read_path<T>(path: T) -> Result<Minidump, Error>
+        where T: AsRef<Path>
+    {
+        let f = File::open(path).or(Err(Error::FileNotFound))?;
         Minidump::read(f)
     }
 

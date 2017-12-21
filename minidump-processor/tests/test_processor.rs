@@ -16,14 +16,17 @@ fn read_test_minidump() -> Result<Minidump, Error> {
         .parent()
         .unwrap()
         .join("../../testdata/test.dmp");
+    println!("minidump: {:?}", path);
     Minidump::read_path(&path)
 }
 
 fn testdata_symbol_path() -> PathBuf {
-    Path::new(file!())
+    let path = Path::new(file!())
         .parent()
         .unwrap()
-        .join("../../testdata/symbols")
+        .join("../../testdata/symbols");
+    println!("symbol path: {:?}", path);
+    path
 }
 
 #[test]
