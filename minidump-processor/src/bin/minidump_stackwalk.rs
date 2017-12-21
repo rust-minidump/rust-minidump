@@ -12,16 +12,20 @@ extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use minidump::*;
+use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};
+use std::boxed::Box;
 
 const USAGE : &'static str =
     "usage: minidump_stackwalk <minidump-file> [symbol-path ...]";
 
-fn print_minidump_process(path : &Path, symbol_paths : Vec<PathBuf>) {
+fn print_minidump_process(path: &Path, symbol_paths: Vec<PathBuf>) {
     let mut stderr = std::io::stderr();
     if let Ok(mut dump) = Minidump::read_path(path) {
+        let mut provider = MultiSymbolProvider::new();
+        provider.add(Box::new(Symbolizer::new(SimpleSymbolSupplier::new(symbol_paths))));
+        provider.add(Box::new(DwarfSymbolizer::new()));
         match minidump_processor::process_minidump(&mut dump,
-                                                   &Symbolizer::new(
-                                                       SimpleSymbolSupplier::new(symbol_paths))) {
+                                                   &provider) {
             Ok(state) => {
                 let mut stdout = std::io::stdout();
                 state.print(&mut stdout).unwrap();

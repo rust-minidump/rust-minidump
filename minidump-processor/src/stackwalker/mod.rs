@@ -6,7 +6,7 @@
 mod x86;
 mod unwind;
 
-use breakpad_symbols::Symbolizer;
+use ::SymbolProvider;
 use minidump::*;
 use process_state::*;
 
@@ -30,22 +30,26 @@ fn get_caller_frame(frame : &StackFrame,
     }
 }
 
-fn fill_source_line_info(frame : &mut StackFrame,
-                         modules : &MinidumpModuleList,
-                         symbolizer : &Symbolizer) {
+fn fill_source_line_info<P>(frame: &mut StackFrame,
+                            modules: &MinidumpModuleList,
+                            symbol_provider: &P)
+    where P: SymbolProvider,
+{
     // Find the module whose address range covers this frame's instruction.
     if let &Some(module) = &modules.module_at_address(frame.instruction) {
         // FIXME: this shouldn't need to clone, we should be able to use
         // the same lifetime as the module list that's passed in.
         frame.module = Some(module.clone());
-        symbolizer.fill_symbol(module, frame);
+        symbol_provider.fill_symbol(module, frame);
     }
 }
 
-pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
-                  stack_memory : &Option<MinidumpMemory>,
-                  modules : &MinidumpModuleList,
-                  symbolizer : &Symbolizer) -> CallStack {
+pub fn walk_stack<P>(maybe_context: &Option<&MinidumpContext>,
+                     stack_memory: &Option<MinidumpMemory>,
+                     modules: &MinidumpModuleList,
+                     symbol_provider: &P) -> CallStack
+    where P: SymbolProvider,
+{
     // Begin with the context frame, and keep getting callers until there are
     // no more.
     let mut frames = vec!();
@@ -54,7 +58,7 @@ pub fn walk_stack(maybe_context : &Option<&MinidumpContext>,
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
-            fill_source_line_info(&mut frame, modules, symbolizer);
+            fill_source_line_info(&mut frame, modules, symbol_provider);
             frames.push(frame);
             let last_frame = &frames.last().unwrap();
             maybe_frame = get_caller_frame(last_frame, stack_memory);

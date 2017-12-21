@@ -1,12 +1,52 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use breakpad_symbols::Symbolizer;
+use breakpad_symbols::{FrameSymbolizer, Symbolizer};
 use chrono::{TimeZone,UTC};
 use minidump::*;
 use process_state::{CallStack,CallStackInfo,ProcessState};
 use stackwalker;
+use std::boxed::Box;
 use system_info::SystemInfo;
+
+pub trait SymbolProvider {
+    fn fill_symbol(&self,
+                   module: &Module,
+                   frame: &mut FrameSymbolizer);
+}
+
+impl SymbolProvider for Symbolizer {
+    fn fill_symbol(&self,
+                   module: &Module,
+                   frame: &mut FrameSymbolizer) {
+        self.fill_symbol(module, frame);
+    }
+}
+
+#[derive(Default)]
+pub struct MultiSymbolProvider {
+    providers: Vec<Box<SymbolProvider>>,
+}
+
+impl MultiSymbolProvider {
+    pub fn new() -> MultiSymbolProvider {
+        Default::default()
+    }
+
+    pub fn add(&mut self, provider: Box<SymbolProvider>) {
+        self.providers.push(provider);
+    }
+}
+
+impl SymbolProvider for MultiSymbolProvider {
+    fn fill_symbol(&self,
+                   module: &Module,
+                   frame: &mut FrameSymbolizer) {
+        for p in self.providers.iter() {
+            p.fill_symbol(module, frame);
+        }
+    }
+}
 
 /// An error encountered during minidump processing.
 #[derive(Debug)]
@@ -45,9 +85,11 @@ pub enum ProcessError {
 /// # }
 /// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump(dump : &mut Minidump,
-                        symbolizer : &Symbolizer)
-                        -> Result<ProcessState, ProcessError> {
+pub fn process_minidump<P>(dump: &mut Minidump,
+                           symbol_provider: &P)
+                           -> Result<ProcessState, ProcessError>
+    where P: SymbolProvider,
+{
     // Thread list is required for processing.
     let thread_list = try!(dump.get_stream::<MinidumpThreadList>().or(Err(ProcessError::MissingThreadList)));
     // System info is required for processing.
@@ -113,7 +155,7 @@ pub fn process_minidump(dump : &mut Minidump,
         let stack = stackwalker::walk_stack(&context,
                                             &thread.stack,
                                             &modules,
-                                            symbolizer);
+                                            symbol_provider);
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis
