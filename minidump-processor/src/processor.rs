@@ -34,9 +34,9 @@ pub enum ProcessError {
 /// # use std::io;
 ///
 /// # fn foo() -> io::Result<()> {
-/// let file = try!(File::open("../testdata/test.dmp"));
+/// let file = File::open("../testdata/test.dmp")?;
 /// let mut dump = Minidump::read(file).unwrap();
-/// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("testdata/symbols")));
+/// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
 /// let symbolizer = Symbolizer::new(supplier);
 /// let state = minidump_processor::process_minidump(&mut dump, &symbolizer).unwrap();
 /// assert_eq!(state.threads.len(), 2);

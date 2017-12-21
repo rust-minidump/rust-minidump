@@ -1,7 +1,16 @@
 [package]
 name = "minidump-processor"
+description = "A library and tool for producing stack traces and other useful information from minidump files."
 version = "0.1.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
+license = "MIT"
+readme = "README.md"
+documentation = "https://docs.rs/minidump-processor"
+homepage = "https://github.com/luser/rust-minidump"
+repository = "https://github.com/luser/rust-minidump"
+
+[badges]
+travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
 breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
