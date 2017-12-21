@@ -7,6 +7,9 @@ license = "MIT"
 documentation = "https://luser.github.io/rust-project-docs/minidump/minidump/"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
+keywords = ["breakpad", "symbols"]
+categories = ["parsing"]
+readme = "README.md"
 exclude = [
     "scripts/*",
 ]
@@ -14,7 +17,7 @@ exclude = [
 
 [dependencies]
 range-map = "0.1.5"
-breakpad-symbols = { path = "breakpad-symbols" }
+breakpad-symbols = { version = "0.1.0-pre", path = "breakpad-symbols" }
 libc = "0.1.*"
 encoding = "0.2"
 chrono = "0.2.16"

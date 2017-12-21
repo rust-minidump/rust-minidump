@@ -1,13 +1,16 @@
 [package]
 name = "breakpad-symbols"
 description = "A library for working with Google Breakpad's text-format symbol files."
-version = "0.1.0"
+version = "0.1.0-pre"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
-documentation = "https://luser.github.io/rust-project-docs/minidump/breakpad_symbols/"
+documentation = "https://docs.rs/breakpad-symbols"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
-workspace = ".."
+exclude = [ "testdata/*" ]
+
+[badges]
+travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
 range-map = "0.1.5"
