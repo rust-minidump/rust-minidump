@@ -3,33 +3,35 @@
 
 extern crate breakpad_symbols;
 extern crate minidump;
+extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use minidump::*;
+use minidump::system_info::{CPU, OS};
+use minidump_processor::{CallStackInfo, FrameTrust};
 
 fn read_test_minidump() -> Result<Minidump, Error> {
-    let mut path = PathBuf::from(file!());
-    path.pop();
-    path.pop();
-    path.push("testdata/test.dmp");
+    let path = Path::new(file!())
+        .parent()
+        .unwrap()
+        .join("../../testdata/test.dmp");
     Minidump::read_path(&path)
 }
 
 fn testdata_symbol_path() -> PathBuf {
-    let mut path = PathBuf::from(file!());
-    path.pop();
-    path.pop();
-    path.push("testdata/symbols");
-    path
+    Path::new(file!())
+        .parent()
+        .unwrap()
+        .join("../../testdata/symbols")
 }
 
 #[test]
 fn test_processor() {
     let mut dump = read_test_minidump().unwrap();
-    let state = process_minidump(&mut dump,
-                                 &Symbolizer::new(
-                                     SimpleSymbolSupplier::new(vec!())))
+    let state = minidump_processor::process_minidump(&mut dump,
+                                                     &Symbolizer::new(
+                                                         SimpleSymbolSupplier::new(vec!())))
         .unwrap();
     assert_eq!(state.system_info.os, OS::Windows);
     // TODO
@@ -93,9 +95,9 @@ fn test_processor_symbols() {
     let mut dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
     println!("symbol path: {:?}", path);
-    let state = process_minidump(&mut dump,
-                                 &Symbolizer::new(
-                                     SimpleSymbolSupplier::new(vec!(path))))
+    let state = minidump_processor::process_minidump(&mut dump,
+                                                     &Symbolizer::new(
+                                                         SimpleSymbolSupplier::new(vec!(path))))
         .unwrap();
     let f0 = &state.threads[0].frames[0];
     assert_eq!(f0.function_name.as_ref().unwrap(),

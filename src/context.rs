@@ -10,7 +10,7 @@ use std::io;
 use std::io::SeekFrom;
 use std::mem;
 
-use minidump_format as md;
+use minidump_common::format as md;
 use iostuff::*;
 
 /// The CPU-specific context structure.

@@ -8,6 +8,7 @@ use std::io::Write;
 
 extern crate breakpad_symbols;
 extern crate minidump;
+extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use minidump::*;
@@ -18,9 +19,9 @@ const USAGE : &'static str =
 fn print_minidump_process(path : &Path, symbol_paths : Vec<PathBuf>) {
     let mut stderr = std::io::stderr();
     if let Ok(mut dump) = Minidump::read_path(path) {
-        match process_minidump(&mut dump,
-                               &Symbolizer::new(
-                                   SimpleSymbolSupplier::new(symbol_paths))) {
+        match minidump_processor::process_minidump(&mut dump,
+                                                   &Symbolizer::new(
+                                                       SimpleSymbolSupplier::new(symbol_paths))) {
             Ok(state) => {
                 let mut stdout = std::io::stdout();
                 state.print(&mut stdout).unwrap();

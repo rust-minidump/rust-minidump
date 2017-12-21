@@ -7,6 +7,7 @@ use std::io::{self,Write};
 use std::str;
 
 extern crate minidump;
+extern crate minidump_common;
 
 use minidump::*;
 
@@ -14,7 +15,7 @@ const USAGE : &'static str = "Usage: minidump_dump <minidump>";
 
 macro_rules! streams {
     ( $( $x:ident ),* ) => {
-        &[$( ( minidump_format::$x, stringify!($x) ) ),*]
+        &[$( ( minidump_common::format::$x, stringify!($x) ) ),*]
     };
 }
 

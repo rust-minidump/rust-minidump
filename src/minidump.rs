@@ -12,11 +12,11 @@ use std::io;
 use std::io::SeekFrom;
 use std::mem;
 use std::path::Path;
-pub use breakpad_symbols::Module;
 
 pub use context::*;
 use iostuff::*;
-use minidump_format as md;
+use minidump_common::traits::Module;
+use minidump_common::format as md;
 use range_map::{Range, RangeMap};
 use system_info::*;
 
@@ -1437,7 +1437,6 @@ MDRawDirectory
 #[cfg(test)]
 mod test {
     use super::*;
-    use ::minidump_format as md;
     use std::io::Cursor;
     use std::mem;
     use synth_minidump::{SynthMinidump, SimpleStream, MiscStream};

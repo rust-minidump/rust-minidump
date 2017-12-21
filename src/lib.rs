@@ -22,46 +22,19 @@
 extern crate chrono;
 extern crate encoding;
 extern crate libc;
+extern crate minidump_common;
 extern crate range_map;
-extern crate breakpad_symbols;
 #[cfg(test)]
 extern crate test_assembler;
 
-pub mod minidump_format;
 mod context;
 mod iostuff;
 mod minidump;
-mod processor;
-mod process_state;
-mod stackwalker;
 #[cfg(test)]
 pub mod synth_minidump;
-mod system_info;
+pub mod system_info;
 
 pub use iostuff::Readable;
-pub use minidump::Minidump;
-pub use minidump::Error;
-pub use breakpad_symbols::Module;
-pub use minidump::MinidumpBreakpadInfo;
-pub use minidump::MinidumpContext;
-pub use minidump::MinidumpContextValidity;
-pub use minidump::MinidumpException;
-pub use minidump::MinidumpMemory;
-pub use minidump::MinidumpMemoryList;
-pub use minidump::MinidumpMiscInfo;
-pub use minidump::MinidumpModule;
-pub use minidump::MinidumpModuleList;
-pub use minidump::MinidumpRawContext;
-pub use minidump::MinidumpSystemInfo;
-pub use minidump::MinidumpThread;
-pub use minidump::MinidumpThreadList;
-pub use processor::process_minidump;
-pub use processor::ProcessError;
-pub use process_state::CallStack;
-pub use process_state::CallStackInfo;
-pub use process_state::FrameTrust;
-pub use process_state::ProcessState;
-pub use process_state::StackFrame;
-pub use system_info::CPU;
-pub use system_info::OS;
-pub use system_info::SystemInfo;
+pub use minidump_common::format;
+pub use minidump_common::traits::Module;
+pub use minidump::*;

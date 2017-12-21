@@ -26,18 +26,19 @@ pub enum ProcessError {
 /// ```
 /// extern crate breakpad_symbols;
 /// extern crate minidump;
-/// use minidump::{Minidump,process_minidump};
-/// use breakpad_symbols::{Symbolizer,SimpleSymbolSupplier};
+/// extern crate minidump_processor;
+/// use minidump::Minidump;
+/// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
 /// use std::fs::File;
 /// use std::path::PathBuf;
 /// # use std::io;
 ///
 /// # fn foo() -> io::Result<()> {
-/// let file = try!(File::open("testdata/test.dmp"));
+/// let file = try!(File::open("../testdata/test.dmp"));
 /// let mut dump = Minidump::read(file).unwrap();
 /// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("testdata/symbols")));
 /// let symbolizer = Symbolizer::new(supplier);
-/// let state = process_minidump(&mut dump, &symbolizer).unwrap();
+/// let state = minidump_processor::process_minidump(&mut dump, &symbolizer).unwrap();
 /// assert_eq!(state.threads.len(), 2);
 /// println!("Processed {} threads", state.threads.len());
 /// # Ok(())

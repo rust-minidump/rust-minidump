@@ -3,7 +3,7 @@
 
 use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use minidump::*;
-use minidump_format::MDRawContextX86;
+use minidump::format::MDRawContextX86;
 use process_state::*;
 use stackwalker::walk_stack;
 use test_assembler::*;

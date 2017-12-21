@@ -3,7 +3,7 @@
 
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, EncoderTrap};
-use minidump_format as md;
+use minidump_common::format as md;
 use std::marker::PhantomData;
 use std::mem;
 use test_assembler::*;

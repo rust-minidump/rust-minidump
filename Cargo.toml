@@ -12,13 +12,14 @@ categories = ["parsing"]
 readme = "README.md"
 exclude = [
     "scripts/*",
+    "testdata/*",
 ]
 
 
 [dependencies]
 range-map = "0.1.5"
-breakpad-symbols = { version = "0.1.0", path = "breakpad-symbols" }
-libc = "0.1.*"
+libc = "0.2.34"
+minidump-common = { version = "0.1.0", path = "minidump-common" }
 encoding = "0.2"
 chrono = "0.2.16"
 
@@ -27,3 +28,7 @@ chrono = "0.2.16"
 test-assembler = "0.1.5"
 
 [workspace]
+members = [
+        "breakpad-symbols",
+        "minidump-processor",
+]

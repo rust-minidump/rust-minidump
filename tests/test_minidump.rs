@@ -2,12 +2,15 @@
 // file at the top-level directory of this distribution.
 
 extern crate minidump;
+extern crate minidump_common;
 extern crate chrono;
 
 use chrono::*;
 use std::fs::File;
 use std::path::PathBuf;
 use minidump::*;
+use minidump::system_info::{OS, CPU};
+use minidump_common::traits::Module;
 
 fn get_test_minidump_path() -> PathBuf {
     let mut path = PathBuf::from(file!());

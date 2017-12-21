@@ -1,7 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use minidump_format::MDRawContextX86;
+use minidump::format::MDRawContextX86;
 use minidump::{MinidumpContext,MinidumpContextValidity,MinidumpRawContext,MinidumpMemory};
 use stackwalker::unwind::Unwind;
 use process_state::{StackFrame,FrameTrust};
