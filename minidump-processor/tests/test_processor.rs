@@ -30,7 +30,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<Minidump, Error> {
+fn read_test_minidump<'a>() -> Result<Minidump<'a>, Error> {
     let path = locate_testdata()
         .join("test.dmp");
     println!("minidump: {:?}", path);
