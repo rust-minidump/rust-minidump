@@ -85,9 +85,9 @@ pub enum ProcessError {
 /// # }
 /// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump<P>(dump: &mut Minidump,
-                           symbol_provider: &P)
-                           -> Result<ProcessState, ProcessError>
+pub fn process_minidump<T: Readable, P>(dump: &mut Minidump<T>,
+                                        symbol_provider: &P)
+                                        -> Result<ProcessState, ProcessError>
     where P: SymbolProvider,
 {
     // Thread list is required for processing.

@@ -6,6 +6,7 @@ extern crate minidump;
 extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use minidump::*;
 use minidump::system_info::{CPU, OS};
@@ -30,7 +31,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<Minidump, Error> {
+fn read_test_minidump() -> Result<Minidump<File>, Error> {
     let path = locate_testdata()
         .join("test.dmp");
     println!("minidump: {:?}", path);
