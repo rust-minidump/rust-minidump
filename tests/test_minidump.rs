@@ -20,7 +20,7 @@ fn get_test_minidump_path() -> PathBuf {
     path
 }
 
-fn read_test_minidump() -> Result<Minidump, Error> {
+fn read_test_minidump<'a>() -> Result<Minidump<'a>, Error> {
     let path = get_test_minidump_path();
     Minidump::read_path(&path)
 }
