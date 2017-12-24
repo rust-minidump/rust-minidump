@@ -45,8 +45,8 @@ use system_info::*;
 /// [read]: struct.Minidump.html#method.read
 /// [read_path]: struct.Minidump.html#method.read_path
 #[allow(dead_code)]
-pub struct Minidump {
-    reader : Box<Readable + 'static>,
+pub struct Minidump<T : Readable> {
+    reader : T,
     pub header : md::MDRawHeader,
     streams : HashMap<u32, (u32, md::MDRawDirectory)>,
     swap : bool,
@@ -1242,19 +1242,21 @@ impl MinidumpException {
     }
 }
 
-impl Minidump {
+impl Minidump<File> {
     /// Read a `Minidump` from a `Path` to a file on disk.
-    pub fn read_path<T>(path: T) -> Result<Minidump, Error>
-        where T: AsRef<Path>
+    pub fn read_path<P>(path: P) -> Result<Minidump<File>, Error>
+        where P: AsRef<Path>
     {
         let f = File::open(path).or(Err(Error::FileNotFound))?;
         Minidump::read(f)
     }
+}
 
+impl<T : Readable> Minidump<T> {
     /// Read a `Minidump` from a [`Readable`][readable].
     ///
     /// [readable]: trait.Readable.html
-    pub fn read<T : Readable + 'static>(mut f : T) -> Result<Minidump, Error> {
+    pub fn read(mut f : T) -> Result<Minidump<T>, Error> {
         let header : md::MDRawHeader = try!(read(&mut f).or(Err(Error::MissingHeader)));
         let swap = false;
         if header.signature != md::MD_HEADER_SIGNATURE {
@@ -1277,7 +1279,7 @@ impl Minidump {
             streams.insert(dir.stream_type, (i, dir));
         }
         Ok(Minidump {
-            reader: Box::new(f),
+            reader: f,
             header: header,
             streams: streams,
             swap: swap
@@ -1291,13 +1293,13 @@ impl Minidump {
     /// the stream data as a specific type.
     ///
     /// [stream]: trait.MinidumpStream.html
-    pub fn get_stream<T: MinidumpStream>(&mut self) -> Result<T, Error> {
-        match self.streams.get_mut(&T::stream_type()) {
+    pub fn get_stream<S: MinidumpStream>(&mut self) -> Result<S, Error> {
+        match self.streams.get_mut(&S::stream_type()) {
             None => Err(Error::StreamNotFound),
             Some(&mut (_, dir)) => {
                 try!(self.reader.seek(SeekFrom::Start(dir.location.rva as u64)).or(Err(Error::StreamReadFailure)));
                 // TODO: cache result
-                T::read(&mut self.reader, dir.location.data_size as usize)
+                S::read(&mut self.reader, dir.location.data_size as usize)
             }
         }
     }
@@ -1320,7 +1322,7 @@ impl Minidump {
     }
 
     /// Write a verbose description of the `Minidump` to `f`.
-    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    pub fn print<W : Write>(&self, f : &mut W) -> io::Result<()> {
         fn get_stream_name(stream_type : u32) -> &'static str {
             match stream_type {
                 md::MD_UNUSED_STREAM =>
@@ -1446,7 +1448,7 @@ mod test {
     use synth_minidump::Module as SynthModule;
     use test_assembler::*;
 
-    fn read_synth_dump(dump: SynthMinidump) -> Result<Minidump, Error> {
+    fn read_synth_dump(dump: SynthMinidump) -> Result<Minidump<Cursor<Vec<u8>>>, Error> {
         dump.finish().ok_or(Error::FileNotFound).and_then(|bytes| Minidump::read(Cursor::new(bytes)))
     }
 

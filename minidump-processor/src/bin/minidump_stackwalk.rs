@@ -14,6 +14,7 @@ use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
 use minidump::*;
 use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};
 use std::boxed::Box;
+use std::fs::File;
 
 const USAGE : &'static str =
     "usage: minidump_stackwalk <minidump-file> [symbol-path ...]";
