@@ -5,7 +5,7 @@ extern crate breakpad_symbols;
 extern crate minidump;
 extern crate minidump_processor;
 
-use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
+use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use minidump::*;
@@ -24,7 +24,7 @@ fn locate_testdata() -> PathBuf {
     ];
     for path in paths {
         if path.is_dir() {
-            return path.to_path_buf()
+            return path.to_path_buf();
         }
     }
 
@@ -32,15 +32,13 @@ fn locate_testdata() -> PathBuf {
 }
 
 fn read_test_minidump() -> Result<Minidump<File>, Error> {
-    let path = locate_testdata()
-        .join("test.dmp");
+    let path = locate_testdata().join("test.dmp");
     println!("minidump: {:?}", path);
     Minidump::read_path(&path)
 }
 
 fn testdata_symbol_path() -> PathBuf {
-    let path = locate_testdata()
-        .join("symbols");
+    let path = locate_testdata().join("symbols");
     println!("symbol path: {:?}", path);
     path
 }
@@ -48,10 +46,10 @@ fn testdata_symbol_path() -> PathBuf {
 #[test]
 fn test_processor() {
     let mut dump = read_test_minidump().unwrap();
-    let state = minidump_processor::process_minidump(&mut dump,
-                                                     &Symbolizer::new(
-                                                         SimpleSymbolSupplier::new(vec!())))
-        .unwrap();
+    let state = minidump_processor::process_minidump(
+        &mut dump,
+        &Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
+    ).unwrap();
     assert_eq!(state.system_info.os, OS::Windows);
     // TODO
     // assert_eq!(state.system_info.os_version.unwrap(),
@@ -74,8 +72,11 @@ fn test_processor() {
     assert_eq!(f0.trust, FrameTrust::Context);
     assert_eq!(f0.context.get_instruction_pointer(), 0x0040429e);
     assert_eq!(f0.context.get_stack_pointer(), 0x0012fe84);
-    if let MinidumpContext { raw: MinidumpRawContext::X86(raw),
-                             ref valid } = f0.context {
+    if let MinidumpContext {
+        raw: MinidumpRawContext::X86(raw),
+        ref valid,
+    } = f0.context
+    {
         assert_eq!(raw.eip, 0x0040429e);
         assert_eq!(*valid, MinidumpContextValidity::All);
     } else {
@@ -89,8 +90,11 @@ fn test_processor() {
     assert_eq!(f3.trust, FrameTrust::FramePointer);
     assert_eq!(f3.context.get_instruction_pointer(), 0x7c816fd7);
     assert_eq!(f3.context.get_stack_pointer(), 0x0012ffc8);
-    if let MinidumpContext { raw: MinidumpRawContext::X86(raw),
-                             ref valid } = f3.context {
+    if let MinidumpContext {
+        raw: MinidumpRawContext::X86(raw),
+        ref valid,
+    } = f3.context
+    {
         assert_eq!(raw.eip, 0x7c816fd7);
         match valid {
             &MinidumpContextValidity::All => assert!(false, "Should not have all registers valid"),
@@ -114,11 +118,13 @@ fn test_processor_symbols() {
     let mut dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
     println!("symbol path: {:?}", path);
-    let state = minidump_processor::process_minidump(&mut dump,
-                                                     &Symbolizer::new(
-                                                         SimpleSymbolSupplier::new(vec!(path))))
-        .unwrap();
+    let state = minidump_processor::process_minidump(
+        &mut dump,
+        &Symbolizer::new(SimpleSymbolSupplier::new(vec![path])),
+    ).unwrap();
     let f0 = &state.threads[0].frames[0];
-    assert_eq!(f0.function_name.as_ref().unwrap(),
-               "`anonymous namespace'::CrashFunction");
+    assert_eq!(
+        f0.function_name.as_ref().unwrap(),
+        "`anonymous namespace'::CrashFunction"
+    );
 }

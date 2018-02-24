@@ -1,7 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer};
+use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::*;
 use minidump::format::MDRawContextX86;
 use process_state::*;
@@ -11,7 +11,7 @@ use test_assembler::*;
 struct TestFixture {
     pub raw: MDRawContextX86,
     pub modules: MinidumpModuleList,
-     pub symbolizer: Symbolizer,
+    pub symbolizer: Symbolizer,
 }
 
 impl TestFixture {
@@ -20,17 +20,15 @@ impl TestFixture {
             raw: MDRawContextX86::default(),
             // Give the two modules reasonable standard locations and names
             // for tests to play with.
-            modules: MinidumpModuleList::from_modules(
-                vec![
-                    MinidumpModule::new(0x40000000, 0x10000, "module1"),
-                    MinidumpModule::new(0x50000000, 0x10000, "module2"),
-                    ]
-                ),
-             symbolizer: Symbolizer::new(SimpleSymbolSupplier::new(vec!())),
+            modules: MinidumpModuleList::from_modules(vec![
+                MinidumpModule::new(0x40000000, 0x10000, "module1"),
+                MinidumpModule::new(0x50000000, 0x10000, "module2"),
+            ]),
+            symbolizer: Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
         }
     }
 
-    pub fn walk_stack(&self, stack : Section) -> CallStack {
+    pub fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::X86(self.raw),
             valid: MinidumpContextValidity::All,
@@ -43,10 +41,12 @@ impl TestFixture {
             size: size,
             bytes: stack.get_contents().unwrap(),
         };
-        walk_stack(&Some(&context),
-                   &Some(stack_memory),
-                   &self.modules,
-                   &self.symbolizer)
+        walk_stack(
+            &Some(&context),
+            &Some(stack_memory),
+            &self.modules,
+            &self.symbolizer,
+        )
     }
 }
 
@@ -83,7 +83,7 @@ fn test_traditional() {
         .append_repeated(8, 0)          // frame 1: space
         .mark(&frame1_ebp)              // frame 1 %ebp points here
         .D32(0)                         // frame 1: saved %ebp (stack end)
-        .D32(0);                        // frame 1: return address (stack end)
+        .D32(0); // frame 1: return address (stack end)
     f.raw.eip = 0x4000c7a5;
     f.raw.esp = stack.start().value().unwrap() as u32;
     f.raw.ebp = frame0_ebp.value().unwrap() as u32;

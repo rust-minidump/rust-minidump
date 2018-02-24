@@ -33,10 +33,18 @@ pub trait Module {
 /// Implement Module for 2-tuples of &str for convenience.
 /// `breakpad-symbols`' `Symbolizer::get_symbol_at_address` uses this.
 impl<'a> Module for (&'a str, &'a str) {
-    fn base_address(&self) -> u64 { 0 }
-    fn size(&self) -> u64 { 0 }
-    fn code_file(&self) -> Cow<str> { Cow::Borrowed("") }
-    fn code_identifier(&self) -> Cow<str> { Cow::Borrowed("") }
+    fn base_address(&self) -> u64 {
+        0
+    }
+    fn size(&self) -> u64 {
+        0
+    }
+    fn code_file(&self) -> Cow<str> {
+        Cow::Borrowed("")
+    }
+    fn code_identifier(&self) -> Cow<str> {
+        Cow::Borrowed("")
+    }
     fn debug_file(&self) -> Option<Cow<str>> {
         let &(ref file, ref _id) = self;
         Some(Cow::Borrowed(file))
@@ -45,5 +53,7 @@ impl<'a> Module for (&'a str, &'a str) {
         let &(ref _file, ref id) = self;
         Some(Cow::Borrowed(id))
     }
-    fn version(&self) -> Option<Cow<str>> { None }
+    fn version(&self) -> Option<Cow<str>> {
+        None
+    }
 }

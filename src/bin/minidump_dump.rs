@@ -3,7 +3,7 @@
 
 use std::env;
 use std::path::Path;
-use std::io::{self,Write};
+use std::io::{self, Write};
 use std::str;
 
 extern crate minidump;
@@ -11,7 +11,7 @@ extern crate minidump_common;
 
 use minidump::*;
 
-const USAGE : &'static str = "Usage: minidump_dump <minidump>";
+const USAGE: &'static str = "Usage: minidump_dump <minidump>";
 
 macro_rules! streams {
     ( $( $x:ident ),* ) => {
@@ -21,14 +21,15 @@ macro_rules! streams {
 
 fn print_raw_stream<T: Write>(name: &str, contents: Vec<u8>, out: &mut T) -> io::Result<()> {
     try!(writeln!(out, "Stream {}:", name));
-    let s = &contents.split(|&v| v == 0)
+    let s = &contents
+        .split(|&v| v == 0)
         .map(|s| String::from_utf8_lossy(s))
         .collect::<Vec<_>>()
         .join("\\0\n");
     write!(out, "{}\n\n", s)
 }
 
-fn print_minidump_dump(path : &Path) {
+fn print_minidump_dump(path: &Path) {
     match Minidump::read_path(path) {
         Ok(mut dump) => {
             let stdout = &mut std::io::stdout();
@@ -64,12 +65,12 @@ fn print_minidump_dump(path : &Path) {
                 MD_LINUX_PROC_STATUS,
                 MD_LINUX_CPU_INFO,
                 MD_LINUX_MAPS
-                    ) {
+            ) {
                 if let Ok(contents) = dump.get_raw_stream(stream) {
                     print_raw_stream(name, contents, stdout).unwrap();
                 }
             }
-        },
+        }
         Err(err) => {
             let mut stderr = std::io::stderr();
             writeln!(&mut stderr, "Error reading dump: {:?}", err).unwrap();

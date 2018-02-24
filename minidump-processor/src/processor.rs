@@ -2,23 +2,19 @@
 // file at the top-level directory of this distribution.
 
 use breakpad_symbols::{FrameSymbolizer, Symbolizer};
-use chrono::{TimeZone,UTC};
+use chrono::{TimeZone, UTC};
 use minidump::*;
-use process_state::{CallStack,CallStackInfo,ProcessState};
+use process_state::{CallStack, CallStackInfo, ProcessState};
 use stackwalker;
 use std::boxed::Box;
 use system_info::SystemInfo;
 
 pub trait SymbolProvider {
-    fn fill_symbol(&self,
-                   module: &Module,
-                   frame: &mut FrameSymbolizer);
+    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer);
 }
 
 impl SymbolProvider for Symbolizer {
-    fn fill_symbol(&self,
-                   module: &Module,
-                   frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         self.fill_symbol(module, frame);
     }
 }
@@ -39,9 +35,7 @@ impl MultiSymbolProvider {
 }
 
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self,
-                   module: &Module,
-                   frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         for p in self.providers.iter() {
             p.fill_symbol(module, frame);
         }
@@ -85,15 +79,23 @@ pub enum ProcessError {
 /// # }
 /// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump<T: Readable, P>(dump: &mut Minidump<T>,
-                                        symbol_provider: &P)
-                                        -> Result<ProcessState, ProcessError>
-    where P: SymbolProvider,
+pub fn process_minidump<T: Readable, P>(
+    dump: &mut Minidump<T>,
+    symbol_provider: &P,
+) -> Result<ProcessState, ProcessError>
+where
+    P: SymbolProvider,
 {
     // Thread list is required for processing.
-    let thread_list = try!(dump.get_stream::<MinidumpThreadList>().or(Err(ProcessError::MissingThreadList)));
+    let thread_list = try!(
+        dump.get_stream::<MinidumpThreadList>()
+            .or(Err(ProcessError::MissingThreadList))
+    );
     // System info is required for processing.
-    let dump_system_info = try!(dump.get_stream::<MinidumpSystemInfo>().or(Err(ProcessError::MissingSystemInfo)));
+    let dump_system_info = try!(
+        dump.get_stream::<MinidumpSystemInfo>()
+            .or(Err(ProcessError::MissingSystemInfo))
+    );
     let system_info = SystemInfo {
         os: dump_system_info.os,
         // TODO
@@ -119,10 +121,11 @@ pub fn process_minidump<T: Readable, P>(dump: &mut Minidump<T>,
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
-    let (crash_reason,
-         crash_address) = if let Some(exception) = exception_ref {
-        (Some(exception.get_crash_reason(system_info.os)),
-         Some(exception.get_crash_address(system_info.os)))
+    let (crash_reason, crash_address) = if let Some(exception) = exception_ref {
+        (
+            Some(exception.get_crash_reason(system_info.os)),
+            Some(exception.get_crash_address(system_info.os)),
+        )
     } else {
         (None, None)
     };
@@ -136,7 +139,7 @@ pub fn process_minidump<T: Readable, P>(dump: &mut Minidump<T>,
         MinidumpModuleList::new()
     };
     // Get memory list
-    let mut threads = vec!();
+    let mut threads = vec![];
     let mut requesting_thread = None;
     for (i, thread) in thread_list.threads.iter().enumerate() {
         // If this is the thread that wrote the dump, skip processing it.
@@ -146,16 +149,15 @@ pub fn process_minidump<T: Readable, P>(dump: &mut Minidump<T>,
         }
         // If this thread requested the dump then try to use the exception
         // context if it exists.
-        let context = if requesting_thread_id.is_some() && requesting_thread_id.unwrap() == thread.raw.thread_id {
+        let context = if requesting_thread_id.is_some()
+            && requesting_thread_id.unwrap() == thread.raw.thread_id
+        {
             requesting_thread = Some(i);
             exception_context.or(thread.context.as_ref())
         } else {
             thread.context.as_ref()
         };
-        let stack = stackwalker::walk_stack(&context,
-                                            &thread.stack,
-                                            &modules,
-                                            symbol_provider);
+        let stack = stackwalker::walk_stack(&context, &thread.stack, &modules, symbol_provider);
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis

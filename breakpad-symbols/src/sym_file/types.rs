@@ -9,11 +9,11 @@ use range_map::{Range, RangeMap};
 #[derive(Debug, Eq, PartialEq)]
 pub struct PublicSymbol {
     /// The symbol's address relative to the module's load address.
-    pub address : u64,
+    pub address: u64,
     /// The size of parameters passed to the function.
-    pub parameter_size : u32,
+    pub parameter_size: u32,
     /// The name of the symbol.
-    pub name : String,
+    pub name: String,
 }
 
 impl Ord for PublicSymbol {
@@ -44,30 +44,30 @@ impl PartialOrd for PublicSymbol {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceLine {
     /// The start address relative to the module's load address.
-    pub address : u64,
+    pub address: u64,
     /// The size of this range of instructions in bytes.
-    pub size : u32,
+    pub size: u32,
     /// The source file name that generated this machine code.
     ///
     /// This is an index into `SymbolFile::files`.
-    pub file : u32,
+    pub file: u32,
     /// The line number in `file` that generated this machine code.
-    pub line : u32,
+    pub line: u32,
 }
 
 /// A source-language function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     /// The function's start address relative to the module's load address.
-    pub address : u64,
+    pub address: u64,
     /// The size of the function in bytes.
-    pub size : u32,
+    pub size: u32,
     /// The size of parameters passed to the function.
-    pub parameter_size : u32,
+    pub parameter_size: u32,
     /// The name of the function as declared in the source.
-    pub name : String,
+    pub name: String,
     /// Source line information for this function.
-    pub lines : RangeMap<u64, SourceLine>,
+    pub lines: RangeMap<u64, SourceLine>,
 }
 
 impl Function {
@@ -80,20 +80,20 @@ impl Function {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CFIRules {
     /// The address in question.
-    pub address : u64,
+    pub address: u64,
     /// Postfix expressions to evaluate to recover register values.
-    pub rules : String,
+    pub rules: String,
 }
 
 /// Information used for unwinding stack frames using DWARF CFI.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackInfoCFI {
     /// The initial rules for this address range.
-    pub init : CFIRules,
+    pub init: CFIRules,
     /// The size of this entire address range.
-    pub size : u32,
+    pub size: u32,
     /// Additional rules to use at specified addresses.
-    pub add_rules : Vec<CFIRules>,
+    pub add_rules: Vec<CFIRules>,
 }
 
 impl StackInfoCFI {
@@ -124,21 +124,21 @@ pub enum WinStackThing {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackInfoWin {
     /// The address in question.
-    pub address : u64,
+    pub address: u64,
     /// The size of the address range covered.
-    pub size : u32,
+    pub size: u32,
     /// The size of the function's prologue.
-    pub prologue_size : u32,
+    pub prologue_size: u32,
     /// The size of the function's epilogue.
-    pub epilogue_size : u32,
+    pub epilogue_size: u32,
     /// The size of arguments passed to this function.
-    pub parameter_size : u32,
+    pub parameter_size: u32,
     /// The number of bytes in the stack frame for callee-saves registers.
-    pub saved_register_size : u32,
+    pub saved_register_size: u32,
     /// The number of bytes in the stack frame for local variables.
-    pub local_size : u32,
+    pub local_size: u32,
     /// The maximum number of bytes pushed onto the stack by this frame.
-    pub max_stack_size : u32,
+    pub max_stack_size: u32,
     /// A program string or boolean regarding a base pointer.
     pub program_string_or_base_pointer: WinStackThing,
 }
@@ -153,13 +153,13 @@ impl StackInfoWin {
 #[derive(Debug, PartialEq)]
 pub struct SymbolFile {
     /// The set of source files involved in compilation.
-    pub files : HashMap<u32, String>,
+    pub files: HashMap<u32, String>,
     /// Publicly visible symbols.
-    pub publics : Vec<PublicSymbol>,
+    pub publics: Vec<PublicSymbol>,
     /// Functions.
-    pub functions : RangeMap<u64, Function>,
+    pub functions: RangeMap<u64, Function>,
     /// DWARF CFI unwind information.
-    pub cfi_stack_info : RangeMap<u64, StackInfoCFI>,
+    pub cfi_stack_info: RangeMap<u64, StackInfoCFI>,
     /// Windows unwind information (frame data).
     pub win_stack_framedata_info: RangeMap<u64, StackInfoWin>,
     /// Windows unwind information (FPO data).

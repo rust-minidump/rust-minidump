@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use encoding::all::UTF_16LE;
-use encoding::{Encoding, EncoderTrap};
+use encoding::{EncoderTrap, Encoding};
 use minidump_common::format as md;
 use std::marker::PhantomData;
 use std::mem;
@@ -44,17 +44,13 @@ trait CiteLocation {
 impl<T: DumpSection> CiteLocation for T {
     fn cite_location_in(&self, section: Section) -> Section {
         // An MDLocationDescriptor is just a 32-bit size + 32-bit offset.
-        section
-            .D32(&self.file_size())
-            .D32(&self.file_offset())
+        section.D32(&self.file_size()).D32(&self.file_offset())
     }
 }
 
 impl CiteLocation for (Label, Label) {
     fn cite_location_in(&self, section: Section) -> Section {
-        section
-            .D32(&self.0)
-            .D32(&self.1)
+        section.D32(&self.0).D32(&self.1)
     }
 }
 
@@ -121,15 +117,15 @@ impl SynthMinidump {
     /// Append `section` to `self`, setting its location appropriately.
     pub fn add<T: DumpSection>(mut self, section: T) -> SynthMinidump {
         let offset = section.file_offset();
-        self.section = self.section
-            .mark(&offset)
-            .append_section(section);
+        self.section = self.section.mark(&offset).append_section(section);
         self
     }
 
     /// Add `module` to `self`, adding it to the module list stream as well.
     pub fn add_module(mut self, module: Module) -> SynthMinidump {
-        self.module_list = self.module_list.take().map(|module_list| module_list.add(module));
+        self.module_list = self.module_list
+            .take()
+            .map(|module_list| module_list.add(module));
         self
     }
 
@@ -138,7 +134,9 @@ impl SynthMinidump {
         // The memory list contains `MDMemoryDescriptor`s, so create one here.
         let descriptor = memory.cite_memory_in(Section::with_endian(self.section.endian));
         // And append that descriptor to the memory list.
-        self.memory_list = self.memory_list.take().map(|memory_list| memory_list.add(descriptor));
+        self.memory_list = self.memory_list
+            .take()
+            .map(|memory_list| memory_list.add(descriptor));
         // Add the memory region itself.
         self.add(memory)
     }
@@ -310,9 +308,7 @@ impl DumpString {
         let section = Section::with_endian(endian)
             .D32(u16_s.len() as u32)
             .append_bytes(&u16_s);
-        DumpString {
-            section: section,
-        }
+        DumpString { section: section }
     }
 }
 
@@ -326,19 +322,19 @@ impl_dumpsection!(DumpString);
 
 /// A fixed set of version info to use for tests.
 pub const STOCK_VERSION_INFO: md::MDVSFixedFileInfo = md::MDVSFixedFileInfo {
-    signature:          md::MD_VSFIXEDFILEINFO_SIGNATURE,
-    struct_version:     md::MD_VSFIXEDFILEINFO_VERSION,
-    file_version_hi:    0x11111111,
-    file_version_lo:    0x22222222,
+    signature: md::MD_VSFIXEDFILEINFO_SIGNATURE,
+    struct_version: md::MD_VSFIXEDFILEINFO_VERSION,
+    file_version_hi: 0x11111111,
+    file_version_lo: 0x22222222,
     product_version_hi: 0x33333333,
     product_version_lo: 0x44444444,
-    file_flags_mask:    md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
-    file_flags:         md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
-    file_os:            md::MD_VSFIXEDFILEINFO_FILE_OS_NT | md::MD_VSFIXEDFILEINFO_FILE_OS__WINDOWS32,
-    file_type:          md::MD_VSFIXEDFILEINFO_FILE_TYPE_APP,
-    file_subtype:       md::MD_VSFIXEDFILEINFO_FILE_SUBTYPE_UNKNOWN,
-    file_date_hi:       0,
-    file_date_lo:       0,
+    file_flags_mask: md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
+    file_flags: md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
+    file_os: md::MD_VSFIXEDFILEINFO_FILE_OS_NT | md::MD_VSFIXEDFILEINFO_FILE_OS__WINDOWS32,
+    file_type: md::MD_VSFIXEDFILEINFO_FILE_TYPE_APP,
+    file_subtype: md::MD_VSFIXEDFILEINFO_FILE_SUBTYPE_UNKNOWN,
+    file_date_hi: 0,
+    file_date_lo: 0,
 };
 
 /// A minidump module.
@@ -349,13 +345,15 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new<'a, T: Into<Option<&'a md::MDVSFixedFileInfo>>>(endian: Endian,
-                                                               base_of_image: u64,
-                                                               size_of_image: u32,
-                                                               name: &DumpString,
-                                                               time_date_stamp: u32,
-                                                               checksum: u32,
-                                                               version_info: T) -> Module {
+    pub fn new<'a, T: Into<Option<&'a md::MDVSFixedFileInfo>>>(
+        endian: Endian,
+        base_of_image: u64,
+        size_of_image: u32,
+        name: &DumpString,
+        time_date_stamp: u32,
+        checksum: u32,
+        version_info: T,
+    ) -> Module {
         let stock_version = &STOCK_VERSION_INFO;
         let version_info = version_info.into().unwrap_or(stock_version);
         let section = Section::with_endian(endian)
@@ -399,7 +397,11 @@ impl_dumpsection!(Module);
 
 impl Into<Section> for Module {
     fn into(self) -> Section {
-        let Module { section, cv_record, misc_record } = self;
+        let Module {
+            section,
+            cv_record,
+            misc_record,
+        } = self;
         let section = cv_record.cite_location_in(section);
         let section = misc_record.cite_location_in(section);
         section
@@ -465,14 +467,21 @@ impl MiscStream {
 
 impl Into<Section> for MiscStream {
     fn into(self) -> Section {
-        let MiscStream { section, process_id, process_create_time, pad_to_size } = self;
+        let MiscStream {
+            section,
+            process_id,
+            process_create_time,
+            pad_to_size,
+        } = self;
         let flags_label = Label::new();
         let section = section.D32(&flags_label);
         let mut flags = 0;
         let section = section.D32(if let Some(pid) = process_id {
             flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_ID;
             pid
-        } else { 0 });
+        } else {
+            0
+        });
         let section = if let Some(time) = process_create_time {
             flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_TIMES;
             section.D32(time)
@@ -481,9 +490,7 @@ impl Into<Section> for MiscStream {
                 // kernel_time
                 .D32(0)
         } else {
-            section.D32(0)
-                .D32(0)
-                .D32(0)
+            section.D32(0).D32(0).D32(0)
         };
         flags_label.set_const(flags as u64);
         // Pad to final size, if necessary.
@@ -506,11 +513,10 @@ impl Stream for MiscStream {
 
 #[test]
 fn test_dump_header() {
-    let dump =
-        SynthMinidump::with_endian(Endian::Little)
-        .flags(0x9f738b33685cc84c);
-    assert_eq!(dump.finish().unwrap(),
-               vec![0x4d, 0x44, 0x4d, 0x50, // signature
+    let dump = SynthMinidump::with_endian(Endian::Little).flags(0x9f738b33685cc84c);
+    assert_eq!(
+        dump.finish().unwrap(),
+        vec![0x4d, 0x44, 0x4d, 0x50, // signature
                     0x93, 0xa7, 0x00, 0x00, // version
                     0, 0, 0, 0,             // stream count
                     0x20, 0, 0, 0,          // directory RVA
@@ -518,16 +524,16 @@ fn test_dump_header() {
                     0x3d, 0xe1, 0x44, 0x4b, // time_date_stamp
                     0x4c, 0xc8, 0x5c, 0x68, // flags
                     0x33, 0x8b, 0x73, 0x9f,
-                    ]);
+                    ]
+    );
 }
 
 #[test]
 fn test_dump_header_bigendian() {
-    let dump =
-        SynthMinidump::with_endian(Endian::Big)
-        .flags(0x9f738b33685cc84c);
-    assert_eq!(dump.finish().unwrap(),
-               vec![0x50, 0x4d, 0x44, 0x4d, // signature
+    let dump = SynthMinidump::with_endian(Endian::Big).flags(0x9f738b33685cc84c);
+    assert_eq!(
+        dump.finish().unwrap(),
+        vec![0x50, 0x4d, 0x44, 0x4d, // signature
                     0x00, 0x00, 0xa7, 0x93, // version
                     0, 0, 0, 0,             // stream count
                     0, 0, 0, 0x20,          // directory RVA
@@ -535,7 +541,8 @@ fn test_dump_header_bigendian() {
                     0x4b, 0x44, 0xe1, 0x3d, // time_date_stamp
                     0x9f, 0x73, 0x8b, 0x33, // flags
                     0x68, 0x5c, 0xc8, 0x4c,
-                    ]);
+                    ]
+    );
 }
 
 #[test]
@@ -545,40 +552,46 @@ fn test_section_cite() {
     let s2 = Section::with_endian(Endian::Little);
     let s2 = s1.cite_location_in(s2);
     s1.get_contents().unwrap();
-    assert_eq!(s2.get_contents().unwrap(),
-               vec![0x0a, 0,    0,    0,
-                    0x11, 0xee, 0x00, 0xff]);
+    assert_eq!(
+        s2.get_contents().unwrap(),
+        vec![0x0a, 0, 0, 0, 0x11, 0xee, 0x00, 0xff]
+    );
 }
 
 #[test]
 fn test_dump_string() {
-    let dump =
-        SynthMinidump::with_endian(Endian::Little);
+    let dump = SynthMinidump::with_endian(Endian::Little);
     let s = DumpString::new("hello", Endian::Little);
     let contents = dump.add(s).finish().unwrap();
     // Skip over the header
-    assert_eq!(&contents[mem::size_of::<md::MDRawHeader>()..],
-               &[0xa, 0x0, 0x0, 0x0, // length
-                 b'h', 0x0, b'e', 0x0, b'l', 0x0, b'l', 0x0, b'o', 0x0]);
+    assert_eq!(
+        &contents[mem::size_of::<md::MDRawHeader>()..],
+        &[0xa, 0x0, 0x0, 0x0, // length
+                 b'h', 0x0, b'e', 0x0, b'l', 0x0, b'l', 0x0, b'o', 0x0]
+    );
 }
 
 #[test]
 fn test_list() {
     // Empty list
     let list = List::<DumpString>::new(0x11223344, Endian::Little);
-    assert_eq!(Into::<Section>::into(list).get_contents().unwrap(),
-               vec![0, 0, 0, 0]);
+    assert_eq!(
+        Into::<Section>::into(list).get_contents().unwrap(),
+        vec![0, 0, 0, 0]
+    );
     let list = List::new(0x11223344, Endian::Little)
         .add(DumpString::new("a", Endian::Little))
         .add(DumpString::new("b", Endian::Little));
-    assert_eq!(Into::<Section>::into(list).get_contents().unwrap(),
-               vec![2, 0, 0, 0, // entry count
+    assert_eq!(
+        Into::<Section>::into(list).get_contents().unwrap(),
+        vec![2, 0, 0, 0, // entry count
                     // first entry
                     0x2, 0x0, 0x0, 0x0, // length
                     b'a', 0x0,
                     // second entry
                     0x2, 0x0, 0x0, 0x0, // length
-                    b'b', 0x0]);
+                    b'b', 0x0]
+    );
 }
 
 #[test]
@@ -586,29 +599,67 @@ fn test_simple_stream() {
     let section = Section::with_endian(Endian::Little).D32(0x55667788);
     let stream_rva = mem::size_of::<md::MDRawHeader>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
-    let dump =
-        SynthMinidump::with_endian(Endian::Little)
+    let dump = SynthMinidump::with_endian(Endian::Little)
         .flags(0x9f738b33685cc84c)
         .add_stream(SimpleStream {
             stream_type: 0x11223344,
             section: section,
         });
-    assert_eq!(dump.finish().unwrap(),
-               vec![0x4d, 0x44, 0x4d, 0x50, // signature
-                    0x93, 0xa7, 0x00, 0x00, // version
-                    1, 0, 0, 0,             // stream count
-                    directory_rva, 0, 0, 0, // directory RVA
-                    0, 0, 0, 0,             // checksum
-                    0x3d, 0xe1, 0x44, 0x4b, // time_date_stamp
-                    0x4c, 0xc8, 0x5c, 0x68, // flags
-                    0x33, 0x8b, 0x73, 0x9f,
-                    // Stream contents
-                    0x88, 0x77, 0x66, 0x55,
-                    // Stream directory
-                    0x44, 0x33, 0x22, 0x11, // stream type
-                    4,    0,    0,    0,    // size
-                    stream_rva, 0,    0,    0, // rva
-                    ]);
+    assert_eq!(
+        dump.finish().unwrap(),
+        vec![
+            0x4d,
+            0x44,
+            0x4d,
+            0x50, // signature
+            0x93,
+            0xa7,
+            0x00,
+            0x00, // version
+            1,
+            0,
+            0,
+            0, // stream count
+            directory_rva,
+            0,
+            0,
+            0, // directory RVA
+            0,
+            0,
+            0,
+            0, // checksum
+            0x3d,
+            0xe1,
+            0x44,
+            0x4b, // time_date_stamp
+            0x4c,
+            0xc8,
+            0x5c,
+            0x68, // flags
+            0x33,
+            0x8b,
+            0x73,
+            0x9f,
+            // Stream contents
+            0x88,
+            0x77,
+            0x66,
+            0x55,
+            // Stream directory
+            0x44,
+            0x33,
+            0x22,
+            0x11, // stream type
+            4,
+            0,
+            0,
+            0, // size
+            stream_rva,
+            0,
+            0,
+            0, // rva
+        ]
+    );
 }
 
 #[test]
@@ -616,27 +667,65 @@ fn test_simple_stream_bigendian() {
     let section = Section::with_endian(Endian::Big).D32(0x55667788);
     let stream_rva = mem::size_of::<md::MDRawHeader>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
-    let dump =
-        SynthMinidump::with_endian(Endian::Big)
+    let dump = SynthMinidump::with_endian(Endian::Big)
         .flags(0x9f738b33685cc84c)
         .add_stream(SimpleStream {
             stream_type: 0x11223344,
             section: section,
         });
-    assert_eq!(dump.finish().unwrap(),
-               vec![0x50, 0x4d, 0x44, 0x4d, // signature
-                    0x00, 0x00, 0xa7, 0x93, // version
-                    0, 0, 0, 1,             // stream count
-                    0, 0, 0, directory_rva, // directory RVA
-                    0, 0, 0, 0,             // checksum
-                    0x4b, 0x44, 0xe1, 0x3d, // time_date_stamp
-                    0x9f, 0x73, 0x8b, 0x33, // flags
-                    0x68, 0x5c, 0xc8, 0x4c,
-                    // Stream contents
-                    0x55, 0x66, 0x77, 0x88,
-                    // Stream directory
-                    0x11, 0x22, 0x33, 0x44, // stream type
-                    0,    0,    0,    4,    // size
-                    0,    0,    0, stream_rva,// rva
-                    ]);
+    assert_eq!(
+        dump.finish().unwrap(),
+        vec![
+            0x50,
+            0x4d,
+            0x44,
+            0x4d, // signature
+            0x00,
+            0x00,
+            0xa7,
+            0x93, // version
+            0,
+            0,
+            0,
+            1, // stream count
+            0,
+            0,
+            0,
+            directory_rva, // directory RVA
+            0,
+            0,
+            0,
+            0, // checksum
+            0x4b,
+            0x44,
+            0xe1,
+            0x3d, // time_date_stamp
+            0x9f,
+            0x73,
+            0x8b,
+            0x33, // flags
+            0x68,
+            0x5c,
+            0xc8,
+            0x4c,
+            // Stream contents
+            0x55,
+            0x66,
+            0x77,
+            0x88,
+            // Stream directory
+            0x11,
+            0x22,
+            0x33,
+            0x44, // stream type
+            0,
+            0,
+            0,
+            4, // size
+            0,
+            0,
+            0,
+            stream_rva, // rva
+        ]
+    );
 }

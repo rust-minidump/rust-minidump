@@ -6,14 +6,16 @@
 mod x86;
 mod unwind;
 
-use ::SymbolProvider;
+use SymbolProvider;
 use minidump::*;
 use process_state::*;
 
 use self::unwind::Unwind;
 
-fn get_caller_frame(frame : &StackFrame,
-                    stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
+fn get_caller_frame(
+    frame: &StackFrame,
+    stack_memory: &Option<MinidumpMemory>,
+) -> Option<StackFrame> {
     match frame.context.raw {
         /*
         MinidumpRawContext::AMD64(ctx) => ctx.get_caller_frame(stack_memory),
@@ -26,14 +28,15 @@ fn get_caller_frame(frame : &StackFrame,
          */
         MinidumpRawContext::X86(ctx) => ctx.get_caller_frame(&frame.context.valid, stack_memory),
         _ => None,
-
     }
 }
 
-fn fill_source_line_info<P>(frame: &mut StackFrame,
-                            modules: &MinidumpModuleList,
-                            symbol_provider: &P)
-    where P: SymbolProvider,
+fn fill_source_line_info<P>(
+    frame: &mut StackFrame,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) where
+    P: SymbolProvider,
 {
     // Find the module whose address range covers this frame's instruction.
     if let &Some(module) = &modules.module_at_address(frame.instruction) {
@@ -44,15 +47,18 @@ fn fill_source_line_info<P>(frame: &mut StackFrame,
     }
 }
 
-pub fn walk_stack<P>(maybe_context: &Option<&MinidumpContext>,
-                     stack_memory: &Option<MinidumpMemory>,
-                     modules: &MinidumpModuleList,
-                     symbol_provider: &P) -> CallStack
-    where P: SymbolProvider,
+pub fn walk_stack<P>(
+    maybe_context: &Option<&MinidumpContext>,
+    stack_memory: &Option<MinidumpMemory>,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> CallStack
+where
+    P: SymbolProvider,
 {
     // Begin with the context frame, and keep getting callers until there are
     // no more.
-    let mut frames = vec!();
+    let mut frames = vec![];
     let mut info = CallStackInfo::Ok;
     if let &Some(context) = maybe_context {
         let ctx = context.clone();
@@ -66,7 +72,10 @@ pub fn walk_stack<P>(maybe_context: &Option<&MinidumpContext>,
     } else {
         info = CallStackInfo::MissingContext;
     }
-    CallStack { frames: frames, info: info }
+    CallStack {
+        frames: frames,
+        info: info,
+    }
 }
 
 #[cfg(test)]

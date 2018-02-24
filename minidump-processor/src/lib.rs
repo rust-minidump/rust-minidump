@@ -9,13 +9,14 @@
 extern crate addr2line;
 extern crate breakpad_symbols;
 extern crate chrono;
+extern crate memmap;
 extern crate minidump;
 extern crate object;
-extern crate memmap;
 #[cfg(test)]
 extern crate test_assembler;
 
-#[macro_use] extern crate failure;
+#[macro_use]
+extern crate failure;
 
 mod dwarf_symbolizer;
 mod processor;

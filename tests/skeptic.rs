@@ -6,11 +6,19 @@ use std::process::Command;
 #[test]
 fn readme_test() {
     let rustdoc = Path::new("rustdoc").with_extension(EXE_EXTENSION);
-    let readme = Path::new(file!()).parent().unwrap().parent().unwrap().join("README.md");
+    let readme = Path::new(file!())
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("README.md");
     let exe = env::current_exe().unwrap();
     let depdir = exe.parent().unwrap();
     let outdir = depdir.parent().unwrap();
-    let extern_arg = format!("minidump={}", outdir.join("libminidump.rlib").to_string_lossy());
+    let extern_arg = format!(
+        "minidump={}",
+        outdir.join("libminidump.rlib").to_string_lossy()
+    );
     let mut cmd = Command::new(rustdoc);
     cmd.args(&["--verbose", "--test", "-L"])
         .arg(&outdir)
@@ -24,5 +32,8 @@ fn readme_test() {
         .expect("Failed to spawn process")
         .wait()
         .expect("Failed to run process");
-    assert!(result.success(), "Failed to run rustdoc tests on README.md!");
+    assert!(
+        result.success(),
+        "Failed to run rustdoc tests on README.md!"
+    );
 }

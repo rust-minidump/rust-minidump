@@ -13,7 +13,7 @@ extern crate minidump_common;
 use minidump::*;
 use minidump_common::traits::Module;
 
-const USAGE : &'static str = "Usage: dumpmodules [-v] <minidump>
+const USAGE: &'static str = "Usage: dumpmodules [-v] <minidump>
 Print full paths of modules from a minidump that were loaded in the crashed
 process.
 
@@ -26,8 +26,7 @@ enum Verbose {
     No,
 }
 
-fn print_minidump_modules<T: AsRef<Path>>(path: T,
-                                          verbose: Verbose) {
+fn print_minidump_modules<T: AsRef<Path>>(path: T, verbose: Verbose) {
     match Minidump::read_path(path.as_ref()) {
         Ok(mut dump) => {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
@@ -42,7 +41,7 @@ fn print_minidump_modules<T: AsRef<Path>>(path: T,
                     println!("");
                 }
             }
-        },
+        }
         Err(err) => {
             let mut stderr = std::io::stderr();
             writeln!(&mut stderr, "Error reading dump: {:?}", err).unwrap();

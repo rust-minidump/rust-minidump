@@ -2,16 +2,18 @@
 // file at the top-level directory of this distribution.
 
 use minidump::format::MDRawContextX86;
-use minidump::{MinidumpContext,MinidumpContextValidity,MinidumpRawContext,MinidumpMemory};
+use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpRawContext};
 use stackwalker::unwind::Unwind;
-use process_state::{StackFrame,FrameTrust};
+use process_state::{FrameTrust, StackFrame};
 use std::collections::HashSet;
 
-fn get_caller_by_frame_pointer(ctx : &MDRawContextX86,
-                               valid : &MinidumpContextValidity,
-                               stack_memory : &MinidumpMemory) -> Option<StackFrame> {
+fn get_caller_by_frame_pointer(
+    ctx: &MDRawContextX86,
+    valid: &MinidumpContextValidity,
+    stack_memory: &MinidumpMemory,
+) -> Option<StackFrame> {
     match valid {
-        &MinidumpContextValidity::All => {},
+        &MinidumpContextValidity::All => {}
         &MinidumpContextValidity::Some(ref which) => {
             if !which.contains("ebp") {
                 return None;
@@ -42,15 +44,16 @@ fn get_caller_by_frame_pointer(ctx : &MDRawContextX86,
     // %eip_new = *(%ebp_old + 4)
     // %esp_new = %ebp_old + 8
     // %ebp_new = *(%ebp_old)
-    if let (Some(caller_eip),
-            Some(caller_ebp)) = (stack_memory.get_memory_at_address(last_ebp as u64 + 4),
-                                 stack_memory.get_memory_at_address(last_ebp as u64)) {
+    if let (Some(caller_eip), Some(caller_ebp)) = (
+        stack_memory.get_memory_at_address(last_ebp as u64 + 4),
+        stack_memory.get_memory_at_address(last_ebp as u64),
+    ) {
         let caller_esp = last_ebp + 8;
         let caller_ctx = MDRawContextX86 {
             eip: caller_eip,
             esp: caller_esp,
             ebp: caller_ebp,
-            .. MDRawContextX86::default()
+            ..MDRawContextX86::default()
         };
         let mut valid = HashSet::new();
         valid.insert("eip");
@@ -60,8 +63,7 @@ fn get_caller_by_frame_pointer(ctx : &MDRawContextX86,
             raw: MinidumpRawContext::X86(caller_ctx),
             valid: MinidumpContextValidity::Some(valid),
         };
-        let mut frame =
-            StackFrame::from_context(context, FrameTrust::FramePointer);
+        let mut frame = StackFrame::from_context(context, FrameTrust::FramePointer);
         // caller_eip is the return address, which is the instruction
         // after the CALL that caused us to arrive at the callee. Set
         // new_frame->instruction to one less than that, so it points within the
@@ -77,9 +79,11 @@ fn get_caller_by_frame_pointer(ctx : &MDRawContextX86,
 }
 
 impl Unwind for MDRawContextX86 {
-    fn get_caller_frame(&self,
-                        valid : &MinidumpContextValidity,
-                        stack_memory : &Option<MinidumpMemory>) -> Option<StackFrame> {
+    fn get_caller_frame(
+        &self,
+        valid: &MinidumpContextValidity,
+        stack_memory: &Option<MinidumpMemory>,
+    ) -> Option<StackFrame> {
         stack_memory.as_ref().and_then(|stack| {
             get_caller_by_frame_pointer(self, valid, stack).and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.

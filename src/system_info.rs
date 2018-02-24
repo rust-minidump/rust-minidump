@@ -11,7 +11,7 @@ use minidump_common::format as md;
 /// Derive an enum value from a primitive.
 pub trait EnumFromPrimitive {
     /// Given a primitive value `u`, produce an enum value.
-    fn from_u32(u : u32) -> Self;
+    fn from_u32(u: u32) -> Self;
 }
 
 /// Known operating systems.
@@ -60,7 +60,7 @@ impl OS {
 }
 
 impl EnumFromPrimitive for OS {
-    fn from_u32(u : u32) -> OS {
+    fn from_u32(u: u32) -> OS {
         match u {
             md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => OS::Windows,
             md::MD_OS_MAC_OS_X => OS::MacOSX,
@@ -77,22 +77,26 @@ impl EnumFromPrimitive for OS {
 
 impl fmt::Display for OS {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            OS::Windows => "windows",
-            OS::MacOSX => "mac",
-            OS::Ios => "ios",
-            OS::Linux => "linux",
-            OS::Solaris => "solaris",
-            OS::Android => "android",
-            OS::Ps3 => "ps3",
-            OS::NaCl => "nacl",
-            OS::Unknown(_) => "unknown",
-        })
+        write!(
+            f,
+            "{}",
+            match *self {
+                OS::Windows => "windows",
+                OS::MacOSX => "mac",
+                OS::Ios => "ios",
+                OS::Linux => "linux",
+                OS::Solaris => "solaris",
+                OS::Android => "android",
+                OS::Ps3 => "ps3",
+                OS::NaCl => "nacl",
+                OS::Unknown(_) => "unknown",
+            }
+        )
     }
 }
 
 impl EnumFromPrimitive for CPU {
-    fn from_u32(u : u32) -> CPU {
+    fn from_u32(u: u32) -> CPU {
         match u {
             md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => CPU::X86,
             md::MD_CPU_ARCHITECTURE_AMD64 => CPU::X86_64,
@@ -108,15 +112,19 @@ impl EnumFromPrimitive for CPU {
 
 impl fmt::Display for CPU {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            CPU::X86 => "x86",
-            CPU::X86_64 => "x86-64",
-            CPU::PPC => "ppc",
-            CPU::PPC64 => "ppc64",
-            CPU::Sparc => "sparc",
-            CPU::ARM => "arm",
-            CPU::ARM64 => "arm64",
-            CPU::Unknown(_) => "unknown",
-        })
+        write!(
+            f,
+            "{}",
+            match *self {
+                CPU::X86 => "x86",
+                CPU::X86_64 => "x86-64",
+                CPU::PPC => "ppc",
+                CPU::PPC64 => "ppc64",
+                CPU::Sparc => "sparc",
+                CPU::ARM => "arm",
+                CPU::ARM64 => "arm64",
+                CPU::Unknown(_) => "unknown",
+            }
+        )
     }
 }

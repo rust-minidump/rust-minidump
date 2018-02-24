@@ -55,20 +55,20 @@ pub use sym_file::SymbolFile;
 /// [minidumpmodule]: ../minidump/struct.MinidumpModule.html
 #[derive(Default)]
 pub struct SimpleModule {
-    pub base_address : Option<u64>,
-    pub size : Option<u64>,
-    pub code_file : Option<String>,
-    pub code_identifier : Option<String>,
-    pub debug_file : Option<String>,
-    pub debug_id : Option<String>,
-    pub version : Option<String>,
+    pub base_address: Option<u64>,
+    pub size: Option<u64>,
+    pub code_file: Option<String>,
+    pub code_identifier: Option<String>,
+    pub debug_file: Option<String>,
+    pub debug_id: Option<String>,
+    pub version: Option<String>,
 }
 
 impl SimpleModule {
     /// Create a `SimpleModule` with the given `debug_file` and `debug_id`.
     ///
     /// Uses `default` for the remaining fields.
-    pub fn new(debug_file : &str, debug_id : &str) -> SimpleModule {
+    pub fn new(debug_file: &str, debug_id: &str) -> SimpleModule {
         SimpleModule {
             debug_file: Some(String::from(debug_file)),
             debug_id: Some(String::from(debug_id)),
@@ -78,14 +78,21 @@ impl SimpleModule {
 }
 
 impl Module for SimpleModule {
-    fn base_address(&self) -> u64 { self.base_address.unwrap_or(0) }
-    fn size(&self) -> u64 { self.size.unwrap_or(0) }
+    fn base_address(&self) -> u64 {
+        self.base_address.unwrap_or(0)
+    }
+    fn size(&self) -> u64 {
+        self.size.unwrap_or(0)
+    }
     fn code_file(&self) -> Cow<str> {
-        self.code_file.as_ref().map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
+        self.code_file
+            .as_ref()
+            .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
     }
     fn code_identifier(&self) -> Cow<str> {
-        self.code_identifier.as_ref().map_or(Cow::from(""),
-                                             |s| Cow::Borrowed(&s[..]))
+        self.code_identifier
+            .as_ref()
+            .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         self.debug_file.as_ref().map(|s| Cow::Borrowed(&s[..]))
@@ -99,16 +106,19 @@ impl Module for SimpleModule {
 }
 
 /// Like `PathBuf::file_name`, but try to work on Windows or POSIX-style paths.
-fn leafname(path : &str) -> &str {
-    path.rsplit(|c| c == '/' || c == '\\').next().unwrap_or(path)
+fn leafname(path: &str) -> &str {
+    path.rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(path)
 }
 
 /// If `filename` ends with `match_extension`, remove it. Append `new_extension` to the result.
-fn replace_or_add_extension(filename : &str,
-                            match_extension : &str,
-                            new_extension : &str) -> String {
+fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension: &str) -> String {
     let mut bits = filename.split('.').collect::<Vec<_>>();
-    if bits.len() > 1 && bits.last().map_or(false, |e| e.to_lowercase() == match_extension) {
+    if bits.len() > 1
+        && bits.last()
+            .map_or(false, |e| e.to_lowercase() == match_extension)
+    {
         bits.pop();
     }
     bits.push(new_extension);
@@ -132,8 +142,7 @@ fn replace_or_add_extension(filename : &str,
 ///
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
-pub fn relative_symbol_path(module : &Module, extension : &str)
-                            -> Option<String> {
+pub fn relative_symbol_path(module: &Module, extension: &str) -> Option<String> {
     module.debug_file().and_then(|debug_file| {
         module.debug_identifier().map(|debug_id| {
             // Can't use PathBuf::file_name here, it doesn't handle
@@ -162,32 +171,32 @@ pub trait SymbolSupplier {
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    fn locate_symbols(&self, module : &Module) -> SymbolResult;
+    fn locate_symbols(&self, module: &Module) -> SymbolResult;
 }
 
-/// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk paths.
+/// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
+/// paths.
 pub struct SimpleSymbolSupplier {
     /// Local disk paths in which to search for symbols.
-    paths : Vec<PathBuf>,
+    paths: Vec<PathBuf>,
 }
 
 impl SimpleSymbolSupplier {
     /// Instantiate a new `SimpleSymbolSupplier` that will search in `paths`.
-    pub fn new(paths : Vec<PathBuf>) -> SimpleSymbolSupplier {
-        SimpleSymbolSupplier { paths : paths }
+    pub fn new(paths: Vec<PathBuf>) -> SimpleSymbolSupplier {
+        SimpleSymbolSupplier { paths: paths }
     }
 }
 
 impl SymbolSupplier for SimpleSymbolSupplier {
-    fn locate_symbols(&self, module : &Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &Module) -> SymbolResult {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for ref path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
-                if fs::metadata(&test_path).ok()
-                    .map_or(false, |m| m.is_file()) {
+                if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
                     return SymbolFile::from_file(&test_path)
                         .and_then(|s| Ok(SymbolResult::Ok(s)))
-                        .unwrap_or_else(|e| SymbolResult::LoadError(e))
+                        .unwrap_or_else(|e| SymbolResult::LoadError(e));
                 }
             }
         }
@@ -200,31 +209,32 @@ pub trait FrameSymbolizer {
     /// Get the program counter value for this frame.
     fn get_instruction(&self) -> u64;
     /// Set the name and base address of the function in which this frame is executing.
-    fn set_function(&mut self, name : &str, base : u64);
+    fn set_function(&mut self, name: &str, base: u64);
     /// Set the source file and (1-based) line number this frame represents.
-    fn set_source_file(&mut self, file : &str, line : u32, base : u64);
+    fn set_source_file(&mut self, file: &str, line: u32, base: u64);
 }
 
 /// A simple implementation of `FrameSymbolizer` that just holds data.
 #[derive(Default)]
 pub struct SimpleFrame {
     /// The program counter value for this frame.
-    pub instruction : u64,
+    pub instruction: u64,
     /// The name of the function in which the current instruction is executing.
-    pub function : Option<String>,
+    pub function: Option<String>,
     /// The offset of the start of `function` from the module base.
-    pub function_base : Option<u64>,
+    pub function_base: Option<u64>,
     /// The name of the source file in which the current instruction is executing.
-    pub source_file : Option<String>,
-    /// The 1-based index of the line number in `source_file` in which the current instruction is executing.
-    pub source_line : Option<u32>,
+    pub source_file: Option<String>,
+    /// The 1-based index of the line number in `source_file` in which the current instruction is
+    /// executing.
+    pub source_line: Option<u32>,
     /// The offset of the start of `source_line` from the function base.
-    pub source_line_base : Option<u64>,
+    pub source_line_base: Option<u64>,
 }
 
 impl SimpleFrame {
     /// Instantiate a `SimpleFrame` with instruction pointer `instruction`.
-    pub fn with_instruction(instruction : u64) -> SimpleFrame {
+    pub fn with_instruction(instruction: u64) -> SimpleFrame {
         SimpleFrame {
             instruction: instruction,
             ..SimpleFrame::default()
@@ -233,12 +243,14 @@ impl SimpleFrame {
 }
 
 impl FrameSymbolizer for SimpleFrame {
-    fn get_instruction(&self) -> u64 { self.instruction }
-    fn set_function(&mut self, name : &str, base : u64) {
+    fn get_instruction(&self) -> u64 {
+        self.instruction
+    }
+    fn set_function(&mut self, name: &str, base: u64) {
         self.function = Some(String::from(name));
         self.function_base = Some(base);
     }
-    fn set_source_file(&mut self, file : &str, line : u32, base : u64) {
+    fn set_source_file(&mut self, file: &str, line: u32, base: u64) {
         self.source_file = Some(String::from(file));
         self.source_line = Some(line);
         self.source_line_base = Some(base);
@@ -250,11 +262,13 @@ impl FrameSymbolizer for SimpleFrame {
 type ModuleKey = (String, String, Option<String>, Option<String>);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
-fn key(module : &Module) -> ModuleKey {
-    (module.code_file().to_string(),
-     module.code_identifier().to_string(),
-     module.debug_file().map(|s| s.to_string()),
-     module.debug_identifier().map(|s| s.to_string()))
+fn key(module: &Module) -> ModuleKey {
+    (
+        module.code_file().to_string(),
+        module.code_identifier().to_string(),
+        module.debug_file().map(|s| s.to_string()),
+        module.debug_identifier().map(|s| s.to_string()),
+    )
 }
 
 /// Symbolicate stack frames.
@@ -278,15 +292,15 @@ fn key(module : &Module) -> ModuleKey {
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
-    supplier : Box<SymbolSupplier + 'static>,
+    supplier: Box<SymbolSupplier + 'static>,
     /// Cache of symbol locating results.
     //TODO: use lru-cache: https://crates.io/crates/lru-cache/
-    symbols : RefCell<HashMap<ModuleKey, SymbolResult>>,
+    symbols: RefCell<HashMap<ModuleKey, SymbolResult>>,
 }
 
 impl Symbolizer {
     /// Create a `Symbolizer` that uses `supplier` to locate symbols.
-    pub fn new<T: SymbolSupplier + 'static>(supplier : T) -> Symbolizer {
+    pub fn new<T: SymbolSupplier + 'static>(supplier: T) -> Symbolizer {
         Symbolizer {
             supplier: Box::new(supplier),
             symbols: RefCell::new(HashMap::new()),
@@ -302,10 +316,12 @@ impl Symbolizer {
     /// See [the module-level documentation][module] for an example.
     ///
     /// [module]: index.html
-    pub fn get_symbol_at_address(&self,
-                                 debug_file : &str,
-                                 debug_id : &str,
-                                 address : u64) -> Option<String> {
+    pub fn get_symbol_at_address(
+        &self,
+        debug_file: &str,
+        debug_id: &str,
+        address: u64,
+    ) -> Option<String> {
         let k = (debug_file, debug_id);
         let mut frame = SimpleFrame::with_instruction(address);
         self.fill_symbol(&k, &mut frame);
@@ -335,20 +351,17 @@ impl Symbolizer {
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    pub fn fill_symbol(&self,
-                       module : &Module,
-                       frame : &mut FrameSymbolizer) {
+    pub fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         let k = key(module);
         if !self.symbols.borrow().contains_key(&k) {
             self.symbols
                 .borrow_mut()
-                .insert(k.clone(),
-                        self.supplier.locate_symbols(module));
+                .insert(k.clone(), self.supplier.locate_symbols(module));
         }
         if let Some(res) = self.symbols.borrow().get(&k) {
             match res {
                 &SymbolResult::Ok(ref sym) => sym.fill_symbol(module, frame),
-                _ => {},
+                _ => {}
             }
         }
     }
@@ -365,10 +378,19 @@ fn test_leafname() {
 
 #[test]
 fn test_replace_or_add_extension() {
-    assert_eq!(replace_or_add_extension("test.pdb", "pdb", "sym"), "test.sym");
-    assert_eq!(replace_or_add_extension("TEST.PDB", "pdb", "sym"), "TEST.sym");
+    assert_eq!(
+        replace_or_add_extension("test.pdb", "pdb", "sym"),
+        "test.sym"
+    );
+    assert_eq!(
+        replace_or_add_extension("TEST.PDB", "pdb", "sym"),
+        "TEST.sym"
+    );
     assert_eq!(replace_or_add_extension("test", "pdb", "sym"), "test.sym");
-    assert_eq!(replace_or_add_extension("test.x", "pdb", "sym"), "test.x.sym");
+    assert_eq!(
+        replace_or_add_extension("test.x", "pdb", "sym"),
+        "test.x.sym"
+    );
     assert_eq!(replace_or_add_extension("", "pdb", "sym"), ".sym");
     assert_eq!(replace_or_add_extension("test.x", "x", "y"), "test.y");
 }
@@ -376,179 +398,216 @@ fn test_replace_or_add_extension() {
 #[cfg(test)]
 mod test {
 
-use super::*;
-use std::fs;
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path,PathBuf};
-use tempdir::TempDir;
+    use super::*;
+    use std::fs;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use tempdir::TempDir;
 
-#[test]
-fn test_relative_symbol_path() {
-    let m = SimpleModule::new("foo.pdb", "abcd1234");
-    assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
-               "foo.pdb/abcd1234/foo.sym");
+    #[test]
+    fn test_relative_symbol_path() {
+        let m = SimpleModule::new("foo.pdb", "abcd1234");
+        assert_eq!(
+            &relative_symbol_path(&m, "sym").unwrap(),
+            "foo.pdb/abcd1234/foo.sym"
+        );
 
-    let m2 = SimpleModule::new("foo.pdb", "abcd1234");
-    assert_eq!(&relative_symbol_path(&m2, "bar").unwrap(),
-               "foo.pdb/abcd1234/foo.bar");
+        let m2 = SimpleModule::new("foo.pdb", "abcd1234");
+        assert_eq!(
+            &relative_symbol_path(&m2, "bar").unwrap(),
+            "foo.pdb/abcd1234/foo.bar"
+        );
 
-    let m3 = SimpleModule::new("foo.xyz", "abcd1234");
-    assert_eq!(&relative_symbol_path(&m3, "sym").unwrap(),
-               "foo.xyz/abcd1234/foo.xyz.sym");
+        let m3 = SimpleModule::new("foo.xyz", "abcd1234");
+        assert_eq!(
+            &relative_symbol_path(&m3, "sym").unwrap(),
+            "foo.xyz/abcd1234/foo.xyz.sym"
+        );
 
-    let m4 = SimpleModule::new("foo.xyz", "abcd1234");
-    assert_eq!(&relative_symbol_path(&m4, "bar").unwrap(),
-               "foo.xyz/abcd1234/foo.xyz.bar");
+        let m4 = SimpleModule::new("foo.xyz", "abcd1234");
+        assert_eq!(
+            &relative_symbol_path(&m4, "bar").unwrap(),
+            "foo.xyz/abcd1234/foo.xyz.bar"
+        );
 
-    let bad = SimpleModule::default();
-    assert!(relative_symbol_path(&bad, "sym").is_none());
+        let bad = SimpleModule::default();
+        assert!(relative_symbol_path(&bad, "sym").is_none());
 
-    let bad2 = SimpleModule { debug_file: Some("foo".to_string()),
-                              ..SimpleModule::default() };
-    assert!(relative_symbol_path(&bad2, "sym").is_none());
+        let bad2 = SimpleModule {
+            debug_file: Some("foo".to_string()),
+            ..SimpleModule::default()
+        };
+        assert!(relative_symbol_path(&bad2, "sym").is_none());
 
-    let bad3 = SimpleModule { debug_id: Some("foo".to_string()),
-                              ..SimpleModule::default() };
-    assert!(relative_symbol_path(&bad3, "sym").is_none());
-}
-
-#[test]
-fn test_relative_symbol_path_abs_paths() {
-    {
-        let m = SimpleModule::new("/path/to/foo.bin", "abcd1234");
-        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
-                   "foo.bin/abcd1234/foo.bin.sym");
+        let bad3 = SimpleModule {
+            debug_id: Some("foo".to_string()),
+            ..SimpleModule::default()
+        };
+        assert!(relative_symbol_path(&bad3, "sym").is_none());
     }
 
-    {
-        let m = SimpleModule::new("c:/path/to/foo.pdb", "abcd1234");
-        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
-                   "foo.pdb/abcd1234/foo.sym");
+    #[test]
+    fn test_relative_symbol_path_abs_paths() {
+        {
+            let m = SimpleModule::new("/path/to/foo.bin", "abcd1234");
+            assert_eq!(
+                &relative_symbol_path(&m, "sym").unwrap(),
+                "foo.bin/abcd1234/foo.bin.sym"
+            );
+        }
+
+        {
+            let m = SimpleModule::new("c:/path/to/foo.pdb", "abcd1234");
+            assert_eq!(
+                &relative_symbol_path(&m, "sym").unwrap(),
+                "foo.pdb/abcd1234/foo.sym"
+            );
+        }
+
+        {
+            let m = SimpleModule::new("c:\\path\\to\\foo.pdb", "abcd1234");
+            assert_eq!(
+                &relative_symbol_path(&m, "sym").unwrap(),
+                "foo.pdb/abcd1234/foo.sym"
+            );
+        }
     }
 
-    {
-        let m = SimpleModule::new("c:\\path\\to\\foo.pdb", "abcd1234");
-        assert_eq!(&relative_symbol_path(&m, "sym").unwrap(),
-                   "foo.pdb/abcd1234/foo.sym");
-    }
-}
-
-fn mksubdirs(path : &Path, dirs : &[&str]) -> Vec<PathBuf> {
-    dirs.iter().map(|dir| {
-        let new_path = path.join(dir);
-        fs::create_dir(&new_path).unwrap();
-        new_path
-    }).collect()
-}
-
-fn write_symbol_file(path : &Path, contents : &[u8]) {
-    let dir = path.parent().unwrap();
-    if !fs::metadata(&dir).ok().map_or(false, |m| m.is_dir()) {
-        fs::create_dir_all(&dir).unwrap();
-    }
-    let mut f = File::create(path).unwrap();
-    f.write_all(contents).unwrap();
-}
-
-fn write_good_symbol_file(path : &Path) {
-    write_symbol_file(path, b"MODULE Linux x86 abcd1234 foo\n");
-}
-
-fn write_bad_symbol_file(path : &Path) {
-    write_symbol_file(path, b"this is not a symbol file\n");
-}
-
-#[test]
-fn test_simple_symbol_supplier() {
-    let t = TempDir::new("symtest").unwrap();
-    let paths = mksubdirs(t.path(), &["one", "two"]);
-
-    let supplier = SimpleSymbolSupplier::new(paths.clone());
-    let bad = SimpleModule::default();
-    assert_eq!(supplier.locate_symbols(&bad), SymbolResult::NotFound);
-
-    // Try loading symbols for each of two modules in each of the two
-    // search paths.
-    for &(path, file, id, sym) in [(&paths[0], "foo.pdb", "abcd1234",
-                                    "foo.pdb/abcd1234/foo.sym"),
-                                   (&paths[1], "bar.xyz", "ff9900",
-                                    "bar.xyz/ff9900/bar.xyz.sym")].iter() {
-        let m = SimpleModule::new(file, id);
-        // No symbols present yet.
-        assert_eq!(supplier.locate_symbols(&m), SymbolResult::NotFound);
-        write_good_symbol_file(&path.join(sym));
-        // Should load OK now that it exists.
-        assert!(if let SymbolResult::Ok(_) = supplier.locate_symbols(&m) {
-            true
-        } else {
-            false
-        }, format!("Located symbols for {}", sym));
+    fn mksubdirs(path: &Path, dirs: &[&str]) -> Vec<PathBuf> {
+        dirs.iter()
+            .map(|dir| {
+                let new_path = path.join(dir);
+                fs::create_dir(&new_path).unwrap();
+                new_path
+            })
+            .collect()
     }
 
-    // Write a malformed symbol file, verify that it's found but fails to load.
-    let mal = SimpleModule::new("baz.pdb", "ffff0000");
-    let sym = "baz.pdb/ffff0000/baz.sym";
-    assert_eq!(supplier.locate_symbols(&mal), SymbolResult::NotFound);
-    write_bad_symbol_file(&paths[0].join(sym));
-    let res = supplier.locate_symbols(&mal);
-    assert!(if let SymbolResult::LoadError(_) = res {
-        true
-    } else {
-        false
-    }, format!("Correctly failed to parse {}, result: {:?}", sym, res));
-}
+    fn write_symbol_file(path: &Path, contents: &[u8]) {
+        let dir = path.parent().unwrap();
+        if !fs::metadata(&dir).ok().map_or(false, |m| m.is_dir()) {
+            fs::create_dir_all(&dir).unwrap();
+        }
+        let mut f = File::create(path).unwrap();
+        f.write_all(contents).unwrap();
+    }
 
-#[test]
-fn test_symbolizer() {
-    let t = TempDir::new("symtest").unwrap();
-    let path = t.path();
+    fn write_good_symbol_file(path: &Path) {
+        write_symbol_file(path, b"MODULE Linux x86 abcd1234 foo\n");
+    }
 
-    // TODO: This could really use a MockSupplier
-    let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from(path)));
-    let symbolizer = Symbolizer::new(supplier);
-    let m1 = SimpleModule::new("foo.pdb", "abcd1234");
-    write_symbol_file(&path.join("foo.pdb/abcd1234/foo.sym"),
-                      b"MODULE Linux x86 abcd1234 foo
+    fn write_bad_symbol_file(path: &Path) {
+        write_symbol_file(path, b"this is not a symbol file\n");
+    }
+
+    #[test]
+    fn test_simple_symbol_supplier() {
+        let t = TempDir::new("symtest").unwrap();
+        let paths = mksubdirs(t.path(), &["one", "two"]);
+
+        let supplier = SimpleSymbolSupplier::new(paths.clone());
+        let bad = SimpleModule::default();
+        assert_eq!(supplier.locate_symbols(&bad), SymbolResult::NotFound);
+
+        // Try loading symbols for each of two modules in each of the two
+        // search paths.
+        for &(path, file, id, sym) in [
+            (&paths[0], "foo.pdb", "abcd1234", "foo.pdb/abcd1234/foo.sym"),
+            (&paths[1], "bar.xyz", "ff9900", "bar.xyz/ff9900/bar.xyz.sym"),
+        ].iter()
+        {
+            let m = SimpleModule::new(file, id);
+            // No symbols present yet.
+            assert_eq!(supplier.locate_symbols(&m), SymbolResult::NotFound);
+            write_good_symbol_file(&path.join(sym));
+            // Should load OK now that it exists.
+            assert!(
+                if let SymbolResult::Ok(_) = supplier.locate_symbols(&m) {
+                    true
+                } else {
+                    false
+                },
+                format!("Located symbols for {}", sym)
+            );
+        }
+
+        // Write a malformed symbol file, verify that it's found but fails to load.
+        let mal = SimpleModule::new("baz.pdb", "ffff0000");
+        let sym = "baz.pdb/ffff0000/baz.sym";
+        assert_eq!(supplier.locate_symbols(&mal), SymbolResult::NotFound);
+        write_bad_symbol_file(&paths[0].join(sym));
+        let res = supplier.locate_symbols(&mal);
+        assert!(
+            if let SymbolResult::LoadError(_) = res {
+                true
+            } else {
+                false
+            },
+            format!("Correctly failed to parse {}, result: {:?}", sym, res)
+        );
+    }
+
+    #[test]
+    fn test_symbolizer() {
+        let t = TempDir::new("symtest").unwrap();
+        let path = t.path();
+
+        // TODO: This could really use a MockSupplier
+        let supplier = SimpleSymbolSupplier::new(vec![PathBuf::from(path)]);
+        let symbolizer = Symbolizer::new(supplier);
+        let m1 = SimpleModule::new("foo.pdb", "abcd1234");
+        write_symbol_file(
+            &path.join("foo.pdb/abcd1234/foo.sym"),
+            b"MODULE Linux x86 abcd1234 foo
 FILE 1 foo.c
 FUNC 1000 30 10 some func
 1000 30 100 1
-");
-    let mut f1 = SimpleFrame::with_instruction(0x1010);
-    symbolizer.fill_symbol(&m1, &mut f1);
-    assert_eq!(f1.function.unwrap(), "some func");
-    assert_eq!(f1.function_base.unwrap(), 0x1000);
-    assert_eq!(f1.source_file.unwrap(), "foo.c");
-    assert_eq!(f1.source_line.unwrap(), 100);
-    assert_eq!(f1.source_line_base.unwrap(), 0x1000);
+",
+        );
+        let mut f1 = SimpleFrame::with_instruction(0x1010);
+        symbolizer.fill_symbol(&m1, &mut f1);
+        assert_eq!(f1.function.unwrap(), "some func");
+        assert_eq!(f1.function_base.unwrap(), 0x1000);
+        assert_eq!(f1.source_file.unwrap(), "foo.c");
+        assert_eq!(f1.source_line.unwrap(), 100);
+        assert_eq!(f1.source_line_base.unwrap(), 0x1000);
 
-    assert_eq!(symbolizer.get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
-               .unwrap(),
-               "some func");
+        assert_eq!(
+            symbolizer
+                .get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
+                .unwrap(),
+            "some func"
+        );
 
-    let m2 = SimpleModule::new("bar.pdb", "ffff0000");
-    let mut f2 = SimpleFrame::with_instruction(0x1010);
-    // No symbols present, should not find anything.
-    symbolizer.fill_symbol(&m2, &mut f2);
-    assert!(f2.function.is_none());
-    assert!(f2.function_base.is_none());
-    assert!(f2.source_file.is_none());
-    assert!(f2.source_line.is_none());
-    // Results should be cached.
-    write_symbol_file(&path.join("bar.pdb/ffff0000/bar.sym"),
-                      b"MODULE Linux x86 ffff0000 bar
+        let m2 = SimpleModule::new("bar.pdb", "ffff0000");
+        let mut f2 = SimpleFrame::with_instruction(0x1010);
+        // No symbols present, should not find anything.
+        symbolizer.fill_symbol(&m2, &mut f2);
+        assert!(f2.function.is_none());
+        assert!(f2.function_base.is_none());
+        assert!(f2.source_file.is_none());
+        assert!(f2.source_line.is_none());
+        // Results should be cached.
+        write_symbol_file(
+            &path.join("bar.pdb/ffff0000/bar.sym"),
+            b"MODULE Linux x86 ffff0000 bar
 FILE 53 bar.c
 FUNC 1000 30 10 another func
 1000 30 7 53
-");
-    symbolizer.fill_symbol(&m2, &mut f2);
-    assert!(f2.function.is_none());
-    assert!(f2.function_base.is_none());
-    assert!(f2.source_file.is_none());
-    assert!(f2.source_line.is_none());
-    // This should also use cached results.
-    assert!(symbolizer.get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
-            .is_none());
-}
+",
+        );
+        symbolizer.fill_symbol(&m2, &mut f2);
+        assert!(f2.function.is_none());
+        assert!(f2.function_base.is_none());
+        assert!(f2.source_file.is_none());
+        assert!(f2.source_line.is_none());
+        // This should also use cached results.
+        assert!(
+            symbolizer
+                .get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
+                .is_none()
+        );
+    }
 
 }

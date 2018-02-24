@@ -28,7 +28,8 @@ enum Line<'a> {
 named!(my_eol<char>, alt!(complete!(crlf) | newline));
 
 /// Match a hex string, parse it to a u64.
-named!(hex_str_u64<&[u8], u64>, map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
+named!(hex_str_u64<&[u8], u64>,
+       map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
 
 /// Match a decimal string, parse it to a u32.
 named!(decimal_u32<&[u8], u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
@@ -54,14 +55,16 @@ named!(module_line<&[u8], ()>,
 ));
 
 /// Matches an INFO record.
-named!(info_line,
-  chain!(
+named!(
+    info_line,
+    chain!(
     tag!("INFO") ~
     space ~
     x: not_line_ending ~
     my_eol,
       ||{ x }
-));
+)
+);
 
 /// Matches a FILE record.
 named!(file_line<&[u8], (u32, &str)>,
@@ -269,22 +272,25 @@ named!(line<&[u8], Line>,
 ));
 
 /// Return a `SymbolFile` given a vec of `Line` data.
-fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
-{
+fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     let mut files = HashMap::new();
-    let mut publics = vec!();
-    let mut funcs = vec!();
-    let mut stack_cfi = vec!();
-    let mut stack_win_framedata: Vec<StackInfoWin> = vec!();
-    let mut stack_win_fpo: Vec<StackInfoWin> = vec!();
+    let mut publics = vec![];
+    let mut funcs = vec![];
+    let mut stack_cfi = vec![];
+    let mut stack_win_framedata: Vec<StackInfoWin> = vec![];
+    let mut stack_win_fpo: Vec<StackInfoWin> = vec![];
     for line in lines {
         match line {
-            Line::Info => {},
+            Line::Info => {}
             Line::File(id, filename) => {
                 files.insert(id, filename.to_string());
-            },
-            Line::Public(p) => { publics.push(p); },
-            Line::Function(f) => { funcs.push(f); },
+            }
+            Line::Public(p) => {
+                publics.push(p);
+            }
+            Line::Function(f) => {
+                funcs.push(f);
+            }
             Line::StackWin(frame_type) => {
                 // PDB files contain lots of overlapping unwind info, so we have to filter
                 // some of it out.
@@ -306,24 +312,27 @@ fn symbol_file_from_lines<'a>(lines : Vec<Line<'a>>) -> SymbolFile
                     // Just ignore other types.
                     _ => {}
                 }
-            },
-            Line::StackCFI(s) => { stack_cfi.push(s); },
+            }
+            Line::StackCFI(s) => {
+                stack_cfi.push(s);
+            }
         }
     }
     publics.sort();
     SymbolFile {
         files: files,
         publics: publics,
-        functions: funcs.into_iter()
-            .map(|f| (f.memory_range(), f))
-            .collect(),
-        cfi_stack_info: stack_cfi.into_iter()
+        functions: funcs.into_iter().map(|f| (f.memory_range(), f)).collect(),
+        cfi_stack_info: stack_cfi
+            .into_iter()
             .map(|s| (s.memory_range(), s))
             .collect(),
-        win_stack_framedata_info: stack_win_framedata.into_iter()
+        win_stack_framedata_info: stack_win_framedata
+            .into_iter()
             .map(|s| (s.memory_range(), s))
             .collect(),
-        win_stack_fpo_info: stack_win_fpo.into_iter()
+        win_stack_fpo_info: stack_win_fpo
+            .into_iter()
             .map(|s| (s.memory_range(), s))
             .collect(),
     }
@@ -338,7 +347,7 @@ named!(symbol_file<&[u8], SymbolFile>,
 );
 
 /// Parse a `SymbolFile` from `bytes`.
-pub fn parse_symbol_bytes(bytes : &[u8])  -> Result<SymbolFile, &'static str> {
+pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, &'static str> {
     if let Done(rest, symfile) = symbol_file(&bytes) {
         if rest == b"" {
             Ok(symfile)
@@ -352,9 +361,9 @@ pub fn parse_symbol_bytes(bytes : &[u8])  -> Result<SymbolFile, &'static str> {
 }
 
 /// Parse a `SymbolFile` from `path`.
-pub fn parse_symbol_file(path : &Path) -> Result<SymbolFile, &'static str> {
+pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, &'static str> {
     let mut f = try!(File::open(path).or(Err("Failed to open file")));
-    let mut bytes = vec!();
+    let mut bytes = vec![];
     try!(f.read_to_end(&mut bytes).or(Err("Failed to read file")));
     parse_symbol_bytes(&bytes)
 }
@@ -363,16 +372,14 @@ pub fn parse_symbol_file(path : &Path) -> Result<SymbolFile, &'static str> {
 fn test_module_line() {
     let line = b"MODULE Linux x86 D3096ED481217FD4C16B29CD9BC208BA0 firefox-bin\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line),
-               Done(rest, ()));
+    assert_eq!(module_line(line), Done(rest, ()));
 }
 
 #[test]
 fn test_module_line_filename_spaces() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox x y z\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line),
-               Done(rest, ()));
+    assert_eq!(module_line(line), Done(rest, ()));
 }
 
 #[test]
@@ -409,24 +416,37 @@ fn test_file_line_spaces() {
 fn test_public_line() {
     let line = b"PUBLIC f00d d00d some func\n";
     let rest = &b""[..];
-    assert_eq!(public_line(line), Done(rest, PublicSymbol {
-        address: 0xf00d,
-        parameter_size: 0xd00d,
-        name: "some func".to_string(),
-    }));
+    assert_eq!(
+        public_line(line),
+        Done(
+            rest,
+            PublicSymbol {
+                address: 0xf00d,
+                parameter_size: 0xd00d,
+                name: "some func".to_string(),
+            }
+        )
+    );
 }
 
 #[test]
 fn test_func_lines_no_lines() {
     let line = b"FUNC c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&, void**) const\n";
     let rest = &b""[..];
-    assert_eq!(func_lines(line), Done(rest, Function {
-        address: 0xc184,
-        size: 0x30,
-        parameter_size: 0,
-        name: "nsQueryInterfaceWithError::operator()(nsID const&, void**) const".to_string(),
-        lines: RangeMap::new(),
-    }));
+    assert_eq!(
+        func_lines(line),
+        Done(
+            rest,
+            Function {
+                address: 0xc184,
+                size: 0x30,
+                parameter_size: 0,
+                name: "nsQueryInterfaceWithError::operator()(nsID const&, void**) const"
+                    .to_string(),
+                lines: RangeMap::new(),
+            }
+        )
+    );
 }
 
 #[test]
@@ -442,14 +462,47 @@ fn test_func_lines_and_lines() {
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-        assert_eq!(f.lines.get(0x1000).unwrap(),
-                   &SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42});
-        assert_eq!(f.lines.ranges_values().collect::<Vec<_>>(),
-                   vec!(
-                       &(Range::<u64>::new(0x1000, 0x100F), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
-                       &(Range::<u64>::new(0x1010, 0x101F), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
-                       &(Range::<u64>::new(0x1020, 0x102F), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
-                       ));
+        assert_eq!(
+            f.lines.get(0x1000).unwrap(),
+            &SourceLine {
+                address: 0x1000,
+                size: 0x10,
+                file: 7,
+                line: 42,
+            }
+        );
+        assert_eq!(
+            f.lines.ranges_values().collect::<Vec<_>>(),
+            vec![
+                &(
+                    Range::<u64>::new(0x1000, 0x100F),
+                    SourceLine {
+                        address: 0x1000,
+                        size: 0x10,
+                        file: 7,
+                        line: 42,
+                    },
+                ),
+                &(
+                    Range::<u64>::new(0x1010, 0x101F),
+                    SourceLine {
+                        address: 0x1010,
+                        size: 0x10,
+                        file: 8,
+                        line: 52,
+                    },
+                ),
+                &(
+                    Range::<u64>::new(0x1020, 0x102F),
+                    SourceLine {
+                        address: 0x1020,
+                        size: 0x10,
+                        file: 15,
+                        line: 62,
+                    },
+                ),
+            ]
+        );
     } else {
         assert!(false, "Failed to parse!");
     }
@@ -457,7 +510,8 @@ fn test_func_lines_and_lines() {
 
 #[test]
 fn test_stack_win_line_program_string() {
-    let line = b"STACK WIN 4 2170 14 a1 b2 c3 d4 e5 f6 1 $eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =\n";
+    let line =
+        b"STACK WIN 4 2170 14 a1 b2 c3 d4 e5 f6 1 $eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =\n";
     match stack_win_line(line) {
         Done(rest, WinFrameType::FrameData(stack)) => {
             assert_eq!(rest, &b""[..]);
@@ -469,11 +523,19 @@ fn test_stack_win_line_program_string() {
             assert_eq!(stack.saved_register_size, 0xd4);
             assert_eq!(stack.local_size, 0xe5);
             assert_eq!(stack.max_stack_size, 0xf6);
-            assert_eq!(stack.program_string_or_base_pointer,
-                       WinStackThing::ProgramString("$eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =".to_string()));
-        },
-        Error(e) => { assert!(false, format!("Parse error: {:?}", e)); },
-        Incomplete(_) => { assert!(false, "Incomplete parse!"); },
+            assert_eq!(
+                stack.program_string_or_base_pointer,
+                WinStackThing::ProgramString(
+                    "$eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =".to_string()
+                )
+            );
+        }
+        Error(e) => {
+            assert!(false, format!("Parse error: {:?}", e));
+        }
+        Incomplete(_) => {
+            assert!(false, "Incomplete parse!");
+        }
         _ => assert!(false, "Something bad happened"),
     }
 }
@@ -492,11 +554,17 @@ fn test_stack_win_line_frame_data() {
             assert_eq!(stack.saved_register_size, 0xd4);
             assert_eq!(stack.local_size, 0xe5);
             assert_eq!(stack.max_stack_size, 0xf6);
-            assert_eq!(stack.program_string_or_base_pointer,
-                       WinStackThing::AllocatesBasePointer(true));
-        },
-        Error(e) => { assert!(false, format!("Parse error: {:?}", e)); },
-        Incomplete(_) => { assert!(false, "Incomplete parse!"); },
+            assert_eq!(
+                stack.program_string_or_base_pointer,
+                WinStackThing::AllocatesBasePointer(true)
+            );
+        }
+        Error(e) => {
+            assert!(false, format!("Parse error: {:?}", e));
+        }
+        Incomplete(_) => {
+            assert!(false, "Incomplete parse!");
+        }
         _ => assert!(false, "Something bad happened"),
     }
 }
@@ -505,18 +573,35 @@ fn test_stack_win_line_frame_data() {
 fn test_stack_cfi() {
     let line = b"STACK CFI deadf00d some rules\n";
     let rest = &b""[..];
-    assert_eq!(stack_cfi(line), Done(rest, CFIRules {
-        address: 0xdeadf00d, rules: "some rules".to_string()
-    }));
+    assert_eq!(
+        stack_cfi(line),
+        Done(
+            rest,
+            CFIRules {
+                address: 0xdeadf00d,
+                rules: "some rules".to_string(),
+            }
+        )
+    );
 }
 
 #[test]
 fn test_stack_cfi_init() {
     let line = b"STACK CFI INIT badf00d abc init rules\n";
     let rest = &b""[..];
-    assert_eq!(stack_cfi_init(line), Done(rest, (CFIRules {
-        address: 0xbadf00d, rules: "init rules".to_string()
-    }, 0xabc)));
+    assert_eq!(
+        stack_cfi_init(line),
+        Done(
+            rest,
+            (
+                CFIRules {
+                    address: 0xbadf00d,
+                    rules: "init rules".to_string(),
+                },
+                0xabc
+            )
+        )
+    );
 }
 
 #[test]
@@ -526,14 +611,29 @@ STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
 ";
     let rest = &b""[..];
-    assert_eq!(stack_cfi_lines(data), Done(rest, StackInfoCFI {
-        init: CFIRules { address: 0xbadf00d, rules: "init rules".to_string() },
-        size: 0xabc,
-        add_rules: vec!(
-            CFIRules { address: 0xdeadbeef, rules: "more rules".to_string() },
-            CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
-            ),
-    }));
+    assert_eq!(
+        stack_cfi_lines(data),
+        Done(
+            rest,
+            StackInfoCFI {
+                init: CFIRules {
+                    address: 0xbadf00d,
+                    rules: "init rules".to_string(),
+                },
+                size: 0xabc,
+                add_rules: vec![
+                    CFIRules {
+                        address: 0xdeadbeef,
+                        rules: "more rules".to_string(),
+                    },
+                    CFIRules {
+                        address: 0xdeadf00d,
+                        rules: "some rules".to_string(),
+                    },
+                ],
+            }
+        )
+    );
 }
 
 #[test]
@@ -575,8 +675,10 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(p.name, "func 2".to_string());
     }
     assert_eq!(sym.functions.ranges_values().count(), 3);
-    let funcs = sym.functions.ranges_values()
-        .map(|&(_, ref f)| f).collect::<Vec<_>>();
+    let funcs = sym.functions
+        .ranges_values()
+        .map(|&(_, ref f)| f)
+        .collect::<Vec<_>>();
     {
         let f = &funcs[0];
         assert_eq!(f.address, 0x900);
@@ -591,12 +693,38 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-        assert_eq!(f.lines.ranges_values().collect::<Vec<_>>(),
-                   vec!(
-                       &(Range::new(0x1000, 0x100F), SourceLine { address: 0x1000, size: 0x10, file: 7, line: 42}),
-                       &(Range::new(0x1010, 0x101F), SourceLine { address: 0x1010, size: 0x10, file: 8, line: 52}),
-                       &(Range::new(0x1020, 0x102F), SourceLine { address: 0x1020, size: 0x10, file: 15, line: 62}),
-                       ));
+        assert_eq!(
+            f.lines.ranges_values().collect::<Vec<_>>(),
+            vec![
+                &(
+                    Range::new(0x1000, 0x100F),
+                    SourceLine {
+                        address: 0x1000,
+                        size: 0x10,
+                        file: 7,
+                        line: 42,
+                    },
+                ),
+                &(
+                    Range::new(0x1010, 0x101F),
+                    SourceLine {
+                        address: 0x1010,
+                        size: 0x10,
+                        file: 8,
+                        line: 52,
+                    },
+                ),
+                &(
+                    Range::new(0x1020, 0x102F),
+                    SourceLine {
+                        address: 0x1020,
+                        size: 0x10,
+                        file: 15,
+                        line: 62,
+                    },
+                ),
+            ]
+        );
     }
     {
         let f = &funcs[2];
@@ -607,8 +735,10 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.lines.ranges_values().count(), 0);
     }
     assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
-    let ws = sym.win_stack_framedata_info.ranges_values()
-        .map(|&(_, ref s)| s).collect::<Vec<_>>();
+    let ws = sym.win_stack_framedata_info
+        .ranges_values()
+        .map(|&(_, ref s)| s)
+        .collect::<Vec<_>>();
     {
         let stack = &ws[0];
         assert_eq!(stack.address, 0x900);
@@ -619,12 +749,16 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(stack.saved_register_size, 0xd4);
         assert_eq!(stack.local_size, 0xe5);
         assert_eq!(stack.max_stack_size, 0xf6);
-        assert_eq!(stack.program_string_or_base_pointer,
-                   WinStackThing::ProgramString("prog string".to_string()));
+        assert_eq!(
+            stack.program_string_or_base_pointer,
+            WinStackThing::ProgramString("prog string".to_string())
+        );
     }
     assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
-    let ws = sym.win_stack_fpo_info.ranges_values()
-        .map(|&(_, ref s)| s).collect::<Vec<_>>();
+    let ws = sym.win_stack_fpo_info
+        .ranges_values()
+        .map(|&(_, ref s)| s)
+        .collect::<Vec<_>>();
     {
         let stack = &ws[0];
         assert_eq!(stack.address, 0x1000);
@@ -635,60 +769,103 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(stack.saved_register_size, 0xd4);
         assert_eq!(stack.local_size, 0xe5);
         assert_eq!(stack.max_stack_size, 0xf6);
-        assert_eq!(stack.program_string_or_base_pointer,
-                   WinStackThing::AllocatesBasePointer(true));
+        assert_eq!(
+            stack.program_string_or_base_pointer,
+            WinStackThing::AllocatesBasePointer(true)
+        );
     }
     assert_eq!(sym.cfi_stack_info.ranges_values().count(), 2);
-    let cs = sym.cfi_stack_info.ranges_values()
-        .map(|&(_, ref s)| s.clone()).collect::<Vec<_>>();
-    assert_eq!(cs[0],
-               StackInfoCFI {
-                   init: CFIRules { address: 0xf00f,
-                                    rules: "more init rules".to_string() },
-                   size: 0xf0,
-                   add_rules: vec!(),
-               });
-    assert_eq!(cs[1],
-               StackInfoCFI {
-                   init: CFIRules { address: 0xbadf00d, rules: "init rules".to_string() },
-                   size: 0xabc,
-                   add_rules: vec!(
-                       CFIRules { address: 0xdeadbeef, rules: "more rules".to_string() },
-                       CFIRules { address: 0xdeadf00d, rules: "some rules".to_string() },
-                       ),
-               });
+    let cs = sym.cfi_stack_info
+        .ranges_values()
+        .map(|&(_, ref s)| s.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cs[0],
+        StackInfoCFI {
+            init: CFIRules {
+                address: 0xf00f,
+                rules: "more init rules".to_string(),
+            },
+            size: 0xf0,
+            add_rules: vec![],
+        }
+    );
+    assert_eq!(
+        cs[1],
+        StackInfoCFI {
+            init: CFIRules {
+                address: 0xbadf00d,
+                rules: "init rules".to_string(),
+            },
+            size: 0xabc,
+            add_rules: vec![
+                CFIRules {
+                    address: 0xdeadbeef,
+                    rules: "more rules".to_string(),
+                },
+                CFIRules {
+                    address: 0xdeadf00d,
+                    rules: "some rules".to_string(),
+                },
+            ],
+        }
+    );
 }
 
 #[test]
 fn test_parse_symbol_bytes_malformed() {
-    assert!(parse_symbol_bytes(&b"this is not a symbol file\n"[..]).is_err(),
-            "Should fail to parse junk");
+    assert!(
+        parse_symbol_bytes(&b"this is not a symbol file\n"[..]).is_err(),
+        "Should fail to parse junk"
+    );
 
-    assert!(parse_symbol_bytes(&b"MODULE Linux x86 xxxxxx
+    assert!(
+        parse_symbol_bytes(
+            &b"MODULE Linux x86 xxxxxx
 FILE 0 foo.c
-"[..]).is_err(),
-            "Should fail to parse malformed MODULE line");
+"[..]
+        ).is_err(),
+        "Should fail to parse malformed MODULE line"
+    );
 
-    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+    assert!(
+        parse_symbol_bytes(
+            &b"MODULE Linux x86 abcd1234 foo
 FILE x foo.c
-"[..]).is_err(),
-            "Should fail to parse malformed FILE line");
+"[..]
+        ).is_err(),
+        "Should fail to parse malformed FILE line"
+    );
 
-    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+    assert!(
+        parse_symbol_bytes(
+            &b"MODULE Linux x86 abcd1234 foo
 FUNC xx 1 2 foo
-"[..]).is_err(),
-            "Should fail to parse malformed FUNC line");
+"[..]
+        ).is_err(),
+        "Should fail to parse malformed FUNC line"
+    );
 
-    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+    assert!(
+        parse_symbol_bytes(
+            &b"MODULE Linux x86 abcd1234 foo
 this is some junk
-"[..]).is_err(),
-            "Should fail to parse malformed file");
+"[..]
+        ).is_err(),
+        "Should fail to parse malformed file"
+    );
 
-    assert!(parse_symbol_bytes(&b"MODULE Linux x86 abcd1234 foo
+    assert!(
+        parse_symbol_bytes(
+            &b"MODULE Linux x86 abcd1234 foo
 FILE 0 foo.c
-FILE"[..]).is_err(),
-            "Should fail to parse truncated file");
+FILE"[..]
+        ).is_err(),
+        "Should fail to parse truncated file"
+    );
 
-    assert!(parse_symbol_bytes(&b""[..]).is_err(),
-            "Should fail to parse empty file");
+    assert!(
+        parse_symbol_bytes(&b""[..]).is_err(),
+        "Should fail to parse empty file"
+    );
 }

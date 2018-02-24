@@ -29,16 +29,14 @@ pub enum MinidumpRawContext {
 /// Generic over the specifics of a CPU context.
 pub trait CPUContext {
     /// The word size of general-purpose registers in the context.
-    type Register : fmt::LowerHex;
+    type Register: fmt::LowerHex;
 
     /// Get a register value if it is valid.
     ///
     /// Get the value of the register named `reg` from this CPU context
     /// if `valid` indicates that it has a valid value, otherwise return
     /// `None`.
-    fn get_register(&self,
-                    reg : &str,
-                    valid : &MinidumpContextValidity) -> Option<Self::Register> {
+    fn get_register(&self, reg: &str, valid: &MinidumpContextValidity) -> Option<Self::Register> {
         if let &MinidumpContextValidity::Some(ref which) = valid {
             if !which.contains(reg) {
                 return None;
@@ -48,20 +46,22 @@ pub trait CPUContext {
     }
 
     /// Return a String containing the value of `reg` formatted to its natural width.
-    fn format_register(&self, reg : &str) -> String {
-        format!("0x{:01$x}",
-                self.get_register_always(reg),
-                mem::size_of::<Self::Register>() * 2)
+    fn format_register(&self, reg: &str) -> String {
+        format!(
+            "0x{:01$x}",
+            self.get_register_always(reg),
+            mem::size_of::<Self::Register>() * 2
+        )
     }
 
     /// Get a register value regardless of whether it is valid.
-    fn get_register_always(&self, reg : &str) -> Self::Register;
+    fn get_register_always(&self, reg: &str) -> Self::Register;
 }
 
 impl CPUContext for md::MDRawContextX86 {
     type Register = u32;
 
-    fn get_register_always(&self, reg : &str) -> u32 {
+    fn get_register_always(&self, reg: &str) -> u32 {
         match reg {
             "eip" => self.eip,
             "esp" => self.esp,
@@ -81,7 +81,7 @@ impl CPUContext for md::MDRawContextX86 {
 impl CPUContext for md::MDRawContextAMD64 {
     type Register = u64;
 
-    fn get_register_always(&self, reg : &str) -> u64 {
+    fn get_register_always(&self, reg: &str) -> u64 {
         match reg {
             "rax" => self.rax,
             "rdx" => self.rdx,
@@ -114,7 +114,6 @@ pub enum MinidumpContextValidity {
     Some(HashSet<&'static str>),
 }
 
-
 /// CPU context such as register states.
 ///
 /// MinidumpContext carries a CPU-specific MDRawContext structure, which
@@ -130,9 +129,9 @@ pub enum MinidumpContextValidity {
 #[derive(Clone)]
 pub struct MinidumpContext {
     /// The raw CPU register state.
-    pub raw : MinidumpRawContext,
+    pub raw: MinidumpRawContext,
     /// Which registers are valid in `raw`.
-    pub valid : MinidumpContextValidity,
+    pub valid: MinidumpContextValidity,
 }
 
 /// Errors encountered while reading a `MinidumpContext`.
@@ -144,20 +143,22 @@ pub enum ContextError {
 }
 
 /// General-purpose registers for x86.
-static X86_REGS : [&'static str; 10] =
-    ["eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl"];
+static X86_REGS: [&'static str; 10] = [
+    "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl"
+];
 
 /// General-purpose registers for x86-64.
-static X86_64_REGS : [&'static str; 17] =
-    ["rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp",
-     "r8",  "r9",  "r10", "r11", "r12", "r13", "r14", "r15", "rip"];
+static X86_64_REGS: [&'static str; 17] = [
+    "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12", "r13",
+    "r14", "r15", "rip",
+];
 
 //======================================================
 // Implementations
 
 impl MinidumpContext {
     /// Return a MinidumpContext given a `MinidumpRawContext`.
-    pub fn from_raw(raw : MinidumpRawContext) -> MinidumpContext {
+    pub fn from_raw(raw: MinidumpRawContext) -> MinidumpContext {
         MinidumpContext {
             raw: raw,
             valid: MinidumpContextValidity::All,
@@ -165,27 +166,33 @@ impl MinidumpContext {
     }
 
     /// Read a `MinidumpContext` from a file.
-    pub fn read<T : Readable>(f : &mut T, location : &md::MDLocationDescriptor) -> Result<MinidumpContext, ContextError> {
-        try!(f.seek(SeekFrom::Start(location.rva as u64)).or(Err(ContextError::ReadFailure)));
+    pub fn read<T: Readable>(
+        f: &mut T,
+        location: &md::MDLocationDescriptor,
+    ) -> Result<MinidumpContext, ContextError> {
+        try!(
+            f.seek(SeekFrom::Start(location.rva as u64))
+                .or(Err(ContextError::ReadFailure))
+        );
         let expected_size = location.data_size as usize;
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         if expected_size == mem::size_of::<md::MDRawContextAMD64>() {
-            let ctx : md::MDRawContextAMD64 = try!(read(f).or(Err(ContextError::ReadFailure)));
+            let ctx: md::MDRawContextAMD64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & md::MD_CONTEXT_CPU_MASK != md::MD_CONTEXT_AMD64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextPPC64>() {
-            let ctx : md::MDRawContextPPC64 = try!(read(f).or(Err(ContextError::ReadFailure)));
+            let ctx: md::MDRawContextPPC64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_PPC64 as u64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
         } else if expected_size == mem::size_of::<md::MDRawContextARM64>() {
-            let ctx : md::MDRawContextARM64 = try!(read(f).or(Err(ContextError::ReadFailure)));
+            let ctx: md::MDRawContextARM64 = try!(read(f).or(Err(ContextError::ReadFailure)));
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_ARM64 as u64 {
                 return Err(ContextError::ReadFailure);
             } else {
@@ -195,36 +202,41 @@ impl MinidumpContext {
             // For everything else, read the flags and determine context
             // type from that.
             // TODO: swap
-            let flags : u32 = try!(read(f).or(Err(ContextError::ReadFailure)));
-            try!(f.seek(SeekFrom::Current(-4)).or(Err(ContextError::ReadFailure)));
+            let flags: u32 = try!(read(f).or(Err(ContextError::ReadFailure)));
+            try!(
+                f.seek(SeekFrom::Current(-4))
+                    .or(Err(ContextError::ReadFailure))
+            );
             let cpu_type = flags & md::MD_CONTEXT_CPU_MASK;
             // TODO: handle dumps with MD_CONTEXT_ARM_OLD
             if let Some(ctx) = match cpu_type {
                 md::MD_CONTEXT_X86 => {
-                    let ctx : md::MDRawContextX86 = try!(read(f).or(Err(ContextError::ReadFailure)));
+                    let ctx: md::MDRawContextX86 = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::X86(ctx))
-                },
+                }
                 md::MD_CONTEXT_PPC => {
-                    let ctx : md::MDRawContextPPC = try!(read(f).or(Err(ContextError::ReadFailure)));
+                    let ctx: md::MDRawContextPPC = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::PPC(ctx))
-                },
+                }
                 md::MD_CONTEXT_SPARC => {
-                    let ctx : md::MDRawContextSPARC = try!(read(f).or(Err(ContextError::ReadFailure)));
+                    let ctx: md::MDRawContextSPARC =
+                        try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::SPARC(ctx))
-                },
+                }
                 md::MD_CONTEXT_ARM => {
-                    let ctx : md::MDRawContextARM = try!(read(f).or(Err(ContextError::ReadFailure)));
+                    let ctx: md::MDRawContextARM = try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::ARM(ctx))
-                },
+                }
                 md::MD_CONTEXT_MIPS => {
-                    let ctx : md::MDRawContextMIPS = try!(read(f).or(Err(ContextError::ReadFailure)));
+                    let ctx: md::MDRawContextMIPS =
+                        try!(read(f).or(Err(ContextError::ReadFailure)));
                     Some(MinidumpRawContext::MIPS(ctx))
-                },
+                }
                 _ => None,
             } {
                 return Ok(MinidumpContext::from_raw(ctx));
             }
-            return Err(ContextError::UnknownCPUContext)
+            return Err(ContextError::UnknownCPUContext);
         }
     }
 
@@ -254,9 +266,7 @@ impl MinidumpContext {
         }
     }
 
-    pub fn format_register(&self,
-                           reg : &str) -> String {
-
+    pub fn format_register(&self, reg: &str) -> String {
         match self.raw {
             MinidumpRawContext::AMD64(raw) => raw.format_register(reg),
             MinidumpRawContext::ARM(_) => unimplemented!(),
@@ -268,7 +278,6 @@ impl MinidumpContext {
             MinidumpRawContext::MIPS(_) => unimplemented!(),
         }
     }
-
 
     pub fn general_purpose_registers(&self) -> &'static [&'static str] {
         match self.raw {
@@ -283,14 +292,15 @@ impl MinidumpContext {
         }
     }
 
-
     /// Write a human-readable description of this `MinidumpContext` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         match self.raw {
             MinidumpRawContext::X86(raw) => {
-                try!(write!(f, r#"MDRawContextX86
+                try!(write!(
+                    f,
+                    r#"MDRawContextX86
   context_flags                = {:#x}
   dr0                          = {:#x}
   dr1                          = {:#x}
@@ -306,25 +316,27 @@ impl MinidumpContext {
   float_save.data_offset       = {:#x}
   float_save.data_selector     = {:#x}
   float_save.register_area[{:2}] = 0x"#,
-                            raw.context_flags,
-                            raw.dr0,
-                            raw.dr1,
-                            raw.dr2,
-                            raw.dr3,
-                            raw.dr6,
-                            raw.dr7,
-                            raw.float_save.control_word,
-                            raw.float_save.status_word,
-                            raw.float_save.tag_word,
-                            raw.float_save.error_offset,
-                            raw.float_save.error_selector,
-                            raw.float_save.data_offset,
-                            raw.float_save.data_selector,
-                            md::MD_FLOATINGSAVEAREA_X86_REGISTERAREA_SIZE,
-                            ));
+                    raw.context_flags,
+                    raw.dr0,
+                    raw.dr1,
+                    raw.dr2,
+                    raw.dr3,
+                    raw.dr6,
+                    raw.dr7,
+                    raw.float_save.control_word,
+                    raw.float_save.status_word,
+                    raw.float_save.tag_word,
+                    raw.float_save.error_offset,
+                    raw.float_save.error_selector,
+                    raw.float_save.data_offset,
+                    raw.float_save.data_selector,
+                    md::MD_FLOATINGSAVEAREA_X86_REGISTERAREA_SIZE,
+                ));
                 try!(write_bytes(f, &raw.float_save.register_area));
                 try!(write!(f, "\n"));
-                try!(write!(f, r#"  float_save.cr0_npx_state     = {:#x}
+                try!(write!(
+                    f,
+                    r#"  float_save.cr0_npx_state     = {:#x}
   gs                           = {:#x}
   fs                           = {:#x}
   es                           = {:#x}
@@ -342,36 +354,38 @@ impl MinidumpContext {
   esp                          = {:#x}
   ss                           = {:#x}
   extended_registers[{:3}]      = 0x"#,
-                            raw.float_save.cr0_npx_state,
-                            raw.gs,
-                            raw.fs,
-                            raw.es,
-                            raw.ds,
-                            raw.edi,
-                            raw.esi,
-                            raw.ebx,
-                            raw.edx,
-                            raw.ecx,
-                            raw.eax,
-                            raw.ebp,
-                            raw.eip,
-                            raw.cs,
-                            raw.eflags,
-                            raw.esp,
-                            raw.ss,
-                            md::MD_CONTEXT_X86_EXTENDED_REGISTERS_SIZE,
-                            ));
+                    raw.float_save.cr0_npx_state,
+                    raw.gs,
+                    raw.fs,
+                    raw.es,
+                    raw.ds,
+                    raw.edi,
+                    raw.esi,
+                    raw.ebx,
+                    raw.edx,
+                    raw.ecx,
+                    raw.eax,
+                    raw.ebp,
+                    raw.eip,
+                    raw.cs,
+                    raw.eflags,
+                    raw.esp,
+                    raw.ss,
+                    md::MD_CONTEXT_X86_EXTENDED_REGISTERS_SIZE,
+                ));
                 try!(write_bytes(f, &raw.extended_registers));
                 try!(write!(f, "\n\n"));
-            },
+            }
             MinidumpRawContext::PPC(_raw) => {
                 unimplemented!();
-            },
+            }
             MinidumpRawContext::PPC64(_raw) => {
                 unimplemented!();
-            },
+            }
             MinidumpRawContext::AMD64(raw) => {
-                try!(write!(f, r#"MDRawContextAMD64
+                try!(write!(
+                    f,
+                    r#"MDRawContextAMD64
   p1_home       = {:#x}
   p2_home       = {:#x}
   p3_home       = {:#x}
@@ -412,74 +426,80 @@ impl MinidumpContext {
   rip           = {:#x}
 
 "#,
-                            raw.p1_home,
-                            raw.p2_home,
-                            raw.p3_home,
-                            raw.p4_home,
-                            raw.p5_home,
-                            raw.p6_home,
-                            raw.context_flags,
-                            raw.mx_csr,
-                            raw.cs,
-                            raw.ds,
-                            raw.es,
-                            raw.fs,
-                            raw.gs,
-                            raw.ss,
-                            raw.eflags,
-                            raw.dr0,
-                            raw.dr1,
-                            raw.dr2,
-                            raw.dr3,
-                            raw.dr6,
-                            raw.dr7,
-                            raw.rax,
-                            raw.rcx,
-                            raw.rdx,
-                            raw.rbx,
-                            raw.rsp,
-                            raw.rbp,
-                            raw.rsi,
-                            raw.rdi,
-                            raw.r8,
-                            raw.r9,
-                            raw.r10,
-                            raw.r11,
-                            raw.r12,
-                            raw.r13,
-                            raw.r14,
-                            raw.r15,
-                            raw.rip,
-                            ));
-            },
+                    raw.p1_home,
+                    raw.p2_home,
+                    raw.p3_home,
+                    raw.p4_home,
+                    raw.p5_home,
+                    raw.p6_home,
+                    raw.context_flags,
+                    raw.mx_csr,
+                    raw.cs,
+                    raw.ds,
+                    raw.es,
+                    raw.fs,
+                    raw.gs,
+                    raw.ss,
+                    raw.eflags,
+                    raw.dr0,
+                    raw.dr1,
+                    raw.dr2,
+                    raw.dr3,
+                    raw.dr6,
+                    raw.dr7,
+                    raw.rax,
+                    raw.rcx,
+                    raw.rdx,
+                    raw.rbx,
+                    raw.rsp,
+                    raw.rbp,
+                    raw.rsi,
+                    raw.rdi,
+                    raw.r8,
+                    raw.r9,
+                    raw.r10,
+                    raw.r11,
+                    raw.r12,
+                    raw.r13,
+                    raw.r14,
+                    raw.r15,
+                    raw.rip,
+                ));
+            }
             MinidumpRawContext::SPARC(_raw) => {
                 unimplemented!();
-            },
+            }
             MinidumpRawContext::ARM(raw) => {
-                try!(write!(f, r#"MDRawContextARM
+                try!(write!(
+                    f,
+                    r#"MDRawContextARM
   context_flags       = {:#x}
-"#, raw.context_flags));
+"#,
+                    raw.context_flags
+                ));
                 for (i, reg) in raw.iregs.iter().enumerate() {
                     try!(writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg));
                 }
-                try!(write!(f, r#"  cpsr                = {:#x}
+                try!(write!(
+                    f,
+                    r#"  cpsr                = {:#x}
   float_save.fpscr     = {:#x}
 "#,
-                            raw.cpsr,
-                            raw.float_save.fpscr));
+                    raw.cpsr, raw.float_save.fpscr
+                ));
                 for (i, reg) in raw.float_save.regs.iter().enumerate() {
                     try!(writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg));
                 }
                 for (i, reg) in raw.float_save.extra.iter().enumerate() {
                     try!(writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg));
                 }
-            },
+            }
             MinidumpRawContext::ARM64(_raw) => {
                 unimplemented!();
-            },
+            }
             MinidumpRawContext::MIPS(_raw) => {
                 unimplemented!();
-            },
+            }
         }
         Ok(())
     }

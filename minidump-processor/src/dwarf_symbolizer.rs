@@ -1,4 +1,4 @@
-use ::SymbolProvider;
+use SymbolProvider;
 use addr2line::{Mapping, Options};
 use breakpad_symbols::FrameSymbolizer;
 use failure::Error;
@@ -38,16 +38,13 @@ impl DwarfSymbolizer {
 }
 
 impl SymbolProvider for DwarfSymbolizer {
-    fn fill_symbol(&self,
-                   module: &Module,
-                   frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         let path = module.code_file();
         let k = path.as_ref();
         if !self.known_modules.borrow().contains_key(k) {
             self.known_modules
                 .borrow_mut()
-                .insert(path.clone().into_owned(),
-                        locate_symbols(&path).ok());
+                .insert(path.clone().into_owned(), locate_symbols(&path).ok());
         }
         if let Some(&mut Some(ref mut map)) = self.known_modules.borrow_mut().get_mut(k) {
             let addr = frame.get_instruction();

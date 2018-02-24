@@ -57,35 +57,35 @@ pub struct StackFrame {
     // a register is fine for looking up the point of the call. On others, it
     // requires adjustment. ReturnAddress returns the address as saved by the
     // machine.
-    pub instruction : u64,
+    pub instruction: u64,
 
     // The module in which the instruction resides.
-    pub module : Option<MinidumpModule>,
+    pub module: Option<MinidumpModule>,
 
     /// The function name, may be omitted if debug symbols are not available.
-    pub function_name : Option<String>,
+    pub function_name: Option<String>,
 
     /// The start address of the function, may be omitted if debug symbols
     /// are not available.
-    pub function_base : Option<u64>,
+    pub function_base: Option<u64>,
 
     /// The source file name, may be omitted if debug symbols are not available.
-    pub source_file_name : Option<String>,
+    pub source_file_name: Option<String>,
 
     /// The (1-based) source line number, may be omitted if debug symbols are
     /// not available.
-    pub source_line : Option<u32>,
+    pub source_line: Option<u32>,
 
     /// The start address of the source line, may be omitted if debug symbols
     /// are not available.
-    pub source_line_base : Option<u64>,
+    pub source_line_base: Option<u64>,
 
     /// Amount of trust the stack walker has in the instruction pointer
     /// of this frame.
-    pub trust : FrameTrust,
+    pub trust: FrameTrust,
 
     /// The CPU context containing register state for this frame.
-    pub context : MinidumpContext,
+    pub context: MinidumpContext,
 }
 
 /// Information about the results of unwinding a thread's stack.
@@ -109,19 +109,19 @@ pub struct CallStack {
     /// By convention, the stack frame at index 0 is the innermost callee frame,
     /// and the frame at the highest index in a call stack is the outermost
     /// caller.
-    pub frames : Vec<StackFrame>,
+    pub frames: Vec<StackFrame>,
     /// Information about this `CallStack`.
-    pub info : CallStackInfo,
+    pub info: CallStackInfo,
 }
 
 /// The state of a process as recorded by a `Minidump`.
 pub struct ProcessState {
     /// When the minidump was written.
-    pub time : DateTime<UTC>,
+    pub time: DateTime<UTC>,
     /// When the process started, if available
-    pub process_create_time : Option<DateTime<UTC>>,
+    pub process_create_time: Option<DateTime<UTC>>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
-    pub crash_reason : Option<CrashReason>,
+    pub crash_reason: Option<CrashReason>,
     /// The memory address implicated in the crash.
     ///
     /// If the process crashed, and if the crash reason implicates memory,
@@ -129,9 +129,9 @@ pub struct ProcessState {
     /// errors this will be the data address that caused the fault. For code
     /// errors, this will be the address of the instruction that caused the
     /// fault.
-    pub crash_address : Option<u64>,
+    pub crash_address: Option<u64>,
     /// A string describing an assertion that was hit, if present.
-    pub assertion : Option<String>,
+    pub assertion: Option<String>,
     /// The index of the thread that requested a dump be written.
     /// If a dump was produced as a result of a crash, this
     /// will point to the thread that crashed.  If the dump was produced as
@@ -140,17 +140,17 @@ pub struct ProcessState {
     /// If the dump was not produced as a result of an exception and no
     /// extended Breakpad information is present, this field will be
     /// `None`.
-    pub requesting_thread : Option<usize>,
+    pub requesting_thread: Option<usize>,
     /// Stacks for each thread (except possibly the exception handler
     /// thread) at the time of the crash.
-    pub threads : Vec<CallStack>,
+    pub threads: Vec<CallStack>,
     // TODO:
     // thread_memory_regions
     /// Information about the system on which the minidump was written.
-    pub system_info : SystemInfo,
+    pub system_info: SystemInfo,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
-    pub modules : MinidumpModuleList,
+    pub modules: MinidumpModuleList,
     // modules_without_symbols
     // modules_with_corrupt_symbols
     // exploitability
@@ -174,8 +174,7 @@ impl FrameTrust {
 
 impl StackFrame {
     /// Create a `StackFrame` from a `MinidumpContext`.
-    pub fn from_context(context : MinidumpContext,
-                        trust : FrameTrust) -> StackFrame {
+    pub fn from_context(context: MinidumpContext, trust: FrameTrust) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
             module: None,
@@ -198,35 +197,36 @@ impl StackFrame {
 
 impl FrameSymbolizer for StackFrame {
     fn get_instruction(&self) -> u64 {
-        self.module.as_ref().map(|m| self.instruction - m.base_address())
+        self.module
+            .as_ref()
+            .map(|m| self.instruction - m.base_address())
             .unwrap_or(self.instruction)
     }
-    fn set_function(&mut self, name : &str, base : u64) {
+    fn set_function(&mut self, name: &str, base: u64) {
         self.function_name = Some(String::from(name));
         self.function_base = Some(base);
     }
-    fn set_source_file(&mut self, file : &str, line : u32, base : u64) {
+    fn set_source_file(&mut self, file: &str, line: u32, base: u64) {
         self.source_file_name = Some(String::from(file));
         self.source_line = Some(line);
         self.source_line_base = Some(base);
     }
 }
 
-fn basename(f : &str) -> &str {
+fn basename(f: &str) -> &str {
     match f.rfind(|c| c == '/' || c == '\\') {
         None => f,
-        Some(index) => &f[(index+1)..],
+        Some(index) => &f[(index + 1)..],
     }
 }
 
-fn print_registers<T : Write>(f : &mut T,
-                              ctx : &MinidumpContext) -> io::Result<()> {
-    let registers : Cow<HashSet<&str>> = match ctx.valid {
+fn print_registers<T: Write>(f: &mut T, ctx: &MinidumpContext) -> io::Result<()> {
+    let registers: Cow<HashSet<&str>> = match ctx.valid {
         MinidumpContextValidity::All => {
             let gpr = ctx.general_purpose_registers();
-            let set : HashSet<&str>  = gpr.iter().cloned().collect();
+            let set: HashSet<&str> = gpr.iter().cloned().collect();
             Cow::Owned(set)
-        },
+        }
         MinidumpContextValidity::Some(ref which) => Cow::Borrowed(which),
     };
 
@@ -252,10 +252,10 @@ fn print_registers<T : Write>(f : &mut T,
 
 impl CallStack {
     /// Create a `CallStack` with `info` and no frames.
-    pub fn with_info(info : CallStackInfo) -> CallStack {
+    pub fn with_info(info: CallStackInfo) -> CallStack {
         CallStack {
             info: info,
-            frames: vec!(),
+            frames: vec![],
         }
     }
 
@@ -263,7 +263,7 @@ impl CallStack {
     ///
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
-    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         if self.frames.len() == 0 {
             try!(writeln!(f, "<no frames>"));
         }
@@ -272,19 +272,26 @@ impl CallStack {
             try!(write!(f, "{:2}  ", i));
             if let Some(ref module) = frame.module {
                 try!(write!(f, "{}", basename(&module.code_file())));
-                if let (&Some(ref function),
-                        &Some(ref function_base)) = (&frame.function_name,
-                                                     &frame.function_base) {
+                if let (&Some(ref function), &Some(ref function_base)) =
+                    (&frame.function_name, &frame.function_base)
+                {
                     try!(write!(f, "!{}", function));
-                    if let (&Some(ref source_file),
-                            &Some(ref source_line),
-                            &Some(ref source_line_base)) = (&frame.source_file_name,
-                                                            &frame.source_line,
-                                                            &frame.source_line_base) {
-                        try!(write!(f, " [{} : {} + {:#x}]",
-                                    basename(&source_file),
-                                    source_line,
-                                    addr - source_line_base));
+                    if let (
+                        &Some(ref source_file),
+                        &Some(ref source_line),
+                        &Some(ref source_line_base),
+                    ) = (
+                        &frame.source_file_name,
+                        &frame.source_line,
+                        &frame.source_line_base,
+                    ) {
+                        try!(write!(
+                            f,
+                            " [{} : {} + {:#x}]",
+                            basename(&source_file),
+                            source_line,
+                            addr - source_line_base
+                        ));
                     } else {
                         try!(write!(f, " + {:#x}", addr - function_base));
                     }
@@ -302,7 +309,7 @@ impl CallStack {
     }
 }
 
-fn eq_some<T : PartialEq>(opt : Option<T>, val : T) -> bool {
+fn eq_some<T: PartialEq>(opt: Option<T>, val: T) -> bool {
     match opt {
         Some(v) => v == val,
         None => false,
@@ -318,8 +325,12 @@ impl ProcessState {
     ///
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
-    pub fn print<T : Write>(&self, f : &mut T) -> io::Result<()> {
-        try!(writeln!(f, "Operating system: {}", self.system_info.os.long_name()));
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        try!(writeln!(
+            f,
+            "Operating system: {}",
+            self.system_info.os.long_name()
+        ));
         if let Some(ref ver) = self.system_info.os_version {
             try!(writeln!(f, "                  {}", ver));
         }
@@ -327,16 +338,26 @@ impl ProcessState {
         if let Some(ref info) = self.system_info.cpu_info {
             try!(writeln!(f, "     {}", info));
         }
-        try!(writeln!(f, "     {} CPU{}", self.system_info.cpu_count,
-                      if self.system_info.cpu_count > 1 { "s" } else { "" }));
+        try!(writeln!(
+            f,
+            "     {} CPU{}",
+            self.system_info.cpu_count,
+            if self.system_info.cpu_count > 1 {
+                "s"
+            } else {
+                ""
+            }
+        ));
         try!(writeln!(f, ""));
 
-        if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason,
-                                                          &self.crash_address) {
-            try!(write!(f, "Crash reason:  {}
+        if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason, &self.crash_address) {
+            try!(write!(
+                f,
+                "Crash reason:  {}
 Crash address: {:#x}
 ",
-                          reason, address));
+                reason, address
+            ));
         } else {
             try!(writeln!(f, "No crash"));
         }
@@ -345,17 +366,27 @@ Crash address: {:#x}
         }
         if let Some(ref time) = self.process_create_time {
             let uptime = self.time - *time;
-            try!(writeln!(f, "Process uptime: {} seconds",
-                          uptime.num_seconds()));
+            try!(writeln!(
+                f,
+                "Process uptime: {} seconds",
+                uptime.num_seconds()
+            ));
         } else {
             try!(writeln!(f, "Process uptime: not available"));
         }
         try!(writeln!(f, ""));
 
         if let Some(requesting_thread) = self.requesting_thread {
-            try!(writeln!(f, "Thread {} ({})",
-                          requesting_thread,
-                          if self.crashed() { "crashed" } else { "requested dump, did not crash" }));
+            try!(writeln!(
+                f,
+                "Thread {} ({})",
+                requesting_thread,
+                if self.crashed() {
+                    "crashed"
+                } else {
+                    "requested dump, did not crash"
+                }
+            ));
             try!(self.threads[requesting_thread].print(f));
             try!(writeln!(f, ""));
         }
@@ -370,17 +401,25 @@ Crash address: {:#x}
             try!(writeln!(f, "Thread {}", i));
             try!(stack.print(f));
         }
-        try!(write!(f, "
+        try!(write!(
+            f,
+            "
 Loaded modules:
-"));
-        let main_address = self.modules.main_module().and_then(|m| Some(m.base_address()));
+"
+        ));
+        let main_address = self.modules
+            .main_module()
+            .and_then(|m| Some(m.base_address()));
         for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
-            try!(write!(f, "{:#010x} - {:#010x}  {}  {}",
-                        module.base_address(),
-                        module.base_address() + module.size() - 1,
-                        basename(&module.code_file()),
-                        module.version().unwrap_or(Cow::Borrowed("???"))));
+            try!(write!(
+                f,
+                "{:#010x} - {:#010x}  {}  {}",
+                module.base_address(),
+                module.base_address() + module.size() - 1,
+                basename(&module.code_file()),
+                module.version().unwrap_or(Cow::Borrowed("???"))
+            ));
             if eq_some(main_address, module.base_address()) {
                 try!(write!(f, "  (main)"));
             }
