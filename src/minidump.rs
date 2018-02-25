@@ -3,13 +3,13 @@
 
 use std::io::prelude::*;
 use chrono::*;
+use failure;
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io;
-use std::io::SeekFrom;
+use std::io::{self, Cursor, SeekFrom};
 use std::mem;
 use std::path::Path;
 
@@ -52,20 +52,33 @@ pub struct Minidump<T: Readable> {
 }
 
 /// Errors encountered while reading a `Minidump`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Fail, PartialEq)]
 pub enum Error {
+    #[fail(display = "File not found")]
     FileNotFound,
+    #[fail(display = "Missing minidump header")]
     MissingHeader,
+    #[fail(display = "Header mismatch")]
     HeaderMismatch,
+    #[fail(display = "Cannot read minidump of opposite endianness")]
     SwapNotImplemented,
+    #[fail(display = "Minidump version mismatch")]
     VersionMismatch,
+    #[fail(display = "Missing stream directory")]
     MissingDirectory,
+    #[fail(display = "Error reading stream")]
     StreamReadFailure,
+    #[fail(display = "Stream size mismatch: expected {} byes, found {} bytes", expected, actual)]
     StreamSizeMismatch { expected: usize, actual: usize },
+    #[fail(display = "Stream not found")]
     StreamNotFound,
+    #[fail(display = "Module read failure")]
     ModuleReadFailure,
+    #[fail(display = "Memory read failure")]
     MemoryReadFailure,
+    #[fail(display = "Data error")]
     DataError,
+    #[fail(display = "Error reading CodeView data")]
     CodeViewReadFailure,
 }
 
@@ -231,30 +244,27 @@ fn read_codeview_pdb<T: Readable>(
     f: &mut T,
     signature: u32,
     mut size: usize,
-) -> Result<CodeView, Error> {
+) -> Result<CodeView, failure::Error> {
     let raw = match signature {
         md::MD_CVINFOPDB70_SIGNATURE => {
             size = size - mem::size_of::<md::MDCVInfoPDB70>() + 1;
             // ::<md::MDCVInfoPDB70>
-            CodeViewPDBRaw::PDB70(try!(read(f).or(Err(Error::CodeViewReadFailure))))
+            CodeViewPDBRaw::PDB70(read(f)?)
         }
         md::MD_CVINFOPDB20_SIGNATURE => {
             size = size - mem::size_of::<md::MDCVInfoPDB20>() + 1;
             // ::<md::MDCVInfoPDB20>
-            CodeViewPDBRaw::PDB20(try!(read(f).or(Err(Error::CodeViewReadFailure))))
+            CodeViewPDBRaw::PDB20(read(f)?)
         }
-        _ => return Err(Error::CodeViewReadFailure),
+        _ => return Err(Error::CodeViewReadFailure.into()),
     };
     // Both structs define a variable-length string with a placeholder
     // 1-byte array at the end, so seek back one byte and read the remaining
     // data as the string.
-    try!(
-        f.seek(SeekFrom::Current(-1))
-            .or(Err(Error::CodeViewReadFailure))
-    );
-    let bytes = try!(read_bytes(f, size).or(Err(Error::CodeViewReadFailure)));
+    f.seek(SeekFrom::Current(-1))?;
+    let bytes = read_bytes(f, size)?;
     // The string should have at least one trailing NUL.
-    let file = String::from(String::from_utf8(bytes).unwrap().trim_right_matches('\0'));
+    let file = String::from(String::from_utf8(bytes)?.trim_right_matches('\0'));
     Ok(CodeView::PDB {
         raw: raw,
         file: file,
@@ -270,22 +280,16 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 fn read_codeview<T: Readable>(
     f: &mut T,
     location: md::MDLocationDescriptor,
-) -> Result<CodeView, Error> {
+) -> Result<CodeView, failure::Error> {
     let size = location.data_size as usize;
-    try!(
-        f.seek(SeekFrom::Start(location.rva as u64))
-            .or(Err(Error::CodeViewReadFailure))
-    );
+    f.seek(SeekFrom::Start(location.rva as u64))?;
     // The CodeView data can contain a variable-length string at the end
     // and also can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
     // TODO: swap
-    let signature: u32 = try!(read(f).or(Err(Error::CodeViewReadFailure)));
+    let signature: u32 = read(f)?;
     // Seek back because the signature is part of the CV data.
-    try!(
-        f.seek(SeekFrom::Start(location.rva as u64))
-            .or(Err(Error::CodeViewReadFailure))
-    );
+    f.seek(SeekFrom::Start(location.rva as u64))?;
     match signature {
         md::MD_CVINFOPDB70_SIGNATURE | md::MD_CVINFOPDB20_SIGNATURE => {
             // One of the PDB formats.
@@ -295,8 +299,8 @@ fn read_codeview<T: Readable>(
             // Breakpad's ELF build ID format.
             // Skip the signature we just read.
             let sig_size = mem::size_of::<u32>();
-            try!(f.seek(SeekFrom::Current(sig_size as i64)).or(Err(Error::CodeViewReadFailure)));
-            let raw = try!(read_bytes(f, size - sig_size).or(Err(Error::CodeViewReadFailure)));
+            f.seek(SeekFrom::Current(sig_size as i64))?;
+            let raw = read_bytes(f, size - sig_size)?;
 
             Ok(CodeView::ELF {
                 build_id: raw,
@@ -305,7 +309,7 @@ fn read_codeview<T: Readable>(
         _ =>
             // Other formats aren't handled, but save the raw bytes.
             Ok(CodeView::Unknown {
-                bytes: read_bytes(f, size).or(Err(Error::CodeViewReadFailure))?
+                bytes: read_bytes(f, size)?,
             })
     }
 }
@@ -1395,14 +1399,16 @@ impl MinidumpException {
     }
 }
 
-impl Minidump<File> {
+impl Minidump<Cursor<Vec<u8>>> {
     /// Read a `Minidump` from a `Path` to a file on disk.
-    pub fn read_path<P>(path: P) -> Result<Minidump<File>, Error>
+    pub fn read_path<P>(path: P) -> Result<Minidump<Cursor<Vec<u8>>>, failure::Error>
     where
         P: AsRef<Path>,
     {
-        let f = File::open(path).or(Err(Error::FileNotFound))?;
-        Minidump::read(f)
+        let mut f = File::open(path)?;
+        let mut buf = vec![];
+        f.read_to_end(&mut buf)?;
+        Ok(Minidump::read(Cursor::new(buf))?)
     }
 }
 
