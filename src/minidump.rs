@@ -744,13 +744,10 @@ impl MinidumpModuleList {
         }
     }
 
-    /// Return a `MinidumpModule` whose address range covers `addr`.
-    pub fn module_at_address(&self, addr: u64) -> Option<&MinidumpModule> {
-        return if let Some(&index) = self.modules_by_addr.get(addr) {
-            Some(&self.modules[index])
-        } else {
-            None
-        };
+    /// Return a `MinidumpModule` whose address range covers `address`.
+    pub fn module_at_address(&self, address: u64) -> Option<&MinidumpModule> {
+        self.modules_by_addr.get(address)
+            .map(|&index| &self.modules[index])
     }
 
     /// Iterate over the modules in arbitrary order.
@@ -902,6 +899,7 @@ impl MinidumpMemoryList {
             regions_by_addr: RangeMap::new(),
         }
     }
+
     /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
     pub fn from_regions(regions: Vec<MinidumpMemory>) -> MinidumpMemoryList {
         let map = {
@@ -922,6 +920,12 @@ impl MinidumpMemoryList {
             regions: regions,
             regions_by_addr: map,
         }
+    }
+
+    /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
+    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory> {
+        self.regions_by_addr.get(address)
+            .map(|&index| &self.regions[index])
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.

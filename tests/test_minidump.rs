@@ -2,11 +2,13 @@
 // file at the top-level directory of this distribution.
 
 extern crate chrono;
+extern crate failure;
 extern crate minidump;
 extern crate minidump_common;
 
 use chrono::*;
 use std::fs::File;
+use std::io::Cursor;
 use std::path::PathBuf;
 use minidump::*;
 use minidump::system_info::{CPU, OS};
@@ -20,7 +22,7 @@ fn get_test_minidump_path() -> PathBuf {
     path
 }
 
-fn read_test_minidump() -> Result<Minidump<File>, Error> {
+fn read_test_minidump() -> Result<Minidump<Cursor<Vec<u8>>>, failure::Error> {
     let path = get_test_minidump_path();
     Minidump::read_path(&path)
 }

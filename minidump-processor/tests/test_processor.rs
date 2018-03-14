@@ -2,11 +2,12 @@
 // file at the top-level directory of this distribution.
 
 extern crate breakpad_symbols;
+extern crate failure;
 extern crate minidump;
 extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
-use std::fs::File;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use minidump::*;
 use minidump::system_info::{CPU, OS};
@@ -31,7 +32,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<Minidump<File>, Error> {
+fn read_test_minidump() -> Result<Minidump<Cursor<Vec<u8>>>, failure::Error> {
     let path = locate_testdata().join("test.dmp");
     println!("minidump: {:?}", path);
     Minidump::read_path(&path)
@@ -124,7 +125,7 @@ fn test_processor_symbols() {
     ).unwrap();
     let f0 = &state.threads[0].frames[0];
     assert_eq!(
-        f0.function_name.as_ref().unwrap(),
-        "`anonymous namespace'::CrashFunction"
+        f0.function_name.as_ref().map(|s| s.as_str()),
+        Some("`anonymous namespace'::CrashFunction")
     );
 }

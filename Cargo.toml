@@ -17,13 +17,12 @@ exclude = [
 
 
 [dependencies]
+failure = "0.1.1"
 range-map = "0.1.5"
 libc = "0.2.34"
 minidump-common = { version = "0.1.0", path = "minidump-common" }
 encoding = "0.2"
 chrono = "0.2.16"
-failure = "0.1.1"
-
 
 [dev-dependencies]
 test-assembler = "0.1.5"
@@ -32,4 +31,8 @@ test-assembler = "0.1.5"
 members = [
         "breakpad-symbols",
         "minidump-processor",
+        "minidump-tools",
 ]
+
+[replace]
+"object:0.7.0" = { git = "https://github.com/gimli-rs/object/", rev = "0fb54d82c755e317b96d4b0d57714028d05ad95c" }

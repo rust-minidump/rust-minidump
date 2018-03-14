@@ -197,10 +197,7 @@ impl StackFrame {
 
 impl FrameSymbolizer for StackFrame {
     fn get_instruction(&self) -> u64 {
-        self.module
-            .as_ref()
-            .map(|m| self.instruction - m.base_address())
-            .unwrap_or(self.instruction)
+        self.instruction
     }
     fn set_function(&mut self, name: &str, base: u64) {
         self.function_name = Some(String::from(name));

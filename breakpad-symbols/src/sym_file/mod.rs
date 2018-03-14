@@ -24,7 +24,10 @@ impl SymbolFile {
     /// Fill in as much source information for `frame` as possible.
     pub fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         // Look for a FUNC covering the address first.
-        let addr = frame.get_instruction();
+        if frame.get_instruction() < module.base_address() {
+            return;
+        }
+        let addr = frame.get_instruction() - module.base_address();
         if let Some(ref func) = self.functions.get(addr) {
             frame.set_function(&func.name, func.address + module.base_address());
             // See if there's source line info as well.
@@ -54,19 +57,14 @@ impl SymbolFile {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::ffi::OsStr;
     use std::path::PathBuf;
 
-    fn abs_file() -> PathBuf {
-        let mut path = PathBuf::from(env!("PWD"));
-        path.push(file!());
-        path
-    }
-
     fn test_symbolfile_from_file(rel_path: &str) {
-        let mut path = abs_file();
-        path.pop();
-        path.pop();
-        path.pop();
+        let mut path = PathBuf::from(env!("PWD"));
+        if path.file_name() == Some(OsStr::new("rust-minidump")) {
+            path.push("breakpad-symbols");
+        }
         path.push(rel_path);
         let sym = SymbolFile::from_file(&path).unwrap();
         assert_eq!(sym.files.len(), 6661);

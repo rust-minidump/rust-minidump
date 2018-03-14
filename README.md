@@ -13,12 +13,13 @@ It's fairly heavily modeled after the [Google Breakpad](https://chromium.googles
 Print the raw details of the exception stream from a minidump:
 
 ```rust
+extern crate failure;
 extern crate minidump;
 
-use minidump::{Error, Minidump, MinidumpException, MinidumpStream};
+use minidump::{Minidump, MinidumpException, MinidumpStream};
 use std::io::{self, Write};
 
-fn work() -> Result<(), Error> {
+fn work() -> Result<(), failure::Error> {
   let mut dump = minidump::Minidump::read_path("testdata/test.dmp")?;
   let exception: MinidumpException = dump.get_stream()?;
   drop(exception.print(&mut io::stdout()));

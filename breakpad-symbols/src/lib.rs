@@ -28,6 +28,8 @@
 //!               "vswprintf");
 //! ```
 
+#[macro_use]
+extern crate log;
 extern crate minidump_common;
 #[macro_use]
 extern crate nom;
@@ -42,6 +44,7 @@ use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 pub use sym_file::SymbolFile;
@@ -165,6 +168,16 @@ pub enum SymbolResult {
     LoadError(&'static str),
 }
 
+impl fmt::Display for SymbolResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &SymbolResult::Ok(_) => write!(f, "Ok"),
+            &SymbolResult::NotFound => write!(f, "Not found"),
+            &SymbolResult::LoadError(e) => write!(f, "Load error: {}", e),
+        }
+    }
+}
+
 /// A trait for things that can locate symbols for a given module.
 pub trait SymbolSupplier {
     /// Locate and load a symbol file for `module`.
@@ -215,7 +228,7 @@ pub trait FrameSymbolizer {
 }
 
 /// A simple implementation of `FrameSymbolizer` that just holds data.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SimpleFrame {
     /// The program counter value for this frame.
     pub instruction: u64,
@@ -354,9 +367,11 @@ impl Symbolizer {
     pub fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
         let k = key(module);
         if !self.symbols.borrow().contains_key(&k) {
+            let res = self.supplier.locate_symbols(module);
+            debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols
                 .borrow_mut()
-                .insert(k.clone(), self.supplier.locate_symbols(module));
+                .insert(k.clone(), res);
         }
         if let Some(res) = self.symbols.borrow().get(&k) {
             match res {
