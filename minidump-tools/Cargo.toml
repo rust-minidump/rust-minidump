@@ -8,7 +8,7 @@ breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
 failure = "0.1.1"
 minidump = { version = "0.1.0", path = ".." }
 structopt = { version = "0.2", default-features = false }
-disasm = { git = "https://github.com/luser/rust-disasm", rev = "44825aad3601fd97d1d5da3a7898369ceb547ba8" }
+disasm = { git = "https://github.com/luser/rust-disasm", rev = "8fc21074a674bdddc7be3e6fff87612bc948e650" }
 reqwest = "0.8.5"
 log = "0.4.1"
 env_logger = "0.5.6"

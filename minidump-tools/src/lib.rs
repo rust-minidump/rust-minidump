@@ -38,47 +38,105 @@ struct SymLookup {
     client: Client,
 }
 
+struct HgWebFile {
+    host: String,
+    repo: String,
+    rev: String,
+    path: String,
+}
+
+struct GitHubFile {
+    repo: String,
+    rev: String,
+    path: String,
+}
+
+trait VCSFile {
+    fn raw_url(&self) -> String;
+    fn annotate_url(&self, line: u64) -> String;
+    fn as_local_filename(&self) -> String;
+}
+
+impl VCSFile for HgWebFile {
+    fn raw_url(&self) -> String {
+        format!("https://{}/{}/raw-file/{}/{}",
+                self.host, self.repo, self.rev, self.path)
+    }
+
+    fn annotate_url(&self, line: u64) -> String {
+        format!("https://{}/{}/annotate/{}/{}#l{}",
+                self.host, self.repo, self.rev, self.path, line)
+    }
+    fn as_local_filename(&self) -> String {
+        format!("{}_{}_{}", self.host, self.rev, self.path).replace('/', "_")
+    }
+}
+
+impl VCSFile for GitHubFile {
+    fn raw_url(&self) -> String {
+        format!("http://raw.githubusercontent.com/{}/{}/{}", self.repo, self.rev, self.path)
+    }
+    fn annotate_url(&self, line: u64) -> String {
+        format!("https://github.com/{}/blob/{}/{}#L{}", self.repo, self.rev, self.path, line)
+    }
+    fn as_local_filename(&self) -> String {
+        format!("{}_{}_{}", self.repo, self.rev, self.path).replace('/', "_")
+    }
+}
+
 fn file_exists(path: &Path) -> bool {
     fs::metadata(path).is_ok()
 }
 
-fn fetch_url_to_path(client: &Client, url: String, path: PathBuf) -> Result<PathBuf, Error> {
+fn fetch_url_to_path(client: &Client, url: &str, path: &Path) -> Result<(), Error> {
     debug!("fetch_url_to_path({}, {:?})", url, path);
-    let mut res = client.get(&url).send()?.error_for_status()?;
+    let mut res = client.get(url).send()?.error_for_status()?;
     debug!("fetch_url_to_path: HTTP success");
-    let mut tmp_path = path.clone().into_os_string();
+    let mut tmp_path = path.to_owned().into_os_string();
     tmp_path.push(".tmp");
     {
         let mut f = File::create(&tmp_path)?;
         res.copy_to(&mut f)?;
     }
     fs::rename(&tmp_path, &path)?;
-    Ok(path)
+    Ok(())
 }
 
-fn maybe_fetch_source_file(client: &Client, filename: &str) -> Result<PathBuf, Error> {
+fn parse_vcs_info(filename: &str) -> Result<Box<VCSFile>, Error> {
     let mut bits = filename.split(':');
-    let (url, local) = match (bits.next(), bits.next(), bits.next(), bits.next()) {
-        (Some("hg"), Some(repo), Some(path), Some(rev)) if repo.starts_with("hg.mozilla.org") => {
-            let repo_name = repo.splitn(2, '/').nth(1).unwrap();
-            let url = format!("https://hg.mozilla.org/{}/raw-file/{}/{}", repo_name, rev, path);
-            let filename = format!("hg.mozilla.org_{}_{}", rev, path).replace('/', "_");
-            let local = env::temp_dir().join(filename);
-            (url, local)
+    Ok(match (bits.next(), bits.next(), bits.next(), bits.next()) {
+        (Some("hg"), Some(repo), Some(path), Some(rev)) if repo.starts_with("hg.mozilla.org/") => {
+            let mut s = repo.splitn(2, '/');
+            let host = s.next().unwrap().to_owned();
+            let repo = s.next().unwrap().to_owned();
+            let path = path.to_owned();
+            let rev = rev.to_owned();
+            Box::new(HgWebFile {
+                host,
+                repo,
+                rev,
+                path,
+            })
         }
-        (Some("git"), Some(repo), Some(path), Some(rev)) if repo.starts_with("github.com") => {
-            let repo_name = repo.splitn(2, '/').nth(1).unwrap();
-            let url = format!("http://raw.githubusercontent.com/{}/{}/{}", repo_name, rev, path);
-            let filename = format!("{}_{}_{}", repo_name, rev, path).replace('/', "_");
-            let local = env::temp_dir().join(filename);
-            (url, local)
+        (Some("git"), Some(repo), Some(path), Some(rev)) if repo.starts_with("github.com/") => {
+            let repo = repo.splitn(2, '/').nth(1).unwrap().to_owned();
+            let path = path.to_owned();
+            let rev = rev.to_owned();
+            Box::new(GitHubFile {
+                repo,
+                rev,
+                path,
+            })
         }
         _ => return Err(format_err!("No VCS info in filename")),
-    };
-    if file_exists(&local) {
-        Ok(local)
+    })
+}
+
+fn maybe_fetch_source_file(client: &Client, url: &str, path: &Path) -> Result<(), Error> {
+    if file_exists(path) {
+        Ok(())
     } else {
-        fetch_url_to_path(client, url, local)
+        fetch_url_to_path(client, url, path)
     }
 }
 
@@ -89,11 +147,25 @@ impl SourceLookup for SymLookup {
             self.symbolizer.fill_symbol(module, &mut frame);
             let SimpleFrame { source_file, source_line, .. } = frame;
             if let (Some(file), Some(line)) = (source_file, source_line) {
-                let file = maybe_fetch_source_file(&self.client, &file)
-                    .unwrap_or_else(|_| PathBuf::from(file));
                 let line = line as u64;
-                Some(SourceLocation { file, line })
+                match parse_vcs_info(&file) {
+                    Ok(info) => {
+                        let url = info.raw_url();
+                        let local = env::temp_dir().join(info.as_local_filename());
+                        if maybe_fetch_source_file(&self.client, &url, &local).is_ok() {
+                            return Some(SourceLocation {
+                                file: local,
+                                file_display: Some(info.annotate_url(line)),
+                                line
+                            })
+                        }
+                    }
+                    _ => {}
+                }
+                // If fetching the file doesn't work, just hand back the original filename.
+                Some(SourceLocation { file: file.into(), file_display: None, line })
             } else {
+                // We didn't find any source info.
                 None
             }
         })
