@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use failure::Error;
 use nom::*;
 use nom::IResult::*;
 use std::collections::HashMap;
@@ -347,24 +348,24 @@ named!(symbol_file<&[u8], SymbolFile>,
 );
 
 /// Parse a `SymbolFile` from `bytes`.
-pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, &'static str> {
+pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
     if let Done(rest, symfile) = symbol_file(&bytes) {
         if rest == b"" {
             Ok(symfile)
         } else {
             // Junk left over, or maybe didn't parse anything.
-            Err("Failed to parse file")
+            Err(format_err!("Failed to parse file"))
         }
     } else {
-        Err("Failed to parse file")
+        Err(format_err!("Failed to parse file"))
     }
 }
 
 /// Parse a `SymbolFile` from `path`.
-pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, &'static str> {
-    let mut f = try!(File::open(path).or(Err("Failed to open file")));
+pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, Error> {
+    let mut f = File::open(path)?;
     let mut bytes = vec![];
-    try!(f.read_to_end(&mut bytes).or(Err("Failed to read file")));
+    f.read_to_end(&mut bytes)?;
     parse_symbol_bytes(&bytes)
 }
 

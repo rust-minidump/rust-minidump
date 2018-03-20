@@ -10,7 +10,7 @@ extern crate reqwest;
 #[macro_use]
 extern crate structopt;
 
-use breakpad_symbols::{SimpleFrame, SimpleSymbolSupplier, Symbolizer};
+use breakpad_symbols::{SimpleFrame, HttpSymbolSupplier, Symbolizer};
 use disasm::{CpuArch, SourceLocation, SourceLookup};
 use failure::Error;
 use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModuleList,
@@ -25,11 +25,10 @@ use structopt::StructOpt;
 #[derive(StructOpt)]
 #[structopt(name = "get-minidump-instructions", about = "Display instructions from a minidump")]
 struct GetMinidumpInstructions {
-    #[structopt(short = "v", long = "verbose", help = "Enable verbose output")]
-    #[allow(unused)]
-    verbose: bool,
     #[structopt(help = "Input minidump", parse(from_os_str))]
     minidump: PathBuf,
+    #[structopt(help = "Symbol paths", parse(from_os_str))]
+    symbol_paths: Vec<PathBuf>,
 }
 
 struct SymLookup {
@@ -174,8 +173,9 @@ impl SourceLookup for SymLookup {
 
 pub fn get_minidump_instructions() -> Result<(), Error> {
     env_logger::init();
-    let opt = GetMinidumpInstructions::from_args();
-    let mut dump = Minidump::read_path(&opt.minidump)?;
+    let GetMinidumpInstructions { minidump, symbol_paths } =
+        GetMinidumpInstructions::from_args();
+    let mut dump = Minidump::read_path(&minidump)?;
     let modules = dump.get_stream::<MinidumpModuleList>()?;
     let exception = dump.get_stream::<MinidumpException>()?;
     let context = exception.context.as_ref().ok_or(format_err!("Missing exception context"))?;
@@ -189,7 +189,20 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
         CPU::X86_64 => CpuArch::X86_64,
         _ => return Err(format_err!("Unsupported CPU architecture: {}", sys_info.cpu)),
     };
-    let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("/tmp/symbols")));
+    let tmp_path = env::temp_dir().join("symbols");
+    fs::create_dir_all(&tmp_path)?;
+    let (symbol_paths, symbol_urls) = if symbol_paths.is_empty() {
+        // Use the Mozilla symbol server if no symbol paths are supplied.
+        let symbol_urls = vec!["https://symbols.mozilla.org/".to_owned()];
+        (symbol_paths, symbol_urls)
+    } else {
+        let urls = symbol_paths.iter()
+            .filter(|p| p.starts_with("http"))
+            .filter_map(|p| p.to_str().map(str::to_owned)).collect();
+        let paths = symbol_paths.into_iter().filter(|p| !p.starts_with("http")).collect();
+        (paths, urls)
+    };
+    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_path, symbol_paths);
     let symbolizer = Symbolizer::new(supplier);
     let client = Client::new();
     let mut lookup = SymLookup { modules, symbolizer, client };

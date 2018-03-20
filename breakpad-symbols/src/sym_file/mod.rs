@@ -4,6 +4,7 @@
 mod parser;
 mod types;
 
+use failure::Error;
 use std::path::Path;
 
 pub use sym_file::types::*;
@@ -12,12 +13,12 @@ use sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.
-    pub fn from_file(path: &Path) -> Result<SymbolFile, &'static str> {
+    pub fn from_file(path: &Path) -> Result<SymbolFile, Error> {
         parse_symbol_file(path)
     }
 
     /// Parse an in-memory `SymbolFile` from `bytes`.
-    pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, &'static str> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
         parse_symbol_bytes(bytes)
     }
 

@@ -17,6 +17,8 @@ minidump-common = { version = "0.1.0", path = "../minidump-common" }
 range-map = "0.1.5"
 nom = "~1.2.2"
 log = "0.4.1"
+reqwest = "0.8.5"
+failure = "0.1.1"
 
 [dev-dependencies]
 tempdir = "0.3"

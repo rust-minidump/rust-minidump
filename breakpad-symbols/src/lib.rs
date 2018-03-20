@@ -29,23 +29,29 @@
 //! ```
 
 #[macro_use]
+extern crate failure;
+#[macro_use]
 extern crate log;
 extern crate minidump_common;
 #[macro_use]
 extern crate nom;
 extern crate range_map;
+extern crate reqwest;
 #[cfg(test)]
 extern crate tempdir;
 
 mod sym_file;
 
+use failure::Error;
 pub use minidump_common::traits::Module;
+use reqwest::{Client, Url};
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 pub use sym_file::SymbolFile;
 
@@ -158,14 +164,25 @@ pub fn relative_symbol_path(module: &Module, extension: &str) -> Option<String> 
 }
 
 /// Possible results of locating symbols.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum SymbolResult {
     /// Symbols loaded successfully.
     Ok(SymbolFile),
     /// Symbol file could not be found.
     NotFound,
     /// Error loading symbol file.
-    LoadError(&'static str),
+    LoadError(Error),
+}
+
+impl PartialEq for SymbolResult {
+    fn eq(&self, other: &SymbolResult) -> bool {
+        match (self, other) {
+            (&SymbolResult::Ok(ref a), &SymbolResult::Ok(ref b)) => a == b,
+            (&SymbolResult::NotFound, &SymbolResult::NotFound) => true,
+            (&SymbolResult::LoadError(_), &SymbolResult::LoadError(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for SymbolResult {
@@ -173,7 +190,7 @@ impl fmt::Display for SymbolResult {
         match self {
             &SymbolResult::Ok(_) => write!(f, "Ok"),
             &SymbolResult::NotFound => write!(f, "Not found"),
-            &SymbolResult::LoadError(e) => write!(f, "Load error: {}", e),
+            &SymbolResult::LoadError(ref e) => write!(f, "Load error: {}", e),
         }
     }
 }
@@ -214,6 +231,72 @@ impl SymbolSupplier for SimpleSymbolSupplier {
             }
         }
         SymbolResult::NotFound
+    }
+}
+
+/// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from HTTP
+/// URLs.
+pub struct HttpSymbolSupplier {
+    /// HTTP Client to use for fetching symbols.
+    client: Client,
+    /// URLs to search for symbols.
+    urls: Vec<Url>,
+    /// A `SimpleSymbolSupplier` to use for local symbol paths.
+    local: SimpleSymbolSupplier,
+}
+
+impl HttpSymbolSupplier {
+    pub fn new(urls: Vec<String>,
+               cache_path: PathBuf,
+               mut local_paths: Vec<PathBuf>) -> HttpSymbolSupplier {
+        let client = Client::new();
+        let urls = urls.into_iter().filter_map(|mut u| {
+            if !u.ends_with("/") {
+                u.push('/');
+            }
+            Url::parse(&u).ok()
+        }).collect();
+        local_paths.push(cache_path.clone());
+        let local = SimpleSymbolSupplier::new(local_paths);
+        HttpSymbolSupplier {
+            client,
+            urls,
+            local,
+        }
+    }
+}
+
+fn fetch_symbol_file(client: &Client, base_url: &Url, rel_path: &str) -> Result<Vec<u8>, Error>
+{
+    let url = base_url.join(&rel_path)?;
+    debug!("Trying {}", url);
+    let mut res = client.get(url).send()?.error_for_status()?;
+    let mut buf = vec![];
+    res.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+impl SymbolSupplier for HttpSymbolSupplier {
+    fn locate_symbols(&self, module: &Module) -> SymbolResult {
+        // Check local paths first.
+        match self.local.locate_symbols(module) {
+            res @ SymbolResult::Ok(_) | res @ SymbolResult::LoadError(_) => res,
+            SymbolResult::NotFound => {
+                if let Some(rel_path) = relative_symbol_path(module, "sym") {
+                    for ref url in self.urls.iter() {
+                        match fetch_symbol_file(&self.client, url, &rel_path) {
+                            Ok(buf) => {
+                                return SymbolFile::from_bytes(&buf)
+                                    .and_then(|s| Ok(SymbolResult::Ok(s)))
+                                    .unwrap_or_else(|e| SymbolResult::LoadError(e));
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
+                SymbolResult::NotFound
+            }
+        }
     }
 }
 
