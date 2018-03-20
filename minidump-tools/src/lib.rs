@@ -11,7 +11,7 @@ extern crate reqwest;
 extern crate structopt;
 
 use breakpad_symbols::{SimpleFrame, HttpSymbolSupplier, Symbolizer};
-use disasm::{CpuArch, SourceLocation, SourceLookup};
+use disasm::{Color, CpuArch, SourceLocation, SourceLookup};
 use failure::Error;
 use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModuleList,
                MinidumpSystemInfo};
@@ -25,6 +25,8 @@ use structopt::StructOpt;
 #[derive(StructOpt)]
 #[structopt(name = "get-minidump-instructions", about = "Display instructions from a minidump")]
 struct GetMinidumpInstructions {
+    #[structopt(long = "color", help = "Enable colored output")]
+    color: Option<Color>,
     #[structopt(help = "Input minidump", parse(from_os_str))]
     minidump: PathBuf,
     #[structopt(help = "Symbol paths", parse(from_os_str))]
@@ -173,7 +175,7 @@ impl SourceLookup for SymLookup {
 
 pub fn get_minidump_instructions() -> Result<(), Error> {
     env_logger::init();
-    let GetMinidumpInstructions { minidump, symbol_paths } =
+    let GetMinidumpInstructions { color, minidump, symbol_paths } =
         GetMinidumpInstructions::from_args();
     let mut dump = Minidump::read_path(&minidump)?;
     let modules = dump.get_stream::<MinidumpModuleList>()?;
@@ -212,6 +214,7 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     disasm::disasm_bytes(&memory.bytes,
                          memory.base_address,
                          arch,
+                         color.unwrap_or(Color::Auto),
                          Some(ip),
                          &mut lookup)?;
     Ok(())
