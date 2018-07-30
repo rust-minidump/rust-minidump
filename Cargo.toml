@@ -22,7 +22,7 @@ range-map = "0.1.5"
 libc = "0.2.34"
 minidump-common = { version = "0.1.0", path = "minidump-common" }
 encoding = "0.2"
-chrono = "0.2.16"
+chrono = "0.4.5"
 
 [dev-dependencies]
 test-assembler = "0.1.5"
