@@ -15,7 +15,7 @@ travis-ci = { repository = "luser/rust-minidump" }
 [dependencies]
 addr2line = "0.5.0"
 breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
-chrono = "0.2.16"
+chrono = "0.4.6"
 failure = "0.1.1"
 memmap = "0.6.1"
 object = { git = "https://github.com/gimli-rs/object/" }
