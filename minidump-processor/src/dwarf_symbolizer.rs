@@ -1,7 +1,8 @@
 use SymbolProvider;
-use addr2line::{Mapping, Options};
+use addr2line::Context;
 use breakpad_symbols::FrameSymbolizer;
 use failure::Error;
+use gimli::{EndianRcSlice, RunTimeEndian};
 use memmap;
 use minidump::Module;
 use object::{self, Object};
@@ -12,19 +13,17 @@ use std::fs::File;
 #[derive(Default)]
 pub struct DwarfSymbolizer {
     /// A mapping of lookups of symbol files, where the key is the path to the binary.
-    known_modules: RefCell<HashMap<String, Option<Mapping>>>,
+    known_modules: RefCell<HashMap<String, Option<Context<EndianRcSlice<RunTimeEndian>>>>>,
 }
 
-fn locate_symbols(path: &str) -> Result<Mapping, Error> {
+fn locate_symbols(path: &str) -> Result<Context<EndianRcSlice<RunTimeEndian>>, Error> {
     let f = File::open(path)?;
     let buf = unsafe { memmap::Mmap::map(&f)? };
     let obj = object::File::parse(&*buf).map_err(|_| format_err!("Failed to parse {}", path))?;
     if obj.has_debug_symbols() {
-        let mapping = Options::default()
-            .with_functions()
-            .build(path)
+        let context = Context::new(&obj)
             .map_err(|_| format_err!("Failed to load debug symbols for {}", path))?;
-        Ok(mapping)
+        Ok(context)
     } else {
         //TODO: use moria
         bail!("No debug symbols in {}", path)
