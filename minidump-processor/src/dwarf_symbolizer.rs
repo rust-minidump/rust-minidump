@@ -1,5 +1,5 @@
 use SymbolProvider;
-use addr2line::Context;
+use addr2line::{Context, Frame, Location};
 use breakpad_symbols::FrameSymbolizer;
 use failure::Error;
 use gimli::{EndianRcSlice, RunTimeEndian};
@@ -47,12 +47,15 @@ impl SymbolProvider for DwarfSymbolizer {
         }
         if let Some(&mut Some(ref mut map)) = self.known_modules.borrow_mut().get_mut(k) {
             let addr = frame.get_instruction();
-            if let Ok(Some((source_file, line, func))) = map.locate(addr) {
-                //TODO: get base address for line
-                frame.set_source_file(&source_file.to_string_lossy(), line.unwrap_or(0) as u32, 0);
-                if let Some(ref func) = func {
+            if let Ok(mut iter) = map.find_frames(addr) {
+                while let Ok(Some(Frame { function: Some(func), location: Some(Location { file: Some(source_file), line, .. }) })) = iter.next() {
+                    //TODO: get base address for line
+                    frame.set_source_file(&source_file, line.unwrap_or(0) as u32, 0);
                     //TODO: get base address for function
-                    frame.set_function(&func, 0);
+                    if let Ok(name) = func.demangle() {
+                        frame.set_function(&name, 0);
+                        break;
+                    }
                 }
             }
         }
