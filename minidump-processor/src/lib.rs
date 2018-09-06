@@ -9,6 +9,7 @@
 extern crate addr2line;
 extern crate breakpad_symbols;
 extern crate chrono;
+extern crate gimli;
 extern crate memmap;
 extern crate minidump;
 extern crate object;
