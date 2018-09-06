@@ -9,7 +9,7 @@ use std::io::prelude::*;
 use std::io;
 
 use breakpad_symbols::FrameSymbolizer;
-use chrono::*;
+use chrono::prelude::*;
 use minidump::*;
 use system_info::SystemInfo;
 
@@ -117,9 +117,9 @@ pub struct CallStack {
 /// The state of a process as recorded by a `Minidump`.
 pub struct ProcessState {
     /// When the minidump was written.
-    pub time: DateTime<UTC>,
+    pub time: DateTime<Utc>,
     /// When the process started, if available
-    pub process_create_time: Option<DateTime<UTC>>,
+    pub process_create_time: Option<DateTime<Utc>>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
     pub crash_reason: Option<CrashReason>,
     /// The memory address implicated in the crash.

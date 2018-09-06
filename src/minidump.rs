@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use std::io::prelude::*;
-use chrono::*;
+use chrono::prelude::*;
 use failure;
 use std::borrow::Cow;
 use std::boxed::Box;
@@ -181,7 +181,7 @@ pub struct MinidumpMiscInfo {
     /// The `MDRawMiscInfo` struct direct from the minidump.
     pub raw: md::MDRawMiscInfo,
     /// When the process started, if available.
-    pub process_create_time: Option<DateTime<UTC>>,
+    pub process_create_time: Option<DateTime<Utc>>,
 }
 
 /// Additional information about process state.
@@ -1170,7 +1170,7 @@ impl MinidumpStream for MinidumpMiscInfo {
             &bytes[..struct_size]
         });
         let process_create_time = if flag(raw.flags1, md::MD_MISCINFO_FLAGS1_PROCESS_TIMES) {
-            Some(UTC.timestamp(raw.process_create_time as i64, 0))
+            Some(Utc.timestamp(raw.process_create_time as i64, 0))
         } else {
             None
         };
@@ -1694,7 +1694,7 @@ mod test {
         assert_eq!(misc.raw.process_id, PID);
         assert_eq!(
             misc.process_create_time.unwrap(),
-            UTC.timestamp(CREATE_TIME as i64, 0)
+            Utc.timestamp(CREATE_TIME as i64, 0)
         );
     }
 
@@ -1713,7 +1713,7 @@ mod test {
         assert_eq!(misc.raw.process_id, PID);
         assert_eq!(
             misc.process_create_time.unwrap(),
-            UTC.timestamp(CREATE_TIME as i64, 0)
+            Utc.timestamp(CREATE_TIME as i64, 0)
         );
     }
 }

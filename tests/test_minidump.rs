@@ -6,7 +6,7 @@ extern crate failure;
 extern crate minidump;
 extern crate minidump_common;
 
-use chrono::*;
+use chrono::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -130,7 +130,7 @@ fn test_misc_info() {
     assert_eq!(misc_info.raw.process_create_time, 0x45d35f73);
     assert_eq!(
         misc_info.process_create_time.unwrap(),
-        UTC.ymd(2007, 02, 14).and_hms(19, 13, 55)
+        Utc.ymd(2007, 02, 14).and_hms(19, 13, 55)
     );
 }
 
