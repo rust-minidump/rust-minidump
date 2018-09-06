@@ -74,7 +74,7 @@ fn test_processor() {
     assert_eq!(f0.context.get_instruction_pointer(), 0x0040429e);
     assert_eq!(f0.context.get_stack_pointer(), 0x0012fe84);
     if let MinidumpContext {
-        raw: MinidumpRawContext::X86(raw),
+        raw: MinidumpRawContext::X86(ref raw),
         ref valid,
     } = f0.context
     {
@@ -92,7 +92,7 @@ fn test_processor() {
     assert_eq!(f3.context.get_instruction_pointer(), 0x7c816fd7);
     assert_eq!(f3.context.get_stack_pointer(), 0x0012ffc8);
     if let MinidumpContext {
-        raw: MinidumpRawContext::X86(raw),
+        raw: MinidumpRawContext::X86(ref raw),
         ref valid,
     } = f3.context
     {

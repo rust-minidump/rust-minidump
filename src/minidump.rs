@@ -97,6 +97,7 @@ pub trait MinidumpStream: Sized {
 }
 
 /// Raw bytes of CodeView data in a minidump file.
+#[derive(Clone)]
 pub enum CodeViewPDBRaw {
     /// PDB 2.0 format data.
     PDB20(md::MDCVInfoPDB20),
@@ -105,6 +106,7 @@ pub enum CodeViewPDBRaw {
 }
 
 /// CodeView data describes how to locate debug symbols.
+#[derive(Clone)]
 pub enum CodeView {
     /// Indicates data is in a separate PDB file.
     /// `raw` contains the raw bytes, `file` is the PDB file name.
@@ -116,6 +118,7 @@ pub enum CodeView {
 }
 
 /// An executable or shared library loaded in the process at the time the `Minidump` was written.
+#[derive(Clone)]
 pub struct MinidumpModule {
     /// The `MDRawModule` direct from the minidump file.
     pub raw: md::MDRawModule,
@@ -506,43 +509,6 @@ impl MinidumpModule {
     }
 }
 
-impl Clone for CodeViewPDBRaw {
-    fn clone(&self) -> CodeViewPDBRaw {
-        match self {
-            &CodeViewPDBRaw::PDB20(raw) => CodeViewPDBRaw::PDB20(raw.clone()),
-            &CodeViewPDBRaw::PDB70(raw) => CodeViewPDBRaw::PDB70(raw.clone()),
-        }
-    }
-}
-
-impl Clone for CodeView {
-    fn clone(&self) -> CodeView {
-        match self {
-            &CodeView::PDB { ref raw, ref file } => CodeView::PDB {
-                raw: raw.clone(),
-                file: file.clone(),
-            },
-            &CodeView::ELF { ref build_id } => CodeView::ELF {
-                build_id: build_id.clone(),
-            },
-            &CodeView::Unknown { ref bytes } => CodeView::Unknown {
-                bytes: bytes.clone(),
-            },
-        }
-    }
-}
-
-impl Clone for MinidumpModule {
-    fn clone(&self) -> MinidumpModule {
-        MinidumpModule {
-            raw: self.raw.clone(),
-            name: self.name.clone(),
-            codeview_info: self.codeview_info.clone(),
-            misc_info: self.misc_info.clone(),
-        }
-    }
-}
-
 fn guid_to_string(guid: &md::MDGUID) -> String {
     format!(
         "{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
@@ -647,7 +613,7 @@ impl Module for MinidumpModule {
     }
 }
 
-fn read_stream_list<T: Copy, U: Readable>(
+fn read_stream_list<T, U: Readable>(
     f: &mut U,
     expected_size: usize,
 ) -> Result<Vec<T>, Error> {
@@ -1104,10 +1070,12 @@ impl MinidumpStream for MinidumpSystemInfo {
             return Err(Error::StreamReadFailure);
         }
         let raw: md::MDRawSystemInfo = try!(read(f).or(Err(Error::StreamReadFailure)));
+        let os = OS::from_u32(raw.platform_id);
+        let cpu = CPU::from_u32(raw.processor_architecture as u32);
         Ok(MinidumpSystemInfo {
-            raw: raw,
-            os: OS::from_u32(raw.platform_id),
-            cpu: CPU::from_u32(raw.processor_architecture as u32),
+            raw,
+            os,
+            cpu,
         })
     }
 }
@@ -1321,10 +1289,11 @@ impl MinidumpStream for MinidumpException {
         }
         let raw: md::MDRawExceptionStream = try!(read(f).or(Err(Error::StreamReadFailure)));
         let context = MinidumpContext::read(f, &raw.thread_context).ok();
+        let thread_id = raw.thread_id;
         Ok(MinidumpException {
-            raw: raw,
-            thread_id: raw.thread_id,
-            context: context,
+            raw,
+            thread_id,
+            context,
         })
     }
 }
@@ -1463,7 +1432,7 @@ impl<T: Readable> Minidump<T> {
     pub fn get_stream<S: MinidumpStream>(&mut self) -> Result<S, Error> {
         match self.streams.get_mut(&S::stream_type()) {
             None => Err(Error::StreamNotFound),
-            Some(&mut (_, dir)) => {
+            Some(&mut (_, ref dir)) => {
                 try!(
                     self.reader
                         .seek(SeekFrom::Start(dir.location.rva as u64))
@@ -1485,7 +1454,7 @@ impl<T: Readable> Minidump<T> {
     pub fn get_raw_stream(&mut self, stream_type: u32) -> Result<Vec<u8>, Error> {
         match self.streams.get_mut(&stream_type) {
             None => Err(Error::StreamNotFound),
-            Some(&mut (_, dir)) => {
+            Some(&mut (_, ref dir)) => {
                 try!(
                     self.reader
                         .seek(SeekFrom::Start(dir.location.rva as u64))
@@ -1558,7 +1527,7 @@ impl<T: Readable> Minidump<T> {
         ));
         let mut streams = self.streams.iter().collect::<Vec<_>>();
         streams.sort_by(|&(&_, &(a, _)), &(&_, &(b, _))| a.cmp(&b));
-        for &(_, &(i, stream)) in streams.iter() {
+        for &(_, &(i, ref stream)) in streams.iter() {
             try!(write!(
                 f,
                 r#"mDirectory[{}]
@@ -1577,7 +1546,7 @@ MDRawDirectory
         }
         try!(write!(f, "Streams:\n"));
         streams.sort_by(|&(&a, &(_, _)), &(&b, &(_, _))| a.cmp(&b));
-        for (_, &(i, stream)) in streams {
+        for (_, &(i, ref stream)) in streams {
             try!(write!(
                 f,
                 "  stream type {:#x} ({}) at index {}\n",

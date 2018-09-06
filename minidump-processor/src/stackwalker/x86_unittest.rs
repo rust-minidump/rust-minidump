@@ -30,7 +30,7 @@ impl TestFixture {
 
     pub fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
-            raw: MinidumpRawContext::X86(self.raw),
+            raw: MinidumpRawContext::X86(self.raw.clone()),
             valid: MinidumpContextValidity::All,
         };
         let base = stack.start().value().unwrap();

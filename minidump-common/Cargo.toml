@@ -14,3 +14,4 @@ travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
 libc = "0.2.34"
+scroll = "0.9.0"

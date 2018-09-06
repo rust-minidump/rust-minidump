@@ -152,7 +152,7 @@ fn test_exception() {
         assert_eq!(ctx.get_instruction_pointer(), 0x40429e);
         assert_eq!(ctx.get_stack_pointer(), 0x12fe84);
         if let &MinidumpContext {
-            raw: MinidumpRawContext::X86(raw),
+            raw: MinidumpRawContext::X86(ref raw),
             ref valid,
         } = ctx
         {
@@ -180,7 +180,7 @@ fn test_thread_list() {
         assert_eq!(ctx.get_instruction_pointer(), 0x7c90eb94);
         assert_eq!(ctx.get_stack_pointer(), 0x12f320);
         if let &MinidumpContext {
-            raw: MinidumpRawContext::X86(raw),
+            raw: MinidumpRawContext::X86(ref raw),
             ref valid,
         } = ctx
         {

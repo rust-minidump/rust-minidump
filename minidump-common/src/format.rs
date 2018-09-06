@@ -92,56 +92,45 @@ pub const MD_EXCEPTION_MAXIMUM_PARAMETERS: ::libc::c_uint = 15;
 pub const MD_MAX_PATH: ::libc::c_uint = 260;
 
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct uint128_struct {
     pub high: u64,
     pub low: u64,
 }
-impl ::std::clone::Clone for uint128_struct {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for uint128_struct {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
+
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDGUID {
     pub data1: u32,
     pub data2: u16,
     pub data3: u16,
     pub data4: [u8; 8usize],
 }
-impl ::std::clone::Clone for MDGUID {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDGUID {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextBase {
     pub context_flags: u32,
 }
-impl ::std::clone::Clone for MDRawContextBase {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextBase {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDXmmSaveArea32AMD64 {
     pub control_word: u16,
     pub status_word: u16,
@@ -160,18 +149,14 @@ pub struct MDXmmSaveArea32AMD64 {
     pub xmm_registers: [uint128_struct; 16usize],
     pub reserved4: [u8; 96usize],
 }
-impl ::std::clone::Clone for MDXmmSaveArea32AMD64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDXmmSaveArea32AMD64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextAMD64 {
     pub p1_home: u64,
     pub p2_home: u64,
@@ -230,18 +215,14 @@ impl MDRawContextAMD64 {
         ::std::mem::transmute(raw.offset(0))
     }
 }
-impl ::std::clone::Clone for MDRawContextAMD64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextAMD64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Struct_Unnamed7 {
     pub header: [uint128_struct; 2usize],
     pub legacy: [uint128_struct; 8usize],
@@ -262,46 +243,34 @@ pub struct Struct_Unnamed7 {
     pub xmm14: uint128_struct,
     pub xmm15: uint128_struct,
 }
-impl ::std::clone::Clone for Struct_Unnamed7 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for Struct_Unnamed7 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaARM {
     pub fpscr: u64,
     pub regs: [u64; 32usize],
     pub extra: [u32; 8usize],
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaARM {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaARM {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextARM {
     pub context_flags: u32,
     pub iregs: [u32; 16usize],
     pub cpsr: u32,
     pub float_save: MDFloatingSaveAreaARM,
 }
-impl ::std::clone::Clone for MDRawContextARM {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextARM {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -314,35 +283,27 @@ pub const MD_CONTEXT_ARM_REG_SP: ::libc::c_uint = 13;
 pub const MD_CONTEXT_ARM_REG_LR: ::libc::c_uint = 14;
 pub const MD_CONTEXT_ARM_REG_PC: ::libc::c_uint = 15;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaARM64 {
     pub fpsr: u32,
     pub fpcr: u32,
     pub regs: [uint128_struct; 32usize],
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaARM64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaARM64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextARM64 {
     pub context_flags: u64,
     pub iregs: [u64; 33usize],
     pub cpsr: u32,
     pub float_save: MDFloatingSaveAreaARM64,
 }
-impl ::std::clone::Clone for MDRawContextARM64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextARM64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -354,24 +315,20 @@ pub const MD_CONTEXT_ARM64_REG_LR: ::libc::c_uint = 30;
 pub const MD_CONTEXT_ARM64_REG_SP: ::libc::c_uint = 31;
 pub const MD_CONTEXT_ARM64_REG_PC: ::libc::c_uint = 32;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaMIPS {
     pub regs: [u64; 32usize],
     pub fpcsr: u32,
     pub fir: u32,
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaMIPS {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaMIPS {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextMIPS {
     pub context_flags: u32,
     pub _pad0: u32,
@@ -388,11 +345,7 @@ pub struct MDRawContextMIPS {
     pub cause: u32,
     pub float_save: MDFloatingSaveAreaMIPS,
 }
-impl ::std::clone::Clone for MDRawContextMIPS {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextMIPS {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -412,24 +365,20 @@ pub const MD_CONTEXT_MIPS_REG_SP: ::libc::c_uint = 29;
 pub const MD_CONTEXT_MIPS_REG_FP: ::libc::c_uint = 30;
 pub const MD_CONTEXT_MIPS_REG_RA: ::libc::c_uint = 31;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaPPC {
     pub fpregs: [u64; 32usize],
     pub fpscr_pad: u32,
     pub fpscr: u32,
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaPPC {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaPPC {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDVectorSaveAreaPPC {
     pub save_vr: [uint128_struct; 32usize],
     pub save_vscr: uint128_struct,
@@ -437,18 +386,14 @@ pub struct MDVectorSaveAreaPPC {
     pub save_vrvalid: u32,
     pub save_pad6: [u32; 7usize],
 }
-impl ::std::clone::Clone for MDVectorSaveAreaPPC {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDVectorSaveAreaPPC {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextPPC {
     pub context_flags: u32,
     pub srr0: u32,
@@ -463,11 +408,7 @@ pub struct MDRawContextPPC {
     pub float_save: MDFloatingSaveAreaPPC,
     pub vector_save: MDVectorSaveAreaPPC,
 }
-impl ::std::clone::Clone for MDRawContextPPC {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextPPC {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -478,7 +419,7 @@ pub const MD_CONTEXT_PPC_REG_SP: ::libc::c_uint = 1;
 pub type MDFloatingSaveAreaPPC64 = MDFloatingSaveAreaPPC;
 pub type MDVectorSaveAreaPPC64 = MDVectorSaveAreaPPC;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextPPC64 {
     pub context_flags: u64,
     pub srr0: u64,
@@ -492,11 +433,7 @@ pub struct MDRawContextPPC64 {
     pub float_save: MDFloatingSaveAreaPPC,
     pub vector_save: MDVectorSaveAreaPPC,
 }
-impl ::std::clone::Clone for MDRawContextPPC64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextPPC64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -505,24 +442,20 @@ impl ::std::default::Default for MDRawContextPPC64 {
 pub type Enum_MDPPC64RegisterNumbers = ::libc::c_uint;
 pub const MD_CONTEXT_PPC64_REG_SP: ::libc::c_uint = 1;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaSPARC {
     pub regs: [u64; 32usize],
     pub filler: u64,
     pub fsr: u64,
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaSPARC {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaSPARC {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextSPARC {
     pub context_flags: u32,
     pub flag_pad: u32,
@@ -535,11 +468,7 @@ pub struct MDRawContextSPARC {
     pub fprs: u64,
     pub float_save: MDFloatingSaveAreaSPARC,
 }
-impl ::std::clone::Clone for MDRawContextSPARC {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextSPARC {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -548,7 +477,7 @@ impl ::std::default::Default for MDRawContextSPARC {
 pub type Enum_MDSPARCRegisterNumbers = ::libc::c_uint;
 pub const MD_CONTEXT_SPARC_REG_SP: ::libc::c_uint = 14;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDFloatingSaveAreaX86 {
     pub control_word: u32,
     pub status_word: u32,
@@ -560,18 +489,14 @@ pub struct MDFloatingSaveAreaX86 {
     pub register_area: [u8; 80usize],
     pub cr0_npx_state: u32,
 }
-impl ::std::clone::Clone for MDFloatingSaveAreaX86 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDFloatingSaveAreaX86 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawContextX86 {
     pub context_flags: u32,
     pub dr0: u32,
@@ -599,18 +524,14 @@ pub struct MDRawContextX86 {
     pub ss: u32,
     pub extended_registers: [u8; 512usize],
 }
-impl ::std::clone::Clone for MDRawContextX86 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawContextX86 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDVSFixedFileInfo {
     pub signature: u32,
     pub struct_version: u32,
@@ -626,11 +547,7 @@ pub struct MDVSFixedFileInfo {
     pub file_date_hi: u32,
     pub file_date_lo: u32,
 }
-impl ::std::clone::Clone for MDVSFixedFileInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDVSFixedFileInfo {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -638,39 +555,31 @@ impl ::std::default::Default for MDVSFixedFileInfo {
 }
 pub type MDRVA = u32;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct MDLocationDescriptor {
     pub data_size: u32,
     pub rva: MDRVA,
 }
-impl ::std::clone::Clone for MDLocationDescriptor {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDLocationDescriptor {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct MDMemoryDescriptor {
     pub start_of_memory_range: u64,
     pub memory: MDLocationDescriptor,
 }
-impl ::std::clone::Clone for MDMemoryDescriptor {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDMemoryDescriptor {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawHeader {
     pub signature: u32,
     pub version: u32,
@@ -680,11 +589,7 @@ pub struct MDRawHeader {
     pub time_date_stamp: u32,
     pub flags: u64,
 }
-impl ::std::clone::Clone for MDRawHeader {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawHeader {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -713,16 +618,12 @@ pub const MD_IGNORE_INACCESSIBLE_MEMORY: ::libc::c_uint = 131072;
 pub const MD_WITH_TOKEN_INFORMATION: ::libc::c_uint = 262144;
 pub type MDType = Enum_Unnamed26;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawDirectory {
     pub stream_type: u32,
     pub location: MDLocationDescriptor,
 }
-impl ::std::clone::Clone for MDRawDirectory {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawDirectory {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -761,23 +662,19 @@ pub const MD_LINUX_MAPS: ::libc::c_uint = 1197932553;
 pub const MD_LINUX_DSO_DEBUG: ::libc::c_uint = 1197932554;
 pub type MDStreamType = Enum_Unnamed28;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDString {
     pub length: u32,
     pub buffer: [u16; 1usize],
 }
-impl ::std::clone::Clone for MDString {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDString {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawThread {
     pub thread_id: u32,
     pub suspend_count: u32,
@@ -787,34 +684,26 @@ pub struct MDRawThread {
     pub stack: MDMemoryDescriptor,
     pub thread_context: MDLocationDescriptor,
 }
-impl ::std::clone::Clone for MDRawThread {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawThread {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawThreadList {
     pub number_of_threads: u32,
     pub threads: [MDRawThread; 1usize],
 }
-impl ::std::clone::Clone for MDRawThreadList {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawThreadList {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawModule {
     pub base_of_image: u64,
     pub size_of_image: u32,
@@ -827,86 +716,66 @@ pub struct MDRawModule {
     pub reserved0: [u32; 2usize],
     pub reserved1: [u32; 2usize],
 }
-impl ::std::clone::Clone for MDRawModule {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawModule {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDCVHeader {
     pub signature: u32,
     pub offset: u32,
 }
-impl ::std::clone::Clone for MDCVHeader {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDCVHeader {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDCVInfoPDB20 {
     pub cv_header: MDCVHeader,
     pub signature: u32,
     pub age: u32,
     pub pdb_file_name: [u8; 1usize],
 }
-impl ::std::clone::Clone for MDCVInfoPDB20 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDCVInfoPDB20 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDCVInfoPDB70 {
     pub cv_signature: u32,
     pub signature: MDGUID,
     pub age: u32,
     pub pdb_file_name: [u8; 1usize],
 }
-impl ::std::clone::Clone for MDCVInfoPDB70 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDCVInfoPDB70 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDCVInfoELF {
     pub cv_signature: u32,
     pub build_id: [u8; 1usize],
 }
-impl ::std::clone::Clone for MDCVInfoELF {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDCVInfoELF {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDImageDebugMisc {
     pub data_type: u32,
     pub length: u32,
@@ -914,50 +783,38 @@ pub struct MDImageDebugMisc {
     pub reserved: [u8; 3usize],
     pub data: [u8; 1usize],
 }
-impl ::std::clone::Clone for MDImageDebugMisc {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDImageDebugMisc {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawModuleList {
     pub number_of_modules: u32,
     pub modules: [MDRawModule; 1usize],
 }
-impl ::std::clone::Clone for MDRawModuleList {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawModuleList {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawMemoryList {
     pub number_of_memory_ranges: u32,
     pub memory_ranges: [MDMemoryDescriptor; 1usize],
 }
-impl ::std::clone::Clone for MDRawMemoryList {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawMemoryList {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDException {
     pub exception_code: u32,
     pub exception_flags: u32,
@@ -967,11 +824,7 @@ pub struct MDException {
     pub __align: u32,
     pub exception_information: [u64; 15usize],
 }
-impl ::std::clone::Clone for MDException {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDException {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3426,25 +3279,21 @@ pub const MD_IN_PAGE_ERROR_WIN_WRITE: ::libc::c_uint = 1;
 pub const MD_IN_PAGE_ERROR_WIN_EXEC: ::libc::c_uint = 8;
 pub type MDInPageErrorTypeWin = Enum_Unnamed49;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawExceptionStream {
     pub thread_id: u32,
     pub __align: u32,
     pub exception_record: MDException,
     pub thread_context: MDLocationDescriptor,
 }
-impl ::std::clone::Clone for MDRawExceptionStream {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawExceptionStream {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Union_Unnamed51 {
     pub _bindgen_data_: [u64; 3usize],
 }
@@ -3462,60 +3311,44 @@ impl Union_Unnamed51 {
         ::std::mem::transmute(raw.offset(0))
     }
 }
-impl ::std::clone::Clone for Union_Unnamed51 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for Union_Unnamed51 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Struct_Unnamed52 {
     pub vendor_id: [u32; 3usize],
     pub version_information: u32,
     pub feature_information: u32,
     pub amd_extended_cpu_features: u32,
 }
-impl ::std::clone::Clone for Struct_Unnamed52 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for Struct_Unnamed52 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Struct_Unnamed53 {
     pub cpuid: u32,
     pub elf_hwcaps: u32,
 }
-impl ::std::clone::Clone for Struct_Unnamed53 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for Struct_Unnamed53 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct Struct_Unnamed54 {
     pub processor_features: [u64; 2usize],
 }
-impl ::std::clone::Clone for Struct_Unnamed54 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for Struct_Unnamed54 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3544,7 +3377,7 @@ pub const MD_CPU_ARM_ELF_HWCAP_IDIVA: ::libc::c_uint = 131072;
 pub const MD_CPU_ARM_ELF_HWCAP_IDIVT: ::libc::c_uint = 262144;
 pub type MDCPUInformationARMElfHwCaps = Enum_Unnamed55;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawSystemInfo {
     pub processor_architecture: u16,
     pub processor_level: u16,
@@ -3560,11 +3393,7 @@ pub struct MDRawSystemInfo {
     pub reserved2: u16,
     pub cpu: MDCPUInformation,
 }
-impl ::std::clone::Clone for MDRawSystemInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawSystemInfo {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3603,7 +3432,7 @@ pub const MD_OS_PS3: ::libc::c_uint = 33284;
 pub const MD_OS_NACL: ::libc::c_uint = 33285;
 pub type MDOSPlatform = Enum_Unnamed58;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDSystemTime {
     pub year: u16,
     pub month: u16,
@@ -3614,18 +3443,14 @@ pub struct MDSystemTime {
     pub second: u16,
     pub milliseconds: u16,
 }
-impl ::std::clone::Clone for MDSystemTime {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDSystemTime {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDTimeZoneInformation {
     pub bias: i32,
     pub standard_name: [u16; 32usize],
@@ -3635,18 +3460,14 @@ pub struct MDTimeZoneInformation {
     pub daylight_date: MDSystemTime,
     pub daylight_bias: i32,
 }
-impl ::std::clone::Clone for MDTimeZoneInformation {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDTimeZoneInformation {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawMiscInfo {
     pub size_of_info: u32,
     pub flags1: u32,
@@ -3668,11 +3489,7 @@ pub struct MDRawMiscInfo {
     pub dbg_bld_str: [u16; 40usize],
 }
 
-impl ::std::clone::Clone for MDRawMiscInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 
 impl ::std::default::Default for MDRawMiscInfo {
     fn default() -> Self {
@@ -3691,24 +3508,20 @@ pub const MD_MISCINFO_FLAGS1_PROTECTED_PROCESS: ::libc::c_uint = 128;
 pub const MD_MISCINFO_FLAGS1_BUILDSTRING: ::libc::c_uint = 256;
 pub type MDMiscInfoFlags1 = Enum_Unnamed62;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawMemoryInfoList {
     pub size_of_header: u32,
     pub size_of_entry: u32,
     pub number_of_entries: u64,
 }
-impl ::std::clone::Clone for MDRawMemoryInfoList {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawMemoryInfoList {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawMemoryInfo {
     pub base_address: u64,
     pub allocation_base: u64,
@@ -3720,11 +3533,7 @@ pub struct MDRawMemoryInfo {
     pub _type: u32,
     pub __alignment2: u32,
 }
-impl ::std::clone::Clone for MDRawMemoryInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawMemoryInfo {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3754,17 +3563,13 @@ pub const MD_MEMORY_TYPE_MAPPED: ::libc::c_uint = 262144;
 pub const MD_MEMORY_TYPE_IMAGE: ::libc::c_uint = 16777216;
 pub type MDMemoryType = Enum_Unnamed67;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawBreakpadInfo {
     pub validity: u32,
     pub dump_thread_id: u32,
     pub requesting_thread_id: u32,
 }
-impl ::std::clone::Clone for MDRawBreakpadInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawBreakpadInfo {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3775,7 +3580,7 @@ pub const MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID: ::libc::c_uint = 1;
 pub const MD_BREAKPAD_INFO_VALID_REQUESTING_THREAD_ID: ::libc::c_uint = 2;
 pub type MDBreakpadInfoValidity = Enum_Unnamed69;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawAssertionInfo {
     pub expression: [u16; 128usize],
     pub function: [u16; 128usize],
@@ -3783,11 +3588,7 @@ pub struct MDRawAssertionInfo {
     pub line: u32,
     pub _type: u32,
 }
-impl ::std::clone::Clone for MDRawAssertionInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawAssertionInfo {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
@@ -3799,24 +3600,20 @@ pub const MD_ASSERTION_INFO_TYPE_INVALID_PARAMETER: ::libc::c_uint = 1;
 pub const MD_ASSERTION_INFO_TYPE_PURE_VIRTUAL_CALL: ::libc::c_uint = 2;
 pub type MDAssertionInfoData = Enum_Unnamed71;
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawLinkMap32 {
     pub addr: u32,
     pub name: MDRVA,
     pub ld: u32,
 }
-impl ::std::clone::Clone for MDRawLinkMap32 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawLinkMap32 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawDebug32 {
     pub version: u32,
     pub map: MDRVA,
@@ -3825,35 +3622,27 @@ pub struct MDRawDebug32 {
     pub ldbase: u32,
     pub dynamic: u32,
 }
-impl ::std::clone::Clone for MDRawDebug32 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawDebug32 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawLinkMap64 {
     pub addr: u64,
     pub name: MDRVA,
     pub ld: u64,
 }
-impl ::std::clone::Clone for MDRawLinkMap64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawLinkMap64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
 #[repr(C, packed)]
-#[derive(Copy)]
+#[derive(Clone)]
 pub struct MDRawDebug64 {
     pub version: u32,
     pub map: MDRVA,
@@ -3862,11 +3651,7 @@ pub struct MDRawDebug64 {
     pub ldbase: u64,
     pub dynamic: u64,
 }
-impl ::std::clone::Clone for MDRawDebug64 {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+
 impl ::std::default::Default for MDRawDebug64 {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }

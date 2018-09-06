@@ -26,7 +26,7 @@ fn get_caller_frame(
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
-        MinidumpRawContext::X86(ctx) => ctx.get_caller_frame(&frame.context.valid, stack_memory),
+        MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(&frame.context.valid, stack_memory),
         _ => None,
     }
 }

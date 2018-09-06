@@ -24,7 +24,7 @@ pub fn read_bytes<T: Read>(f: &mut T, count: usize) -> io::Result<Vec<u8>> {
 
 /// Convert `bytes` into `T`.
 //FIXME: this should be replaced with something based on serialize.
-pub fn transmogrify<T: Copy + Sized>(bytes: &[u8]) -> T {
+pub fn transmogrify<T: Sized>(bytes: &[u8]) -> T {
     assert_eq!(mem::size_of::<T>(), bytes.len());
     unsafe {
         let mut val: T = mem::uninitialized();
@@ -34,7 +34,7 @@ pub fn transmogrify<T: Copy + Sized>(bytes: &[u8]) -> T {
 }
 
 /// Read a `T` from `f`.
-pub fn read<T: Copy + Sized, U: Read>(f: &mut U) -> io::Result<T> {
+pub fn read<T: Sized, U: Read>(f: &mut U) -> io::Result<T> {
     let size = mem::size_of::<T>();
     let buf = try!(read_bytes(f, size));
     Ok(transmogrify::<T>(&buf[..]))
