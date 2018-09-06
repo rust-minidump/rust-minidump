@@ -34,6 +34,3 @@ members = [
         "minidump-processor",
         "minidump-tools",
 ]
-
-[replace]
-"object:0.7.0" = { git = "https://github.com/gimli-rs/object/", rev = "0fb54d82c755e317b96d4b0d57714028d05ad95c" }
