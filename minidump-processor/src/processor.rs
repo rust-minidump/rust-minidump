@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use breakpad_symbols::{FrameSymbolizer, Symbolizer};
-use chrono::{TimeZone, UTC};
+use chrono::{TimeZone, Utc};
 use minidump::*;
 use process_state::{CallStack, CallStackInfo, ProcessState};
 use stackwalker;
@@ -162,7 +162,7 @@ where
     }
     // if exploitability enabled, run exploitability analysis
     Ok(ProcessState {
-        time: UTC.timestamp(dump.header.time_date_stamp as i64, 0),
+        time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time: process_create_time,
         crash_reason: crash_reason,
         crash_address: crash_address,
