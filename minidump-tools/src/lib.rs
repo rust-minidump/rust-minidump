@@ -155,7 +155,7 @@ impl SourceLookup for SymLookup {
                         let local = env::temp_dir().join(info.as_local_filename());
                         if maybe_fetch_source_file(&self.client, &url, &local).is_ok() {
                             return Some(SourceLocation {
-                                file: local,
+                                file: local.to_string_lossy().into_owned(),
                                 file_display: Some(info.annotate_url(line)),
                                 line
                             })
