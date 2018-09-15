@@ -24,8 +24,10 @@ extern crate encoding;
 #[macro_use]
 extern crate failure;
 extern crate libc;
+extern crate memmap;
 extern crate minidump_common;
 extern crate range_map;
+extern crate scroll;
 #[cfg(test)]
 extern crate test_assembler;
 

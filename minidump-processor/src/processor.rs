@@ -3,10 +3,11 @@
 
 use breakpad_symbols::{FrameSymbolizer, Symbolizer};
 use chrono::{TimeZone, Utc};
-use minidump::*;
+use minidump::{self, *};
 use process_state::{CallStack, CallStackInfo, ProcessState};
 use stackwalker;
 use std::boxed::Box;
+use std::ops::Deref;
 use system_info::SystemInfo;
 
 pub trait SymbolProvider {
@@ -43,14 +44,22 @@ impl SymbolProvider for MultiSymbolProvider {
 }
 
 /// An error encountered during minidump processing.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum ProcessError {
-    /// An unknown error.
+    #[fail(display = "Failed to read minidump")]
+    MinidumpReadError(minidump::Error),
+    #[fail(display = "An unknown error occurred")]
     UnknownError,
-    /// Missing system info stream.
+    #[fail(display = "The system information stream was not found")]
     MissingSystemInfo,
-    /// Missing thread list stream.
+    #[fail(display = "The thread list stream was not found")]
     MissingThreadList,
+}
+
+impl From<minidump::Error> for ProcessError {
+    fn from(err: minidump::Error) -> ProcessError {
+        ProcessError::MinidumpReadError(err)
+    }
 }
 
 /// Unwind all threads in `dump` and return a `ProcessState`.
@@ -61,30 +70,28 @@ pub enum ProcessError {
 /// extern crate breakpad_symbols;
 /// extern crate minidump;
 /// extern crate minidump_processor;
-/// use minidump::Minidump;
-/// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
-/// use std::fs::File;
-/// use std::path::PathBuf;
-/// # use std::io;
 ///
-/// # fn foo() -> io::Result<()> {
-/// let file = File::open("../testdata/test.dmp")?;
-/// let mut dump = Minidump::read(file).unwrap();
+/// use minidump::Minidump;
+/// use std::path::PathBuf;
+/// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
+///
+/// # fn foo() -> Result<(), minidump_processor::ProcessError> {
+/// let mut dump = Minidump::read_path("../testdata/test.dmp")?;
 /// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
 /// let symbolizer = Symbolizer::new(supplier);
-/// let state = minidump_processor::process_minidump(&mut dump, &symbolizer).unwrap();
+/// let state = minidump_processor::process_minidump(&mut dump, &symbolizer)?;
 /// assert_eq!(state.threads.len(), 2);
 /// println!("Processed {} threads", state.threads.len());
 /// # Ok(())
 /// # }
 /// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump<T: Readable, P>(
-    dump: &mut Minidump<T>,
+pub fn process_minidump<'a, T, P>(
+    dump: &Minidump<'a, T>,
     symbol_provider: &P,
 ) -> Result<ProcessState, ProcessError>
-where
-    P: SymbolProvider,
+    where T: Deref<Target=[u8]> + 'a,
+          P: SymbolProvider,
 {
     // Thread list is required for processing.
     let thread_list = try!(
@@ -107,7 +114,7 @@ where
     };
     // Process create time is optional.
     let process_create_time = if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
-        misc_info.process_create_time
+        misc_info.process_create_time()
     } else {
         None
     };

@@ -3,11 +3,11 @@
 
 extern crate breakpad_symbols;
 extern crate failure;
+extern crate memmap;
 extern crate minidump;
 extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use minidump::*;
 use minidump::system_info::{CPU, OS};
@@ -32,7 +32,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<Minidump<Cursor<Vec<u8>>>, failure::Error> {
+fn read_test_minidump() -> Result<Minidump<'static, memmap::Mmap>, Error> {
     let path = locate_testdata().join("test.dmp");
     println!("minidump: {:?}", path);
     Minidump::read_path(&path)
@@ -46,9 +46,9 @@ fn testdata_symbol_path() -> PathBuf {
 
 #[test]
 fn test_processor() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let state = minidump_processor::process_minidump(
-        &mut dump,
+        &dump,
         &Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
     ).unwrap();
     assert_eq!(state.system_info.os, OS::Windows);
@@ -116,11 +116,11 @@ fn test_processor() {
 
 #[test]
 fn test_processor_symbols() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
     println!("symbol path: {:?}", path);
     let state = minidump_processor::process_minidump(
-        &mut dump,
+        &dump,
         &Symbolizer::new(SimpleSymbolSupplier::new(vec![path])),
     ).unwrap();
     let f0 = &state.threads[0].frames[0];

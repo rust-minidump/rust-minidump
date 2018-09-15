@@ -19,9 +19,9 @@ macro_rules! streams {
     };
 }
 
-fn print_raw_stream<T: Write>(name: &str, contents: Vec<u8>, out: &mut T) -> io::Result<()> {
+fn print_raw_stream<T: Write>(name: &str, contents: &[u8], out: &mut T) -> io::Result<()> {
     try!(writeln!(out, "Stream {}:", name));
-    let s = &contents
+    let s = contents
         .split(|&v| v == 0)
         .map(|s| String::from_utf8_lossy(s))
         .collect::<Vec<_>>()
@@ -31,7 +31,7 @@ fn print_raw_stream<T: Write>(name: &str, contents: Vec<u8>, out: &mut T) -> io:
 
 fn print_minidump_dump(path: &Path) {
     match Minidump::read_path(path) {
-        Ok(mut dump) => {
+        Ok(dump) => {
             let stdout = &mut std::io::stdout();
             dump.print(stdout).unwrap();
             if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList>() {

@@ -27,7 +27,7 @@ enum Verbose {
 
 fn print_minidump_modules<T: AsRef<Path>>(path: T, verbose: Verbose) {
     match Minidump::read_path(path.as_ref()) {
-        Ok(mut dump) => {
+        Ok(dump) => {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 for module in module_list.iter() {
                     print!("{}", module.code_file());

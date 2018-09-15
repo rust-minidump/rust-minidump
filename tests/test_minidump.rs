@@ -3,12 +3,14 @@
 
 extern crate chrono;
 extern crate failure;
+extern crate memmap;
 extern crate minidump;
 extern crate minidump_common;
 
 use chrono::prelude::*;
+use memmap::Mmap;
 use std::fs::File;
-use std::io::Cursor;
+use std::io::Read;
 use std::path::PathBuf;
 use minidump::*;
 use minidump::system_info::{CPU, OS};
@@ -22,7 +24,7 @@ fn get_test_minidump_path() -> PathBuf {
     path
 }
 
-fn read_test_minidump() -> Result<Minidump<Cursor<Vec<u8>>>, failure::Error> {
+fn read_test_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
     let path = get_test_minidump_path();
     Minidump::read_path(&path)
 }
@@ -35,13 +37,15 @@ fn test_minidump_read_path() {
 #[test]
 fn test_minidump_read() {
     let path = get_test_minidump_path();
-    let f = File::open(path).unwrap();
-    let _dump = Minidump::read(f).unwrap();
+    let mut f = File::open(path).unwrap();
+    let mut buf = vec![];
+    f.read_to_end(&mut buf).unwrap();
+    let _dump = Minidump::read(buf).unwrap();
 }
 
 #[test]
 fn test_module_list() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
     assert_eq!(
         module_list.module_at_address(0x400000).unwrap().code_file(),
@@ -116,7 +120,7 @@ fn test_module_list() {
 
 #[test]
 fn test_system_info() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
     assert_eq!(system_info.os, OS::Windows);
     assert_eq!(system_info.cpu, CPU::X86);
@@ -124,19 +128,19 @@ fn test_system_info() {
 
 #[test]
 fn test_misc_info() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let misc_info = dump.get_stream::<MinidumpMiscInfo>().unwrap();
-    assert_eq!(misc_info.raw.process_id, 3932);
-    assert_eq!(misc_info.raw.process_create_time, 0x45d35f73);
+    assert_eq!(misc_info.raw.process_id(), Some(3932));
+    assert_eq!(misc_info.raw.process_create_time(), Some(0x45d35f73));
     assert_eq!(
-        misc_info.process_create_time.unwrap(),
+        misc_info.process_create_time().unwrap(),
         Utc.ymd(2007, 02, 14).and_hms(19, 13, 55)
     );
 }
 
 #[test]
 fn test_breakpad_info() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>().unwrap();
     assert_eq!(breakpad_info.dump_thread_id.unwrap(), 0x11c0);
     assert_eq!(breakpad_info.requesting_thread_id.unwrap(), 0xbf4);
@@ -144,7 +148,7 @@ fn test_breakpad_info() {
 
 #[test]
 fn test_exception() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let exception = dump.get_stream::<MinidumpException>().unwrap();
     assert_eq!(exception.thread_id, 0xbf4);
     assert_eq!(exception.raw.exception_record.exception_code, 0xc0000005);
@@ -168,7 +172,7 @@ fn test_exception() {
 
 #[test]
 fn test_thread_list() {
-    let mut dump = read_test_minidump().unwrap();
+    let dump = read_test_minidump().unwrap();
     let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
     let ref threads = thread_list.threads;
     assert_eq!(threads.len(), 2);

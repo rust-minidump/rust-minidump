@@ -177,7 +177,7 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     env_logger::init();
     let GetMinidumpInstructions { color, minidump, symbol_paths } =
         GetMinidumpInstructions::from_args();
-    let mut dump = Minidump::read_path(&minidump)?;
+    let dump = Minidump::read_path(&minidump)?;
     let modules = dump.get_stream::<MinidumpModuleList>()?;
     let exception = dump.get_stream::<MinidumpException>()?;
     let context = exception.context.as_ref().ok_or(format_err!("Missing exception context"))?;
