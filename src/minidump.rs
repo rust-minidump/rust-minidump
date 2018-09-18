@@ -98,9 +98,8 @@ pub struct MinidumpMemoryInfoList;
 
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream: Sized {
-    //TODO: associated_consts when that stabilizes.
     /// The stream type constant used in the `md::MDRawDirectory` entry.
-    fn stream_type() -> u32;
+    const STREAM_TYPE: u32;
     /// Read this `MinidumpStream` type from `bytes`.
     ///
     /// `bytes` is the contents of this specific stream.
@@ -783,9 +782,8 @@ impl MinidumpModuleList {
 }
 
 impl MinidumpStream for MinidumpModuleList {
-    fn stream_type() -> u32 {
-        md::MD_MODULE_LIST_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_MODULE_LIST_STREAM;
+
     fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpModuleList, Error> {
         let mut offset = 0;
         let raw_modules: Vec<md::MDRawModule> = read_stream_list(&mut offset, bytes)?;
@@ -957,9 +955,8 @@ impl MinidumpMemoryList {
 }
 
 impl MinidumpStream for MinidumpMemoryList {
-    fn stream_type() -> u32 {
-        md::MD_MEMORY_LIST_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_MEMORY_LIST_STREAM;
+
     fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpMemoryList, Error> {
         let mut offset = 0;
         let descriptors: Vec<md::MDMemoryDescriptor> = read_stream_list(&mut offset, bytes)?;
@@ -1029,9 +1026,8 @@ impl MinidumpThread {
 }
 
 impl MinidumpStream for MinidumpThreadList {
-    fn stream_type() -> u32 {
-        md::MD_THREAD_LIST_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_THREAD_LIST_STREAM;
+
     fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpThreadList, Error> {
         let mut offset = 0;
         let raw_threads: Vec<md::MDRawThread> = read_stream_list(&mut offset, bytes)?;
@@ -1088,9 +1084,8 @@ impl MinidumpThreadList {
 }
 
 impl MinidumpStream for MinidumpSystemInfo {
-    fn stream_type() -> u32 {
-        md::MD_SYSTEM_INFO_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_SYSTEM_INFO_STREAM;
+
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpSystemInfo, Error> {
         let raw: md::MDRawSystemInfo = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
         let os = OS::from_u32(raw.platform_id);
@@ -1183,9 +1178,8 @@ impl RawMiscInfo {
 }
 
 impl MinidumpStream for MinidumpMiscInfo {
-    fn stream_type() -> u32 {
-        md::MD_MISC_INFO_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_MISC_INFO_STREAM;
+
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpMiscInfo, Error> {
         // The misc info has gone through several revisions, so try to read the largest known
         // struct possible.
@@ -1264,9 +1258,8 @@ impl MinidumpMiscInfo {
 }
 
 impl MinidumpStream for MinidumpBreakpadInfo {
-    fn stream_type() -> u32 {
-        md::MD_BREAKPAD_INFO_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_BREAKPAD_INFO_STREAM;
+
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpBreakpadInfo, Error> {
         let raw: md::MDRawBreakpadInfo = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
         let dump_thread_id = if flag(raw.validity, md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) {
@@ -1344,9 +1337,8 @@ impl fmt::Display for CrashReason {
 }
 
 impl MinidumpStream for MinidumpException {
-    fn stream_type() -> u32 {
-        md::MD_EXCEPTION_STREAM
-    }
+    const STREAM_TYPE: u32 = md::MD_EXCEPTION_STREAM;
+
     fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpException, Error> {
         let raw: md::MDRawExceptionStream = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
         let context_data = location_slice(all, &raw.thread_context)?;
@@ -1495,7 +1487,7 @@ impl<'a, T> Minidump<'a, T>
     ///
     /// [stream]: trait.MinidumpStream.html
     pub fn get_stream<S: MinidumpStream + 'a>(&self) -> Result<S, Error> {
-        match self.streams.get(&S::stream_type()) {
+        match self.streams.get(&S::STREAM_TYPE) {
             None => Err(Error::StreamNotFound),
             Some(&(_, ref dir)) => {
                 let bytes = self.data.deref();
