@@ -372,11 +372,15 @@ impl MinidumpModule {
     pub fn read(raw: md::MDRawModule, bytes: &[u8]) -> Result<MinidumpModule, Error> {
         let mut offset = raw.module_name_rva as usize;
         let name = read_string_utf16(&mut offset, bytes).or(Err(Error::CodeViewReadFailure))?;
-        let cv = read_codeview(&raw.cv_record, bytes).or(Err(Error::CodeViewReadFailure))?;
+        let codeview_info = if raw.cv_record.data_size == 0 {
+            None
+        } else {
+            Some(read_codeview(&raw.cv_record, bytes).or(Err(Error::CodeViewReadFailure))?)
+        };
         Ok(MinidumpModule {
             raw,
             name,
-            codeview_info: Some(cv),
+            codeview_info,
             misc_info: None,
         })
     }
