@@ -647,32 +647,34 @@ impl Module for MinidumpModule {
 
 fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8]) -> Result<Vec<T>, Error>
     where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
+          T: SizeWith<scroll::Endian, Units=usize>,
 {
     // TODO: swap
     let u: u32 = bytes.gread_with(offset, LE).or(Err(Error::StreamReadFailure))?;
     let count = u as usize;
-    /*TODO
-    let counted_size = mem::size_of::<u32>() + count * mem::size_of::<T>();
-    if expected_size < counted_size {
+    let counted_size = match count.checked_mul(<T>::size_with(&LE)).and_then(|v| v.checked_add(mem::size_of::<u32>())) {
+        Some(s) => s,
+        None => return Err(Error::StreamReadFailure),
+    };
+    if bytes.len() < counted_size {
         return Err(Error::StreamSizeMismatch {
             expected: counted_size,
-            actual: expected_size,
+            actual: bytes.len(),
         });
     }
-    match expected_size - counted_size {
+    match bytes.len() - counted_size {
         0 => {}
         4 => {
             // 4 bytes of padding.
-            let _pad = try!(read_bytes(f, 4).or(Err(Error::StreamReadFailure)));
+            *offset += 4;
         }
         _ => {
             return Err(Error::StreamSizeMismatch {
                 expected: counted_size,
-                actual: expected_size,
+                actual: bytes.len(),
             })
         }
     };
-     */
     // read count T raw stream entries
     let mut raw_entries = Vec::with_capacity(count);
     for _ in 0..count {
