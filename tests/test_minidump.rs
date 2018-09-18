@@ -217,3 +217,11 @@ fn test_thread_list() {
         assert!(false, "Missing stack memory");
     }
 }
+
+#[test]
+fn test_empty_minidump() {
+    match Minidump::read(&b""[..]) {
+        Ok(_) => panic!("Should have failed to read minidump"),
+        Err(e) => assert_eq!(e, Error::MissingHeader),
+    }
+}
