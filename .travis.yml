@@ -8,7 +8,9 @@ rust:
   - beta
   - stable
 script:
-  - cargo build --verbose
+  - cargo check --verbose --all
+   # work around an issue with docmatic
+  - rm -f target debug/deps/libminidump*
   - cargo test --all --verbose
   - cargo doc --verbose
 after_success: sh scripts/travis-doc-upload.sh
