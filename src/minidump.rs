@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io;
+use std::iter;
 use std::mem;
 use std::ops::Deref;
 use std::path::Path;
@@ -606,19 +607,16 @@ impl Module for MinidumpModule {
                 // For backwards-compat (Linux minidumps have historically
                 // been written using PDB70 CodeView info), treat build_id
                 // as if the first 16 bytes were a GUID.
-                let guid_size = mem::size_of::<md::MDGUID>();
-                let mut bytes = Vec::with_capacity(guid_size);
-                bytes.extend(build_id.iter().take(guid_size));
-                // Pad the rest with zeroes.
-                while bytes.len() < guid_size {
-                    bytes.push(0);
-                }
-                // We could do this safely but I'm lazy right now.
-                let guid: &md::MDGUID = unsafe {
-                    mem::transmute(&bytes[..] as *const [u8] as *const u8 as *const md::MDGUID)
+                let guid_size = <md::MDGUID>::size_with(&LE);
+                let guid = if build_id.len() < guid_size {
+                    // Pad with zeros.
+                    let v: Vec<u8> = build_id.iter()
+                        .cloned().chain(iter::repeat(0)).take(guid_size).collect();
+                    v.pread_with::<md::MDGUID>(0, LE).ok()
+                } else {
+                    build_id.pread_with::<md::MDGUID>(0, LE).ok()
                 };
-                let id = format!("{}0", guid_to_string(&guid));
-                Some(Cow::Owned(id))
+                guid.map(|g| Cow::Owned(format!("{}0", guid_to_string(&g))))
             }
             _ => None,
         }
@@ -1737,5 +1735,71 @@ mod test {
             misc.process_create_time().unwrap(),
             Utc.timestamp(CREATE_TIME as i64, 0)
         );
+    }
+
+    #[test]
+    fn test_elf_build_id() {
+        // Add a module with a long ELF build id
+        let name1 = DumpString::new("module 1", Endian::Little);
+        const MODULE1_BUILD_ID: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                          0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+                                          0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17];
+        let cv_record1 = Section::with_endian(Endian::Little)
+            .D32(md::MD_CVINFOELF_SIGNATURE)  // signature
+            .append_bytes(MODULE1_BUILD_ID);
+        let module1 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name1,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record1);
+        // Add a module with a short ELF build id
+        let name2 = DumpString::new("module 2", Endian::Little);
+        const MODULE2_BUILD_ID: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+        let cv_record2 = Section::with_endian(Endian::Little)
+            .D32(md::MD_CVINFOELF_SIGNATURE)  // signature
+            .append_bytes(MODULE2_BUILD_ID);
+        let module2 = SynthModule::new(
+            Endian::Little,
+            0x200000000,
+            0x4000,
+            &name2,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record2);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module1)
+            .add_module(module2)
+            .add(name1)
+            .add(cv_record1)
+            .add(name2)
+            .add(cv_record2);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 2);
+        assert_eq!(modules[0].base_address(), 0x100000000);
+        assert_eq!(modules[0].code_file(), "module 1");
+        // The full build ID.
+        assert_eq!(modules[0].code_identifier(),
+                   "000102030405060708090a0b0c0d0e0f1011121314151617");
+        assert_eq!(modules[0].debug_file().unwrap(), "module 1");
+        // The first 16 bytes of the build ID interpreted as a GUID.
+        assert_eq!(modules[0].debug_identifier().unwrap(),
+                   "030201000504070608090A0B0C0D0E0F0");
+
+        assert_eq!(modules[1].base_address(), 0x200000000);
+        assert_eq!(modules[1].code_file(), "module 2");
+        // The full build ID.
+        assert_eq!(modules[1].code_identifier(), "0001020304050607");
+        assert_eq!(modules[1].debug_file().unwrap(), "module 2");
+        // The first 16 bytes of the build ID interpreted as a GUID, padded with
+        // zeroes in this case.
+        assert_eq!(modules[1].debug_identifier().unwrap(),
+                   "030201000504070600000000000000000");
     }
 }
