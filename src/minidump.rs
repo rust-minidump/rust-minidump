@@ -97,7 +97,7 @@ pub struct MinidumpMemoryInfoList;
 */
 
 /// The fundamental unit of data in a `Minidump`.
-pub trait MinidumpStream: Sized {
+pub trait MinidumpStream<'a>: Sized {
     /// The stream type constant used in the `md::MDRawDirectory` entry.
     const STREAM_TYPE: u32;
     /// Read this `MinidumpStream` type from `bytes`.
@@ -105,7 +105,7 @@ pub trait MinidumpStream: Sized {
     /// `bytes` is the contents of this specific stream.
     /// `all` refers to the full contents of the minidump, for reading auxilliary data
     /// referred to with `MDLocationDescriptor`s.
-    fn read(bytes: &[u8], all: &[u8]) -> Result<Self, Error>;
+    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<Self, Error>;
 }
 
 /// Raw bytes of CodeView data in a minidump file.
@@ -152,19 +152,19 @@ pub struct MinidumpModuleList {
 }
 
 /// The state of a thread from the process when the minidump was written.
-pub struct MinidumpThread {
+pub struct MinidumpThread<'a> {
     /// The `MDRawThread` direct from the minidump file.
     pub raw: md::MDRawThread,
     /// The CPU context for the thread, if present.
     pub context: Option<MinidumpContext>,
     /// The stack memory for the thread, if present.
-    pub stack: Option<MinidumpMemory>,
+    pub stack: Option<MinidumpMemory<'a>>,
 }
 
 /// A list of `MinidumpThread`s contained in a `Minidump`.
-pub struct MinidumpThreadList {
+pub struct MinidumpThreadList<'a> {
     /// The threads, in the order they were present in the `Minidump`.
-    pub threads: Vec<MinidumpThread>,
+    pub threads: Vec<MinidumpThread<'a>>,
     /// A map of thread id to index in `threads`.
     thread_ids: HashMap<u32, usize>,
 }
@@ -180,7 +180,7 @@ pub struct MinidumpSystemInfo {
 }
 
 /// A region of memory from the process that wrote the minidump.
-pub struct MinidumpMemory {
+pub struct MinidumpMemory<'a> {
     /// The raw `MDMemoryDescriptor` from the minidump.
     pub desc: md::MDMemoryDescriptor,
     /// The starting address of this range of memory.
@@ -188,7 +188,7 @@ pub struct MinidumpMemory {
     /// The length of this range of memory.
     pub size: u64,
     /// The contents of the memory.
-    pub bytes: Vec<u8>,
+    pub bytes: &'a [u8],
 }
 
 pub enum RawMiscInfo {
@@ -238,9 +238,9 @@ pub struct MinidumpException {
 }
 
 /// A list of memory regions included in a minidump.
-pub struct MinidumpMemoryList {
+pub struct MinidumpMemoryList<'a> {
     /// The memory regions, in the order they were stored in the minidump.
-    regions: Vec<MinidumpMemory>,
+    regions: Vec<MinidumpMemory<'a>>,
     /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
     regions_by_addr: RangeMap<u64, usize>,
 }
@@ -269,7 +269,6 @@ fn location_slice<'a>(bytes: &'a [u8], loc: &md::MDLocationDescriptor) -> Result
         Ok(&bytes[start..end])
     } else {
         Err(Error::StreamReadFailure)
-        //bail!("Bad MDLocationDescriptor: {:#x}+#{:#x}", start, end)
     }
 }
 
@@ -781,10 +780,10 @@ impl MinidumpModuleList {
     }
 }
 
-impl MinidumpStream for MinidumpModuleList {
+impl<'a> MinidumpStream<'a> for MinidumpModuleList {
     const STREAM_TYPE: u32 = md::MD_MODULE_LIST_STREAM;
 
-    fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpModuleList, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpModuleList, Error> {
         let mut offset = 0;
         let raw_modules: Vec<md::MDRawModule> = read_stream_list(&mut offset, bytes)?;
         // read auxiliary data for each module
@@ -804,10 +803,9 @@ impl MinidumpStream for MinidumpModuleList {
     }
 }
 
-impl MinidumpMemory {
-    pub fn read(desc: &md::MDMemoryDescriptor, data: &[u8]) -> Result<MinidumpMemory, Error> {
-        //TODO: store a reference instead of an owned Vec.
-        let bytes = location_slice(data, &desc.memory).or(Err(Error::StreamReadFailure))?.to_owned();
+impl<'a> MinidumpMemory<'a> {
+    pub fn read(desc: &md::MDMemoryDescriptor, data: &'a [u8]) -> Result<MinidumpMemory<'a>, Error> {
+        let bytes = location_slice(data, &desc.memory).or(Err(Error::StreamReadFailure))?;
         Ok(MinidumpMemory {
             desc: desc.clone(),
             base_address: desc.start_of_memory_range,
@@ -820,7 +818,7 @@ impl MinidumpMemory {
     ///
     /// Return `None` if the requested address range falls out of the bounds
     /// of this memory region.
-    pub fn get_memory_at_address<'a, T>(&'a self, addr: u64) -> Option<T>
+    pub fn get_memory_at_address<T>(&self, addr: u64) -> Option<T>
         where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
               T: SizeWith<scroll::Endian, Units=usize>,
     {
@@ -867,21 +865,25 @@ Memory
 }
 
 /// An iterator over `MinidumpMemory`s.
-pub struct MemoryRegions<'a> {
-    iter: Box<Iterator<Item = &'a MinidumpMemory> + 'a>,
+pub struct MemoryRegions<'b, 'a>
+    where 'a: 'b
+{
+    iter: Box<Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
 }
 
-impl<'a> Iterator for MemoryRegions<'a> {
-    type Item = &'a MinidumpMemory;
+impl<'b, 'a> Iterator for MemoryRegions<'b, 'a>
+    where 'a: 'b
+{
+    type Item = &'b MinidumpMemory<'a>;
 
-    fn next(&mut self) -> Option<&'a MinidumpMemory> {
+    fn next(&mut self) -> Option<&'b MinidumpMemory<'a>> {
         self.iter.next()
     }
 }
 
-impl MinidumpMemoryList {
+impl<'a> MinidumpMemoryList<'a> {
     /// Return an empty `MinidumpMemoryList`.
-    pub fn new() -> MinidumpMemoryList {
+    pub fn new() -> MinidumpMemoryList<'a> {
         MinidumpMemoryList {
             regions: vec![],
             regions_by_addr: RangeMap::new(),
@@ -889,7 +891,7 @@ impl MinidumpMemoryList {
     }
 
     /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
-    pub fn from_regions(regions: Vec<MinidumpMemory>) -> MinidumpMemoryList {
+    pub fn from_regions(regions: Vec<MinidumpMemory<'a>>) -> MinidumpMemoryList<'a> {
         let map = {
             let mut mapped_regions: Vec<(Range<u64>, usize)> = vec![];
             for (i, region) in regions.iter().enumerate() {
@@ -905,26 +907,26 @@ impl MinidumpMemoryList {
             mapped_regions.into_iter().map(|(r, i)| (r, i)).collect()
         };
         MinidumpMemoryList {
-            regions: regions,
+            regions,
             regions_by_addr: map,
         }
     }
 
     /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
-    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory> {
+    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory<'a>> {
         self.regions_by_addr.get(address)
             .map(|&index| &self.regions[index])
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
-    pub fn iter<'a>(&'a self) -> MemoryRegions<'a> {
+    pub fn iter<'b>(&'b self) -> MemoryRegions<'a, 'b> {
         MemoryRegions {
             iter: Box::new(self.regions.iter()),
         }
     }
 
     /// Iterate over the memory regions in order by memory address.
-    pub fn by_addr<'a>(&'a self) -> MemoryRegions<'a> {
+    pub fn by_addr<'b>(&'b self) -> MemoryRegions<'a, 'b> {
         MemoryRegions {
             iter: Box::new(
                 self.regions_by_addr
@@ -954,10 +956,10 @@ impl MinidumpMemoryList {
     }
 }
 
-impl MinidumpStream for MinidumpMemoryList {
+impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
     const STREAM_TYPE: u32 = md::MD_MEMORY_LIST_STREAM;
 
-    fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpMemoryList, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpMemoryList<'a>, Error> {
         let mut offset = 0;
         let descriptors: Vec<md::MDMemoryDescriptor> = read_stream_list(&mut offset, bytes)?;
         // read memory contents for each region
@@ -977,7 +979,7 @@ impl MinidumpStream for MinidumpMemoryList {
     }
 }
 
-impl MinidumpThread {
+impl<'a> MinidumpThread<'a> {
     /// Write a human-readable description of this `MinidumpThread` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
@@ -1025,10 +1027,10 @@ impl MinidumpThread {
     }
 }
 
-impl MinidumpStream for MinidumpThreadList {
+impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
     const STREAM_TYPE: u32 = md::MD_THREAD_LIST_STREAM;
 
-    fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpThreadList, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpThreadList<'a>, Error> {
         let mut offset = 0;
         let raw_threads: Vec<md::MDRawThread> = read_stream_list(&mut offset, bytes)?;
         let mut threads = Vec::with_capacity(raw_threads.len());
@@ -1041,9 +1043,9 @@ impl MinidumpStream for MinidumpThreadList {
             // TODO: check memory region
             let stack = MinidumpMemory::read(&raw.stack, all).ok();
             threads.push(MinidumpThread {
-                raw: raw,
-                context: context,
-                stack: stack,
+                raw,
+                context,
+                stack,
             });
         }
         Ok(MinidumpThreadList {
@@ -1053,9 +1055,9 @@ impl MinidumpStream for MinidumpThreadList {
     }
 }
 
-impl MinidumpThreadList {
+impl<'a> MinidumpThreadList<'a> {
     /// Get the thread with id `id` from this thread list if it exists.
-    pub fn get_thread(&self, id: u32) -> Option<&MinidumpThread> {
+    pub fn get_thread(&self, id: u32) -> Option<&MinidumpThread<'a>> {
         match self.thread_ids.get(&id) {
             None => None,
             Some(&index) => Some(&self.threads[index]),
@@ -1083,7 +1085,7 @@ impl MinidumpThreadList {
     }
 }
 
-impl MinidumpStream for MinidumpSystemInfo {
+impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: u32 = md::MD_SYSTEM_INFO_STREAM;
 
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpSystemInfo, Error> {
@@ -1177,7 +1179,7 @@ impl RawMiscInfo {
     );
 }
 
-impl MinidumpStream for MinidumpMiscInfo {
+impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
     const STREAM_TYPE: u32 = md::MD_MISC_INFO_STREAM;
 
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpMiscInfo, Error> {
@@ -1257,7 +1259,7 @@ impl MinidumpMiscInfo {
     }
 }
 
-impl MinidumpStream for MinidumpBreakpadInfo {
+impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
     const STREAM_TYPE: u32 = md::MD_BREAKPAD_INFO_STREAM;
 
     fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpBreakpadInfo, Error> {
@@ -1336,10 +1338,10 @@ impl fmt::Display for CrashReason {
     }
 }
 
-impl MinidumpStream for MinidumpException {
+impl<'a> MinidumpStream<'a> for MinidumpException {
     const STREAM_TYPE: u32 = md::MD_EXCEPTION_STREAM;
 
-    fn read(bytes: &[u8], all: &[u8]) -> Result<MinidumpException, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpException, Error> {
         let raw: md::MDRawExceptionStream = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
         let context_data = location_slice(all, &raw.thread_context)?;
         let context = MinidumpContext::read(context_data).ok();
@@ -1486,7 +1488,10 @@ impl<'a, T> Minidump<'a, T>
     /// the stream data as a specific type.
     ///
     /// [stream]: trait.MinidumpStream.html
-    pub fn get_stream<S: MinidumpStream + 'a>(&self) -> Result<S, Error> {
+    pub fn get_stream<'b, S>(&'b self) -> Result<S, Error>
+        where S: MinidumpStream<'a>,
+             'b: 'a,
+    {
         match self.streams.get(&S::STREAM_TYPE) {
             None => Err(Error::StreamNotFound),
             Some(&(_, ref dir)) => {

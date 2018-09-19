@@ -35,11 +35,12 @@ impl TestFixture {
         };
         let base = stack.start().value().unwrap();
         let size = stack.size();
+        let stack = stack.get_contents().unwrap();
         let stack_memory = MinidumpMemory {
             desc: Default::default(),
             base_address: base,
             size: size,
-            bytes: stack.get_contents().unwrap(),
+            bytes: &stack,
         };
         walk_stack(
             &Some(&context),
