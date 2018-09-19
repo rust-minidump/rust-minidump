@@ -119,9 +119,9 @@ pub struct MDXmmSaveArea32AMD64 {
     pub reserved3: u16,
     pub mx_csr: u32,
     pub mx_csr_mask: u32,
-    pub float_registers: [u128; 8usize],
-    pub xmm_registers: [u128; 16usize],
-    pub reserved4: [u8; 96usize],
+    pub float_registers: [u128; 8],
+    pub xmm_registers: [u128; 16],
+    pub reserved4: [u8; 96],
 }
 
 #[derive(Clone, Pread, SizeWith)]
@@ -164,8 +164,13 @@ pub struct MDRawContextAMD64 {
     pub r14: u64,
     pub r15: u64,
     pub rip: u64,
-    pub _bindgen_data_1_: [u64; 64usize],
-    pub vector_register: [u128; 26usize],
+    /// This is defined as a union in the C headers, but also
+    /// ` MAXIMUM_SUPPORTED_EXTENSION` is defined as 512 bytes.
+    ///
+    /// Callers that want to access the underlying data can use `Pread` to read either
+    /// an `MDXmmSaveArea32AMD64` or `SSERegisters` struct from this raw data as appropriate.
+    pub float_save: [u8; 512],
+    pub vector_register: [u128; 26],
     pub vector_control: u64,
     pub debug_control: u64,
     pub last_branch_to_rip: u64,
@@ -173,21 +178,13 @@ pub struct MDRawContextAMD64 {
     pub last_exception_to_rip: u64,
     pub last_exception_from_rip: u64,
 }
-impl MDRawContextAMD64 {
-    pub unsafe fn flt_save(&mut self) -> *mut MDXmmSaveArea32AMD64 {
-        let raw: *mut u8 = ::std::mem::transmute(&self._bindgen_data_1_);
-        ::std::mem::transmute(raw.offset(0))
-    }
-    pub unsafe fn sse_registers(&mut self) -> *mut Struct_Unnamed7 {
-        let raw: *mut u8 = ::std::mem::transmute(&self._bindgen_data_1_);
-        ::std::mem::transmute(raw.offset(0))
-    }
-}
 
+/// This is defined as an anonymous struct inside an anonymous union in
+/// the x86-64 CONTEXT struct in winnt.h.
 #[derive(Clone, Pread, SizeWith)]
-pub struct Struct_Unnamed7 {
-    pub header: [u128; 2usize],
-    pub legacy: [u128; 8usize],
+pub struct SSERegisters {
+    pub header: [u128; 2],
+    pub legacy: [u128; 8],
     pub xmm0: u128,
     pub xmm1: u128,
     pub xmm2: u128,
@@ -3054,42 +3051,35 @@ pub struct MDRawExceptionStream {
     pub thread_context: MDLocationDescriptor,
 }
 
+/// `CPU_INFORMATION` from minidumpapiset.h.
 #[derive(Clone, Pread, SizeWith)]
 pub struct MDCPUInformation {
-    pub _bindgen_data_: [u64; 3usize],
-}
-impl MDCPUInformation {
-    pub unsafe fn x86_cpu_info(&mut self) -> *mut Struct_Unnamed52 {
-        let raw: *mut u8 = ::std::mem::transmute(&self._bindgen_data_);
-        ::std::mem::transmute(raw.offset(0))
-    }
-    pub unsafe fn arm_cpu_info(&mut self) -> *mut Struct_Unnamed53 {
-        let raw: *mut u8 = ::std::mem::transmute(&self._bindgen_data_);
-        ::std::mem::transmute(raw.offset(0))
-    }
-    pub unsafe fn other_cpu_info(&mut self) -> *mut Struct_Unnamed54 {
-        let raw: *mut u8 = ::std::mem::transmute(&self._bindgen_data_);
-        ::std::mem::transmute(raw.offset(0))
-    }
+    /// `data` is defined as a union in the Microsoft headers.
+    ///
+    /// It is the union of `MDX86CpuInfo`, `MDARMCpuInfo` (Breakpad-specific), and
+    /// `OtherCpuInfo` defined below. It does not seem possible to safely derive `Pread`
+    /// on an actual union, so we provide the raw data here and expect callers to use
+    /// `Pread` to derive the specific union representation desired.
+    pub data: [u8; 24],
 }
 
 #[derive(Clone, Pread, SizeWith)]
-pub struct Struct_Unnamed52 {
-    pub vendor_id: [u32; 3usize],
+pub struct MDX86CpuInfo {
+    pub vendor_id: [u32; 3],
     pub version_information: u32,
     pub feature_information: u32,
     pub amd_extended_cpu_features: u32,
 }
 
 #[derive(Clone, Pread, SizeWith)]
-pub struct Struct_Unnamed53 {
+pub struct MDARMCpuInfo {
     pub cpuid: u32,
     pub elf_hwcaps: u32,
 }
 
 #[derive(Clone, Pread, SizeWith)]
-pub struct Struct_Unnamed54 {
-    pub processor_features: [u64; 2usize],
+pub struct OtherCpuInfo {
+    pub processor_features: [u64; 2],
 }
 
 pub type Enum_Unnamed55 = ::libc::c_uint;
