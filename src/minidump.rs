@@ -8,7 +8,7 @@ use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use failure;
 use memmap::Mmap;
-use scroll::{self, LE, Pread};
+use scroll::{self, BE, LE, Pread};
 use scroll::ctx::{SizeWith, TryFromCtx};
 use std::borrow::Cow;
 use std::boxed::Box;
@@ -53,9 +53,11 @@ pub struct Minidump<'a, T>
     where T: Deref<Target=[u8]> + 'a,
 {
     data: T,
+    /// The raw minidump header from the file.
     pub header: md::MDRawHeader,
     streams: HashMap<u32, (u32, md::MDRawDirectory)>,
-    swap: bool,
+    /// The endianness of this minidump file.
+    pub endian: scroll::Endian,
     _phantom: PhantomData<&'a [u8]>,
 }
 
@@ -70,8 +72,6 @@ pub enum Error {
     MissingHeader,
     #[fail(display = "Header mismatch")]
     HeaderMismatch,
-    #[fail(display = "Cannot read minidump of opposite endianness")]
-    SwapNotImplemented,
     #[fail(display = "Minidump version mismatch")]
     VersionMismatch,
     #[fail(display = "Missing stream directory")]
@@ -106,7 +106,7 @@ pub trait MinidumpStream<'a>: Sized {
     /// `bytes` is the contents of this specific stream.
     /// `all` refers to the full contents of the minidump, for reading auxilliary data
     /// referred to with `MDLocationDescriptor`s.
-    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<Self, Error>;
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error>;
 }
 
 /// Raw bytes of CodeView data in a minidump file.
@@ -274,10 +274,9 @@ fn location_slice<'a>(bytes: &'a [u8], loc: &md::MDLocationDescriptor) -> Result
 }
 
 /// Read a u32 length-prefixed UTF-16 string from `bytes` at `offset`.
-fn read_string_utf16(offset: &mut usize, bytes: &[u8]) -> Result<String, ()> {
-    let u: u32 = bytes.gread_with(offset, LE).or(Err(()))?;
+fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -> Result<String, ()> {
+    let u: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
     let size = u as usize;
-    // TODO: swap
     if size % 2 != 0 || (*offset + size) > bytes.len() {
         return Err(());
     }
@@ -290,16 +289,16 @@ fn read_string_utf16(offset: &mut usize, bytes: &[u8]) -> Result<String, ()> {
     }
 }
 
-fn read_codeview_pdb(signature: u32, bytes: &[u8]) -> Result<CodeView, failure::Error> {
+fn read_codeview_pdb(signature: u32, bytes: &[u8], endian: scroll::Endian) -> Result<CodeView, failure::Error> {
     let mut offset = 0;
     let raw = match signature {
         md::MD_CVINFOPDB70_SIGNATURE => {
             // ::<md::MDCVInfoPDB70>
-            CodeViewPDBRaw::PDB70(bytes.gread_with(&mut offset, LE)?)
+            CodeViewPDBRaw::PDB70(bytes.gread_with(&mut offset, endian)?)
         }
         md::MD_CVINFOPDB20_SIGNATURE => {
             // ::<md::MDCVInfoPDB20>
-            CodeViewPDBRaw::PDB20(bytes.gread_with(&mut offset, LE)?)
+            CodeViewPDBRaw::PDB20(bytes.gread_with(&mut offset, endian)?)
         }
         _ => return Err(Error::CodeViewReadFailure.into()),
     };
@@ -319,18 +318,17 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 }
 
 /// Attempt to read a CodeView record from `data` at `location`.
-fn read_codeview(location: &md::MDLocationDescriptor, data: &[u8]) -> Result<CodeView, failure::Error> {
+fn read_codeview(location: &md::MDLocationDescriptor, data: &[u8], endian: scroll::Endian) -> Result<CodeView, failure::Error> {
     let bytes = location_slice(data, location)?;
     // The CodeView data can contain a variable-length string at the end
     // and also can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
-    // TODO: swap
     let mut offset = 0;
-    let signature: u32 = bytes.gread_with(&mut offset, LE)?;
+    let signature: u32 = bytes.gread_with(&mut offset, endian)?;
     match signature {
         md::MD_CVINFOPDB70_SIGNATURE | md::MD_CVINFOPDB20_SIGNATURE => {
             // One of the PDB formats.
-            read_codeview_pdb(signature, bytes)
+            read_codeview_pdb(signature, bytes, endian)
         },
         md::MD_CVINFOELF_SIGNATURE => {
             // Breakpad's ELF build ID format.
@@ -368,13 +366,13 @@ impl MinidumpModule {
 
     /// Read additional data to construct a `MinidumpModule` from `bytes` using the information
     /// from the module list in `raw`.
-    pub fn read(raw: md::MDRawModule, bytes: &[u8]) -> Result<MinidumpModule, Error> {
+    pub fn read(raw: md::MDRawModule, bytes: &[u8], endian: scroll::Endian) -> Result<MinidumpModule, Error> {
         let mut offset = raw.module_name_rva as usize;
-        let name = read_string_utf16(&mut offset, bytes).or(Err(Error::CodeViewReadFailure))?;
+        let name = read_string_utf16(&mut offset, bytes, endian).or(Err(Error::CodeViewReadFailure))?;
         let codeview_info = if raw.cv_record.data_size == 0 {
             None
         } else {
-            Some(read_codeview(&raw.cv_record, bytes).or(Err(Error::CodeViewReadFailure))?)
+            Some(read_codeview(&raw.cv_record, bytes, endian).or(Err(Error::CodeViewReadFailure))?)
         };
         Ok(MinidumpModule {
             raw,
@@ -641,14 +639,13 @@ impl Module for MinidumpModule {
     }
 }
 
-fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8]) -> Result<Vec<T>, Error>
+fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8], endian: scroll::Endian) -> Result<Vec<T>, Error>
     where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
           T: SizeWith<scroll::Endian, Units=usize>,
 {
-    // TODO: swap
-    let u: u32 = bytes.gread_with(offset, LE).or(Err(Error::StreamReadFailure))?;
+    let u: u32 = bytes.gread_with(offset, endian).or(Err(Error::StreamReadFailure))?;
     let count = u as usize;
-    let counted_size = match count.checked_mul(<T>::size_with(&LE)).and_then(|v| v.checked_add(mem::size_of::<u32>())) {
+    let counted_size = match count.checked_mul(<T>::size_with(&endian)).and_then(|v| v.checked_add(mem::size_of::<u32>())) {
         Some(s) => s,
         None => return Err(Error::StreamReadFailure),
     };
@@ -674,7 +671,7 @@ fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8]) -> Result<Vec<T>
     // read count T raw stream entries
     let mut raw_entries = Vec::with_capacity(count);
     for _ in 0..count {
-        let raw: T = bytes.gread_with(offset, LE).or(Err(Error::StreamReadFailure))?;
+        let raw: T = bytes.gread_with(offset, endian).or(Err(Error::StreamReadFailure))?;
         raw_entries.push(raw);
     }
     Ok(raw_entries)
@@ -781,13 +778,12 @@ impl MinidumpModuleList {
 impl<'a> MinidumpStream<'a> for MinidumpModuleList {
     const STREAM_TYPE: u32 = md::MD_MODULE_LIST_STREAM;
 
-    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpModuleList, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<MinidumpModuleList, Error> {
         let mut offset = 0;
-        let raw_modules: Vec<md::MDRawModule> = read_stream_list(&mut offset, bytes)?;
+        let raw_modules: Vec<md::MDRawModule> = read_stream_list(&mut offset, bytes, endian)?;
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
         for raw in raw_modules.into_iter() {
-            // TODO: swap
             if raw.size_of_image == 0
                 || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image)
             {
@@ -795,7 +791,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
             }
-            modules.push(MinidumpModule::read(raw, all)?);
+            modules.push(MinidumpModule::read(raw, all, endian)?);
         }
         Ok(MinidumpModuleList::from_modules(modules))
     }
@@ -957,13 +953,12 @@ impl<'a> MinidumpMemoryList<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
     const STREAM_TYPE: u32 = md::MD_MEMORY_LIST_STREAM;
 
-    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpMemoryList<'a>, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<MinidumpMemoryList<'a>, Error> {
         let mut offset = 0;
-        let descriptors: Vec<md::MDMemoryDescriptor> = read_stream_list(&mut offset, bytes)?;
+        let descriptors: Vec<md::MDMemoryDescriptor> = read_stream_list(&mut offset, bytes, endian)?;
         // read memory contents for each region
         let mut regions = Vec::with_capacity(descriptors.len());
         for raw in descriptors.into_iter() {
-            // TODO: swap
             if raw.memory.data_size == 0
                 || raw.memory.data_size as u64 > (u64::max_value() - raw.start_of_memory_range)
             {
@@ -1028,16 +1023,15 @@ impl<'a> MinidumpThread<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
     const STREAM_TYPE: u32 = md::MD_THREAD_LIST_STREAM;
 
-    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpThreadList<'a>, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<MinidumpThreadList<'a>, Error> {
         let mut offset = 0;
-        let raw_threads: Vec<md::MDRawThread> = read_stream_list(&mut offset, bytes)?;
+        let raw_threads: Vec<md::MDRawThread> = read_stream_list(&mut offset, bytes, endian)?;
         let mut threads = Vec::with_capacity(raw_threads.len());
         let mut thread_ids = HashMap::with_capacity(raw_threads.len());
         for raw in raw_threads.into_iter() {
-            // TODO: swap
             thread_ids.insert(raw.thread_id, threads.len());
             let context_data = location_slice(all, &raw.thread_context)?;
-            let context = MinidumpContext::read(context_data).ok();
+            let context = MinidumpContext::read(context_data, endian).ok();
             // TODO: check memory region
             let stack = MinidumpMemory::read(&raw.stack, all).ok();
             threads.push(MinidumpThread {
@@ -1086,8 +1080,8 @@ impl<'a> MinidumpThreadList<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: u32 = md::MD_SYSTEM_INFO_STREAM;
 
-    fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpSystemInfo, Error> {
-        let raw: md::MDRawSystemInfo = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
+    fn read(bytes: &[u8], _all: &[u8], endian: scroll::Endian) -> Result<MinidumpSystemInfo, Error> {
+        let raw: md::MDRawSystemInfo = bytes.pread_with(0, endian).or(Err(Error::StreamReadFailure))?;
         let os = OS::from_u32(raw.platform_id);
         let cpu = CPU::from_u32(raw.processor_architecture as u32);
         Ok(MinidumpSystemInfo {
@@ -1180,15 +1174,15 @@ impl RawMiscInfo {
 impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
     const STREAM_TYPE: u32 = md::MD_MISC_INFO_STREAM;
 
-    fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpMiscInfo, Error> {
+    fn read(bytes: &[u8], _all: &[u8], endian: scroll::Endian) -> Result<MinidumpMiscInfo, Error> {
         // The misc info has gone through several revisions, so try to read the largest known
         // struct possible.
         macro_rules! do_read {
             ($(($t:ty, $variant:ident),)+) => {
                 $(
-                    if bytes.len() >= <$t>::size_with(&LE) {
+                    if bytes.len() >= <$t>::size_with(&endian) {
                         return Ok(MinidumpMiscInfo {
-                            raw: RawMiscInfo::$variant(bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?),
+                            raw: RawMiscInfo::$variant(bytes.pread_with(0, endian).or(Err(Error::StreamReadFailure))?),
                         });
                     }
                 )+
@@ -1260,8 +1254,8 @@ impl MinidumpMiscInfo {
 impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
     const STREAM_TYPE: u32 = md::MD_BREAKPAD_INFO_STREAM;
 
-    fn read(bytes: &[u8], _all: &[u8]) -> Result<MinidumpBreakpadInfo, Error> {
-        let raw: md::MDRawBreakpadInfo = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
+    fn read(bytes: &[u8], _all: &[u8], endian: scroll::Endian) -> Result<MinidumpBreakpadInfo, Error> {
+        let raw: md::MDRawBreakpadInfo = bytes.pread_with(0, endian).or(Err(Error::StreamReadFailure))?;
         let dump_thread_id = if flag(raw.validity, md::MD_BREAKPAD_INFO_VALID_DUMP_THREAD_ID) {
             Some(raw.dump_thread_id)
         } else {
@@ -1339,10 +1333,10 @@ impl fmt::Display for CrashReason {
 impl<'a> MinidumpStream<'a> for MinidumpException {
     const STREAM_TYPE: u32 = md::MD_EXCEPTION_STREAM;
 
-    fn read(bytes: &'a [u8], all: &'a [u8]) -> Result<MinidumpException, Error> {
-        let raw: md::MDRawExceptionStream = bytes.pread_with(0, LE).or(Err(Error::StreamReadFailure))?;
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<MinidumpException, Error> {
+        let raw: md::MDRawExceptionStream = bytes.pread_with(0, endian).or(Err(Error::StreamReadFailure))?;
         let context_data = location_slice(all, &raw.thread_context)?;
-        let context = MinidumpContext::read(context_data).ok();
+        let context = MinidumpContext::read(context_data, endian).ok();
         let thread_id = raw.thread_id;
         Ok(MinidumpException {
             raw,
@@ -1449,16 +1443,21 @@ impl<'a, T> Minidump<'a, T>
     /// but you can also use something like `memmap::Mmap`.
     pub fn read(data: T) -> Result<Minidump<'a, T>, Error> {
         let mut offset = 0;
-        let header: md::MDRawHeader = data.gread_with(&mut offset, LE)
+        let mut endian = LE;
+        let mut header: md::MDRawHeader = data.gread_with(&mut offset, endian)
             .or(Err(Error::MissingHeader))?;
-        let swap = false;
         if header.signature != md::MD_HEADER_SIGNATURE {
             if header.signature.swap_bytes() != md::MD_HEADER_SIGNATURE {
                 return Err(Error::HeaderMismatch);
             }
-            return Err(Error::SwapNotImplemented);
-            // TODO: implement swapping
-            //swap = true;
+            // Try again with big-endian.
+            endian = BE;
+            offset = 0;
+            header = data.gread_with(&mut offset, endian)
+                .or(Err(Error::MissingHeader))?;
+            if header.signature != md::MD_HEADER_SIGNATURE {
+                return Err(Error::HeaderMismatch);
+            }
         }
         if (header.version & 0x0000ffff) != md::MD_HEADER_VERSION {
             return Err(Error::VersionMismatch);
@@ -1466,15 +1465,15 @@ impl<'a, T> Minidump<'a, T>
         let mut streams = HashMap::with_capacity(header.stream_count as usize);
         offset = header.stream_directory_rva as usize;
         for i in 0..header.stream_count {
-            let dir: md::MDRawDirectory = data.gread_with(&mut offset, LE)
+            let dir: md::MDRawDirectory = data.gread_with(&mut offset, endian)
                 .or(Err(Error::MissingDirectory))?;
             streams.insert(dir.stream_type, (i, dir));
         }
         Ok(Minidump {
             data,
-            header: header,
-            streams: streams,
-            swap: swap,
+            header,
+            streams,
+            endian,
             _phantom: PhantomData,
         })
     }
@@ -1494,7 +1493,7 @@ impl<'a, T> Minidump<'a, T>
             None => Err(Error::StreamNotFound),
             Some(&(_, ref dir)) => {
                 let bytes = self.data.deref();
-                S::read(location_slice(bytes, &dir.location)?, bytes)
+                S::read(location_slice(bytes, &dir.location)?, bytes, self.endian)
             }
         }
     }
@@ -1635,9 +1634,27 @@ mod test {
             section: Section::with_endian(Endian::Little).D32(0x55667788),
         });
         let dump = read_synth_dump(dump).unwrap();
+        assert_eq!(dump.endian, LE);
         assert_eq!(
             dump.get_raw_stream(STREAM_TYPE).unwrap(),
             &[0x88, 0x77, 0x66, 0x55]
+        );
+
+        assert_eq!(dump.get_raw_stream(0xaabbccdd), Err(Error::StreamNotFound));
+    }
+
+    #[test]
+    fn test_simple_synth_dump_bigendian() {
+        const STREAM_TYPE: u32 = 0x11223344;
+        let dump = SynthMinidump::with_endian(Endian::Big).add_stream(SimpleStream {
+            stream_type: STREAM_TYPE,
+            section: Section::with_endian(Endian::Big).D32(0x55667788),
+        });
+        let dump = read_synth_dump(dump).unwrap();
+        assert_eq!(dump.endian, BE);
+        assert_eq!(
+            dump.get_raw_stream(STREAM_TYPE).unwrap(),
+            &[0x55, 0x66, 0x77, 0x88]
         );
 
         assert_eq!(dump.get_raw_stream(0xaabbccdd), Err(Error::StreamNotFound));

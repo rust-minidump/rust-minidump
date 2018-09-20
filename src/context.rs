@@ -3,7 +3,7 @@
 
 //! CPU contexts.
 
-use scroll::{LE, Pread};
+use scroll::{self, Pread};
 use std::io::prelude::*;
 use std::collections::HashSet;
 use std::fmt;
@@ -166,12 +166,12 @@ impl MinidumpContext {
     }
 
     /// Read a `MinidumpContext` from `bytes`.
-    pub fn read(bytes: &[u8]) -> Result<MinidumpContext, ContextError> {
+    pub fn read(bytes: &[u8], endian: scroll::Endian) -> Result<MinidumpContext, ContextError> {
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         let mut offset = 0;
         if bytes.len() == mem::size_of::<md::MDRawContextAMD64>() {
-            let ctx: md::MDRawContextAMD64 = bytes.gread_with(&mut offset, LE)
+            let ctx: md::MDRawContextAMD64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
             if ctx.context_flags & md::MD_CONTEXT_CPU_MASK != md::MD_CONTEXT_AMD64 {
                 return Err(ContextError::ReadFailure);
@@ -179,7 +179,7 @@ impl MinidumpContext {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
             }
         } else if bytes.len() == mem::size_of::<md::MDRawContextPPC64>() {
-            let ctx: md::MDRawContextPPC64 = bytes.gread_with(&mut offset, LE)
+            let ctx: md::MDRawContextPPC64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_PPC64 as u64 {
                 return Err(ContextError::ReadFailure);
@@ -187,7 +187,7 @@ impl MinidumpContext {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
         } else if bytes.len() == mem::size_of::<md::MDRawContextARM64>() {
-            let ctx: md::MDRawContextARM64 = bytes.gread_with(&mut offset, LE)
+            let ctx: md::MDRawContextARM64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
             if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_ARM64 as u64 {
                 return Err(ContextError::ReadFailure);
@@ -197,35 +197,34 @@ impl MinidumpContext {
         } else {
             // For everything else, read the flags and determine context
             // type from that.
-            // TODO: swap
-            let flags: u32 = bytes.gread_with(&mut offset, LE).or(Err(ContextError::ReadFailure))?;
+            let flags: u32 = bytes.gread_with(&mut offset, endian).or(Err(ContextError::ReadFailure))?;
             // Seek back, the flags are also part of the RawContext structs.
             offset = 0;
             let cpu_type = flags & md::MD_CONTEXT_CPU_MASK;
             // TODO: handle dumps with MD_CONTEXT_ARM_OLD
             if let Some(ctx) = match cpu_type {
                 md::MD_CONTEXT_X86 => {
-                    let ctx: md::MDRawContextX86 = bytes.gread_with(&mut offset, LE)
+                    let ctx: md::MDRawContextX86 = bytes.gread_with(&mut offset, endian)
                         .or(Err(ContextError::ReadFailure))?;
                     Some(MinidumpRawContext::X86(ctx))
                 }
                 md::MD_CONTEXT_PPC => {
-                    let ctx: md::MDRawContextPPC = bytes.gread_with(&mut offset, LE)
+                    let ctx: md::MDRawContextPPC = bytes.gread_with(&mut offset, endian)
                         .or(Err(ContextError::ReadFailure))?;
                     Some(MinidumpRawContext::PPC(ctx))
                 }
                 md::MD_CONTEXT_SPARC => {
-                    let ctx: md::MDRawContextSPARC = bytes.gread_with(&mut offset, LE)
+                    let ctx: md::MDRawContextSPARC = bytes.gread_with(&mut offset, endian)
                         .or(Err(ContextError::ReadFailure))?;
                     Some(MinidumpRawContext::SPARC(ctx))
                 }
                 md::MD_CONTEXT_ARM => {
-                    let ctx: md::MDRawContextARM = bytes.gread_with(&mut offset, LE)
+                    let ctx: md::MDRawContextARM = bytes.gread_with(&mut offset, endian)
                         .or(Err(ContextError::ReadFailure))?;
                     Some(MinidumpRawContext::ARM(ctx))
                 }
                 md::MD_CONTEXT_MIPS => {
-                    let ctx: md::MDRawContextMIPS = bytes.gread_with(&mut offset, LE)
+                    let ctx: md::MDRawContextMIPS = bytes.gread_with(&mut offset, endian)
                         .or(Err(ContextError::ReadFailure))?;
                     Some(MinidumpRawContext::MIPS(ctx))
                 }
