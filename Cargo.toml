@@ -24,7 +24,7 @@ minidump-common = { version = "0.2.0", path = "minidump-common" }
 encoding = "0.2"
 chrono = "0.4.6"
 scroll = "0.9.0"
-memmap = "0.6.2"
+memmap = "0.7.0"
 
 [dev-dependencies]
 test-assembler = "0.1.5"
