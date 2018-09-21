@@ -93,7 +93,6 @@ pub enum Error {
 }
 
 /* TODO
-pub struct MinidumpAssertion;
 pub struct MinidumpMemoryInfoList;
 */
 
@@ -244,6 +243,11 @@ pub struct MinidumpMemoryList<'a> {
     regions: Vec<MinidumpMemory<'a>>,
     /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
     regions_by_addr: RangeMap<u64, usize>,
+}
+
+/// Information about an assertion that caused a crash.
+pub struct MinidumpAssertion {
+    pub raw: md::MDRawAssertionInfo,
 }
 
 //======================================================
@@ -1295,6 +1299,7 @@ impl MinidumpBreakpadInfo {
   validity             = {:#x}
   dump_thread_id       = {}
   requesting_thread_id = {}
+
 ",
             self.raw.validity,
             option_or_invalid(&self.dump_thread_id),
@@ -1416,6 +1421,61 @@ impl MinidumpException {
 "
             ));
         }
+        Ok(())
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpAssertion {
+    const STREAM_TYPE: u32 = md::MD_ASSERTION_INFO_STREAM;
+
+    fn read(bytes: &'a [u8], _all: &'a [u8], endian: scroll::Endian) -> Result<MinidumpAssertion, Error> {
+        let raw: md::MDRawAssertionInfo = bytes.pread_with(0, endian)
+            .or(Err(Error::StreamReadFailure))?;
+        Ok(MinidumpAssertion { raw })
+    }
+}
+
+fn utf16_to_string(data: &[u16]) -> Option<String> {
+    use std::slice;
+
+    let len = data.iter().take_while(|c| **c != 0).count();
+    let s16 = &data[..len];
+    let bytes = unsafe { slice::from_raw_parts(s16.as_ptr() as *const u8, s16.len() * 2) };
+    UTF_16LE.decode(bytes, DecoderTrap::Strict).ok()
+}
+
+impl MinidumpAssertion {
+    /// Get the assertion expression as a `String` if one exists.
+    pub fn expression(&self) -> Option<String> {
+        utf16_to_string(&self.raw.expression)
+    }
+    /// Get the function name where the assertion happened as a `String` if it exists.
+    pub fn function(&self) -> Option<String> {
+        utf16_to_string(&self.raw.function)
+    }
+    /// Get the source file name where the assertion happened as a `String` if it exists.
+    pub fn file(&self) -> Option<String> {
+        utf16_to_string(&self.raw.file)
+    }
+
+    /// Write a human-readable description of this `MinidumpAssertion` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(f, "MDAssertion
+  expression                                 = {}
+  function                                   = {}
+  file                                       = {}
+  line                                       = {}
+  type                                       = {}
+
+",
+               self.expression().unwrap_or_else(|| String::new()),
+               self.function().unwrap_or_else(|| String::new()),
+               self.file().unwrap_or_else(|| String::new()),
+               self.raw.line,
+               self.raw._type,
+        )?;
         Ok(())
     }
 }

@@ -47,7 +47,9 @@ fn print_minidump_dump(path: &Path) {
             if let Ok(exception) = dump.get_stream::<MinidumpException>() {
                 exception.print(stdout).unwrap();
             }
-            // TODO: Assertion
+            if let Ok(assertion) = dump.get_stream::<MinidumpAssertion>() {
+                assertion.print(stdout).unwrap();
+            }
             if let Ok(system_info) = dump.get_stream::<MinidumpSystemInfo>() {
                 system_info.print(stdout).unwrap();
             }
