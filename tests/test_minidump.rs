@@ -13,19 +13,21 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use minidump::*;
+use minidump_common::format as md;
 use minidump::system_info::{CPU, OS};
 use minidump_common::traits::Module;
 
-fn get_test_minidump_path() -> PathBuf {
+fn get_test_minidump_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(file!());
     path.pop();
     path.pop();
-    path.push("testdata/test.dmp");
+    path.push("testdata");
+    path.push(filename);
     path
 }
 
 fn read_test_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
-    let path = get_test_minidump_path();
+    let path = get_test_minidump_path("test.dmp");
     Minidump::read_path(&path)
 }
 
@@ -36,7 +38,7 @@ fn test_minidump_read_path() {
 
 #[test]
 fn test_minidump_read() {
-    let path = get_test_minidump_path();
+    let path = get_test_minidump_path("test.dmp");
     let mut f = File::open(path).unwrap();
     let mut buf = vec![];
     f.read_to_end(&mut buf).unwrap();
@@ -144,6 +146,18 @@ fn test_breakpad_info() {
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>().unwrap();
     assert_eq!(breakpad_info.dump_thread_id.unwrap(), 0x11c0);
     assert_eq!(breakpad_info.requesting_thread_id.unwrap(), 0xbf4);
+}
+
+#[test]
+fn test_assertion() {
+    let path = get_test_minidump_path("invalid-parameter.dmp");
+    let dump = Minidump::read_path(&path).unwrap();
+    let assertion = dump.get_stream::<MinidumpAssertion>().unwrap();
+    assert_eq!(assertion.expression().unwrap(), "format != nullptr");
+    assert_eq!(assertion.function().unwrap(), "common_vfprintf");
+    assert_eq!(assertion.file().unwrap(), r"minkernel\crts\ucrt\src\appcrt\stdio\output.cpp");
+    assert_eq!(assertion.raw.line, 32);
+    assert_eq!(assertion.raw._type, md::MD_ASSERTION_INFO_TYPE_INVALID_PARAMETER);
 }
 
 #[test]
