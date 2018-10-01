@@ -125,6 +125,7 @@ named!(func_line_data<&[u8], SourceLine>,
 named!(func_lines<&[u8], Function>,
   chain!(
     tag!("FUNC") ~
+    preceded!(space, tag!("m"))? ~
     space ~
     address: hex_str_u64 ~
     space ~
@@ -510,6 +511,20 @@ fn test_func_lines_and_lines() {
                 ),
             ]
         );
+    } else {
+        assert!(false, "Failed to parse!");
+    }
+}
+
+#[test]
+fn test_func_with_m() {
+    let data = b"FUNC m 1000 30 10 some func
+1000 10 42 7
+1010 10 52 8
+1020 10 62 15
+";
+    if let Done(rest, _) = func_lines(data) {
+        assert_eq!(rest, &b""[..]);
     } else {
         assert!(false, "Failed to parse!");
     }
