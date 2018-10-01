@@ -4,6 +4,7 @@
 use failure::Error;
 use nom::*;
 use nom::IResult::*;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -349,15 +350,20 @@ named!(symbol_file<&[u8], SymbolFile>,
 
 /// Parse a `SymbolFile` from `bytes`.
 pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
-    if let Done(rest, symfile) = symbol_file(&bytes) {
-        if rest == b"" {
-            Ok(symfile)
-        } else {
-            // Junk left over, or maybe didn't parse anything.
-            Err(format_err!("Failed to parse file"))
+    match symbol_file(&bytes) {
+        Done(rest, symfile) => {
+            if rest == b"" {
+                Ok(symfile)
+            } else {
+                // Junk left over, or maybe didn't parse anything.
+                let next_line = rest.split(|b| *b == b'\r').next()
+                    .map(|bytes| String::from_utf8_lossy(bytes))
+                    .unwrap_or(Cow::Borrowed(""));
+                Err(format_err!("Failed to parse file, next line was: `{}`", next_line))
+            }
         }
-    } else {
-        Err(format_err!("Failed to parse file"))
+        Error(e) => Err(format_err!("Failed to parse file: {}", e)),
+        Incomplete(_) => Err(format_err!("Failed to parse file: incomplete data")),
     }
 }
 
