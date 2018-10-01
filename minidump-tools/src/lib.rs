@@ -6,6 +6,7 @@ extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate minidump;
+extern crate minidump_common;
 extern crate reqwest;
 #[macro_use]
 extern crate structopt;
@@ -13,7 +14,8 @@ extern crate structopt;
 use breakpad_symbols::{SimpleFrame, HttpSymbolSupplier, Symbolizer};
 use disasm::{Color, CpuArch, SourceLocation, SourceLookup};
 use failure::Error;
-use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModuleList,
+use minidump_common::traits::Module;
+use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
                MinidumpSystemInfo};
 use minidump::system_info::CPU;
 use reqwest::Client;
@@ -31,6 +33,17 @@ struct GetMinidumpInstructions {
     minidump: PathBuf,
     #[structopt(help = "Symbol paths", parse(from_os_str))]
     symbol_paths: Vec<PathBuf>,
+}
+
+#[derive(StructOpt)]
+#[structopt(name = "dumpstack", about = "Display possible stack frames from a minidump")]
+struct DumpStack {
+    #[structopt(help = "Input minidump", parse(from_os_str))]
+    minidump: PathBuf,
+    #[structopt(help = "Symbol paths", parse(from_os_str))]
+    symbol_paths: Vec<PathBuf>,
+    #[structopt(short = "a", help = "Show stack addresses that don't resolve to functions")]
+    all: bool,
 }
 
 struct SymLookup {
@@ -173,6 +186,24 @@ impl SourceLookup for SymLookup {
     }
 }
 
+fn handle_symbol_paths(symbol_paths: Vec<PathBuf>) -> Result<Symbolizer, Error> {
+    let tmp_path = env::temp_dir().join("symbols");
+    fs::create_dir_all(&tmp_path)?;
+    let (symbol_paths, symbol_urls) = if symbol_paths.is_empty() {
+        // Use the Mozilla symbol server if no symbol paths are supplied.
+        let symbol_urls = vec!["https://symbols.mozilla.org/".to_owned()];
+        (symbol_paths, symbol_urls)
+    } else {
+        let urls = symbol_paths.iter()
+            .filter(|p| p.starts_with("http"))
+            .filter_map(|p| p.to_str().map(str::to_owned)).collect();
+        let paths = symbol_paths.into_iter().filter(|p| !p.starts_with("http")).collect();
+        (paths, urls)
+    };
+    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_path, symbol_paths);
+    Ok(Symbolizer::new(supplier))
+}
+
 pub fn get_minidump_instructions() -> Result<(), Error> {
     env_logger::init();
     let GetMinidumpInstructions { color, minidump, symbol_paths } =
@@ -191,21 +222,7 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
         CPU::X86_64 => CpuArch::X86_64,
         _ => return Err(format_err!("Unsupported CPU architecture: {}", sys_info.cpu)),
     };
-    let tmp_path = env::temp_dir().join("symbols");
-    fs::create_dir_all(&tmp_path)?;
-    let (symbol_paths, symbol_urls) = if symbol_paths.is_empty() {
-        // Use the Mozilla symbol server if no symbol paths are supplied.
-        let symbol_urls = vec!["https://symbols.mozilla.org/".to_owned()];
-        (symbol_paths, symbol_urls)
-    } else {
-        let urls = symbol_paths.iter()
-            .filter(|p| p.starts_with("http"))
-            .filter_map(|p| p.to_str().map(str::to_owned)).collect();
-        let paths = symbol_paths.into_iter().filter(|p| !p.starts_with("http")).collect();
-        (paths, urls)
-    };
-    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_path, symbol_paths);
-    let symbolizer = Symbolizer::new(supplier);
+    let symbolizer = handle_symbol_paths(symbol_paths)?;
     let client = Client::new();
     let mut lookup = SymLookup { modules, symbolizer, client };
     println!("Faulting instruction pointer: {:#x}", ip);
@@ -217,5 +234,74 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
                          color.unwrap_or(Color::Auto),
                          Some(ip),
                          &mut lookup)?;
+    Ok(())
+}
+
+    fn basename(f: &str) -> &str {
+        match f.rfind(|c| c == '/' || c == '\\') {
+            None => f,
+            Some(index) => &f[(index + 1)..],
+        }
+    }
+
+fn print_frame(module: &MinidumpModule, frame: SimpleFrame) {
+    print!("{}", basename(&module.code_file()));
+    if let Some(ref func) = frame.function {
+        print!("!{}", func);
+        if let (Some(ref file), Some(line)) = (frame.source_file, frame.source_line) {
+            print!(" [{} : {}", basename(file), line);
+            if let Some(line_base) = frame.source_line_base {
+                print!(" + {}", frame.instruction - line_base);
+            }
+            print!("]");
+        } else if let Some(func_base) = frame.function_base {
+            print!(" + {:#x}", frame.instruction - func_base);
+        }
+    } else {
+        print!(" + {:#x}", frame.instruction - module.base_address());
+    }
+    println!("");
+}
+
+pub fn dump_minidump_stack() -> Result<(), Error> {
+    env_logger::init();
+    let DumpStack { all, minidump, symbol_paths } =
+        DumpStack::from_args();
+    info!("Reading minidump {:?}", minidump);
+    let dump = Minidump::read_path(&minidump)?;
+    let symbolizer = handle_symbol_paths(symbol_paths)?;
+    let modules = dump.get_stream::<MinidumpModuleList>()?;
+    let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
+    let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
+    let wordsize = match sys_info.cpu {
+        CPU::X86 | CPU::PPC | CPU::Sparc | CPU::ARM => 4,
+        CPU::X86_64 | CPU::PPC64 | CPU::ARM64 => 8,
+        CPU::Unknown(u) => bail!("Unknown cpu: {:#x}", u),
+    };
+    // TODO: provide a commandline option for the address.
+    // Default to the top of the crashing stack.
+    let exception = dump.get_stream::<MinidumpException>()?;
+    let context = exception.context.as_ref().ok_or(format_err!("Missing exception context"))?;
+    let sp = context.get_stack_pointer();
+    info!("Stack pointer: {:#x}", sp);
+    let memory = memory_list.memory_at_address(sp)
+        .ok_or_else(|| format_err!("Minidump doesn't contain a memory region that contains address {:#x}", sp))?;
+    for addr in (memory.base_address..memory.base_address + memory.size).step_by(wordsize) {
+        let instruction = match wordsize {
+            4 => memory.get_memory_at_address::<u32>(addr).map(|i| i as u64),
+            8 => memory.get_memory_at_address::<u64>(addr),
+            _ => unreachable!(),
+        };
+        if let Some(instruction) = instruction {
+            if let Some(module) = modules.module_at_address(instruction) {
+                let mut frame = SimpleFrame::with_instruction(instruction);
+                symbolizer.fill_symbol(module, &mut frame);
+                if frame.function.is_some() || all {
+                    print!("{:#0width$x} ", addr, width=wordsize*2);
+                    print_frame(module, frame);
+                }
+            }
+        }
+    }
     Ok(())
 }
