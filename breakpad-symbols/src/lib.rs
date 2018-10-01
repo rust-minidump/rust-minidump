@@ -50,9 +50,9 @@ use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::fs;
-use std::io::Read;
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 pub use sym_file::SymbolFile;
 
 /// A `Module` implementation that holds arbitrary data.
@@ -206,6 +206,10 @@ pub trait SymbolSupplier {
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
 /// paths.
+///
+/// See [`relative_symbol_path`] for details on how paths are searched.
+///
+/// [`relative_symbol_path`]: fn.relative_symbol_path.html
 pub struct SimpleSymbolSupplier {
     /// Local disk paths in which to search for symbols.
     paths: Vec<PathBuf>,
@@ -236,6 +240,10 @@ impl SymbolSupplier for SimpleSymbolSupplier {
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from HTTP
 /// URLs.
+///
+/// See [`relative_symbol_path`] for details on how paths are searched.
+///
+/// [`relative_symbol_path`]: fn.relative_symbol_path.html
 pub struct HttpSymbolSupplier {
     /// HTTP Client to use for fetching symbols.
     client: Client,
@@ -243,11 +251,17 @@ pub struct HttpSymbolSupplier {
     urls: Vec<Url>,
     /// A `SimpleSymbolSupplier` to use for local symbol paths.
     local: SimpleSymbolSupplier,
+    /// A path at which to cache downloaded symbols.
+    cache: PathBuf,
 }
 
 impl HttpSymbolSupplier {
+    /// Create a new `HttpSymbolSupplier`.
+    ///
+    /// Symbols will be searched for in each of `local_paths` and `cache` first, then via HTTP
+    /// at each of `urls`. If a symbol file is found via HTTP it will be saved under `cache`.
     pub fn new(urls: Vec<String>,
-               cache_path: PathBuf,
+               cache: PathBuf,
                mut local_paths: Vec<PathBuf>) -> HttpSymbolSupplier {
         let client = Client::new();
         let urls = urls.into_iter().filter_map(|mut u| {
@@ -256,23 +270,42 @@ impl HttpSymbolSupplier {
             }
             Url::parse(&u).ok()
         }).collect();
-        local_paths.push(cache_path.clone());
+        local_paths.push(cache.clone());
         let local = SimpleSymbolSupplier::new(local_paths);
         HttpSymbolSupplier {
             client,
             urls,
             local,
+            cache,
         }
     }
 }
 
-fn fetch_symbol_file(client: &Client, base_url: &Url, rel_path: &str) -> Result<Vec<u8>, Error>
+/// Save the data in `contents` to `path`.
+fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
+    let base = path.parent().ok_or(io::Error::new(io::ErrorKind::Other,
+                                                  format!("Bad cache path: {:?}", path)))?;
+    fs::create_dir_all(&base)?;
+    let mut f = File::create(path)?;
+    f.write_all(contents)?;
+    Ok(())
+}
+
+/// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
+/// save the file contents under `cache` + `rel_path` and also return them.
+fn fetch_symbol_file(client: &Client, base_url: &Url, rel_path: &str,
+                     cache: &Path) -> Result<Vec<u8>, Error>
 {
     let url = base_url.join(&rel_path)?;
     debug!("Trying {}", url);
     let mut res = client.get(url).send()?.error_for_status()?;
     let mut buf = vec![];
     res.read_to_end(&mut buf)?;
+    let local = cache.join(rel_path);
+    match save_contents(&buf, &local) {
+        Ok(_) => {}
+        Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),
+    }
     Ok(buf)
 }
 
@@ -284,7 +317,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
             SymbolResult::NotFound => {
                 if let Some(rel_path) = relative_symbol_path(module, "sym") {
                     for ref url in self.urls.iter() {
-                        match fetch_symbol_file(&self.client, url, &rel_path) {
+                        match fetch_symbol_file(&self.client, url, &rel_path, &self.cache) {
                             Ok(buf) => {
                                 return SymbolFile::from_bytes(&buf)
                                     .and_then(|s| Ok(SymbolResult::Ok(s)))
