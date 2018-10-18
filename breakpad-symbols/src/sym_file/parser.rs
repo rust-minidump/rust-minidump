@@ -2,8 +2,10 @@
 // file at the top-level directory of this distribution.
 
 use failure::Error;
+use minidump_common::traits::IntoRangeMapSafe;
 use nom::*;
 use nom::IResult::*;
+use range_map::Range;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
@@ -13,9 +15,7 @@ use std::str;
 use std::str::FromStr;
 
 use sym_file::types::*;
-use range_map::Range;
-#[cfg(test)]
-use range_map::RangeMap;
+
 
 enum Line<'a> {
     Info,
@@ -152,7 +152,7 @@ named!(func_lines<&[u8], Function>,
                           None
                       }
                   })
-                  .collect(),
+                  .into_rangemap_safe(),
           }
       }
       ));
@@ -325,19 +325,19 @@ fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     SymbolFile {
         files: files,
         publics: publics,
-        functions: funcs.into_iter().map(|f| (f.memory_range(), f)).collect(),
+        functions: funcs.into_iter().map(|f| (f.memory_range(), f)).into_rangemap_safe(),
         cfi_stack_info: stack_cfi
             .into_iter()
             .map(|s| (s.memory_range(), s))
-            .collect(),
+            .into_rangemap_safe(),
         win_stack_framedata_info: stack_win_framedata
             .into_iter()
             .map(|s| (s.memory_range(), s))
-            .collect(),
+            .into_rangemap_safe(),
         win_stack_fpo_info: stack_win_fpo
             .into_iter()
             .map(|s| (s.memory_range(), s))
-            .collect(),
+            .into_rangemap_safe(),
     }
 }
 
@@ -439,6 +439,7 @@ fn test_public_line() {
 
 #[test]
 fn test_func_lines_no_lines() {
+    use range_map::RangeMap;
     let line = b"FUNC c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&, void**) const\n";
     let rest = &b""[..];
     assert_eq!(
@@ -832,6 +833,76 @@ STACK CFI INIT f00f f0 more init rules
             ],
         }
     );
+}
+
+/// Test that parsing a symbol file with overlapping FUNC/line data works.
+#[test]
+fn test_parse_with_overlap() {
+    //TODO: deal with duplicate PUBLIC records? Not as important since they don't go
+    // into a RangeMap.
+    let bytes = b"MODULE Linux x86 D3096ED481217FD4C16B29CD9BC208BA0 firefox-bin
+FILE 0 foo.c
+PUBLIC abcd 10 func 1
+PUBLIC ff00 3 func 2
+FUNC 1000 30 10 some func
+1000 10 42 0
+1000 10 43 0
+1001 10 44 0
+1001 5 45 0
+1010 10 52 0
+FUNC 1000 30 10 some func overlap exact
+FUNC 1001 30 10 some func overlap end
+FUNC 1001 10 10 some func overlap contained
+";
+    let sym = parse_symbol_bytes(&bytes[..]).unwrap();
+    assert_eq!(sym.publics.len(), 2);
+    {
+        let p = &sym.publics[0];
+        assert_eq!(p.address, 0xabcd);
+        assert_eq!(p.parameter_size, 0x10);
+        assert_eq!(p.name, "func 1".to_string());
+    }
+    {
+        let p = &sym.publics[1];
+        assert_eq!(p.address, 0xff00);
+        assert_eq!(p.parameter_size, 0x3);
+        assert_eq!(p.name, "func 2".to_string());
+    }
+    assert_eq!(sym.functions.ranges_values().count(), 1);
+    let funcs = sym.functions
+        .ranges_values()
+        .map(|&(_, ref f)| f)
+        .collect::<Vec<_>>();
+    {
+        let f = &funcs[0];
+        assert_eq!(f.address, 0x1000);
+        assert_eq!(f.size, 0x30);
+        assert_eq!(f.parameter_size, 0x10);
+        assert_eq!(f.name, "some func".to_string());
+                assert_eq!(
+            f.lines.ranges_values().collect::<Vec<_>>(),
+            vec![
+                &(
+                    Range::new(0x1000, 0x100F),
+                    SourceLine {
+                        address: 0x1000,
+                        size: 0x10,
+                        file: 0,
+                        line: 42,
+                    },
+                ),
+                &(
+                    Range::new(0x1010, 0x101F),
+                    SourceLine {
+                        address: 0x1010,
+                        size: 0x10,
+                        file: 0,
+                        line: 52,
+                    },
+                ),
+            ]
+        );
+    }
 }
 
 #[test]

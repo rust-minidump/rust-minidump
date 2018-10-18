@@ -1,4 +1,8 @@
 use std::borrow::Cow;
+use std::cmp;
+use std::fmt::Debug;
+
+use range_map::{Range, RangeMap};
 
 /// An executable or shared library loaded in a process.
 pub trait Module {
@@ -57,3 +61,42 @@ impl<'a> Module for (&'a str, &'a str) {
         None
     }
 }
+
+/// This trait exists to allow creating `RangeMap`s from possibly-overlapping input data.
+///
+/// The `RangeMap` struct will panic if you attempt to initialize it with overlapping data,
+/// and we deal with many sources of untrusted input data that could run afoul of this.
+/// [Upstream issue](https://github.com/jneem/range-map/issues/1)
+pub trait IntoRangeMapSafe<V>: IntoIterator<Item=(Range<u64>, V)> + Sized
+    where V: Clone + Debug + Eq,
+{
+    fn into_rangemap_safe(self) -> RangeMap<u64, V> {
+        let mut input: Vec<_> = self.into_iter().collect();
+        input.sort_by_key(|x| x.0);
+        let mut vec: Vec<(Range<u64>, V)> = Vec::with_capacity(input.len());
+        for (range, val) in input.into_iter() {
+            if let Some(&mut (ref mut last_range, ref last_val)) = vec.last_mut() {
+                if range.start <= last_range.end && &val != last_val {
+                    //TODO: add a way for callers to do custom logging here? Perhaps
+                    // a callback function?
+                    warn!("overlapping ranges {:?} and {:?} map to values {:?} and {:?}",
+                          last_range, range, last_val, val);
+                    continue;
+                }
+
+                if range.start <= last_range.end.saturating_add(1) && &val == last_val {
+                    last_range.end = cmp::max(range.end, last_range.end);
+                    continue;
+                }
+            }
+
+            vec.push((range, val));
+        }
+        RangeMap::from_sorted_vec(vec)
+    }
+}
+
+impl<I, V> IntoRangeMapSafe<V> for I
+    where I: IntoIterator<Item=(Range<u64>, V)> + Sized,
+          V: Clone + Debug + Eq,
+{}

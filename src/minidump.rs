@@ -23,7 +23,7 @@ use std::path::Path;
 use std::str;
 
 pub use context::*;
-use minidump_common::traits::Module;
+use minidump_common::traits::{IntoRangeMapSafe, Module};
 use minidump_common::format as md;
 use range_map::{Range, RangeMap};
 use system_info::*;
@@ -704,23 +704,11 @@ impl MinidumpModuleList {
     }
     /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
     pub fn from_modules(modules: Vec<MinidumpModule>) -> MinidumpModuleList {
-        let map = {
-            let mut mapped_modules: Vec<(Range<u64>, usize)> = vec![];
-            for (i, module) in modules.iter().enumerate() {
-                let this = module.memory_range();
-                if let Some(&(last, _)) = mapped_modules.last() {
-                    // Skip overlapping modules.
-                    if last.intersects(&this) {
-                        continue;
-                    }
-                }
-                mapped_modules.push((this, i));
-            }
-            mapped_modules.into_iter().map(|(r, i)| (r, i)).collect()
-        };
+        let modules_by_addr = modules.iter().enumerate()
+            .map(|(i, module)| (module.memory_range(), i)).into_rangemap_safe();
         MinidumpModuleList {
-            modules: modules,
-            modules_by_addr: map,
+            modules,
+            modules_by_addr,
         }
     }
 
@@ -890,23 +878,11 @@ impl<'a> MinidumpMemoryList<'a> {
 
     /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
     pub fn from_regions(regions: Vec<MinidumpMemory<'a>>) -> MinidumpMemoryList<'a> {
-        let map = {
-            let mut mapped_regions: Vec<(Range<u64>, usize)> = vec![];
-            for (i, region) in regions.iter().enumerate() {
-                let this = region.memory_range();
-                if let Some(&(last, _)) = mapped_regions.last() {
-                    // Skip overlapping memory regions.
-                    if last.intersects(&this) {
-                        continue;
-                    }
-                }
-                mapped_regions.push((this, i));
-            }
-            mapped_regions.into_iter().map(|(r, i)| (r, i)).collect()
-        };
+        let regions_by_addr = regions.iter().enumerate()
+            .map(|(i, region)| (region.memory_range(), i)).into_rangemap_safe();
         MinidumpMemoryList {
             regions,
-            regions_by_addr: map,
+            regions_by_addr,
         }
     }
 
@@ -1762,6 +1738,109 @@ mod test {
     }
 
     #[test]
+    fn test_module_list_overlap() {
+        let name1 = DumpString::new("module 1", Endian::Little);
+        let name2 = DumpString::new("module 2", Endian::Little);
+        let name3 = DumpString::new("module 3", Endian::Little);
+        let name4 = DumpString::new("module 4", Endian::Little);
+        let name5 = DumpString::new("module 5", Endian::Little);
+        let cv_record = Section::with_endian(Endian::Little)
+            .D32(md::MD_CVINFOPDB70_SIGNATURE)  // signature
+            // signature, a MDGUID
+            .D32(0xabcd1234)
+            .D16(0xf00d)
+            .D16(0xbeef)
+            .append_bytes(b"\x01\x02\x03\x04\x05\x06\x07\x08")
+            .D32(1) // age
+            .append_bytes(b"c:\\foo\\file.pdb\0"); // pdb_file_name
+        let module1 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name1,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record);
+        // module2 overlaps module1 exactly
+        let module2 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name2,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record);
+        // module3 overlaps module1 partially
+        let module3 = SynthModule::new(
+            Endian::Little,
+            0x100000001,
+            0x4000,
+            &name3,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record);
+        // module4 is fully contained within module1
+        let module4 = SynthModule::new(
+            Endian::Little,
+            0x100000001,
+            0x3000,
+            &name4,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record);
+        // module5 is cool, though.
+        let module5 = SynthModule::new(
+            Endian::Little,
+            0x100004000,
+            0x4000,
+            &name5,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        ).cv_record(&cv_record);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module1)
+            .add_module(module2)
+            .add_module(module3)
+            .add_module(module4)
+            .add_module(module5)
+            .add(name1)
+            .add(name2)
+            .add(name3)
+            .add(name4)
+            .add(name5)
+            .add(cv_record);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 5);
+        assert_eq!(modules[0].base_address(), 0x100000000);
+        assert_eq!(modules[0].size(), 0x4000);
+        assert_eq!(modules[0].code_file(), "module 1");
+        assert_eq!(modules[1].base_address(), 0x100000000);
+        assert_eq!(modules[1].size(), 0x4000);
+        assert_eq!(modules[1].code_file(), "module 2");
+        assert_eq!(modules[2].base_address(), 0x100000001);
+        assert_eq!(modules[2].size(), 0x4000);
+        assert_eq!(modules[2].code_file(), "module 3");
+        assert_eq!(modules[3].base_address(), 0x100000001);
+        assert_eq!(modules[3].size(), 0x3000);
+        assert_eq!(modules[3].code_file(), "module 4");
+        assert_eq!(modules[4].base_address(), 0x100004000);
+        assert_eq!(modules[4].size(), 0x4000);
+        assert_eq!(modules[4].code_file(), "module 5");
+
+        // module_at_address should discard overlapping modules.
+        assert_eq!(module_list.by_addr().collect::<Vec<_>>().len(), 2);
+        assert_eq!(module_list.module_at_address(0x100001000).unwrap().code_file(), "module 1");
+        assert_eq!(module_list.module_at_address(0x100005000).unwrap().code_file(), "module 5");
+    }
+
+    #[test]
     fn test_memory_list() {
         const CONTENTS: &'static [u8] = b"memory_contents";
         let memory = Memory::with_section(
@@ -1776,6 +1855,65 @@ mod test {
         assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
         assert_eq!(regions[0].size, CONTENTS.len() as u64);
         assert_eq!(&regions[0].bytes, &CONTENTS);
+    }
+
+    #[test]
+    fn test_memory_list_overlap() {
+        let memory1 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+            0x1000,
+        );
+        // memory2 overlaps memory1 exactly
+        let memory2 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(1, 0x1000),
+            0x1000,
+        );
+        // memory3 overlaps memory1 partially
+        let memory3 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(2, 0x1000),
+            0x1001,
+        );
+        // memory4 is fully contained within memory1
+        let memory4 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(3, 0x100),
+            0x1001,
+        );
+        // memory5 is cool, though.
+        let memory5 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(4, 0x1000),
+            0x2000,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_memory(memory1)
+            .add_memory(memory2)
+            .add_memory(memory3)
+            .add_memory(memory4)
+            .add_memory(memory5);
+        let dump = read_synth_dump(dump).unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap();
+        let regions = memory_list.iter().collect::<Vec<_>>();
+        assert_eq!(regions.len(), 5);
+        assert_eq!(regions[0].base_address, 0x1000);
+        assert_eq!(regions[0].size, 0x1000);
+        assert_eq!(regions[1].base_address, 0x1000);
+        assert_eq!(regions[1].size, 0x1000);
+        assert_eq!(regions[2].base_address, 0x1001);
+        assert_eq!(regions[2].size, 0x1000);
+        assert_eq!(regions[3].base_address, 0x1001);
+        assert_eq!(regions[3].size, 0x100);
+        assert_eq!(regions[4].base_address, 0x2000);
+        assert_eq!(regions[4].size, 0x1000);
+
+        // memory_at_address should discard overlapping regions.
+        assert_eq!(memory_list.by_addr().collect::<Vec<_>>().len(), 2);
+        let m1 = memory_list.memory_at_address(0x1a00).unwrap();
+        assert_eq!(m1.base_address, 0x1000);
+        assert_eq!(m1.size, 0x1000);
+        assert_eq!(m1.bytes, &[0u8; 0x1000][..]);
+        let m2 = memory_list.memory_at_address(0x2a00).unwrap();
+        assert_eq!(m2.base_address, 0x2000);
+        assert_eq!(m2.size, 0x1000);
+        assert_eq!(m2.bytes, &[4u8; 0x1000][..]);
     }
 
     #[test]

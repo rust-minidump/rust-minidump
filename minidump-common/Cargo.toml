@@ -14,5 +14,7 @@ travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
 libc = "0.2.34"
+log = "0.4.1"
+range-map = "0.1.5"
 scroll = { version = "0.9.0", features = ["derive"] }
 smart-default = "0.2.0"
