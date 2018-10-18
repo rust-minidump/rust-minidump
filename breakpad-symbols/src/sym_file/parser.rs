@@ -84,6 +84,7 @@ named!(file_line<&[u8], (u32, &str)>,
 named!(public_line<&[u8], PublicSymbol>,
   chain!(
     tag!("PUBLIC") ~
+    preceded!(space, tag!("m"))? ~
     space ~
     address: hex_str_u64 ~
     space ~
@@ -432,6 +433,23 @@ fn test_file_line_spaces() {
 #[test]
 fn test_public_line() {
     let line = b"PUBLIC f00d d00d some func\n";
+    let rest = &b""[..];
+    assert_eq!(
+        public_line(line),
+        Done(
+            rest,
+            PublicSymbol {
+                address: 0xf00d,
+                parameter_size: 0xd00d,
+                name: "some func".to_string(),
+            }
+        )
+    );
+}
+
+#[test]
+fn test_public_with_m() {
+    let line = b"PUBLIC m f00d d00d some func\n";
     let rest = &b""[..];
     assert_eq!(
         public_line(line),
