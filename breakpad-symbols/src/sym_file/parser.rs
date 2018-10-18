@@ -27,7 +27,7 @@ enum Line<'a> {
 }
 
 // Nom's `eol` doesn't use complete! so it will return Incomplete.
-named!(my_eol<char>, alt!(complete!(crlf) | newline));
+named!(my_eol<char>, complete!(preceded!(many0!(char!('\r')), char!('\n'))));
 
 /// Match a hex string, parse it to a u64.
 named!(hex_str_u64<&[u8], u64>,
@@ -386,6 +386,15 @@ fn test_module_line() {
 #[test]
 fn test_module_line_filename_spaces() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox x y z\n";
+    let rest = &b""[..];
+    assert_eq!(module_line(line), Done(rest, ()));
+}
+
+/// Sometimes dump_syms on Windows does weird things and produces multiple carriage returns
+/// before the line feed.
+#[test]
+fn test_module_line_crcrlf() {
+    let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox\r\r\n";
     let rest = &b""[..];
     assert_eq!(module_line(line), Done(rest, ()));
 }
