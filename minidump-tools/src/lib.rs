@@ -249,7 +249,11 @@ fn print_frame(module: &MinidumpModule, frame: SimpleFrame) {
     if let Some(ref func) = frame.function {
         print!("!{}", func);
         if let (Some(ref file), Some(line)) = (frame.source_file, frame.source_line) {
-            print!(" [{} : {}", basename(file), line);
+            print!(" [");
+            match parse_vcs_info(file) {
+                Ok(info) => print!("{}", info.annotate_url(line as u64)),
+                _ => print!("{} : {}", basename(file), line),
+            }
             if let Some(line_base) = frame.source_line_base {
                 print!(" + {}", frame.instruction - line_base);
             }
