@@ -33,6 +33,7 @@ extern crate failure;
 #[macro_use]
 extern crate log;
 extern crate minidump_common;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate nom;
 extern crate range_map;

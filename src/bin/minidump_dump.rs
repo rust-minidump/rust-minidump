@@ -15,7 +15,7 @@ const USAGE: &'static str = "Usage: minidump_dump <minidump>";
 
 macro_rules! streams {
     ( $( $x:ident ),* ) => {
-        &[$( ( minidump_common::format::$x, stringify!($x) ) ),*]
+        &[$( ( minidump_common::format::MINIDUMP_STREAM_TYPE::$x, stringify!($x) ) ),*]
     };
 }
 
@@ -61,12 +61,12 @@ fn print_minidump_dump(path: &Path) {
             }
             // TODO: MemoryInfoList
             for &(stream, name) in streams!(
-                MD_LINUX_CMD_LINE,
-                MD_LINUX_ENVIRON,
-                MD_LINUX_LSB_RELEASE,
-                MD_LINUX_PROC_STATUS,
-                MD_LINUX_CPU_INFO,
-                MD_LINUX_MAPS
+                LinuxCmdLine,
+                LinuxEnviron,
+                LinuxLsbRelease,
+                LinuxProcStatus,
+                LinuxCpuInfo,
+                LinuxMaps
             ) {
                 if let Ok(contents) = dump.get_raw_stream(stream) {
                     print_raw_stream(name, contents, stdout).unwrap();

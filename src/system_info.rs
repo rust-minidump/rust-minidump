@@ -3,22 +3,21 @@
 
 //! Information about the system that produced a `Minidump`.
 
+use num_traits::FromPrimitive;
 use std::borrow::Cow;
 use std::fmt;
 
 use minidump_common::format as md;
+use minidump_common::format::PlatformId;
+use minidump_common::format::ProcessorArchitecture::*;
 
-/// Derive an enum value from a primitive.
-pub trait EnumFromPrimitive {
-    /// Given a primitive value `u`, produce an enum value.
-    fn from_u32(u: u32) -> Self;
-}
-
-/// Known operating systems.
+/// Known operating systems
+///
+/// This is a slightly nicer layer over the `PlatformId` enum defined in the minidump-common crate.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum OS {
+pub enum Os {
     Windows,
-    MacOSX,
+    MacOs,
     Ios,
     Linux,
     Solaris,
@@ -28,102 +27,106 @@ pub enum OS {
     Unknown(u32),
 }
 
-/// Known CPU types.
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum CPU {
-    X86,
-    X86_64,
-    PPC,
-    PPC64,
-    Sparc,
-    ARM,
-    ARM64,
-    Unknown(u32),
-}
+impl Os {
+    /// Get an `Os` value matching the `platform_id` value from `MINIDUMP_SYSTEM_INFO`
+    pub fn from_platform_id(id: u32) -> Os {
+        match PlatformId::from_u32(id) {
+            Some(PlatformId::VER_PLATFORM_WIN32_WINDOWS)
+                | Some(PlatformId::VER_PLATFORM_WIN32_NT) => Os::Windows,
+            Some(PlatformId::MacOs) => Os::MacOs,
+            Some(PlatformId::Ios) => Os::Ios,
+            Some(PlatformId::Linux) => Os::Linux,
+            Some(PlatformId::Solaris) => Os::Solaris,
+            Some(PlatformId::Android) => Os::Android,
+            Some(PlatformId::Ps3) => Os::Ps3,
+            Some(PlatformId::NaCl) => Os::NaCl,
+            _ => Os::Unknown(id),
+        }
+    }
 
-impl OS {
-    /// Get a human-readable friendly name for an `OS`.
+    /// Get a human-readable friendly name for an `Os`
     pub fn long_name(&self) -> Cow<str> {
         match *self {
-            OS::Windows => Cow::Borrowed("Windows"),
-            OS::MacOSX => Cow::Borrowed("Mac OS X"),
-            OS::Ios => Cow::Borrowed("iOS"),
-            OS::Linux => Cow::Borrowed("Linux"),
-            OS::Solaris => Cow::Borrowed("Solaris"),
-            OS::Android => Cow::Borrowed("Android"),
-            OS::Ps3 => Cow::Borrowed("PS3"),
-            OS::NaCl => Cow::Borrowed("NaCl"),
-            OS::Unknown(val) => Cow::Owned(format!("{:#08x}", val)),
+            Os::Windows => Cow::Borrowed("Windows"),
+            Os::MacOs => Cow::Borrowed("Mac OS X"),
+            Os::Ios => Cow::Borrowed("iOS"),
+            Os::Linux => Cow::Borrowed("Linux"),
+            Os::Solaris => Cow::Borrowed("Solaris"),
+            Os::Android => Cow::Borrowed("Android"),
+            Os::Ps3 => Cow::Borrowed("PS3"),
+            Os::NaCl => Cow::Borrowed("NaCl"),
+            Os::Unknown(val) => Cow::Owned(format!("{:#08x}", val)),
         }
     }
 }
 
-impl EnumFromPrimitive for OS {
-    fn from_u32(u: u32) -> OS {
-        match u {
-            md::MD_OS_WIN32_NT | md::MD_OS_WIN32_WINDOWS => OS::Windows,
-            md::MD_OS_MAC_OS_X => OS::MacOSX,
-            md::MD_OS_IOS => OS::Ios,
-            md::MD_OS_LINUX => OS::Linux,
-            md::MD_OS_SOLARIS => OS::Solaris,
-            md::MD_OS_ANDROID => OS::Android,
-            md::MD_OS_PS3 => OS::Ps3,
-            md::MD_OS_NACL => OS::NaCl,
-            _ => OS::Unknown(u),
-        }
-    }
-}
-
-impl fmt::Display for OS {
+impl fmt::Display for Os {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match *self {
-                OS::Windows => "windows",
-                OS::MacOSX => "mac",
-                OS::Ios => "ios",
-                OS::Linux => "linux",
-                OS::Solaris => "solaris",
-                OS::Android => "android",
-                OS::Ps3 => "ps3",
-                OS::NaCl => "nacl",
-                OS::Unknown(_) => "unknown",
+                Os::Windows => "windows",
+                Os::MacOs => "mac",
+                Os::Ios => "ios",
+                Os::Linux => "linux",
+                Os::Solaris => "solaris",
+                Os::Android => "android",
+                Os::Ps3 => "ps3",
+                Os::NaCl => "nacl",
+                Os::Unknown(_) => "unknown",
             }
         )
     }
 }
 
-impl EnumFromPrimitive for CPU {
-    fn from_u32(u: u32) -> CPU {
-        match u {
-            md::MD_CPU_ARCHITECTURE_X86 | md::MD_CPU_ARCHITECTURE_X86_WIN64 => CPU::X86,
-            md::MD_CPU_ARCHITECTURE_AMD64 => CPU::X86_64,
-            md::MD_CPU_ARCHITECTURE_PPC => CPU::PPC,
-            md::MD_CPU_ARCHITECTURE_PPC64 => CPU::PPC64,
-            md::MD_CPU_ARCHITECTURE_SPARC => CPU::Sparc,
-            md::MD_CPU_ARCHITECTURE_ARM => CPU::ARM,
-            md::MD_CPU_ARCHITECTURE_ARM64 => CPU::ARM64,
-            _ => CPU::Unknown(u),
+/// Known CPU types
+///
+/// This is a slightly nicer layer over the `ProcessorArchitecture` enum defined in
+/// the minidump-common crate.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Cpu {
+    X86,
+    X86_64,
+    Ppc,
+    Ppc64,
+    Sparc,
+    Arm,
+    Arm64,
+    Unknown(u16),
+}
+
+impl Cpu {
+    /// Get a `Cpu` value matching the `processor_architecture` value from `MINIDUMP_SYSTEM_INFO`
+    pub fn from_processor_architecture(arch: u16) -> Cpu {
+        match md::ProcessorArchitecture::from_u16(arch) {
+            Some(PROCESSOR_ARCHITECTURE_INTEL) | Some(PROCESSOR_ARCHITECTURE_IA32_ON_WIN64) =>
+                Cpu::X86,
+            Some(PROCESSOR_ARCHITECTURE_AMD64) => Cpu::X86_64,
+            Some(PROCESSOR_ARCHITECTURE_PPC) => Cpu::Ppc,
+            Some(PROCESSOR_ARCHITECTURE_PPC64) => Cpu::Ppc64,
+            Some(PROCESSOR_ARCHITECTURE_SPARC) => Cpu::Sparc,
+            Some(PROCESSOR_ARCHITECTURE_ARM) => Cpu::Arm,
+            Some(PROCESSOR_ARCHITECTURE_ARM64) => Cpu::Arm64,
+            _ => Cpu::Unknown(arch),
         }
     }
 }
 
-impl fmt::Display for CPU {
+impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match *self {
-                CPU::X86 => "x86",
-                CPU::X86_64 => "x86-64",
-                CPU::PPC => "ppc",
-                CPU::PPC64 => "ppc64",
-                CPU::Sparc => "sparc",
-                CPU::ARM => "arm",
-                CPU::ARM64 => "arm64",
-                CPU::Unknown(_) => "unknown",
+                Cpu::X86 => "x86",
+                Cpu::X86_64 => "x86-64",
+                Cpu::Ppc => "ppc",
+                Cpu::Ppc64 => "ppc64",
+                Cpu::Sparc => "sparc",
+                Cpu::Arm => "arm",
+                Cpu::Arm64 => "arm64",
+                Cpu::Unknown(_) => "unknown",
             }
         )
     }

@@ -37,13 +37,13 @@ pub trait DumpSection: Into<Section> {
 }
 
 trait CiteLocation {
-    /// Append an `MDLocationDescriptor` to `section` referring to this section.
+    /// Append an `MINIDUMP_LOCATION_DESCRIPTOR` to `section` referring to this section.
     fn cite_location_in(&self, section: Section) -> Section;
 }
 
 impl<T: DumpSection> CiteLocation for T {
     fn cite_location_in(&self, section: Section) -> Section {
-        // An MDLocationDescriptor is just a 32-bit size + 32-bit offset.
+        // An MINIDUMP_LOCATION_DESCRIPTOR is just a 32-bit size + 32-bit offset.
         section.D32(&self.file_size()).D32(&self.file_offset())
     }
 }
@@ -86,15 +86,15 @@ impl SynthMinidump {
         let stream_count_label = Label::new();
         let stream_directory_rva = Label::new();
         let section = Section::with_endian(endian)
-            .D32(md::MD_HEADER_SIGNATURE)
-            .D32(md::MD_HEADER_VERSION)
+            .D32(md::MINIDUMP_SIGNATURE)
+            .D32(md::MINIDUMP_VERSION)
             .D32(&stream_count_label)
             .D32(&stream_directory_rva)
             .D32(0)
             .D32(1262805309) // date_time_stamp, arbitrary
             .D64(&flags);
         section.start().set_const(0);
-        assert_eq!(section.size(), mem::size_of::<md::MDRawHeader>() as u64);
+        assert_eq!(section.size(), mem::size_of::<md::MINIDUMP_HEADER>() as u64);
 
         SynthMinidump {
             section: section,
@@ -103,8 +103,8 @@ impl SynthMinidump {
             stream_count_label: stream_count_label,
             stream_directory_rva: stream_directory_rva,
             stream_directory: Section::with_endian(endian),
-            module_list: Some(List::new(md::MD_MODULE_LIST_STREAM, endian)),
-            memory_list: Some(List::new(md::MD_MEMORY_LIST_STREAM, endian)),
+            module_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::ModuleListStream, endian)),
+            memory_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::MemoryListStream, endian)),
         }
     }
 
@@ -131,7 +131,7 @@ impl SynthMinidump {
 
     /// Add `memory` to `self`, adding it to the memory list stream as well.
     pub fn add_memory(mut self, memory: Memory) -> SynthMinidump {
-        // The memory list contains `MDMemoryDescriptor`s, so create one here.
+        // The memory list contains `MINIDUMP_MEMORY_DESCRIPTOR`s, so create one here.
         let descriptor = memory.cite_memory_in(Section::with_endian(self.section.endian));
         // And append that descriptor to the memory list.
         self.memory_list = self.memory_list
@@ -249,10 +249,10 @@ pub struct List<T: DumpSection> {
 }
 
 impl<T: DumpSection> List<T> {
-    pub fn new(stream_type: u32, endian: Endian) -> List<T> {
+    pub fn new<S: Into<u32>>(stream_type: S, endian: Endian) -> List<T> {
         let count_label = Label::new();
         List {
-            stream_type: stream_type,
+            stream_type: stream_type.into(),
             section: Section::with_endian(endian).D32(&count_label),
             count_label: count_label,
             count: 0,
@@ -296,7 +296,7 @@ impl<T: DumpSection> Stream for List<T> {
     }
 }
 
-/// An `MDString`, a UTF-16 string preceded by a 4-byte length.
+/// An `MINIDUMP_STRING`, a UTF-16 string preceded by a 4-byte length.
 pub struct DumpString {
     section: Section,
 }
@@ -321,18 +321,18 @@ impl Into<Section> for DumpString {
 impl_dumpsection!(DumpString);
 
 /// A fixed set of version info to use for tests.
-pub const STOCK_VERSION_INFO: md::MDVSFixedFileInfo = md::MDVSFixedFileInfo {
-    signature: md::MD_VSFIXEDFILEINFO_SIGNATURE,
-    struct_version: md::MD_VSFIXEDFILEINFO_VERSION,
+pub const STOCK_VERSION_INFO: md::VS_FIXEDFILEINFO = md::VS_FIXEDFILEINFO {
+    signature: md::VS_FFI_SIGNATURE as u32,
+    struct_version: md::VS_FFI_STRUCVERSION as u32,
     file_version_hi: 0x11111111,
     file_version_lo: 0x22222222,
     product_version_hi: 0x33333333,
     product_version_lo: 0x44444444,
-    file_flags_mask: md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
-    file_flags: md::MD_VSFIXEDFILEINFO_FILE_FLAGS_DEBUG,
-    file_os: md::MD_VSFIXEDFILEINFO_FILE_OS_NT | md::MD_VSFIXEDFILEINFO_FILE_OS__WINDOWS32,
-    file_type: md::MD_VSFIXEDFILEINFO_FILE_TYPE_APP,
-    file_subtype: md::MD_VSFIXEDFILEINFO_FILE_SUBTYPE_UNKNOWN,
+    file_flags_mask: 1,
+    file_flags: 1,
+    file_os: 0x40004,
+    file_type: 1,
+    file_subtype: 0,
     file_date_hi: 0,
     file_date_lo: 0,
 };
@@ -345,7 +345,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new<'a, T: Into<Option<&'a md::MDVSFixedFileInfo>>>(
+    pub fn new<'a, T: Into<Option<&'a md::VS_FIXEDFILEINFO>>>(
         endian: Endian,
         base_of_image: u64,
         size_of_image: u32,
@@ -428,7 +428,7 @@ impl Memory {
         }
     }
 
-    // Append an `MDMemoryDescriptor` referring to this memory range to `section`.
+    // Append an `MINIDUMP_MEMORY_DESCRIPTOR` referring to this memory range to `section`.
     pub fn cite_memory_in(&self, section: Section) -> Section {
         let section = section.D64(self.address);
         self.cite_location_in(section)
@@ -443,7 +443,7 @@ impl Into<Section> for Memory {
     }
 }
 
-/// MDRawMiscInfo stream.
+/// MINIDUMP_MISC_INFO stream.
 pub struct MiscStream {
     /// The stream's contents.
     section: Section,
@@ -475,15 +475,15 @@ impl Into<Section> for MiscStream {
         } = self;
         let flags_label = Label::new();
         let section = section.D32(&flags_label);
-        let mut flags = 0;
+        let mut flags = md::MiscInfoFlags::empty();
         let section = section.D32(if let Some(pid) = process_id {
-            flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_ID;
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESS_ID;
             pid
         } else {
             0
         });
         let section = if let Some(time) = process_create_time {
-            flags = flags | md::MD_MISCINFO_FLAGS1_PROCESS_TIMES;
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESS_TIMES;
             section.D32(time)
                 // user_time
                 .D32(0)
@@ -492,7 +492,7 @@ impl Into<Section> for MiscStream {
         } else {
             section.D32(0).D32(0).D32(0)
         };
-        flags_label.set_const(flags as u64);
+        flags_label.set_const(flags.bits() as u64);
         // Pad to final size, if necessary.
         if let Some(size) = pad_to_size {
             let size = (size as u64 - section.size()) as usize;
@@ -507,7 +507,7 @@ impl_dumpsection!(MiscStream);
 
 impl Stream for MiscStream {
     fn stream_type(&self) -> u32 {
-        md::MD_MISC_INFO_STREAM
+        md::MINIDUMP_STREAM_TYPE::MiscInfoStream as u32
     }
 }
 
@@ -565,7 +565,7 @@ fn test_dump_string() {
     let contents = dump.add(s).finish().unwrap();
     // Skip over the header
     assert_eq!(
-        &contents[mem::size_of::<md::MDRawHeader>()..],
+        &contents[mem::size_of::<md::MINIDUMP_HEADER>()..],
         &[0xa, 0x0, 0x0, 0x0, // length
                  b'h', 0x0, b'e', 0x0, b'l', 0x0, b'l', 0x0, b'o', 0x0]
     );
@@ -574,12 +574,12 @@ fn test_dump_string() {
 #[test]
 fn test_list() {
     // Empty list
-    let list = List::<DumpString>::new(0x11223344, Endian::Little);
+    let list = List::<DumpString>::new(0x11223344u32, Endian::Little);
     assert_eq!(
         Into::<Section>::into(list).get_contents().unwrap(),
         vec![0, 0, 0, 0]
     );
-    let list = List::new(0x11223344, Endian::Little)
+    let list = List::new(0x11223344u32, Endian::Little)
         .add(DumpString::new("a", Endian::Little))
         .add(DumpString::new("b", Endian::Little));
     assert_eq!(
@@ -597,7 +597,7 @@ fn test_list() {
 #[test]
 fn test_simple_stream() {
     let section = Section::with_endian(Endian::Little).D32(0x55667788);
-    let stream_rva = mem::size_of::<md::MDRawHeader>() as u8;
+    let stream_rva = mem::size_of::<md::MINIDUMP_HEADER>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
     let dump = SynthMinidump::with_endian(Endian::Little)
         .flags(0x9f738b33685cc84c)
@@ -665,7 +665,7 @@ fn test_simple_stream() {
 #[test]
 fn test_simple_stream_bigendian() {
     let section = Section::with_endian(Endian::Big).D32(0x55667788);
-    let stream_rva = mem::size_of::<md::MDRawHeader>() as u8;
+    let stream_rva = mem::size_of::<md::MINIDUMP_HEADER>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
     let dump = SynthMinidump::with_endian(Endian::Big)
         .flags(0x9f738b33685cc84c)

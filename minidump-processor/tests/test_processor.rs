@@ -10,7 +10,7 @@ extern crate minidump_processor;
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use std::path::{Path, PathBuf};
 use minidump::*;
-use minidump::system_info::{CPU, OS};
+use minidump::system_info::{Cpu, Os};
 use minidump_processor::{CallStackInfo, FrameTrust};
 
 fn locate_testdata() -> PathBuf {
@@ -51,11 +51,11 @@ fn test_processor() {
         &dump,
         &Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
     ).unwrap();
-    assert_eq!(state.system_info.os, OS::Windows);
+    assert_eq!(state.system_info.os, Os::Windows);
     // TODO
     // assert_eq!(state.system_info.os_version.unwrap(),
     // "5.1.2600 Service Pack 2");
-    assert_eq!(state.system_info.cpu, CPU::X86);
+    assert_eq!(state.system_info.cpu, Cpu::X86);
     // TODO:
     // assert_eq!(state.system_info.cpu_info.unwrap(),
     // "GenuineIntel family 6 model 13 stepping 8");

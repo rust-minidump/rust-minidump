@@ -6,15 +6,17 @@ extern crate failure;
 extern crate memmap;
 extern crate minidump;
 extern crate minidump_common;
+extern crate num_traits;
 
 use chrono::prelude::*;
 use memmap::Mmap;
+use num_traits::cast::FromPrimitive;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use minidump::*;
 use minidump_common::format as md;
-use minidump::system_info::{CPU, OS};
+use minidump::system_info::{Cpu, Os};
 use minidump_common::traits::Module;
 
 fn get_test_minidump_path(filename: &str) -> PathBuf {
@@ -124,8 +126,8 @@ fn test_module_list() {
 fn test_system_info() {
     let dump = read_test_minidump().unwrap();
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
-    assert_eq!(system_info.os, OS::Windows);
-    assert_eq!(system_info.cpu, CPU::X86);
+    assert_eq!(system_info.os, Os::Windows);
+    assert_eq!(system_info.cpu, Cpu::X86);
 }
 
 #[test]
@@ -157,7 +159,8 @@ fn test_assertion() {
     assert_eq!(assertion.function().unwrap(), "common_vfprintf");
     assert_eq!(assertion.file().unwrap(), r"minkernel\crts\ucrt\src\appcrt\stdio\output.cpp");
     assert_eq!(assertion.raw.line, 32);
-    assert_eq!(assertion.raw._type, md::MD_ASSERTION_INFO_TYPE_INVALID_PARAMETER);
+    assert_eq!(md::AssertionType::from_u32(assertion.raw._type),
+               Some(md::AssertionType::InvalidParameter));
 }
 
 #[test]

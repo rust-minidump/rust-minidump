@@ -26,6 +26,7 @@ extern crate failure;
 extern crate libc;
 extern crate memmap;
 extern crate minidump_common;
+extern crate num_traits;
 extern crate range_map;
 extern crate scroll;
 #[cfg(test)]

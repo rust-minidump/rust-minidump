@@ -1,3 +1,4 @@
+//! Some common traits used by minidump-related crates.
 use std::borrow::Cow;
 use std::cmp;
 use std::fmt::Debug;

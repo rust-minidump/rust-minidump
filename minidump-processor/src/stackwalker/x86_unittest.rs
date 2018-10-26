@@ -3,13 +3,13 @@
 
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::*;
-use minidump::format::MDRawContextX86;
+use minidump::format::CONTEXT_X86;
 use process_state::*;
 use stackwalker::walk_stack;
 use test_assembler::*;
 
 struct TestFixture {
-    pub raw: MDRawContextX86,
+    pub raw: CONTEXT_X86,
     pub modules: MinidumpModuleList,
     pub symbolizer: Symbolizer,
 }
@@ -17,7 +17,7 @@ struct TestFixture {
 impl TestFixture {
     pub fn new() -> TestFixture {
         TestFixture {
-            raw: MDRawContextX86::default(),
+            raw: CONTEXT_X86::default(),
             // Give the two modules reasonable standard locations and names
             // for tests to play with.
             modules: MinidumpModuleList::from_modules(vec![

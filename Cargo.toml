@@ -21,6 +21,7 @@ failure = "0.1.1"
 range-map = "0.1.5"
 libc = "0.2.34"
 minidump-common = { version = "0.2.0", path = "minidump-common" }
+num-traits = "0.1"
 encoding = "0.2"
 chrono = "0.4.6"
 scroll = "0.9.0"
@@ -33,6 +34,7 @@ docmatic = "0.1.2"
 [workspace]
 members = [
         "breakpad-symbols",
+        "minidump-common",
         "minidump-processor",
         "minidump-tools",
 ]

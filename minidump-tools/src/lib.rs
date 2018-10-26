@@ -8,6 +8,7 @@ extern crate log;
 extern crate minidump;
 extern crate minidump_common;
 extern crate reqwest;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate structopt;
 
@@ -17,7 +18,7 @@ use failure::Error;
 use minidump_common::traits::Module;
 use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
                MinidumpSystemInfo};
-use minidump::system_info::CPU;
+use minidump::system_info::Cpu;
 use reqwest::Client;
 use std::env;
 use std::fs::{self, File};
@@ -218,8 +219,8 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
         .ok_or(format_err!("Minidump doesn't contain a memory region that contains the instruction pointer from the exception record"))?;
     let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
     let arch = match sys_info.cpu {
-        CPU::X86 => CpuArch::X86,
-        CPU::X86_64 => CpuArch::X86_64,
+        Cpu::X86 => CpuArch::X86,
+        Cpu::X86_64 => CpuArch::X86_64,
         _ => return Err(format_err!("Unsupported CPU architecture: {}", sys_info.cpu)),
     };
     let symbolizer = handle_symbol_paths(symbol_paths)?;
@@ -278,9 +279,9 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
     let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
     let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
     let wordsize = match sys_info.cpu {
-        CPU::X86 | CPU::PPC | CPU::Sparc | CPU::ARM => 4,
-        CPU::X86_64 | CPU::PPC64 | CPU::ARM64 => 8,
-        CPU::Unknown(u) => bail!("Unknown cpu: {:#x}", u),
+        Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm => 4,
+        Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 => 8,
+        Cpu::Unknown(u) => bail!("Unknown cpu: {:#x}", u),
     };
     // TODO: provide a commandline option for the address.
     // Default to the top of the crashing stack.

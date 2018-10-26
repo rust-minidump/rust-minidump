@@ -11,19 +11,20 @@ use std::io;
 use std::mem;
 
 use minidump_common::format as md;
+use minidump_common::format::ContextFlagsCpu;
 use iostuff::*;
 
 /// The CPU-specific context structure.
 #[derive(Clone)]
 pub enum MinidumpRawContext {
-    X86(md::MDRawContextX86),
-    PPC(md::MDRawContextPPC),
-    PPC64(md::MDRawContextPPC64),
-    AMD64(md::MDRawContextAMD64),
-    SPARC(md::MDRawContextSPARC),
-    ARM(md::MDRawContextARM),
-    ARM64(md::MDRawContextARM64),
-    MIPS(md::MDRawContextMIPS),
+    X86(md::CONTEXT_X86),
+    PPC(md::CONTEXT_PPC),
+    PPC64(md::CONTEXT_PPC64),
+    AMD64(md::CONTEXT_AMD64),
+    SPARC(md::CONTEXT_SPARC),
+    ARM(md::CONTEXT_ARM),
+    ARM64(md::CONTEXT_ARM64),
+    MIPS(md::CONTEXT_MIPS),
 }
 
 /// Generic over the specifics of a CPU context.
@@ -58,7 +59,7 @@ pub trait CPUContext {
     fn get_register_always(&self, reg: &str) -> Self::Register;
 }
 
-impl CPUContext for md::MDRawContextX86 {
+impl CPUContext for md::CONTEXT_X86 {
     type Register = u32;
 
     fn get_register_always(&self, reg: &str) -> u32 {
@@ -78,7 +79,7 @@ impl CPUContext for md::MDRawContextX86 {
     }
 }
 
-impl CPUContext for md::MDRawContextAMD64 {
+impl CPUContext for md::CONTEXT_AMD64 {
     type Register = u64;
 
     fn get_register_always(&self, reg: &str) -> u64 {
@@ -170,77 +171,75 @@ impl MinidumpContext {
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         let mut offset = 0;
-        if bytes.len() == mem::size_of::<md::MDRawContextAMD64>() {
-            let ctx: md::MDRawContextAMD64 = bytes.gread_with(&mut offset, endian)
+        if bytes.len() == mem::size_of::<md::CONTEXT_AMD64>() {
+            let ctx: md::CONTEXT_AMD64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ctx.context_flags & md::MD_CONTEXT_CPU_MASK != md::MD_CONTEXT_AMD64 {
+            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags) != ContextFlagsCpu::CONTEXT_AMD64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
             }
-        } else if bytes.len() == mem::size_of::<md::MDRawContextPPC64>() {
-            let ctx: md::MDRawContextPPC64 = bytes.gread_with(&mut offset, endian)
+        } else if bytes.len() == mem::size_of::<md::CONTEXT_PPC64>() {
+            let ctx: md::CONTEXT_PPC64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_PPC64 as u64 {
+            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_PPC64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
-        } else if bytes.len() == mem::size_of::<md::MDRawContextARM64>() {
-            let ctx: md::MDRawContextARM64 = bytes.gread_with(&mut offset, endian)
+        } else if bytes.len() == mem::size_of::<md::CONTEXT_ARM64>() {
+            let ctx: md::CONTEXT_ARM64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ctx.context_flags & (md::MD_CONTEXT_CPU_MASK as u64) != md::MD_CONTEXT_ARM64 as u64 {
+            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_ARM64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM64(ctx)));
             }
-        } else {
-            // For everything else, read the flags and determine context
-            // type from that.
-            let flags: u32 = bytes.gread_with(&mut offset, endian).or(Err(ContextError::ReadFailure))?;
-            // Seek back, the flags are also part of the RawContext structs.
-            offset = 0;
-            let cpu_type = flags & md::MD_CONTEXT_CPU_MASK;
-            // TODO: handle dumps with MD_CONTEXT_ARM_OLD
-            if let Some(ctx) = match cpu_type {
-                md::MD_CONTEXT_X86 => {
-                    let ctx: md::MDRawContextX86 = bytes.gread_with(&mut offset, endian)
-                        .or(Err(ContextError::ReadFailure))?;
-                    Some(MinidumpRawContext::X86(ctx))
-                }
-                md::MD_CONTEXT_PPC => {
-                    let ctx: md::MDRawContextPPC = bytes.gread_with(&mut offset, endian)
-                        .or(Err(ContextError::ReadFailure))?;
-                    Some(MinidumpRawContext::PPC(ctx))
-                }
-                md::MD_CONTEXT_SPARC => {
-                    let ctx: md::MDRawContextSPARC = bytes.gread_with(&mut offset, endian)
-                        .or(Err(ContextError::ReadFailure))?;
-                    Some(MinidumpRawContext::SPARC(ctx))
-                }
-                md::MD_CONTEXT_ARM => {
-                    let ctx: md::MDRawContextARM = bytes.gread_with(&mut offset, endian)
-                        .or(Err(ContextError::ReadFailure))?;
-                    Some(MinidumpRawContext::ARM(ctx))
-                }
-                md::MD_CONTEXT_MIPS => {
-                    let ctx: md::MDRawContextMIPS = bytes.gread_with(&mut offset, endian)
-                        .or(Err(ContextError::ReadFailure))?;
-                    Some(MinidumpRawContext::MIPS(ctx))
-                }
-                _ => None,
-            } {
-                return Ok(MinidumpContext::from_raw(ctx));
+        }
+
+        // For everything else, read the flags and determine context
+        // type from that.
+        let flags: u32 = bytes.gread_with(&mut offset, endian).or(Err(ContextError::ReadFailure))?;
+        // Seek back, the flags are also part of the RawContext structs.
+        offset = 0;
+        // TODO: handle dumps with MD_CONTEXT_ARM_OLD
+        match ContextFlagsCpu::from_bits_truncate(flags) {
+            ContextFlagsCpu::CONTEXT_X86 => {
+                let ctx: md::CONTEXT_X86 = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::X86(ctx)))
             }
-            return Err(ContextError::UnknownCPUContext);
+            ContextFlagsCpu::CONTEXT_PPC => {
+                let ctx: md::CONTEXT_PPC = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC(ctx)))
+            }
+            ContextFlagsCpu::CONTEXT_SPARC => {
+                let ctx: md::CONTEXT_SPARC = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::SPARC(ctx)))
+            }
+            ContextFlagsCpu::CONTEXT_ARM => {
+                let ctx: md::CONTEXT_ARM = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM(ctx)))
+            }
+            ContextFlagsCpu::CONTEXT_MIPS => {
+                let ctx: md::CONTEXT_MIPS = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::MIPS(ctx)))
+            }
+            _ => Err(ContextError::UnknownCPUContext),
         }
     }
 
     pub fn get_instruction_pointer(&self) -> u64 {
         match self.raw {
             MinidumpRawContext::AMD64(ref ctx) => ctx.rip,
-            MinidumpRawContext::ARM(ref ctx) => ctx.iregs[md::MD_CONTEXT_ARM_REG_PC as usize] as u64,
-            MinidumpRawContext::ARM64(ref ctx) => ctx.iregs[md::MD_CONTEXT_ARM64_REG_PC as usize],
+            MinidumpRawContext::ARM(ref ctx) =>
+                ctx.iregs[md::ArmRegisterNumbers::ProgramCounter as usize] as u64,
+            MinidumpRawContext::ARM64(ref ctx) =>
+                ctx.iregs[md::Arm64RegisterNumbers::ProgramCounter as usize],
             MinidumpRawContext::PPC(ref ctx) => ctx.srr0 as u64,
             MinidumpRawContext::PPC64(ref ctx) => ctx.srr0,
             MinidumpRawContext::SPARC(ref ctx) => ctx.pc,
@@ -252,13 +251,19 @@ impl MinidumpContext {
     pub fn get_stack_pointer(&self) -> u64 {
         match self.raw {
             MinidumpRawContext::AMD64(ref ctx) => ctx.rsp,
-            MinidumpRawContext::ARM(ref ctx) => ctx.iregs[md::MD_CONTEXT_ARM_REG_SP as usize] as u64,
-            MinidumpRawContext::ARM64(ref ctx) => ctx.iregs[md::MD_CONTEXT_ARM64_REG_SP as usize],
-            MinidumpRawContext::PPC(ref ctx) => ctx.gpr[md::MD_CONTEXT_PPC_REG_SP as usize] as u64,
-            MinidumpRawContext::PPC64(ref ctx) => ctx.gpr[md::MD_CONTEXT_PPC64_REG_SP as usize],
-            MinidumpRawContext::SPARC(ref ctx) => ctx.g_r[md::MD_CONTEXT_SPARC_REG_SP as usize],
+            MinidumpRawContext::ARM(ref ctx) =>
+                ctx.iregs[md::ArmRegisterNumbers::StackPointer as usize] as u64,
+            MinidumpRawContext::ARM64(ref ctx) =>
+                ctx.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
+            MinidumpRawContext::PPC(ref ctx) =>
+                ctx.gpr[md::PpcRegisterNumbers::StackPointer as usize] as u64,
+            MinidumpRawContext::PPC64(ref ctx) =>
+                ctx.gpr[md::Ppc64RegisterNumbers::StackPointer as usize],
+            MinidumpRawContext::SPARC(ref ctx) =>
+                ctx.g_r[md::SparcRegisterNumbers::StackPointer as usize],
             MinidumpRawContext::X86(ref ctx) => ctx.esp as u64,
-            MinidumpRawContext::MIPS(ref ctx) => ctx.iregs[md::MD_CONTEXT_MIPS_REG_SP as usize],
+            MinidumpRawContext::MIPS(ref ctx) =>
+                ctx.iregs[md::MipsRegisterNumbers::StackPointer as usize],
         }
     }
 
@@ -296,7 +301,7 @@ impl MinidumpContext {
             MinidumpRawContext::X86(ref raw) => {
                 try!(write!(
                     f,
-                    r#"MDRawContextX86
+                    r#"CONTEXT_X86
   context_flags                = {:#x}
   dr0                          = {:#x}
   dr1                          = {:#x}
@@ -326,7 +331,7 @@ impl MinidumpContext {
                     raw.float_save.error_selector,
                     raw.float_save.data_offset,
                     raw.float_save.data_selector,
-                    md::MD_FLOATINGSAVEAREA_X86_REGISTERAREA_SIZE,
+                    raw.float_save.register_area.len(),
                 ));
                 try!(write_bytes(f, &raw.float_save.register_area));
                 try!(write!(f, "\n"));
@@ -367,7 +372,7 @@ impl MinidumpContext {
                     raw.eflags,
                     raw.esp,
                     raw.ss,
-                    md::MD_CONTEXT_X86_EXTENDED_REGISTERS_SIZE,
+                    raw.extended_registers.len(),
                 ));
                 try!(write_bytes(f, &raw.extended_registers));
                 try!(write!(f, "\n\n"));
@@ -381,7 +386,7 @@ impl MinidumpContext {
             MinidumpRawContext::AMD64(ref raw) => {
                 try!(write!(
                     f,
-                    r#"MDRawContextAMD64
+                    r#"CONTEXT_AMD64
   p1_home       = {:#x}
   p2_home       = {:#x}
   p3_home       = {:#x}
@@ -468,7 +473,7 @@ impl MinidumpContext {
             MinidumpRawContext::ARM(ref raw) => {
                 try!(write!(
                     f,
-                    r#"MDRawContextARM
+                    r#"CONTEXT_ARM
   context_flags       = {:#x}
 "#,
                     raw.context_flags
