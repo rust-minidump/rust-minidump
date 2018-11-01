@@ -1218,6 +1218,20 @@ pub struct TIME_ZONE_INFORMATION {
     pub daylight_bias: i32,
 }
 
+#[derive(Copy, Clone, Pread, SizeWith)]
+pub struct XSTATE_FEATURE {
+    pub offset: u32,
+    pub size: u32,
+}
+
+#[derive(Clone, Pread, SizeWith)]
+pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
+    pub size_of_info: u32,
+    pub context_size: u32,
+    pub enabled_features: u64,
+    pub features: [XSTATE_FEATURE; 64], // MAXIMUM_XSTATE_FEATURES
+}
+
 /*
  * There are multiple versions of the misc info struct, and each new version includes all
  * fields from the previous versions. We declare them with a macro to avoid repeating
@@ -1263,7 +1277,7 @@ multi_structs! {
     /// This struct matches the [Microsoft struct][msdn] of the same name.
     ///
     /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_misc_info_2
-    pub struct MINIDUMP_MISC_INFO2 {
+    pub struct MINIDUMP_MISC_INFO_2 {
         pub processor_max_mhz: u32,
         pub processor_current_mhz: u32,
         pub processor_mhz_limit: u32,
@@ -1274,7 +1288,7 @@ multi_structs! {
     /// Miscellaneous process and system information
     ///
     /// This struct matches the struct of the same name from minidumpapiset.h.
-    pub struct MINIDUMP_MISC_INFO3 {
+    pub struct MINIDUMP_MISC_INFO_3 {
         pub process_integrity_level: u32,
         pub process_execute_flags: u32,
         pub protected_process: u32,
@@ -1285,37 +1299,15 @@ multi_structs! {
     /// Miscellaneous process and system information
     ///
     /// This struct matches the struct of the same name from minidumpapiset.h.
-    pub struct MINIDUMP_MISC_INFO4 {
+    pub struct MINIDUMP_MISC_INFO_4 {
         pub build_string: [u16; 260], // MAX_PATH
         pub dbg_bld_str: [u16; 40],
     }
+    pub struct MINIDUMP_MISC_INFO_5 {
+        pub xstate_data: XSTATE_CONFIG_FEATURE_MSC_INFO,
+        pub process_cookie: u32,
+    }
 }
-
-//TODO: MINIDUMP_MISC_INFO_5
-/*
-typedef struct _MINIDUMP_MISC_INFO_5 {
-    ULONG32 SizeOfInfo;
-    ULONG32 Flags1;
-    ULONG32 ProcessId;
-    ULONG32 ProcessCreateTime;
-    ULONG32 ProcessUserTime;
-    ULONG32 ProcessKernelTime;
-    ULONG32 ProcessorMaxMhz;
-    ULONG32 ProcessorCurrentMhz;
-    ULONG32 ProcessorMhzLimit;
-    ULONG32 ProcessorMaxIdleState;
-    ULONG32 ProcessorCurrentIdleState;
-    ULONG32 ProcessIntegrityLevel;
-    ULONG32 ProcessExecuteFlags;
-    ULONG32 ProtectedProcess;
-    ULONG32 TimeZoneId;
-    TIME_ZONE_INFORMATION TimeZone;
-    WCHAR   BuildString[MAX_PATH];
-    WCHAR   DbgBldStr[40];
-    XSTATE_CONFIG_FEATURE_MSC_INFO XStateData;
-    ULONG32 ProcessCookie;
-} MINIDUMP_MISC_INFO_5, *PMINIDUMP_MISC_INFO_5;
-*/
 
 bitflags! {
     /// Known flags for `MINIDUMP_MISC_INFO*.flags1`
