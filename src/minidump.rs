@@ -110,25 +110,17 @@ pub trait MinidumpStream<'a>: Sized {
     fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error>;
 }
 
-/// Raw bytes of CodeView data in a minidump file.
-#[derive(Clone)]
-pub enum CodeViewPDBRaw {
-    /// PDB 2.0 format data.
-    PDB20(md::CV_INFO_PDB20),
-    /// PDB 7.0 format data (most common).
-    PDB70(md::CV_INFO_PDB70),
-}
-
-/// CodeView data describes how to locate debug symbols.
+/// CodeView data describes how to locate debug symbols
 #[derive(Clone)]
 pub enum CodeView {
-    /// Indicates data is in a separate PDB file.
-    /// `raw` contains the raw bytes, `file` is the PDB file name.
-    PDB { raw: CodeViewPDBRaw, file: String },
-    /// Indicates data is in an ELF binary with build ID `build_id`.
-    ELF { build_id: Vec<u8> },
-    /// An unknown format, `bytes` are the raw bytes of data.
-    Unknown { bytes: Vec<u8> },
+    /// PDB 2.0 format data in a separate file
+    Pdb20(md::CV_INFO_PDB20),
+    /// PDB 7.0 format data in a separate file (most common)
+    Pdb70(md::CV_INFO_PDB70),
+    /// Indicates data is in an ELF binary with build ID `build_id`
+    Elf(md::CV_INFO_ELF),
+    /// An unknown format containing the raw bytes of data
+    Unknown(Vec<u8>),
 }
 
 /// An executable or shared library loaded in the process at the time the `Minidump` was written.
@@ -284,7 +276,8 @@ fn location_slice<'a>(bytes: &'a [u8], loc: &md::MINIDUMP_LOCATION_DESCRIPTOR) -
 }
 
 /// Read a u32 length-prefixed UTF-16 string from `bytes` at `offset`.
-fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -> Result<String, ()> {
+fn read_string_utf16(offset: &mut usize, bytes: &[u8],
+                     endian: scroll::Endian) -> Result<String, ()> {
     let u: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
     let size = u as usize;
     if size % 2 != 0 || (*offset + size) > bytes.len() {
@@ -299,64 +292,35 @@ fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -
     }
 }
 
-fn read_codeview_pdb(signature: CvSignature, bytes: &[u8],
-                     endian: scroll::Endian) -> Result<CodeView, failure::Error> {
-    let mut offset = 0;
-    let raw = match signature {
-        CvSignature::Pdb70 => {
-            // ::<md::CV_INFO_PDB70>
-            CodeViewPDBRaw::PDB70(bytes.gread_with(&mut offset, endian)?)
-        }
-        CvSignature::Pdb20 => {
-            // ::<md::CV_INFO_PDB20>
-            CodeViewPDBRaw::PDB20(bytes.gread_with(&mut offset, endian)?)
-        }
-        _ => unreachable!(),
-    };
-    let pdb_file_name = &bytes[offset..];
-    // The string should have at least one trailing NUL.
-    let file = String::from(str::from_utf8(pdb_file_name)?.trim_right_matches('\0'));
-    Ok(CodeView::PDB {
-        raw,
-        file,
-    })
+/// Convert `bytes` with trailing NUL characters to a string
+fn string_from_bytes_nul(bytes: &[u8]) -> Option<Cow<str>> {
+    bytes.split(|&b| b == 0)
+        .next()
+        .map(|b| String::from_utf8_lossy(b))
 }
 
-/// Format `bytes` as a String of hex digits.
+/// Format `bytes` as a String of hex digits
 fn bytes_to_hex(bytes: &[u8]) -> String {
     let hex_bytes: Vec<String> = bytes.iter().map(|b| format!("{:02x}", b)).collect();
     hex_bytes.join("")
 }
 
-/// Attempt to read a CodeView record from `data` at `location`.
+/// Attempt to read a CodeView record from `data` at `location`
 fn read_codeview(location: &md::MINIDUMP_LOCATION_DESCRIPTOR, data: &[u8],
                  endian: scroll::Endian) -> Result<CodeView, failure::Error> {
     let bytes = location_slice(data, location)?;
-    // The CodeView data can contain a variable-length string at the end
-    // and also can be one of a few different formats. Try to read the
+    // The CodeView data can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
-    let mut offset = 0;
-    let signature: u32 = bytes.gread_with(&mut offset, endian)?;
-    match CvSignature::from_u32(signature) {
-        Some(sig @ CvSignature::Pdb70) | Some(sig @ CvSignature::Pdb20) => {
-            // One of the PDB formats.
-            read_codeview_pdb(sig, bytes, endian)
-        },
-        Some(CvSignature::Elf) => {
-            // Breakpad's ELF build ID format.
-            // The signature is simply followed by the build ID as bytes.
-            //TODO: don't copy the data, just store a reference.
-            let build_id = bytes[offset..].to_owned();
-
-            Ok(CodeView::ELF { build_id })
-        },
-        _ =>
-            // Other formats aren't handled, but save the raw bytes.
-            Ok(CodeView::Unknown {
-                //TODO: don't copy.
-                bytes: bytes.to_owned(),
-            })
-    }
+    let signature: u32 = bytes.pread_with(0, endian)?;
+    Ok(match CvSignature::from_u32(signature) {
+        // PDB data has two known versions: the current 7.0 and the older 2.0 version.
+        Some(CvSignature::Pdb70) => CodeView::Pdb70(bytes.pread_with(0, endian)?),
+        Some(CvSignature::Pdb20) => CodeView::Pdb20(bytes.pread_with(0, endian)?),
+        // Breakpad's ELF build ID format.
+        Some(CvSignature::Elf) => CodeView::Elf(bytes.pread_with(0, endian)?),
+        // Other formats aren't handled, but save the raw bytes.
+        _ => CodeView::Unknown(bytes.to_owned())
+    })
 }
 
 impl MinidumpModule {
@@ -378,9 +342,11 @@ impl MinidumpModule {
 
     /// Read additional data to construct a `MinidumpModule` from `bytes` using the information
     /// from the module list in `raw`.
-    pub fn read(raw: md::MINIDUMP_MODULE, bytes: &[u8], endian: scroll::Endian) -> Result<MinidumpModule, Error> {
+    pub fn read(raw: md::MINIDUMP_MODULE, bytes: &[u8],
+                endian: scroll::Endian) -> Result<MinidumpModule, Error> {
         let mut offset = raw.module_name_rva as usize;
-        let name = read_string_utf16(&mut offset, bytes, endian).or(Err(Error::CodeViewReadFailure))?;
+        let name = read_string_utf16(&mut offset, bytes, endian)
+            .or(Err(Error::CodeViewReadFailure))?;
         let codeview_info = if raw.cv_record.data_size == 0 {
             None
         } else {
@@ -451,36 +417,34 @@ impl MinidumpModule {
         ));
         // Print CodeView data.
         match self.codeview_info {
-            Some(CodeView::PDB {
-                raw: CodeViewPDBRaw::PDB70(ref raw),
-                ref file,
-            }) => {
-                try!(write!(f, "  (cv_record).cv_signature        = {:#x}
+            Some(CodeView::Pdb70(ref raw)) => {
+                let pdb_file_name = string_from_bytes_nul(&raw.pdb_file_name)
+                    .unwrap_or(Cow::Borrowed("(invalid)"));
+                write!(f, "  (cv_record).cv_signature        = {:#x}
   (cv_record).signature           = {:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}
   (cv_record).age                 = {}
   (cv_record).pdb_file_name       = \"{}\"
 ",
-                            raw.cv_signature,
-                            raw.signature.data1,
-                            raw.signature.data2,
-                            raw.signature.data3,
-                            raw.signature.data4[0],
-                            raw.signature.data4[1],
-                            raw.signature.data4[2],
-                            raw.signature.data4[3],
-                            raw.signature.data4[4],
-                            raw.signature.data4[5],
-                            raw.signature.data4[6],
-                            raw.signature.data4[7],
-                            raw.age,
-                            file,
-                            ));
+                       raw.cv_signature,
+                       raw.signature.data1,
+                       raw.signature.data2,
+                       raw.signature.data3,
+                       raw.signature.data4[0],
+                       raw.signature.data4[1],
+                       raw.signature.data4[2],
+                       raw.signature.data4[3],
+                       raw.signature.data4[4],
+                       raw.signature.data4[5],
+                       raw.signature.data4[6],
+                       raw.signature.data4[7],
+                       raw.age,
+                       pdb_file_name,
+                )?;
             }
-            Some(CodeView::PDB {
-                raw: CodeViewPDBRaw::PDB20(ref raw),
-                ref file,
-            }) => {
-                try!(write!(
+            Some(CodeView::Pdb20(ref raw)) => {
+                let pdb_file_name = string_from_bytes_nul(&raw.pdb_file_name)
+                    .unwrap_or(Cow::Borrowed("(invalid)"));
+                write!(
                     f,
                     "  (cv_record).cv_header.signature = {:#x}
   (cv_record).cv_header.offset    = {:#x}
@@ -488,34 +452,34 @@ impl MinidumpModule {
   (cv_record).age                 = {}
   (cv_record).pdb_file_name       = \"{}\"
 ",
-                    raw.cv_header.signature,
-                    raw.cv_header.offset,
+                    raw.cv_signature,
+                    raw.cv_offset,
                     raw.signature,
                     format_time_t(raw.signature),
                     raw.age,
-                    file,
-                ));
+                    pdb_file_name,
+                )?;
             }
-            Some(CodeView::ELF { ref build_id }) => {
+            Some(CodeView::Elf(ref raw)) => {
                 // Fibbing about having cv_signature handy here.
-                try!(write!(
+                write!(
                     f,
                     "  (cv_record).cv_signature        = {:#x}
   (cv_record).build_id            = {}
 ",
-                    CvSignature::Elf as u32,
-                    bytes_to_hex(&build_id),
-                ));
+                    raw.cv_signature,
+                    bytes_to_hex(&raw.build_id),
+                )?;
             }
-            Some(CodeView::Unknown { ref bytes }) => {
-                try!(writeln!(
+            Some(CodeView::Unknown(ref bytes)) => {
+                writeln!(
                     f,
                     "  (cv_record)                     = {}",
                     bytes_to_hex(bytes),
-                ));
+                )?;
             }
             None => {
-                try!(writeln!(f, "  (cv_record)                     = (null)"));
+                writeln!(f, "  (cv_record)                     = (null)")?;
             }
         }
 
@@ -579,7 +543,7 @@ impl Module for MinidumpModule {
     }
     fn code_identifier(&self) -> Cow<str> {
         match self.codeview_info {
-            Some(CodeView::ELF { ref build_id }) => Cow::Owned(bytes_to_hex(build_id)),
+            Some(CodeView::Elf(ref raw)) => Cow::Owned(bytes_to_hex(&raw.build_id)),
             _ => {
                 // TODO: Breakpad stubs this out on non-Windows.
                 Cow::Owned(format!(
@@ -591,40 +555,35 @@ impl Module for MinidumpModule {
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         match self.codeview_info {
-            Some(CodeView::PDB { raw: _, ref file }) => Some(Cow::Borrowed(&file)),
-            Some(CodeView::ELF { build_id: _ }) => Some(Cow::Borrowed(&self.name)),
+            Some(CodeView::Pdb70(ref raw)) => string_from_bytes_nul(&raw.pdb_file_name),
+            Some(CodeView::Pdb20(ref raw)) => string_from_bytes_nul(&raw.pdb_file_name),
+            Some(CodeView::Elf(_)) => Some(Cow::Borrowed(&self.name)),
             // TODO: support misc record? not really important.
             _ => None,
         }
     }
     fn debug_identifier(&self) -> Option<Cow<str>> {
         match self.codeview_info {
-            Some(CodeView::PDB {
-                raw: CodeViewPDBRaw::PDB70(ref raw),
-                file: _,
-            }) => {
+            Some(CodeView::Pdb70(ref raw)) => {
                 let id = format!("{}{:x}", guid_to_string(&raw.signature), raw.age,);
                 Some(Cow::Owned(id))
             }
-            Some(CodeView::PDB {
-                raw: CodeViewPDBRaw::PDB20(ref raw),
-                file: _,
-            }) => {
+            Some(CodeView::Pdb20(ref raw)) => {
                 let id = format!("{:08X}{:x}", raw.signature, raw.age);
                 Some(Cow::Owned(id))
             }
-            Some(CodeView::ELF { ref build_id }) => {
+            Some(CodeView::Elf(ref raw)) => {
                 // For backwards-compat (Linux minidumps have historically
                 // been written using PDB70 CodeView info), treat build_id
                 // as if the first 16 bytes were a GUID.
                 let guid_size = <md::GUID>::size_with(&LE);
-                let guid = if build_id.len() < guid_size {
+                let guid = if raw.build_id.len() < guid_size {
                     // Pad with zeros.
-                    let v: Vec<u8> = build_id.iter()
+                    let v: Vec<u8> = raw.build_id.iter()
                         .cloned().chain(iter::repeat(0)).take(guid_size).collect();
                     v.pread_with::<md::GUID>(0, LE).ok()
                 } else {
-                    build_id.pread_with::<md::GUID>(0, LE).ok()
+                    raw.build_id.pread_with::<md::GUID>(0, LE).ok()
                 };
                 guid.map(|g| Cow::Owned(format!("{}0", guid_to_string(&g))))
             }

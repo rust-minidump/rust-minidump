@@ -10,6 +10,8 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
+use scroll::{Endian, Pread};
+
 /// An offset from the start of the minidump file.
 pub type RVA = u32;
 
@@ -244,10 +246,17 @@ pub struct MINIDUMP_MODULE {
     pub version_info: VS_FIXEDFILEINFO,
     /// The location of a CodeView record describing debug information for this module.
     ///
-    /// This should be one of `CV_INFO_PDB70`, `CV_INFO_PDB20`, or `CV_INFO_ELF`. `PDB70` is
-    /// the most common in practice, describing a standalone PDB file by way of GUID, age, and
-    /// PDB filename, and `ELF` is a Breakpad extension for describing ELF modules with Build IDs.
-    /// The `CV_HEADER` struct defines the header common to all CodeView records.
+    /// This should be one of [`CV_INFO_PDB70`][pdb70], [`CV_INFO_PDB20`][pdb20], or
+    /// [`CV_INFO_ELF`][elf]. `PDB70` is the most common in practice, describing a standalone PDB
+    /// file by way of GUID, age, and PDB filename, and `ELF` is a Breakpad extension for
+    /// describing ELF modules with Build IDs.
+    ///
+    /// See [Matching Debug Information][dbg] for more information.
+    ///
+    /// [dbg]: http://www.debuginfo.com/articles/debuginfomatch.html
+    /// [pdb70]: struct.CV_INFO_PDB70.html
+    /// [pdb20]: struct.CV_INFO_PDB20.html
+    /// [elf]: struct.CV_INFO_ELF.html
     pub cv_record: MINIDUMP_LOCATION_DESCRIPTOR,
     /// The location of an `IMAGE_DEBUG_MISC` record describing debug information for this module.
     pub misc_record: MINIDUMP_LOCATION_DESCRIPTOR,
@@ -285,22 +294,7 @@ pub const VS_FFI_SIGNATURE: u32 = 0xfeef04bd;
 /// The expected value of `VS_FIXEDFILEINFO.struct_version`
 pub const VS_FFI_STRUCVERSION: u32 = 0x00010000;
 
-/// The header common to `CV_INFO_PDB20`, `CV_INFO_PDB70`, and `CV_INFO_ELF` CodeView records.
-///
-/// See [Matching Debug Information][dbg] for more information.
-///
-/// [dbg]: http://www.debuginfo.com/articles/debuginfomatch.html
-#[derive(Clone, Pread, SizeWith)]
-pub struct CV_HEADER {
-    /// One of the values of [`CvSignature`](enum.CvSignature.html).
-    pub signature: u32,
-    /// For older debug formats, the offset of the debug info within this record.
-    ///
-    /// Not used in current formats like PDB 7.0.
-    pub offset: u32,
-}
-
-/// Known values for the `signature` field of [`CV_HEADER`](struct.CV_HEADER.html).
+/// Known values for the `signature` field of CodeView records
 ///
 /// In addition to the two CodeView record formats used for linking
 /// to external pdb files it is possible for debugging data to be carried
@@ -331,29 +325,67 @@ pub enum CvSignature {
 /// CodeView debug information in the older PDB 2.0 ("NB10") format.
 ///
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Clone)]
 pub struct CV_INFO_PDB20 {
-    /// The `signature` field of this struct will always be `CvSignature::Pdb20`.
-    pub cv_header: CV_HEADER,
+    /// This field will always be [`CvSignature::Pdb20`](enum.CvSignature.html#variant.Pdb20).
+    pub cv_signature: u32,
+    pub cv_offset: u32,
     pub signature: u32,
     pub age: u32,
-    // This is a variable-length byte array.
-    // pub pdb_file_name: [u8; 1],
+    /// The PDB filename as a zero-terminated byte string
+    pub pdb_file_name: Vec<u8>,
+}
+
+impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+        let offset = &mut 0;
+        Ok((CV_INFO_PDB20 {
+            cv_signature: src.gread_with(offset, endian)?,
+            cv_offset: src.gread_with(offset, endian)?,
+            signature: src.gread_with(offset, endian)?,
+            age: src.gread_with(offset, endian)?,
+            pdb_file_name: {
+                let size = src.len() - *offset;
+                src.gread_with::<&[u8]>(offset, size)?.to_owned()
+            }
+        }, *offset))
+    }
 }
 
 /// CodeView debug information in the current PDB 7.0 ("RSDS") format.
 ///
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Clone)]
 pub struct CV_INFO_PDB70 {
-    /// This will always be `CvSignature::Pdb70`.
+    /// This will always be [`CvSignature::Pdb70`](enum.CvSignature.html#variant.Pdb70)
     pub cv_signature: u32,
     /// A unique identifer for a module created on first build.
     pub signature: GUID,
     /// A counter, incremented for each rebuild that updates the PDB file.
     pub age: u32,
-    // This is a variable-length byte array.
-    //pub pdb_file_name: [u8; 1],
+    /// The PDB filename as a zero-terminated byte string
+    pub pdb_file_name: Vec<u8>,
+}
+
+impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+        let offset = &mut 0;
+        Ok((CV_INFO_PDB70 {
+            cv_signature: src.gread_with(offset, endian)?,
+            signature: src.gread_with(offset, endian)?,
+            age: src.gread_with(offset, endian)?,
+            pdb_file_name: {
+                let size = src.len() - *offset;
+                src.gread_with::<&[u8]>(offset, size)?.to_owned()
+            }
+        }, *offset))
+    }
 }
 
 /// A GUID as specified in Rpcdce.h
@@ -378,12 +410,28 @@ pub struct GUID {
 ///
 /// [buildid]: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/developer_guide/compiling-build-id
 /// [binutils]: https://sourceware.org/binutils/docs-2.26/ld/Options.html#index-g_t_002d_002dbuild_002did-292
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Clone)]
 pub struct CV_INFO_ELF {
-    /// This will always be `CvSignature::Elf`.
+    /// This will always be [`CvSignature::Elf`](enum.CvSignature.html#variant.Elf)
     pub cv_signature: u32,
-    // This is a variable-length byte array.
-    //pub build_id: [u8; 1],
+    /// The build id, a variable number of bytes
+    pub build_id: Vec<u8>,
+}
+
+impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_ELF {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(src: &'a [u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+        let offset = &mut 0;
+        Ok((CV_INFO_ELF {
+            cv_signature: src.gread_with(offset, endian)?,
+            build_id: {
+                let size = src.len() - *offset;
+                src.gread_with::<&[u8]>(offset, size)?.to_owned()
+            }
+        }, *offset))
+    }
 }
 
 /// Obsolete debug record type defined in WinNT.h.
