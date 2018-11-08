@@ -174,7 +174,7 @@ impl MinidumpContext {
         if bytes.len() == mem::size_of::<md::CONTEXT_AMD64>() {
             let ctx: md::CONTEXT_AMD64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags) != ContextFlagsCpu::CONTEXT_AMD64 {
+            if ContextFlagsCpu::from_flags(ctx.context_flags) != ContextFlagsCpu::CONTEXT_AMD64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::AMD64(ctx)));
@@ -182,7 +182,7 @@ impl MinidumpContext {
         } else if bytes.len() == mem::size_of::<md::CONTEXT_PPC64>() {
             let ctx: md::CONTEXT_PPC64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_PPC64 {
+            if ContextFlagsCpu::from_flags(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_PPC64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
@@ -190,7 +190,7 @@ impl MinidumpContext {
         } else if bytes.len() == mem::size_of::<md::CONTEXT_ARM64>() {
             let ctx: md::CONTEXT_ARM64 = bytes.gread_with(&mut offset, endian)
                 .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_bits_truncate(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_ARM64 {
+            if ContextFlagsCpu::from_flags(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_ARM64 {
                 return Err(ContextError::ReadFailure);
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM64(ctx)));
@@ -203,7 +203,7 @@ impl MinidumpContext {
         // Seek back, the flags are also part of the RawContext structs.
         offset = 0;
         // TODO: handle dumps with MD_CONTEXT_ARM_OLD
-        match ContextFlagsCpu::from_bits_truncate(flags) {
+        match ContextFlagsCpu::from_flags(flags) {
             ContextFlagsCpu::CONTEXT_X86 => {
                 let ctx: md::CONTEXT_X86 = bytes.gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;

@@ -1577,7 +1577,7 @@ MDRawDirectory
 mod test {
     use super::*;
     use std::mem;
-    use synth_minidump::{MiscStream, SimpleStream, SynthMinidump};
+    use synth_minidump::{self, MiscStream, SimpleStream, SynthMinidump, Thread};
     use synth_minidump::{DumpString, Memory, STOCK_VERSION_INFO};
     use synth_minidump::Module as SynthModule;
     use test_assembler::*;
@@ -1942,5 +1942,66 @@ mod test {
         // zeroes in this case.
         assert_eq!(modules[1].debug_identifier().unwrap(),
                    "030201000504070600000000000000000");
+    }
+
+    #[test]
+    fn test_thread_list_x86() {
+        let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
+        let stack = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+            0x1000,
+        );
+        let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_thread(thread)
+            .add(context)
+            .add_memory(stack);
+        let dump = read_synth_dump(dump).unwrap();
+        let mut thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+        assert_eq!(thread_list.threads.len(), 1);
+        let mut thread = thread_list.threads.pop().unwrap();
+        assert_eq!(thread.raw.thread_id, 0x1234);
+        let context = thread.context.expect("Should have a thread context");
+        match context.raw {
+            MinidumpRawContext::X86(raw) => {
+                assert_eq!(raw.eip, 0xabcd1234);
+                assert_eq!(raw.esp, 0x1010);
+            }
+            _ => assert!(false, "Got unexpected raw context type!"),
+        }
+        let stack = thread.stack.take().expect("Should have stack memory");
+        assert_eq!(stack.base_address, 0x1000);
+        assert_eq!(stack.size, 0x1000);
+    }
+
+    #[test]
+    fn test_thread_list_amd64() {
+        let context = synth_minidump::amd64_context(Endian::Little, 0x1234abcd1234abcd,
+                                                    0x1000000010000000);
+        let stack = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+            0x1000000010000000,
+        );
+        let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_thread(thread)
+            .add(context)
+            .add_memory(stack);
+        let dump = read_synth_dump(dump).unwrap();
+        let mut thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+        assert_eq!(thread_list.threads.len(), 1);
+        let mut thread = thread_list.threads.pop().unwrap();
+        assert_eq!(thread.raw.thread_id, 0x1234);
+        let context = thread.context.expect("Should have a thread context");
+        match context.raw {
+            MinidumpRawContext::AMD64(raw) => {
+                assert_eq!(raw.rip, 0x1234abcd1234abcd);
+                assert_eq!(raw.rsp, 0x1000000010000000);
+            }
+            _ => assert!(false, "Got unexpected raw context type!"),
+        }
+        let stack = thread.stack.take().expect("Should have stack memory");
+        assert_eq!(stack.base_address, 0x1000000010000000);
+        assert_eq!(stack.size, 0x1000);
     }
 }

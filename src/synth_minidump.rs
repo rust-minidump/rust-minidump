@@ -4,6 +4,8 @@
 use encoding::all::UTF_16LE;
 use encoding::{EncoderTrap, Encoding};
 use minidump_common::format as md;
+use scroll::LE;
+use scroll::ctx::SizeWith;
 use std::marker::PhantomData;
 use std::mem;
 use test_assembler::*;
@@ -24,6 +26,8 @@ pub struct SynthMinidump {
     stream_directory: Section,
     /// List of modules in this minidump.
     module_list: Option<List<Module>>,
+    /// List of threads in this minidump.
+    thread_list: Option<List<Thread>>,
     /// List of memory regions in this minidump.
     memory_list: Option<List<Section>>,
 }
@@ -36,7 +40,7 @@ pub trait DumpSection: Into<Section> {
     fn file_size(&self) -> Label;
 }
 
-trait CiteLocation {
+pub trait CiteLocation {
     /// Append an `MINIDUMP_LOCATION_DESCRIPTOR` to `section` referring to this section.
     fn cite_location_in(&self, section: Section) -> Section;
 }
@@ -63,14 +67,31 @@ impl<T: CiteLocation> CiteLocation for Option<T> {
     }
 }
 
+/// Additional methods to make working with `Section`s simpler
+pub trait SectionExtra {
+    /// A chainable version of `CiteLocation::cite_location_in`
+    fn cite_location<T: CiteLocation>(self, thing: &T) -> Self;
+    /// A chainable version of `Memory::cite_memory_in`
+    fn cite_memory(self, memory: &Memory) -> Self;
+}
+
+impl SectionExtra for Section {
+    fn cite_location<T: CiteLocation>(self, thing: &T) -> Self {
+        thing.cite_location_in(self)
+    }
+    fn cite_memory(self, memory: &Memory) -> Self {
+        memory.cite_memory_in(self)
+    }
+}
+
 /// A minidump stream.
 pub trait Stream: DumpSection {
     /// The stream type, used in the stream directory.
     fn stream_type(&self) -> u32;
     /// Append an `MDRawDirectory` referring to this stream to `section`.
     fn cite_stream_in(&self, section: Section) -> Section {
-        let section = section.D32(self.stream_type());
-        self.cite_location_in(section)
+        section.D32(self.stream_type())
+            .cite_location(self)
     }
 }
 
@@ -104,6 +125,7 @@ impl SynthMinidump {
             stream_directory_rva: stream_directory_rva,
             stream_directory: Section::with_endian(endian),
             module_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::ModuleListStream, endian)),
+            thread_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::ThreadListStream, endian)),
             memory_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::MemoryListStream, endian)),
         }
     }
@@ -141,6 +163,14 @@ impl SynthMinidump {
         self.add(memory)
     }
 
+    /// Add `thread` to `self`, adding it to the thread list stream as well.
+    pub fn add_thread(mut self, thread: Thread) -> SynthMinidump {
+        self.thread_list = self.thread_list
+            .take()
+            .map(|thread_list| thread_list.add(thread));
+        self
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -148,27 +178,25 @@ impl SynthMinidump {
         self.add(stream)
     }
 
+    fn finish_list<T: DumpSection>(self, list: Option<List<T>>) -> SynthMinidump {
+        match list {
+            Some(l) => if !l.empty() { self.add_stream(l) } else { self },
+            None => self,
+        }
+    }
+
     /// Finish generating the minidump and return the contents.
     pub fn finish(self) -> Option<Vec<u8>> {
         let mut this = self;
         // Add module list stream if any modules were added.
-        let mut this = match this.module_list.take() {
-            Some(module_list) => if !module_list.empty() {
-                this.add_stream(module_list)
-            } else {
-                this
-            },
-            _ => this,
-        };
+        let modules = this.module_list.take();
+        let mut this = this.finish_list(modules);
         // Add memory list stream if any memory regions were added.
-        let this = match this.memory_list.take() {
-            Some(memory_list) => if !memory_list.empty() {
-                this.add_stream(memory_list)
-            } else {
-                this
-            },
-            _ => this,
-        };
+        let memories = this.memory_list.take();
+        let mut this = this.finish_list(memories);
+        // Add thread list stream if any threads were added.
+        let threads = this.thread_list.take();
+        let this = this.finish_list(threads);
         let SynthMinidump {
             section,
             flags,
@@ -402,13 +430,42 @@ impl Into<Section> for Module {
             cv_record,
             misc_record,
         } = self;
-        let section = cv_record.cite_location_in(section);
-        let section = misc_record.cite_location_in(section);
         section
+            .cite_location(&cv_record)
+            .cite_location(&misc_record)
             // reserved0
             .D64(0)
             // reserved1
             .D64(0)
+    }
+}
+
+/// A minidump thread.
+pub struct Thread {
+    section: Section,
+}
+
+impl Thread {
+    pub fn new<T>(endian: Endian, id: u32, stack: &Memory, context: &T) -> Thread
+        where T: DumpSection
+    {
+        let section = Section::with_endian(endian)
+            .D32(id)
+            .D32(0)  // suspend_count
+            .D32(0)  // priority_class
+            .D32(0)  // priority
+            .D64(0)  // teb
+            .cite_memory(stack)
+            .cite_location(context);
+        Thread { section }
+    }
+}
+
+impl_dumpsection!(Thread);
+
+impl Into<Section> for Thread {
+    fn into(self) -> Section {
+        self.section
     }
 }
 
@@ -430,8 +487,8 @@ impl Memory {
 
     // Append an `MINIDUMP_MEMORY_DESCRIPTOR` referring to this memory range to `section`.
     pub fn cite_memory_in(&self, section: Section) -> Section {
-        let section = section.D64(self.address);
-        self.cite_location_in(section)
+        section.D64(self.address)
+            .cite_location(self)
     }
 }
 
@@ -509,6 +566,43 @@ impl Stream for MiscStream {
     fn stream_type(&self) -> u32 {
         md::MINIDUMP_STREAM_TYPE::MiscInfoStream as u32
     }
+}
+
+/// Populate a `CONTEXT_X86` struct with the given `endian`, `eip`, and `esp`.
+pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
+    let section = Section::with_endian(endian)
+        .D32(0x1007f) // context_flags: CONTEXT_ALL
+        .append_repeated(0, 4 * 6) // dr0,1,2,3,6,7, 4 bytes each
+        .append_repeated(0, md::FLOATING_SAVE_AREA_X86::size_with(&LE)) // float_save
+        .append_repeated(0, 4 * 11) // gs-ebp, 4 bytes each
+        .D32(eip)
+        .D32(0) // cs
+        .D32(0) // eflags
+        .D32(esp)
+        .D32(0) // ss
+        .append_repeated(0, 512); // extended_registers
+    assert_eq!(section.size(), md::CONTEXT_X86::size_with(&LE) as u64);
+    section
+}
+
+/// Populate a `CONTEXT_AMD64` struct with the given `endian`, `rip`, and `rsp`.
+pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
+    let section = Section::with_endian(endian)
+        .append_repeated(0, mem::size_of::<u64>() * 6) // p[1-6]_home
+        .D32(0x10001f) // context_flags: CONTEXT_ALL
+        .D32(0) // mx_csr
+        .append_repeated(0, mem::size_of::<u16>() * 6) // cs,ds,es,fs,gs,ss
+        .D32(0) // eflags
+        .append_repeated(0, mem::size_of::<u64>() * 6) // dr0,1,2,3,6,7
+        .append_repeated(0, mem::size_of::<u64>() * 4) // rax,rcx,rdx,rbx
+        .D64(rsp)
+        .append_repeated(0, mem::size_of::<u64>() * 11) // rbp-r15
+        .D64(rip)
+        .append_repeated(0, 512) // float_save
+        .append_repeated(0, mem::size_of::<u128>() * 26) // vector_register
+        .append_repeated(0, mem::size_of::<u64>() * 6); // trailing stuff
+    assert_eq!(section.size(), md::CONTEXT_AMD64::size_with(&LE) as u64);
+    section
 }
 
 #[test]

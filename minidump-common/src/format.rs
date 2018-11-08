@@ -667,6 +667,9 @@ pub enum ExceptionCodeMac {
     SIMULATED = 0x43507378,
 }
 
+/// Valid bits in a `context_flags` for `ContextFlagsCpu`
+pub const CONTEXT_CPU_MASK: u32 = 0xffffff00;
+
 bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs
     pub struct ContextFlagsCpu: u32 {
@@ -689,6 +692,13 @@ bitflags! {
         const CONTEXT_PPC64 = 0x1000000;
         const CONTEXT_SPARC = 0x10000000;
         const CONTEXT_X86 = 0x10000;
+    }
+}
+
+impl ContextFlagsCpu {
+    /// Populate a `ContextFlagsCpu` with valid bits from `flags`
+    pub fn from_flags(flags: u32) -> ContextFlagsCpu {
+        ContextFlagsCpu::from_bits_truncate(flags & CONTEXT_CPU_MASK)
     }
 }
 
