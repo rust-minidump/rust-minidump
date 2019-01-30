@@ -80,7 +80,7 @@ pub enum Error {
     MissingDirectory,
     #[fail(display = "Error reading stream")]
     StreamReadFailure,
-    #[fail(display = "Stream size mismatch: expected {} byes, found {} bytes", expected, actual)]
+    #[fail(display = "Stream size mismatch: expected {} bytes, found {} bytes", expected, actual)]
     StreamSizeMismatch { expected: usize, actual: usize },
     #[fail(display = "Stream not found")]
     StreamNotFound,
@@ -92,6 +92,8 @@ pub enum Error {
     DataError,
     #[fail(display = "Error reading CodeView data")]
     CodeViewReadFailure,
+    #[fail(display = "Memory not found for address {:#x}", address)]
+    MemoryNotFound { address: u64 },
 }
 
 /* TODO
@@ -764,7 +766,7 @@ impl<'a> MinidumpMemory<'a> {
         })
     }
 
-    /// Get `mem::size_of::<T>()` bytes of memory at `addr` from this region.
+    /// Get `<T as scroll::SizeWith>::size_with()` bytes of memory at `addr` from this region.
     ///
     /// Return `None` if the requested address range falls out of the bounds
     /// of this memory region.
@@ -772,13 +774,22 @@ impl<'a> MinidumpMemory<'a> {
         where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
               T: SizeWith<scroll::Endian, Units=usize>,
     {
-        let in_range = |a: u64| a >= self.base_address && a < (self.base_address + self.size);
         let size = <T>::size_with(&LE);
+        let bytes = self.get_memory_bytes(addr, size)?;
+        bytes.pread_with::<T>(0, LE).ok()
+    }
+
+    /// Get `size` bytes of memory at `addr` from this region.
+    ///
+    /// Return `None` if the requested address range falls out of the bounds
+    /// of this memory region.
+    pub fn get_memory_bytes(&self, addr: u64, size: usize) -> Option<&'a [u8]> {
+        let in_range = |a: u64| a >= self.base_address && a < (self.base_address + self.size);
         if !in_range(addr) || !in_range(addr + size as u64 - 1) {
             return None;
         }
         let start = (addr - self.base_address) as usize;
-        self.bytes.pread_with::<T>(start, LE).ok()
+        Some(&self.bytes[start..start + size])
     }
 
     /// Write a human-readable description of this `MinidumpMemory` to `f`.
@@ -854,6 +865,16 @@ impl<'a> MinidumpMemoryList<'a> {
     pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory<'a>> {
         self.regions_by_addr.get(address)
             .map(|&index| &self.regions[index])
+    }
+
+    /// Read a struct at from the memory at `address`.
+    pub fn read_data<T>(&self, address: u64) -> Result<T, Error>
+        where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
+              T: SizeWith<scroll::Endian, Units=usize>,
+    {
+        let memory = self.memory_at_address(address)
+            .ok_or(Error::MemoryNotFound { address })?;
+        memory.get_memory_at_address(address).ok_or(Error::DataError)
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.

@@ -465,12 +465,104 @@ pub struct MINIDUMP_THREAD {
     pub priority_class: u32,
     /// The priority level of the thread
     pub priority: u32,
-    /// The thread environment block
+    /// The thread environment block, one of [`TEB32`](struct.TEB32.html) or
+    /// [`TEB64`](struct.TEB64.html).
     pub teb: u64,
     /// The location and base address of this thread's stack memory
     pub stack: MINIDUMP_MEMORY_DESCRIPTOR,
     /// The location of a CPU-specific `CONTEXT_` struct for this thread's CPU context
     pub thread_context: MINIDUMP_LOCATION_DESCRIPTOR,
+}
+
+/// The thread environment block for 32-bit Windows. See the [Microsoft documentation][msdn].
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/winternl/ns-winternl-_teb
+#[derive(Clone, Pread, SizeWith)]
+pub struct TEB32 {
+    /// Reserved.
+    pub reserved_1: [u32; 12],
+    /// The process environment block, see [`PEB32`](struct.PEB32.html).
+    pub process_environment_block: u32,
+    // ... more fields but we don't need them yet.
+}
+
+/// The thread environment block for 64-bit Windows. See the [Microsoft documentation][msdn].
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/winternl/ns-winternl-_teb
+#[derive(Clone, Pread, SizeWith)]
+pub struct TEB64 {
+    pub reserved_1: [u64; 12],
+    /// A pointer to the process environment block, see [`PEB64`](struct.PEB64.html).
+    pub process_environment_block: u64,
+    // ... more fields but we don't need them yet.
+}
+
+/// The process environment block for 32-bit Windows. Derived from the definition of `PEB`
+/// in winternl.h.
+#[derive(Clone, Pread, SizeWith)]
+pub struct PEB32 {
+    pub reserved_1: [u8; 2],
+    pub being_debugged: u8,
+    pub reserved_2: u8,
+    pub reserved_3: [u32; 2],
+    pub ldr: u32,
+    /// A pointer to the process parameters, see [`RTL_USER_PROCESS_PARAMETERS32`](struct.RTL_USER_PROCESS_PARAMETERS32.html).
+    /// A pointer to the process parameters, see [`PEB32`](struct.PEB32.html).
+    pub process_parameters: u32,
+    // ... more fields but we don't need them yet.
+}
+
+/// The process environment block for 64-bit Windows. Derived from the definition of `PEB`
+/// in winternl.h.
+#[derive(Clone, Pread, SizeWith)]
+pub struct PEB64 {
+    pub reserved1: [u8; 32],
+    /// A pointer to the process parameters, see [`RTL_USER_PROCESS_PARAMETERS64`](struct.RTL_USER_PROCESS_PARAMETERS64.html).
+    pub process_parameters: u64,
+    // ... more fields but we don't need them yet.
+}
+
+/// The [`UNICODE_STRING`][msdn] struct for 32-bit Windows.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/subauth/ns-subauth-_unicode_string
+#[derive(Clone, Pread, SizeWith)]
+pub struct UNICODE_STRING32 {
+  pub length: u16,
+  pub maximum_length: u16,
+  pub buffer: u32,
+}
+
+/// The [`RTL_USER_PROCESS_PARAMETERS`][msdn] struct for 32-bit Windows.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/winternl/ns-winternl-_rtl_user_process_parameters
+#[derive(Clone, Pread, SizeWith)]
+pub struct RTL_USER_PROCESS_PARAMETERS32 {
+    pub reserved1: [u8; 16],
+    pub reserved2: [u32; 10],
+    pub image_path_name: UNICODE_STRING32,
+    pub command_line: UNICODE_STRING32,
+}
+
+/// The [`UNICODE_STRING`][msdn] struct for 64-bit Windows.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/subauth/ns-subauth-_unicode_string
+#[derive(Debug, Clone, Pread, SizeWith)]
+pub struct UNICODE_STRING64 {
+    pub length: u16,
+    pub maximum_length: u16,
+    pub padding: [u8; 4],
+    pub buffer: u64,
+}
+
+/// The [`RTL_USER_PROCESS_PARAMETERS`][msdn] struct for 64-bit Windows.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/winternl/ns-winternl-_rtl_user_process_parameters
+#[derive(Debug, Clone, Pread, SizeWith)]
+pub struct RTL_USER_PROCESS_PARAMETERS64 {
+    pub reserved1: [u8; 16],
+    pub reserved2: [u64; 10],
+    pub image_path_name: UNICODE_STRING64,
+    pub command_line: UNICODE_STRING64,
 }
 
 /// Information about the exception that caused the process to terminate.

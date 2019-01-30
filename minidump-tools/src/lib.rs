@@ -15,9 +15,10 @@ extern crate structopt;
 use breakpad_symbols::{SimpleFrame, HttpSymbolSupplier, Symbolizer};
 use disasm::{Color, CpuArch, SourceLocation, SourceLookup};
 use failure::Error;
+use minidump_common::format as md;
 use minidump_common::traits::Module;
 use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
-               MinidumpSystemInfo};
+               MinidumpSystemInfo, MinidumpThreadList};
 use minidump::system_info::Cpu;
 use reqwest::Client;
 use std::env;
@@ -45,6 +46,13 @@ struct DumpStack {
     symbol_paths: Vec<PathBuf>,
     #[structopt(short = "a", help = "Show stack addresses that don't resolve to functions")]
     all: bool,
+}
+
+#[derive(StructOpt)]
+#[structopt(name = "get-minidump-commandline", about = "Display commandline arguments from a minidump")]
+struct GetMinidumpCommandline {
+    #[structopt(help = "Input minidump", parse(from_os_str))]
+    minidump: PathBuf,
 }
 
 struct SymLookup {
@@ -238,12 +246,12 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     Ok(())
 }
 
-    fn basename(f: &str) -> &str {
-        match f.rfind(|c| c == '/' || c == '\\') {
-            None => f,
-            Some(index) => &f[(index + 1)..],
-        }
+fn basename(f: &str) -> &str {
+    match f.rfind(|c| c == '/' || c == '\\') {
+        None => f,
+        Some(index) => &f[(index + 1)..],
     }
+}
 
 fn print_frame(module: &MinidumpModule, frame: SimpleFrame) {
     print!("{}", basename(&module.code_file()));
@@ -309,4 +317,50 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+pub fn get_minidump_commandline() -> Result<(), Error> {
+    use std::io::Write;
+
+    env_logger::init();
+    let GetMinidumpCommandline { minidump } =
+        GetMinidumpCommandline::from_args();
+    info!("Reading minidump {:?}", minidump);
+    let dump = Minidump::read_path(&minidump)?;
+    match dump.get_raw_stream(md::MINIDUMP_STREAM_TYPE::LinuxCmdLine) {
+        Ok(data) => {
+            // Linux dump with a `/proc/self/cmdline` stream available.
+            info!("Got Linux cmdline");
+            File::create("/tmp/cmdline").unwrap().write_all(data).unwrap();
+            unimplemented!()
+        }
+        _ => {
+            // Try following the THREAD_INFO -> TEB -> PEB -> RTL_USER_PROCESS_PARAMETERS
+            // breadcrumb trail.
+            let thread_list = dump.get_stream::<MinidumpThreadList>()?;
+            info!("Got thread list");
+            let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
+            info!("Got memory list");
+            let teb_offset = thread_list.threads[0].raw.teb;
+            debug!("teb_offset: {:#x}", teb_offset);
+            //TODO: 32 vs. 64
+            let teb: md::TEB64 = memory_list.read_data(teb_offset)?;
+            info!("Got TEB, teb.process_environment_block: {:#x}", teb.process_environment_block);
+            let peb: md::PEB64 = memory_list.read_data(teb.process_environment_block)?;
+            info!("Got PEB, peb.process_parameters: {:#x}", peb.process_parameters);
+            let memory = memory_list.memory_at_address(peb.process_parameters)
+                .ok_or(format_err!("Missing memory"))?;
+            let params: md::RTL_USER_PROCESS_PARAMETERS64 =
+                memory_list.read_data(peb.process_parameters)?;
+            info!("Got process parameters, params.command_line.buffer: {:#x}, params.command_line.length: {}", params.command_line.buffer, params.command_line.length);
+            let buf_ptr = params.command_line.buffer;
+            let buf_size = params.command_line.length as usize;
+            let memory = memory_list.memory_at_address(buf_ptr)
+                .ok_or(format_err!("Missing memory"))?;
+            info!("Got cmdline memory");
+            let cmdline = memory.get_memory_bytes(buf_ptr, buf_size)
+                .ok_or(format_err!("Missing memory"))?;
+            info!("Got cmdline");
+        }
+    }
 }
