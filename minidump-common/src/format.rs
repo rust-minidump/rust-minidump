@@ -831,7 +831,7 @@ pub struct CONTEXT_ARM {
     pub float_save: FLOATING_SAVE_AREA_ARM,
 }
 
-/// Offsets into `CONTEXT_ARM.iregs` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_ARM.iregs` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ArmRegisterNumbers {
@@ -862,7 +862,7 @@ pub struct CONTEXT_ARM64 {
     pub float_save: FLOATING_SAVE_AREA_ARM64,
 }
 
-/// Offsets into `CONTEXT_ARM64.iregs` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_ARM64.iregs` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Arm64RegisterNumbers {
@@ -901,7 +901,7 @@ pub struct CONTEXT_MIPS {
     pub float_save: FLOATING_SAVE_AREA_MIPS,
 }
 
-/// Offsets into `CONTEXT_MIPS.iregs` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_MIPS.iregs` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MipsRegisterNumbers {
@@ -956,7 +956,7 @@ pub struct CONTEXT_PPC {
     pub vector_save: VECTOR_SAVE_AREA_PPC,
 }
 
-/// Offsets into `CONTEXT_PPC.gpr` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_PPC.gpr` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PpcRegisterNumbers {
@@ -981,7 +981,7 @@ pub struct CONTEXT_PPC64 {
     pub vector_save: VECTOR_SAVE_AREA_PPC,
 }
 
-/// Offsets into `CONTEXT_PPC64.gpr` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_PPC64.gpr` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Ppc64RegisterNumbers {
@@ -1013,7 +1013,7 @@ pub struct CONTEXT_SPARC {
     pub float_save: FLOATING_SAVE_AREA_SPARC,
 }
 
-/// Offsets into `CONTEXT_SPARC.g_r` for registers with a dediated or conventional purpose
+/// Offsets into `CONTEXT_SPARC.g_r` for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum SparcRegisterNumbers {
