@@ -106,6 +106,51 @@ impl CPUContext for md::CONTEXT_AMD64 {
     }
 }
 
+impl CPUContext for md::CONTEXT_ARM64 {
+    type Register = u64;
+
+    fn get_register_always(&self, reg: &str) -> u64 {
+        match reg {
+            "x0" => self.iregs[0],
+            "x1" => self.iregs[1],
+            "x2" => self.iregs[2],
+            "x3" => self.iregs[3],
+            "x4" => self.iregs[4],
+            "x5" => self.iregs[5],
+            "x6" => self.iregs[6],
+            "x7" => self.iregs[7],
+            "x8" => self.iregs[8],
+            "x9" => self.iregs[9],
+            "x10" => self.iregs[10],
+            "x11" => self.iregs[11],
+            "x12" => self.iregs[12],
+            "x13" => self.iregs[13],
+            "x14" => self.iregs[14],
+            "x15" => self.iregs[15],
+            "x16" => self.iregs[16],
+            "x17" => self.iregs[17],
+            "x18" => self.iregs[18],
+            "x19" => self.iregs[19],
+            "x20" => self.iregs[20],
+            "x21" => self.iregs[21],
+            "x22" => self.iregs[22],
+            "x23" => self.iregs[23],
+            "x24" => self.iregs[24],
+            "x25" => self.iregs[25],
+            "x26" => self.iregs[26],
+            "x27" => self.iregs[27],
+            "x28" => self.iregs[28],
+            "x29" => self.iregs[29],
+            "x30" => self.iregs[30],
+            "x31" => self.iregs[31],
+            "pc" => self.pc,
+            "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
+            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
+            _ => unreachable!("Invalid aarch64 register!"),
+        }
+    }
+}
+
 /// Information about which registers are valid in a `MinidumpContext`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MinidumpContextValidity {
@@ -276,7 +321,7 @@ impl MinidumpContext {
         match self.raw {
             MinidumpRawContext::AMD64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::ARM(_) => unimplemented!(),
-            MinidumpRawContext::ARM64(_) => unimplemented!(),
+            MinidumpRawContext::ARM64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::PPC(_) => unimplemented!(),
             MinidumpRawContext::PPC64(_) => unimplemented!(),
             MinidumpRawContext::SPARC(_) => unimplemented!(),
