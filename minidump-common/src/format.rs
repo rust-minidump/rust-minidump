@@ -685,7 +685,7 @@ bitflags! {
         const CONTEXT_ALPHA = 0x20000;
         const CONTEXT_AMD64 = 0x100000;
         const CONTEXT_ARM = 0x40000000;
-        const CONTEXT_ARM64 = 0x80000000;
+        const CONTEXT_ARM64 = 0x400000;
         const CONTEXT_MIPS = 0x40000;
         const CONTEXT_MIPS64 = 0x80000;
         const CONTEXT_PPC = 0x20000000;
@@ -856,11 +856,15 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 /// in WinNT.h.
 #[derive(Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM64 {
-    pub context_flags: u64,
+    pub context_flags: u32,
+    pub cpsr: u32,
     pub iregs: [u64; 32],
     pub pc: u64,
-    pub cpsr: u32,
     pub float_save: FLOATING_SAVE_AREA_ARM64,
+    pub bcr: [u32; 8],
+    pub bvr: [u64; 8],
+    pub wcr: [u32; 2],
+    pub wvr: [u64; 2],
 }
 
 /// Offsets into `CONTEXT_ARM64.iregs` for registers with a dedicated or conventional purpose

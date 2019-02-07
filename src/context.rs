@@ -187,15 +187,8 @@ impl MinidumpContext {
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
-        } else if bytes.len() == mem::size_of::<md::CONTEXT_ARM64>() {
-            let ctx: md::CONTEXT_ARM64 = bytes.gread_with(&mut offset, endian)
-                .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_flags(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_ARM64 {
-                return Err(ContextError::ReadFailure);
-            } else {
-                return Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM64(ctx)));
-            }
         }
+        // TODO there's an "old" ARM64 implementation we could support here.
 
         // For everything else, read the flags and determine context
         // type from that.
@@ -228,6 +221,11 @@ impl MinidumpContext {
                 let ctx: md::CONTEXT_MIPS = bytes.gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
                 Ok(MinidumpContext::from_raw(MinidumpRawContext::MIPS(ctx)))
+            }
+            ContextFlagsCpu::CONTEXT_ARM64 => {
+                let ctx: md::CONTEXT_ARM64 = bytes.gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+                Ok(MinidumpContext::from_raw(MinidumpRawContext::ARM64(ctx)))
             }
             _ => Err(ContextError::UnknownCPUContext),
         }
