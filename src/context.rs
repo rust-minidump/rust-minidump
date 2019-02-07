@@ -545,8 +545,29 @@ impl MinidumpContext {
                     try!(writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg));
                 }
             }
-            MinidumpRawContext::ARM64(_) => {
-                unimplemented!();
+            MinidumpRawContext::ARM64(ref raw) => {
+                try!(write!(
+                    f,
+                    r#"CONTEXT_ARM64
+  context_flags        = {:#x}
+"#,
+                    raw.context_flags
+                ));
+                for (i, reg) in raw.iregs.iter().enumerate() {
+                    try!(writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg));
+                }
+                try!(writeln!(f, "  pc                   = {:#x}", raw.pc));
+                try!(write!(
+                    f,
+                    r#"  cpsr                 = {:#x}
+  float_save.fpsr     = {:#x}
+  float_save.fpcr     = {:#x}
+"#,
+                    raw.cpsr, raw.float_save.fpsr, raw.float_save.fpcr
+                ));
+                for (i, reg) in raw.float_save.regs.iter().enumerate() {
+                    try!(writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg));
+                }
             }
             MinidumpRawContext::MIPS(_) => {
                 unimplemented!();
