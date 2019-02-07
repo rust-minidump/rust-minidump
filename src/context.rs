@@ -238,8 +238,7 @@ impl MinidumpContext {
             MinidumpRawContext::AMD64(ref ctx) => ctx.rip,
             MinidumpRawContext::ARM(ref ctx) =>
                 ctx.iregs[md::ArmRegisterNumbers::ProgramCounter as usize] as u64,
-            MinidumpRawContext::ARM64(ref ctx) =>
-                ctx.iregs[md::Arm64RegisterNumbers::ProgramCounter as usize],
+            MinidumpRawContext::ARM64(ref ctx) => ctx.pc,
             MinidumpRawContext::PPC(ref ctx) => ctx.srr0 as u64,
             MinidumpRawContext::PPC64(ref ctx) => ctx.srr0,
             MinidumpRawContext::SPARC(ref ctx) => ctx.pc,
