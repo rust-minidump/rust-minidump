@@ -857,7 +857,8 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 #[derive(Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u64,
-    pub iregs: [u64; 33],
+    pub iregs: [u64; 32],
+    pub pc: u64,
     pub cpsr: u32,
     pub float_save: FLOATING_SAVE_AREA_ARM64,
 }
