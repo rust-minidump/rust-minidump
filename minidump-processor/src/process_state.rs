@@ -235,14 +235,14 @@ fn print_registers<T: Write>(f: &mut T, ctx: &MinidumpContext) -> io::Result<()>
             let next = format!(" {: >5} = {}", reg, reg_val);
             if output.chars().count() + next.chars().count() > 80 {
                 // Flush the buffer.
-                try!(writeln!(f, " {}", output));
+                writeln!(f, " {}", output)?;
                 output.truncate(0);
             }
             output.push_str(&next);
         }
     }
     if !output.is_empty() {
-        try!(writeln!(f, " {}", output));
+        writeln!(f, " {}", output)?;
     }
     Ok(())
 }
@@ -262,17 +262,17 @@ impl CallStack {
     /// minidump_stackwalk.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         if self.frames.len() == 0 {
-            try!(writeln!(f, "<no frames>"));
+            writeln!(f, "<no frames>")?;
         }
         for (i, frame) in self.frames.iter().enumerate() {
             let addr = frame.instruction;
-            try!(write!(f, "{:2}  ", i));
+            write!(f, "{:2}  ", i)?;
             if let Some(ref module) = frame.module {
-                try!(write!(f, "{}", basename(&module.code_file())));
+                write!(f, "{}", basename(&module.code_file()))?;
                 if let (&Some(ref function), &Some(ref function_base)) =
                     (&frame.function_name, &frame.function_base)
                 {
-                    try!(write!(f, "!{}", function));
+                    write!(f, "!{}", function)?;
                     if let (
                         &Some(ref source_file),
                         &Some(ref source_line),
@@ -282,25 +282,25 @@ impl CallStack {
                         &frame.source_line,
                         &frame.source_line_base,
                     ) {
-                        try!(write!(
+                        write!(
                             f,
                             " [{} : {} + {:#x}]",
                             basename(&source_file),
                             source_line,
                             addr - source_line_base
-                        ));
+                        )?;
                     } else {
-                        try!(write!(f, " + {:#x}", addr - function_base));
+                        write!(f, " + {:#x}", addr - function_base)?;
                     }
                 } else {
-                    try!(write!(f, " + {:#x}", addr - module.base_address()));
+                    write!(f, " + {:#x}", addr - module.base_address())?;
                 }
             } else {
-                try!(writeln!(f, "{:#x}", addr));
+                writeln!(f, "{:#x}", addr)?;
             }
-            try!(writeln!(f, ""));
-            try!(print_registers(f, &frame.context));
-            try!(writeln!(f, "    Found by: {}", frame.trust.description()));
+            writeln!(f, "")?;
+            print_registers(f, &frame.context)?;
+            writeln!(f, "    Found by: {}", frame.trust.description())?;
         }
         Ok(())
     }
@@ -323,19 +323,19 @@ impl ProcessState {
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(writeln!(
+        writeln!(
             f,
             "Operating system: {}",
             self.system_info.os.long_name()
-        ));
+        )?;
         if let Some(ref ver) = self.system_info.os_version {
-            try!(writeln!(f, "                  {}", ver));
+            writeln!(f, "                  {}", ver)?;
         }
-        try!(writeln!(f, "CPU: {}", self.system_info.cpu));
+        writeln!(f, "CPU: {}", self.system_info.cpu)?;
         if let Some(ref info) = self.system_info.cpu_info {
-            try!(writeln!(f, "     {}", info));
+            writeln!(f, "     {}", info)?;
         }
-        try!(writeln!(
+        writeln!(
             f,
             "     {} CPU{}",
             self.system_info.cpu_count,
@@ -344,37 +344,37 @@ impl ProcessState {
             } else {
                 ""
             }
-        ));
-        try!(writeln!(f, ""));
+        )?;
+        writeln!(f, "")?;
 
         if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason, &self.crash_address) {
-            try!(write!(
+            write!(
                 f,
                 "Crash reason:  {}
 Crash address: {:#x}
 ",
                 reason, address
-            ));
+            )?;
         } else {
-            try!(writeln!(f, "No crash"));
+            writeln!(f, "No crash")?;
         }
         if let Some(ref assertion) = self.assertion {
-            try!(writeln!(f, "Assertion: {}", assertion));
+            writeln!(f, "Assertion: {}", assertion)?;
         }
         if let Some(ref time) = self.process_create_time {
             let uptime = self.time - *time;
-            try!(writeln!(
+            writeln!(
                 f,
                 "Process uptime: {} seconds",
                 uptime.num_seconds()
-            ));
+            )?;
         } else {
-            try!(writeln!(f, "Process uptime: not available"));
+            writeln!(f, "Process uptime: not available")?;
         }
-        try!(writeln!(f, ""));
+        writeln!(f, "")?;
 
         if let Some(requesting_thread) = self.requesting_thread {
-            try!(writeln!(
+            writeln!(
                 f,
                 "Thread {} ({})",
                 requesting_thread,
@@ -383,9 +383,9 @@ Crash address: {:#x}
                 } else {
                     "requested dump, did not crash"
                 }
-            ));
-            try!(self.threads[requesting_thread].print(f));
-            try!(writeln!(f, ""));
+            )?;
+            self.threads[requesting_thread].print(f)?;
+            writeln!(f, "")?;
         }
         for (i, stack) in self.threads.iter().enumerate() {
             if eq_some(self.requesting_thread, i) {
@@ -395,32 +395,32 @@ Crash address: {:#x}
             if stack.info == CallStackInfo::DumpThreadSkipped {
                 continue;
             }
-            try!(writeln!(f, "Thread {}", i));
-            try!(stack.print(f));
+            writeln!(f, "Thread {}", i)?;
+            stack.print(f)?;
         }
-        try!(write!(
+        write!(
             f,
             "
 Loaded modules:
 "
-        ));
+        )?;
         let main_address = self.modules
             .main_module()
             .and_then(|m| Some(m.base_address()));
         for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
-            try!(write!(
+            write!(
                 f,
                 "{:#010x} - {:#010x}  {}  {}",
                 module.base_address(),
                 module.base_address() + module.size() - 1,
                 basename(&module.code_file()),
                 module.version().unwrap_or(Cow::Borrowed("???"))
-            ));
+            )?;
             if eq_some(main_address, module.base_address()) {
-                try!(write!(f, "  (main)"));
+                write!(f, "  (main)")?;
             }
-            try!(writeln!(f, ""));
+            writeln!(f, "")?;
         }
         Ok(())
     }

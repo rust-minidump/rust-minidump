@@ -349,7 +349,7 @@ impl MinidumpContext {
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         match self.raw {
             MinidumpRawContext::X86(ref raw) => {
-                try!(write!(
+                write!(
                     f,
                     r#"CONTEXT_X86
   context_flags                = {:#x}
@@ -382,10 +382,10 @@ impl MinidumpContext {
                     raw.float_save.data_offset,
                     raw.float_save.data_selector,
                     raw.float_save.register_area.len(),
-                ));
-                try!(write_bytes(f, &raw.float_save.register_area));
-                try!(write!(f, "\n"));
-                try!(write!(
+                )?;
+                write_bytes(f, &raw.float_save.register_area)?;
+                write!(f, "\n")?;
+                write!(
                     f,
                     r#"  float_save.cr0_npx_state     = {:#x}
   gs                           = {:#x}
@@ -423,9 +423,9 @@ impl MinidumpContext {
                     raw.esp,
                     raw.ss,
                     raw.extended_registers.len(),
-                ));
-                try!(write_bytes(f, &raw.extended_registers));
-                try!(write!(f, "\n\n"));
+                )?;
+                write_bytes(f, &raw.extended_registers)?;
+                write!(f, "\n\n")?;
             }
             MinidumpRawContext::PPC(_) => {
                 unimplemented!();
@@ -434,7 +434,7 @@ impl MinidumpContext {
                 unimplemented!();
             }
             MinidumpRawContext::AMD64(ref raw) => {
-                try!(write!(
+                write!(
                     f,
                     r#"CONTEXT_AMD64
   p1_home       = {:#x}
@@ -515,58 +515,58 @@ impl MinidumpContext {
                     raw.r14,
                     raw.r15,
                     raw.rip,
-                ));
+                )?;
             }
             MinidumpRawContext::SPARC(_) => {
                 unimplemented!();
             }
             MinidumpRawContext::ARM(ref raw) => {
-                try!(write!(
+                write!(
                     f,
                     r#"CONTEXT_ARM
   context_flags       = {:#x}
 "#,
                     raw.context_flags
-                ));
+                )?;
                 for (i, reg) in raw.iregs.iter().enumerate() {
-                    try!(writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg));
+                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
                 }
-                try!(write!(
+                write!(
                     f,
                     r#"  cpsr                = {:#x}
   float_save.fpscr     = {:#x}
 "#,
                     raw.cpsr, raw.float_save.fpscr
-                ));
+                )?;
                 for (i, reg) in raw.float_save.regs.iter().enumerate() {
-                    try!(writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg));
+                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
                 }
                 for (i, reg) in raw.float_save.extra.iter().enumerate() {
-                    try!(writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg));
+                    writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg)?;
                 }
             }
             MinidumpRawContext::ARM64(ref raw) => {
-                try!(write!(
+                write!(
                     f,
                     r#"CONTEXT_ARM64
   context_flags        = {:#x}
 "#,
                     raw.context_flags
-                ));
+                )?;
                 for (i, reg) in raw.iregs.iter().enumerate() {
-                    try!(writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg));
+                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
                 }
-                try!(writeln!(f, "  pc                   = {:#x}", raw.pc));
-                try!(write!(
+                writeln!(f, "  pc                   = {:#x}", raw.pc)?;
+                write!(
                     f,
                     r#"  cpsr                 = {:#x}
   float_save.fpsr     = {:#x}
   float_save.fpcr     = {:#x}
 "#,
                     raw.cpsr, raw.float_save.fpsr, raw.float_save.fpcr
-                ));
+                )?;
                 for (i, reg) in raw.float_save.regs.iter().enumerate() {
-                    try!(writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg));
+                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
                 }
             }
             MinidumpRawContext::MIPS(_) => {

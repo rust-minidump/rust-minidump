@@ -94,15 +94,11 @@ pub fn process_minidump<'a, T, P>(
           P: SymbolProvider,
 {
     // Thread list is required for processing.
-    let thread_list = try!(
-        dump.get_stream::<MinidumpThreadList>()
-            .or(Err(ProcessError::MissingThreadList))
-    );
+    let thread_list = dump.get_stream::<MinidumpThreadList>()
+                          .or(Err(ProcessError::MissingThreadList))?;
     // System info is required for processing.
-    let dump_system_info = try!(
-        dump.get_stream::<MinidumpSystemInfo>()
-            .or(Err(ProcessError::MissingSystemInfo))
-    );
+    let dump_system_info = dump.get_stream::<MinidumpSystemInfo>()
+                               .or(Err(ProcessError::MissingSystemInfo))?;
     let system_info = SystemInfo {
         os: dump_system_info.os,
         // TODO

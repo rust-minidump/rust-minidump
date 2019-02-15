@@ -364,7 +364,7 @@ impl MinidumpModule {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MINIDUMP_MODULE
   base_of_image                   = {:#x}
@@ -414,7 +414,7 @@ impl MinidumpModule {
             self.raw.misc_record.rva,
             self.code_file(),
             self.code_identifier(),
-        ));
+        )?;
         // Print CodeView data.
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
@@ -486,16 +486,16 @@ impl MinidumpModule {
         // Print misc record data.
         if let Some(ref _misc) = self.misc_info {
             //TODO, not terribly important.
-            try!(writeln!(
+            writeln!(
                 f,
                 "  (misc_record)                   = (unimplemented)"
-            ));
+            )?;
         } else {
-            try!(writeln!(f, "  (misc_record)                   = (null)"));
+            writeln!(f, "  (misc_record)                   = (null)")?;
         }
 
         // Print remaining data.
-        try!(write!(
+        write!(
             f,
             r#"  (debug_file)                    = "{}"
   (debug_identifier)              = "{}"
@@ -505,7 +505,7 @@ impl MinidumpModule {
             self.debug_file().unwrap_or(Cow::Borrowed("")),
             self.debug_identifier().unwrap_or(Cow::Borrowed("")),
             self.version().unwrap_or(Cow::Borrowed("")),
-        ));
+        )?;
         Ok(())
     }
 
@@ -715,17 +715,17 @@ impl MinidumpModuleList {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MinidumpModuleList
   module_count = {}
 
 ",
             self.modules.len()
-        ));
+        )?;
         for (i, module) in self.modules.iter().enumerate() {
-            try!(writeln!(f, "module[{}]", i));
-            try!(module.print(f));
+            writeln!(f, "module[{}]", i)?;
+            module.print(f)?;
         }
         Ok(())
     }
@@ -785,7 +785,7 @@ impl<'a> MinidumpMemory<'a> {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MINIDUMP_MEMORY_DESCRIPTOR
   start_of_memory_range = {:#x}
@@ -794,18 +794,18 @@ impl<'a> MinidumpMemory<'a> {
 Memory
 ",
             self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
-        ));
-        try!(self.print_contents(f));
+        )?;
+        self.print_contents(f)?;
         write!(f, "\n")
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
     pub fn print_contents<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(f, "0x"));
+        write!(f, "0x")?;
         for byte in self.bytes.iter() {
-            try!(write!(f, "{:02x}", byte));
+            write!(f, "{:02x}", byte)?;
         }
-        try!(write!(f, "\n"));
+        write!(f, "\n")?;
         Ok(())
     }
 
@@ -878,17 +878,17 @@ impl<'a> MinidumpMemoryList<'a> {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MinidumpMemoryList
   region_count = {}
 
 ",
             self.regions.len()
-        ));
+        )?;
         for (i, region) in self.regions.iter().enumerate() {
-            try!(writeln!(f, "region[{}]", i));
-            try!(region.print(f));
+            writeln!(f, "region[{}]", i)?;
+            region.print(f)?;
         }
         Ok(())
     }
@@ -921,7 +921,7 @@ impl<'a> MinidumpThread<'a> {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             r#"MINIDUMP_THREAD
   thread_id                   = {:#x}
@@ -946,20 +946,20 @@ impl<'a> MinidumpThread<'a> {
             self.raw.stack.memory.rva,
             self.raw.thread_context.data_size,
             self.raw.thread_context.rva,
-        ));
+        )?;
         if let Some(ref ctx) = self.context {
-            try!(ctx.print(f));
+            ctx.print(f)?;
         } else {
-            try!(write!(f, "  (no context)\n\n"));
+            write!(f, "  (no context)\n\n")?;
         }
 
         if let Some(ref stack) = self.stack {
-            try!(writeln!(f, "Stack"));
-            try!(stack.print_contents(f));
+            writeln!(f, "Stack")?;
+            stack.print_contents(f)?;
         } else {
-            try!(writeln!(f, "No stack"));
+            writeln!(f, "No stack")?;
         }
-        try!(write!(f, "\n"));
+        write!(f, "\n")?;
         Ok(())
     }
 }
@@ -1004,18 +1004,18 @@ impl<'a> MinidumpThreadList<'a> {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             r#"MinidumpThreadList
   thread_count = {}
 
 "#,
             self.threads.len()
-        ));
+        )?;
 
         for (i, thread) in self.threads.iter().enumerate() {
-            try!(write!(f, "thread[{}]\n", i));
-            try!(thread.print(f));
+            write!(f, "thread[{}]\n", i)?;
+            thread.print(f)?;
         }
         Ok(())
     }
@@ -1041,7 +1041,7 @@ impl MinidumpSystemInfo {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MINIDUMP_SYSTEM_INFO
   processor_architecture                     = {:#x}
@@ -1068,7 +1068,7 @@ impl MinidumpSystemInfo {
             self.raw.platform_id,
             self.raw.csd_version_rva,
             self.raw.suite_mask
-        ));
+        )?;
         // TODO: cpu info etc
         Ok(())
     }
@@ -1231,7 +1231,7 @@ impl MinidumpBreakpadInfo {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MINIDUMP_BREAKPAD_INFO
   validity             = {:#x}
@@ -1242,7 +1242,7 @@ impl MinidumpBreakpadInfo {
             self.raw.validity,
             option_or_invalid(&self.dump_thread_id),
             option_or_invalid(&self.requesting_thread_id),
-        ));
+        )?;
         Ok(())
     }
 }
@@ -1308,7 +1308,7 @@ impl MinidumpException {
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        try!(write!(
+        write!(
             f,
             "MINIDUMP_EXCEPTION
   thread_id                                  = {:#x}
@@ -1324,31 +1324,31 @@ impl MinidumpException {
             self.raw.exception_record.exception_record,
             self.raw.exception_record.exception_address,
             self.raw.exception_record.number_parameters,
-        ));
+        )?;
         for i in 0..self.raw.exception_record.number_parameters as usize {
-            try!(writeln!(
+            writeln!(
                 f,
                 "  exception_record.exception_information[{:2}] = {:#x}",
                 i, self.raw.exception_record.exception_information[i]
-            ));
+            )?;
         }
-        try!(write!(
+        write!(
             f,
             "  thread_context.data_size                   = {}
   thread_context.rva                         = {:#x}
 ",
             self.raw.thread_context.data_size, self.raw.thread_context.rva
-        ));
+        )?;
         if let Some(ref context) = self.context {
-            try!(writeln!(f, ""));
-            try!(context.print(f));
+            writeln!(f, "")?;
+            context.print(f)?;
         } else {
-            try!(write!(
+            write!(
                 f,
                 "  (no context)
 
 "
-            ));
+            )?;
         }
         Ok(())
     }
@@ -1517,7 +1517,7 @@ impl<'a, T> Minidump<'a, T>
             }
         }
 
-        try!(write!(
+        write!(
             f,
             r#"MDRawHeader
   signature            = {:#x}
@@ -1537,11 +1537,11 @@ impl<'a, T> Minidump<'a, T>
             self.header.time_date_stamp,
             format_time_t(self.header.time_date_stamp),
             self.header.flags,
-        ));
+        )?;
         let mut streams = self.streams.iter().collect::<Vec<_>>();
         streams.sort_by(|&(&_, &(a, _)), &(&_, &(b, _))| a.cmp(&b));
         for &(_, &(i, ref stream)) in streams.iter() {
-            try!(write!(
+            write!(
                 f,
                 r#"mDirectory[{}]
 MDRawDirectory
@@ -1555,20 +1555,20 @@ MDRawDirectory
                 get_stream_name(stream.stream_type),
                 stream.location.data_size,
                 stream.location.rva
-            ));
+            )?;
         }
-        try!(write!(f, "Streams:\n"));
+        write!(f, "Streams:\n")?;
         streams.sort_by(|&(&a, &(_, _)), &(&b, &(_, _))| a.cmp(&b));
         for (_, &(i, ref stream)) in streams {
-            try!(write!(
+            write!(
                 f,
                 "  stream type {:#x} ({}) at index {}\n",
                 stream.stream_type,
                 get_stream_name(stream.stream_type),
                 i
-            ));
+            )?;
         }
-        try!(write!(f, "\n"));
+        write!(f, "\n")?;
         Ok(())
     }
 }
