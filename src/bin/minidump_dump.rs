@@ -20,7 +20,7 @@ macro_rules! streams {
 }
 
 fn print_raw_stream<T: Write>(name: &str, contents: &[u8], out: &mut T) -> io::Result<()> {
-    try!(writeln!(out, "Stream {}:", name));
+    writeln!(out, "Stream {}:", name)?;
     let s = contents
         .split(|&v| v == 0)
         .map(|s| String::from_utf8_lossy(s))
