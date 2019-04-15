@@ -19,5 +19,5 @@ log = "0.4.1"
 num-traits = "0.2"
 range-map = "0.1.5"
 scroll = { version = "0.9.0", features = ["derive"] }
-smart-default = "0.2.0"
+smart-default = "0.5.2"
 bitflags = "1.0.4"
