@@ -221,6 +221,7 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     let arch = match sys_info.cpu {
         Cpu::X86 => CpuArch::X86,
         Cpu::X86_64 => CpuArch::X86_64,
+        Cpu::Arm64 => CpuArch::ARM64,
         _ => return Err(format_err!("Unsupported CPU architecture: {}", sys_info.cpu)),
     };
     let symbolizer = handle_symbol_paths(symbol_paths)?;
