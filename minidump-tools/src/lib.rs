@@ -230,8 +230,8 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     println!("Faulting instruction pointer: {:#x}", ip);
     info!("Disassembling {} bytes starting at {:#x} of arch {:?}",
           memory.bytes.len(), memory.base_address, arch);
-    disasm::disasm_bytes(&memory.bytes,
-                         memory.base_address,
+    disasm::disasm_bytes(&memory.bytes[ip as usize - memory.base_address as usize..],
+                         ip,
                          arch,
                          color.unwrap_or(Color::Auto),
                          Some(ip),
