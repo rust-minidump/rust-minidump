@@ -845,9 +845,9 @@ pub enum ArmRegisterNumbers {
 /// aarch64 floating point state
 #[derive(Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64 {
+    pub regs: [u128; 32usize],
     pub fpsr: u32,
     pub fpcr: u32,
-    pub regs: [u128; 32usize],
 }
 
 /// An aarch64 (arm64) CPU context
