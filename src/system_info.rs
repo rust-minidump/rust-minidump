@@ -107,7 +107,8 @@ impl Cpu {
             Some(PROCESSOR_ARCHITECTURE_PPC64) => Cpu::Ppc64,
             Some(PROCESSOR_ARCHITECTURE_SPARC) => Cpu::Sparc,
             Some(PROCESSOR_ARCHITECTURE_ARM) => Cpu::Arm,
-            Some(PROCESSOR_ARCHITECTURE_ARM64) => Cpu::Arm64,
+            Some(PROCESSOR_ARCHITECTURE_ARM64) | Some(PROCESSOR_ARCHITECTURE_ARM64_OLD) =>
+                Cpu::Arm64,
             _ => Cpu::Unknown(arch),
         }
     }
