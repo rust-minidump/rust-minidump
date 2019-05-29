@@ -24,6 +24,7 @@ pub enum MinidumpRawContext {
     SPARC(md::CONTEXT_SPARC),
     ARM(md::CONTEXT_ARM),
     ARM64(md::CONTEXT_ARM64),
+    OLDARM64(md::CONTEXT_ARM64_OLD),
     MIPS(md::CONTEXT_MIPS),
 }
 
@@ -102,6 +103,51 @@ impl CPUContext for md::CONTEXT_AMD64 {
             "r15" => self.r15,
             "rip" => self.rip,
             _ => unreachable!("Invalid x86-64 register!"),
+        }
+    }
+}
+
+impl CPUContext for md::CONTEXT_ARM64_OLD {
+    type Register = u64;
+
+    fn get_register_always(&self, reg: &str) -> u64 {
+        match reg {
+            "x0" => self.iregs[0],
+            "x1" => self.iregs[1],
+            "x2" => self.iregs[2],
+            "x3" => self.iregs[3],
+            "x4" => self.iregs[4],
+            "x5" => self.iregs[5],
+            "x6" => self.iregs[6],
+            "x7" => self.iregs[7],
+            "x8" => self.iregs[8],
+            "x9" => self.iregs[9],
+            "x10" => self.iregs[10],
+            "x11" => self.iregs[11],
+            "x12" => self.iregs[12],
+            "x13" => self.iregs[13],
+            "x14" => self.iregs[14],
+            "x15" => self.iregs[15],
+            "x16" => self.iregs[16],
+            "x17" => self.iregs[17],
+            "x18" => self.iregs[18],
+            "x19" => self.iregs[19],
+            "x20" => self.iregs[20],
+            "x21" => self.iregs[21],
+            "x22" => self.iregs[22],
+            "x23" => self.iregs[23],
+            "x24" => self.iregs[24],
+            "x25" => self.iregs[25],
+            "x26" => self.iregs[26],
+            "x27" => self.iregs[27],
+            "x28" => self.iregs[28],
+            "x29" => self.iregs[29],
+            "x30" => self.iregs[30],
+            "x31" => self.iregs[31],
+            "pc" => self.pc,
+            "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
+            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
+            _ => unreachable!("Invalid aarch64 register!"),
         }
     }
 }
@@ -240,8 +286,15 @@ impl MinidumpContext {
             } else {
                 return Ok(MinidumpContext::from_raw(MinidumpRawContext::PPC64(ctx)));
             }
+        } else if bytes.len() == mem::size_of::<md::CONTEXT_ARM64_OLD>() {
+            let ctx: md::CONTEXT_ARM64_OLD = bytes.gread_with(&mut offset, endian)
+                .or(Err(ContextError::ReadFailure))?;
+            if ContextFlagsCpu::from_flags(ctx.context_flags as u32) != ContextFlagsCpu::CONTEXT_ARM64_OLD {
+                return Err(ContextError::ReadFailure);
+            } else {
+                return Ok(MinidumpContext::from_raw(MinidumpRawContext::OLDARM64(ctx)));
+            }
         }
-        // TODO there's an "old" ARM64 implementation we could support here.
 
         // For everything else, read the flags and determine context
         // type from that.
@@ -290,6 +343,7 @@ impl MinidumpContext {
             MinidumpRawContext::ARM(ref ctx) =>
                 ctx.iregs[md::ArmRegisterNumbers::ProgramCounter as usize] as u64,
             MinidumpRawContext::ARM64(ref ctx) => ctx.pc,
+            MinidumpRawContext::OLDARM64(ref ctx) => ctx.pc,
             MinidumpRawContext::PPC(ref ctx) => ctx.srr0 as u64,
             MinidumpRawContext::PPC64(ref ctx) => ctx.srr0,
             MinidumpRawContext::SPARC(ref ctx) => ctx.pc,
@@ -304,6 +358,8 @@ impl MinidumpContext {
             MinidumpRawContext::ARM(ref ctx) =>
                 ctx.iregs[md::ArmRegisterNumbers::StackPointer as usize] as u64,
             MinidumpRawContext::ARM64(ref ctx) =>
+                ctx.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
+            MinidumpRawContext::OLDARM64(ref ctx) =>
                 ctx.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
             MinidumpRawContext::PPC(ref ctx) =>
                 ctx.gpr[md::PpcRegisterNumbers::StackPointer as usize] as u64,
@@ -322,6 +378,7 @@ impl MinidumpContext {
             MinidumpRawContext::AMD64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::ARM(_) => unimplemented!(),
             MinidumpRawContext::ARM64(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::OLDARM64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::PPC(_) => unimplemented!(),
             MinidumpRawContext::PPC64(_) => unimplemented!(),
             MinidumpRawContext::SPARC(_) => unimplemented!(),
@@ -335,6 +392,7 @@ impl MinidumpContext {
             MinidumpRawContext::AMD64(_) => &X86_64_REGS[..],
             MinidumpRawContext::ARM(_) => unimplemented!(),
             MinidumpRawContext::ARM64(_) => &ARM64_REGS[..],
+            MinidumpRawContext::OLDARM64(_) => &ARM64_REGS[..],
             MinidumpRawContext::PPC(_) => unimplemented!(),
             MinidumpRawContext::PPC64(_) => unimplemented!(),
             MinidumpRawContext::SPARC(_) => unimplemented!(),
@@ -566,6 +624,30 @@ impl MinidumpContext {
                     raw.cpsr, raw.float_save.fpsr, raw.float_save.fpcr
                 )?;
                 for (i, reg) in raw.float_save.regs.iter().enumerate() {
+                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
+                }
+            }
+            MinidumpRawContext::OLDARM64(ref raw) => {
+                write!(
+                    f,
+                    r#"CONTEXT_ARM64
+  context_flags        = {:#x}
+"#,
+                    {raw.context_flags}
+                )?;
+                for (i, reg) in {raw.iregs}.iter().enumerate() {
+                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
+                }
+                writeln!(f, "  pc                   = {:#x}", {raw.pc})?;
+                write!(
+                    f,
+                    r#"  cpsr                 = {:#x}
+  float_save.fpsr     = {:#x}
+  float_save.fpcr     = {:#x}
+"#,
+                    {raw.cpsr}, {raw.float_save}.fpsr, {raw.float_save}.fpcr
+                )?;
+                for (i, reg) in {raw.float_save}.regs.iter().enumerate() {
                     writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
                 }
             }

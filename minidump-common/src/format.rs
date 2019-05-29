@@ -686,6 +686,7 @@ bitflags! {
         const CONTEXT_AMD64 = 0x100000;
         const CONTEXT_ARM = 0x40000000;
         const CONTEXT_ARM64 = 0x400000;
+        const CONTEXT_ARM64_OLD = 0x80000000;
         const CONTEXT_MIPS = 0x40000;
         const CONTEXT_MIPS64 = 0x80000;
         const CONTEXT_PPC = 0x20000000;
@@ -840,6 +841,27 @@ pub enum ArmRegisterNumbers {
     StackPointer = 13,
     LinkRegister = 14,
     ProgramCounter = 15,
+}
+
+/// aarch64 floating point state (old)
+#[derive(Clone, Copy, Pread, SizeWith)]
+pub struct FLOATING_SAVE_AREA_ARM64_OLD {
+    pub fpsr: u32,
+    pub fpcr: u32,
+    pub regs: [u128; 32usize],
+}
+
+/// An old aarch64 (arm64) CPU context
+///
+/// This is a Breakpad extension.
+#[derive(Clone, Copy, Pread, SizeWith)]
+#[repr(packed)]
+pub struct CONTEXT_ARM64_OLD {
+    pub context_flags: u64,
+    pub iregs: [u64; 32],
+    pub pc: u64,
+    pub cpsr: u32,
+    pub float_save: FLOATING_SAVE_AREA_ARM64_OLD,
 }
 
 /// aarch64 floating point state
