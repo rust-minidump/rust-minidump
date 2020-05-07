@@ -647,7 +647,7 @@ fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8], endian: scroll::
 
 /// An iterator over `MinidumpModule`s.
 pub struct Modules<'a> {
-    iter: Box<Iterator<Item = &'a MinidumpModule> + 'a>,
+    iter: Box<dyn Iterator<Item = &'a MinidumpModule> + 'a>,
 }
 
 impl<'a> Iterator for Modules<'a> {
@@ -818,7 +818,7 @@ Memory
 pub struct MemoryRegions<'b, 'a>
     where 'a: 'b
 {
-    iter: Box<Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
+    iter: Box<dyn Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
 }
 
 impl<'b, 'a> Iterator for MemoryRegions<'b, 'a>
