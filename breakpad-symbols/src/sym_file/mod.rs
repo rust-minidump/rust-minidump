@@ -23,7 +23,7 @@ impl SymbolFile {
     }
 
     /// Fill in as much source information for `frame` as possible.
-    pub fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
+    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         // Look for a FUNC covering the address first.
         if frame.get_instruction() < module.base_address() {
             return;

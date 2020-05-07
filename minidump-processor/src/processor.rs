@@ -11,18 +11,18 @@ use std::ops::Deref;
 use system_info::SystemInfo;
 
 pub trait SymbolProvider {
-    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer);
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
 }
 
 impl SymbolProvider for Symbolizer {
-    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         self.fill_symbol(module, frame);
     }
 }
 
 #[derive(Default)]
 pub struct MultiSymbolProvider {
-    providers: Vec<Box<SymbolProvider>>,
+    providers: Vec<Box<dyn SymbolProvider>>,
 }
 
 impl MultiSymbolProvider {
@@ -30,13 +30,13 @@ impl MultiSymbolProvider {
         Default::default()
     }
 
-    pub fn add(&mut self, provider: Box<SymbolProvider>) {
+    pub fn add(&mut self, provider: Box<dyn SymbolProvider>) {
         self.providers.push(provider);
     }
 }
 
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         for p in self.providers.iter() {
             p.fill_symbol(module, frame);
         }

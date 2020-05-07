@@ -37,7 +37,7 @@ impl DwarfSymbolizer {
 }
 
 impl SymbolProvider for DwarfSymbolizer {
-    fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let path = module.code_file();
         let k = path.as_ref();
         if !self.known_modules.borrow().contains_key(k) {

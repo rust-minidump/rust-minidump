@@ -152,7 +152,7 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 ///
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
-pub fn relative_symbol_path(module: &Module, extension: &str) -> Option<String> {
+pub fn relative_symbol_path(module: &dyn Module, extension: &str) -> Option<String> {
     module.debug_file().and_then(|debug_file| {
         module.debug_identifier().map(|debug_id| {
             // Can't use PathBuf::file_name here, it doesn't handle
@@ -202,7 +202,7 @@ pub trait SymbolSupplier {
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    fn locate_symbols(&self, module: &Module) -> SymbolResult;
+    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult;
 }
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
@@ -224,7 +224,7 @@ impl SimpleSymbolSupplier {
 }
 
 impl SymbolSupplier for SimpleSymbolSupplier {
-    fn locate_symbols(&self, module: &Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for ref path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
@@ -311,7 +311,7 @@ fn fetch_symbol_file(client: &Client, base_url: &Url, rel_path: &str,
 }
 
 impl SymbolSupplier for HttpSymbolSupplier {
-    fn locate_symbols(&self, module: &Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
         // Check local paths first.
         match self.local.locate_symbols(module) {
             res @ SymbolResult::Ok(_) | res @ SymbolResult::LoadError(_) => res,
@@ -392,7 +392,7 @@ impl FrameSymbolizer for SimpleFrame {
 type ModuleKey = (String, String, Option<String>, Option<String>);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
-fn key(module: &Module) -> ModuleKey {
+fn key(module: &dyn Module) -> ModuleKey {
     (
         module.code_file().to_string(),
         module.code_identifier().to_string(),
@@ -422,7 +422,7 @@ fn key(module: &Module) -> ModuleKey {
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
-    supplier: Box<SymbolSupplier + 'static>,
+    supplier: Box<dyn SymbolSupplier + 'static>,
     /// Cache of symbol locating results.
     //TODO: use lru-cache: https://crates.io/crates/lru-cache/
     symbols: RefCell<HashMap<ModuleKey, SymbolResult>>,
@@ -481,7 +481,7 @@ impl Symbolizer {
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    pub fn fill_symbol(&self, module: &Module, frame: &mut FrameSymbolizer) {
+    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let k = key(module);
         if !self.symbols.borrow().contains_key(&k) {
             let res = self.supplier.locate_symbols(module);
