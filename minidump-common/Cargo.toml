@@ -13,7 +13,7 @@ repository = "https://github.com/luser/rust-minidump"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
-enum-primitive-derive = "0.1"
+enum-primitive-derive = "0.2"
 libc = "0.2.34"
 log = "0.4.1"
 num-traits = "0.2"
