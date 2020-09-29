@@ -32,6 +32,8 @@ extern crate scroll;
 #[cfg(test)]
 extern crate test_assembler;
 
+pub use scroll::Endian;
+
 mod context;
 mod iostuff;
 mod minidump;
@@ -40,6 +42,6 @@ pub mod synth_minidump;
 pub mod system_info;
 
 pub use iostuff::Readable;
+pub use minidump::*;
 pub use minidump_common::format;
 pub use minidump_common::traits::Module;
-pub use minidump::*;
