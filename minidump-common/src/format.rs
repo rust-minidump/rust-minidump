@@ -1317,7 +1317,7 @@ macro_rules! multi_structs {
         multi_structs!($(#[$attr])* pub struct $name { $($prev)* $($cur)* } $($tail)*);
     };
     // Declare a single struct.
-    ($(#[$attr:meta])* pub struct $name:ident { $( pub $field:ident: $t:ty, )* } $($tail:tt)* ) => {
+    ($(#[$attr:meta])* pub struct $name:ident { $( pub $field:ident: $t:tt, )* } $($tail:tt)* ) => {
         $(#[$attr])*
         #[derive(Clone, Pread, SizeWith)]
         pub struct $name {
