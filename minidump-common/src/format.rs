@@ -338,9 +338,8 @@ pub struct CV_INFO_PDB20 {
 
 impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
         Ok((CV_INFO_PDB20 {
             cv_signature: src.gread_with(offset, endian)?,
@@ -372,9 +371,8 @@ pub struct CV_INFO_PDB70 {
 
 impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
         Ok((CV_INFO_PDB70 {
             cv_signature: src.gread_with(offset, endian)?,
@@ -420,9 +418,8 @@ pub struct CV_INFO_ELF {
 
 impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_ELF {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(src: &'a [u8], endian: Endian) -> Result<(Self, Self::Size), Self::Error> {
+    fn try_from_ctx(src: &'a [u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
         Ok((CV_INFO_ELF {
             cv_signature: src.gread_with(offset, endian)?,

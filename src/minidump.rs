@@ -608,8 +608,8 @@ impl Module for MinidumpModule {
 }
 
 fn read_stream_list<'a, T>(offset: &mut usize, bytes: &'a [u8], endian: scroll::Endian) -> Result<Vec<T>, Error>
-    where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
-          T: SizeWith<scroll::Endian, Units=usize>,
+    where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error>,
+          T: SizeWith<scroll::Endian>,
 {
     let u: u32 = bytes.gread_with(offset, endian).or(Err(Error::StreamReadFailure))?;
     let count = u as usize;
@@ -769,8 +769,8 @@ impl<'a> MinidumpMemory<'a> {
     /// Return `None` if the requested address range falls out of the bounds
     /// of this memory region.
     pub fn get_memory_at_address<T>(&self, addr: u64) -> Option<T>
-        where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error, Size=usize>,
-              T: SizeWith<scroll::Endian, Units=usize>,
+        where T: TryFromCtx<'a, scroll::Endian, [u8], Error=scroll::Error>,
+              T: SizeWith<scroll::Endian>,
     {
         let in_range = |a: u64| a >= self.base_address && a < (self.base_address + self.size);
         let size = <T>::size_with(&LE);
