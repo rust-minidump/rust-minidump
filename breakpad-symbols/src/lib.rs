@@ -45,7 +45,8 @@ mod sym_file;
 
 use failure::Error;
 pub use minidump_common::traits::Module;
-use reqwest::{Client, Url};
+use reqwest::Url;
+use reqwest::blocking::Client;
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
