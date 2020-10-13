@@ -19,7 +19,7 @@ use minidump_common::traits::Module;
 use minidump::{Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
                MinidumpSystemInfo};
 use minidump::system_info::Cpu;
-use reqwest::Client;
+use reqwest::blocking::Client;
 use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
