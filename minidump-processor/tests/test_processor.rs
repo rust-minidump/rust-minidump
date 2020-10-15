@@ -8,10 +8,10 @@ extern crate minidump;
 extern crate minidump_processor;
 
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
-use std::path::{Path, PathBuf};
-use minidump::*;
 use minidump::system_info::{Cpu, Os};
+use minidump::*;
 use minidump_processor::{CallStackInfo, FrameTrust};
+use std::path::{Path, PathBuf};
 
 fn locate_testdata() -> PathBuf {
     // This is a little weird because while cargo will always build this code by running rustc
@@ -50,7 +50,8 @@ fn test_processor() {
     let state = minidump_processor::process_minidump(
         &dump,
         &Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(state.system_info.os, Os::Windows);
     // TODO
     // assert_eq!(state.system_info.os_version.unwrap(),
@@ -122,7 +123,8 @@ fn test_processor_symbols() {
     let state = minidump_processor::process_minidump(
         &dump,
         &Symbolizer::new(SimpleSymbolSupplier::new(vec![path])),
-    ).unwrap();
+    )
+    .unwrap();
     let f0 = &state.threads[0].frames[0];
     assert_eq!(
         f0.function_name.as_ref().map(|s| s.as_str()),

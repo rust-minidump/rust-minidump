@@ -2,8 +2,8 @@
 // file at the top-level directory of this distribution.
 
 use std::env;
-use std::path::Path;
 use std::io::{self, Write};
+use std::path::Path;
 use std::str;
 
 extern crate minidump;

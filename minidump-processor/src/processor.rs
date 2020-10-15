@@ -90,15 +90,18 @@ pub fn process_minidump<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
 ) -> Result<ProcessState, ProcessError>
-    where T: Deref<Target=[u8]> + 'a,
-          P: SymbolProvider,
+where
+    T: Deref<Target = [u8]> + 'a,
+    P: SymbolProvider,
 {
     // Thread list is required for processing.
-    let thread_list = dump.get_stream::<MinidumpThreadList>()
-                          .or(Err(ProcessError::MissingThreadList))?;
+    let thread_list = dump
+        .get_stream::<MinidumpThreadList>()
+        .or(Err(ProcessError::MissingThreadList))?;
     // System info is required for processing.
-    let dump_system_info = dump.get_stream::<MinidumpSystemInfo>()
-                               .or(Err(ProcessError::MissingSystemInfo))?;
+    let dump_system_info = dump
+        .get_stream::<MinidumpSystemInfo>()
+        .or(Err(ProcessError::MissingSystemInfo))?;
     let system_info = SystemInfo {
         os: dump_system_info.os,
         // TODO

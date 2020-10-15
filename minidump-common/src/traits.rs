@@ -68,8 +68,9 @@ impl<'a> Module for (&'a str, &'a str) {
 /// The `RangeMap` struct will panic if you attempt to initialize it with overlapping data,
 /// and we deal with many sources of untrusted input data that could run afoul of this.
 /// [Upstream issue](https://github.com/jneem/range-map/issues/1)
-pub trait IntoRangeMapSafe<V>: IntoIterator<Item=(Range<u64>, V)> + Sized
-    where V: Clone + Debug + Eq,
+pub trait IntoRangeMapSafe<V>: IntoIterator<Item = (Range<u64>, V)> + Sized
+where
+    V: Clone + Debug + Eq,
 {
     fn into_rangemap_safe(self) -> RangeMap<u64, V> {
         let mut input: Vec<_> = self.into_iter().collect();
@@ -80,8 +81,10 @@ pub trait IntoRangeMapSafe<V>: IntoIterator<Item=(Range<u64>, V)> + Sized
                 if range.start <= last_range.end && &val != last_val {
                     //TODO: add a way for callers to do custom logging here? Perhaps
                     // a callback function?
-                    warn!("overlapping ranges {:?} and {:?} map to values {:?} and {:?}",
-                          last_range, range, last_val, val);
+                    warn!(
+                        "overlapping ranges {:?} and {:?} map to values {:?} and {:?}",
+                        last_range, range, last_val, val
+                    );
                     continue;
                 }
 
@@ -98,6 +101,8 @@ pub trait IntoRangeMapSafe<V>: IntoIterator<Item=(Range<u64>, V)> + Sized
 }
 
 impl<I, V> IntoRangeMapSafe<V> for I
-    where I: IntoIterator<Item=(Range<u64>, V)> + Sized,
-          V: Clone + Debug + Eq,
-{}
+where
+    I: IntoIterator<Item = (Range<u64>, V)> + Sized,
+    V: Clone + Debug + Eq,
+{
+}

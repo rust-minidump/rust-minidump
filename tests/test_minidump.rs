@@ -10,14 +10,14 @@ extern crate num_traits;
 
 use chrono::prelude::*;
 use memmap::Mmap;
+use minidump::system_info::{Cpu, Os};
+use minidump::*;
+use minidump_common::format as md;
+use minidump_common::traits::Module;
 use num_traits::cast::FromPrimitive;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use minidump::*;
-use minidump_common::format as md;
-use minidump::system_info::{Cpu, Os};
-use minidump_common::traits::Module;
 
 fn get_test_minidump_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(file!());
@@ -157,10 +157,15 @@ fn test_assertion() {
     let assertion = dump.get_stream::<MinidumpAssertion>().unwrap();
     assert_eq!(assertion.expression().unwrap(), "format != nullptr");
     assert_eq!(assertion.function().unwrap(), "common_vfprintf");
-    assert_eq!(assertion.file().unwrap(), r"minkernel\crts\ucrt\src\appcrt\stdio\output.cpp");
+    assert_eq!(
+        assertion.file().unwrap(),
+        r"minkernel\crts\ucrt\src\appcrt\stdio\output.cpp"
+    );
     assert_eq!(assertion.raw.line, 32);
-    assert_eq!(md::AssertionType::from_u32(assertion.raw._type),
-               Some(md::AssertionType::InvalidParameter));
+    assert_eq!(
+        md::AssertionType::from_u32(assertion.raw._type),
+        Some(md::AssertionType::InvalidParameter)
+    );
 }
 
 #[test]

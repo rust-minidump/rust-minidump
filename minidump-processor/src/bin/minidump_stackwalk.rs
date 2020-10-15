@@ -2,9 +2,9 @@
 // file at the top-level directory of this distribution.
 
 use std::env;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::io::Write;
 
 extern crate breakpad_symbols;
 extern crate minidump;

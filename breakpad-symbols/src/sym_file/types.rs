@@ -1,9 +1,9 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use range_map::{Range, RangeMap};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use range_map::{Range, RangeMap};
 
 /// A publicly visible linker symbol.
 #[derive(Debug, Eq, PartialEq)]
