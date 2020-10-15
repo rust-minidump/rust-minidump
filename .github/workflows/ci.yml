@@ -29,20 +29,20 @@ jobs:
           command: fmt
           args: --all -- --check
 
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-        with:
-            toolchain: stable
-            profile: minimal
-            components: clippy
-            override: true
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --workspace --tests --examples
+  # clippy:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v1
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #           toolchain: stable
+  #           profile: minimal
+  #           components: clippy
+  #           override: true
+  #     - uses: actions-rs/clippy-check@v1
+  #       with:
+  #         token: ${{ secrets.GITHUB_TOKEN }}
+  #         args: --workspace --tests --examples
 
   docs:
     runs-on: ubuntu-latest
@@ -75,7 +75,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workplace --tests --examples --bins
+          args: --workspace --tests --examples --bins
   
   doctest:
     runs-on: ${{ matrix.os }}
@@ -93,5 +93,5 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workplace --doc
+          args: --workspace --doc
   
