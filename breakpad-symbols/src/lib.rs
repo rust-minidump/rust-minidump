@@ -45,8 +45,8 @@ mod sym_file;
 
 use failure::Error;
 pub use minidump_common::traits::Module;
-use reqwest::Url;
 use reqwest::blocking::Client;
+use reqwest::Url;
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -127,7 +127,8 @@ fn leafname(path: &str) -> &str {
 fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension: &str) -> String {
     let mut bits = filename.split('.').collect::<Vec<_>>();
     if bits.len() > 1
-        && bits.last()
+        && bits
+            .last()
             .map_or(false, |e| e.to_lowercase() == match_extension)
     {
         bits.pop();
@@ -262,16 +263,21 @@ impl HttpSymbolSupplier {
     ///
     /// Symbols will be searched for in each of `local_paths` and `cache` first, then via HTTP
     /// at each of `urls`. If a symbol file is found via HTTP it will be saved under `cache`.
-    pub fn new(urls: Vec<String>,
-               cache: PathBuf,
-               mut local_paths: Vec<PathBuf>) -> HttpSymbolSupplier {
+    pub fn new(
+        urls: Vec<String>,
+        cache: PathBuf,
+        mut local_paths: Vec<PathBuf>,
+    ) -> HttpSymbolSupplier {
         let client = Client::new();
-        let urls = urls.into_iter().filter_map(|mut u| {
-            if !u.ends_with("/") {
-                u.push('/');
-            }
-            Url::parse(&u).ok()
-        }).collect();
+        let urls = urls
+            .into_iter()
+            .filter_map(|mut u| {
+                if !u.ends_with("/") {
+                    u.push('/');
+                }
+                Url::parse(&u).ok()
+            })
+            .collect();
         local_paths.push(cache.clone());
         let local = SimpleSymbolSupplier::new(local_paths);
         HttpSymbolSupplier {
@@ -285,8 +291,10 @@ impl HttpSymbolSupplier {
 
 /// Save the data in `contents` to `path`.
 fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
-    let base = path.parent().ok_or(io::Error::new(io::ErrorKind::Other,
-                                                  format!("Bad cache path: {:?}", path)))?;
+    let base = path.parent().ok_or(io::Error::new(
+        io::ErrorKind::Other,
+        format!("Bad cache path: {:?}", path),
+    ))?;
     fs::create_dir_all(&base)?;
     let mut f = File::create(path)?;
     f.write_all(contents)?;
@@ -295,9 +303,12 @@ fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
 
 /// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
 /// save the file contents under `cache` + `rel_path` and also return them.
-fn fetch_symbol_file(client: &Client, base_url: &Url, rel_path: &str,
-                     cache: &Path) -> Result<Vec<u8>, Error>
-{
+fn fetch_symbol_file(
+    client: &Client,
+    base_url: &Url,
+    rel_path: &str,
+    cache: &Path,
+) -> Result<Vec<u8>, Error> {
     let url = base_url.join(&rel_path)?;
     debug!("Trying {}", url);
     let mut res = client.get(url).send()?.error_for_status()?;
@@ -487,9 +498,7 @@ impl Symbolizer {
         if !self.symbols.borrow().contains_key(&k) {
             let res = self.supplier.locate_symbols(module);
             debug!("locate_symbols for {}: {}", module.code_file(), res);
-            self.symbols
-                .borrow_mut()
-                .insert(k.clone(), res);
+            self.symbols.borrow_mut().insert(k.clone(), res);
         }
         if let Some(res) = self.symbols.borrow().get(&k) {
             match res {
@@ -648,7 +657,8 @@ mod test {
         for &(path, file, id, sym) in [
             (&paths[0], "foo.pdb", "abcd1234", "foo.pdb/abcd1234/foo.sym"),
             (&paths[1], "bar.xyz", "ff9900", "bar.xyz/ff9900/bar.xyz.sym"),
-        ].iter()
+        ]
+        .iter()
         {
             let m = SimpleModule::new(file, id);
             // No symbols present yet.
@@ -736,11 +746,8 @@ FUNC 1000 30 10 another func
         assert!(f2.source_file.is_none());
         assert!(f2.source_line.is_none());
         // This should also use cached results.
-        assert!(
-            symbolizer
-                .get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
-                .is_none()
-        );
+        assert!(symbolizer
+            .get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
+            .is_none());
     }
-
 }

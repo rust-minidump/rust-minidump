@@ -32,7 +32,7 @@ impl Os {
     pub fn from_platform_id(id: u32) -> Os {
         match PlatformId::from_u32(id) {
             Some(PlatformId::VER_PLATFORM_WIN32_WINDOWS)
-                | Some(PlatformId::VER_PLATFORM_WIN32_NT) => Os::Windows,
+            | Some(PlatformId::VER_PLATFORM_WIN32_NT) => Os::Windows,
             Some(PlatformId::MacOs) => Os::MacOs,
             Some(PlatformId::Ios) => Os::Ios,
             Some(PlatformId::Linux) => Os::Linux,
@@ -100,15 +100,17 @@ impl Cpu {
     /// Get a `Cpu` value matching the `processor_architecture` value from `MINIDUMP_SYSTEM_INFO`
     pub fn from_processor_architecture(arch: u16) -> Cpu {
         match md::ProcessorArchitecture::from_u16(arch) {
-            Some(PROCESSOR_ARCHITECTURE_INTEL) | Some(PROCESSOR_ARCHITECTURE_IA32_ON_WIN64) =>
-                Cpu::X86,
+            Some(PROCESSOR_ARCHITECTURE_INTEL) | Some(PROCESSOR_ARCHITECTURE_IA32_ON_WIN64) => {
+                Cpu::X86
+            }
             Some(PROCESSOR_ARCHITECTURE_AMD64) => Cpu::X86_64,
             Some(PROCESSOR_ARCHITECTURE_PPC) => Cpu::Ppc,
             Some(PROCESSOR_ARCHITECTURE_PPC64) => Cpu::Ppc64,
             Some(PROCESSOR_ARCHITECTURE_SPARC) => Cpu::Sparc,
             Some(PROCESSOR_ARCHITECTURE_ARM) => Cpu::Arm,
-            Some(PROCESSOR_ARCHITECTURE_ARM64) | Some(PROCESSOR_ARCHITECTURE_ARM64_OLD) =>
-                Cpu::Arm64,
+            Some(PROCESSOR_ARCHITECTURE_ARM64) | Some(PROCESSOR_ARCHITECTURE_ARM64_OLD) => {
+                Cpu::Arm64
+            }
             _ => Cpu::Unknown(arch),
         }
     }

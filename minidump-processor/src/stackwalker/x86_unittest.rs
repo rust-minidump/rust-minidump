@@ -2,8 +2,8 @@
 // file at the top-level directory of this distribution.
 
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
-use minidump::*;
 use minidump::format::CONTEXT_X86;
+use minidump::*;
 use process_state::*;
 use stackwalker::walk_stack;
 use test_assembler::*;
@@ -77,13 +77,13 @@ fn test_traditional() {
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
     stack = stack
-        .append_repeated(12, 0)         // frame 0: space
-        .mark(&frame0_ebp)              // frame 0 %ebp points here
-        .D32(&frame1_ebp)               // frame 0: saved %ebp
-        .D32(0x40008679)                // frame 0: return address
-        .append_repeated(8, 0)          // frame 1: space
-        .mark(&frame1_ebp)              // frame 1 %ebp points here
-        .D32(0)                         // frame 1: saved %ebp (stack end)
+        .append_repeated(12, 0) // frame 0: space
+        .mark(&frame0_ebp) // frame 0 %ebp points here
+        .D32(&frame1_ebp) // frame 0: saved %ebp
+        .D32(0x40008679) // frame 0: return address
+        .append_repeated(8, 0) // frame 1: space
+        .mark(&frame1_ebp) // frame 1 %ebp points here
+        .D32(0) // frame 1: saved %ebp (stack end)
         .D32(0); // frame 1: return address (stack end)
     f.raw.eip = 0x4000c7a5;
     f.raw.esp = stack.start().value().unwrap() as u32;

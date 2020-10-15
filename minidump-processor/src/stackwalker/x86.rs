@@ -3,8 +3,8 @@
 
 use minidump::format::CONTEXT_X86;
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpRawContext};
-use stackwalker::unwind::Unwind;
 use process_state::{FrameTrust, StackFrame};
+use stackwalker::unwind::Unwind;
 use std::collections::HashSet;
 
 fn get_caller_by_frame_pointer(

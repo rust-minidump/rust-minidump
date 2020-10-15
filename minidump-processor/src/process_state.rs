@@ -5,8 +5,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::io::prelude::*;
 use std::io;
+use std::io::prelude::*;
 
 use breakpad_symbols::FrameSymbolizer;
 use chrono::prelude::*;
@@ -323,11 +323,7 @@ impl ProcessState {
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        writeln!(
-            f,
-            "Operating system: {}",
-            self.system_info.os.long_name()
-        )?;
+        writeln!(f, "Operating system: {}", self.system_info.os.long_name())?;
         if let Some(ref ver) = self.system_info.os_version {
             writeln!(f, "                  {}", ver)?;
         }
@@ -363,11 +359,7 @@ Crash address: {:#x}
         }
         if let Some(ref time) = self.process_create_time {
             let uptime = self.time - *time;
-            writeln!(
-                f,
-                "Process uptime: {} seconds",
-                uptime.num_seconds()
-            )?;
+            writeln!(f, "Process uptime: {} seconds", uptime.num_seconds())?;
         } else {
             writeln!(f, "Process uptime: not available")?;
         }
@@ -404,7 +396,8 @@ Crash address: {:#x}
 Loaded modules:
 "
         )?;
-        let main_address = self.modules
+        let main_address = self
+            .modules
             .main_module()
             .and_then(|m| Some(m.base_address()));
         for module in self.modules.by_addr() {

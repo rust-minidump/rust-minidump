@@ -4,7 +4,7 @@ use std::process;
 
 fn main() {
     match minidump_tools::get_minidump_instructions() {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             println!("Error: {}", e);
             process::exit(1);

@@ -341,16 +341,19 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
-        Ok((CV_INFO_PDB20 {
-            cv_signature: src.gread_with(offset, endian)?,
-            cv_offset: src.gread_with(offset, endian)?,
-            signature: src.gread_with(offset, endian)?,
-            age: src.gread_with(offset, endian)?,
-            pdb_file_name: {
-                let size = src.len() - *offset;
-                src.gread_with::<&[u8]>(offset, size)?.to_owned()
-            }
-        }, *offset))
+        Ok((
+            CV_INFO_PDB20 {
+                cv_signature: src.gread_with(offset, endian)?,
+                cv_offset: src.gread_with(offset, endian)?,
+                signature: src.gread_with(offset, endian)?,
+                age: src.gread_with(offset, endian)?,
+                pdb_file_name: {
+                    let size = src.len() - *offset;
+                    src.gread_with::<&[u8]>(offset, size)?.to_owned()
+                },
+            },
+            *offset,
+        ))
     }
 }
 
@@ -374,15 +377,18 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
-        Ok((CV_INFO_PDB70 {
-            cv_signature: src.gread_with(offset, endian)?,
-            signature: src.gread_with(offset, endian)?,
-            age: src.gread_with(offset, endian)?,
-            pdb_file_name: {
-                let size = src.len() - *offset;
-                src.gread_with::<&[u8]>(offset, size)?.to_owned()
-            }
-        }, *offset))
+        Ok((
+            CV_INFO_PDB70 {
+                cv_signature: src.gread_with(offset, endian)?,
+                signature: src.gread_with(offset, endian)?,
+                age: src.gread_with(offset, endian)?,
+                pdb_file_name: {
+                    let size = src.len() - *offset;
+                    src.gread_with::<&[u8]>(offset, size)?.to_owned()
+                },
+            },
+            *offset,
+        ))
     }
 }
 
@@ -421,13 +427,16 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_ELF {
 
     fn try_from_ctx(src: &'a [u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
-        Ok((CV_INFO_ELF {
-            cv_signature: src.gread_with(offset, endian)?,
-            build_id: {
-                let size = src.len() - *offset;
-                src.gread_with::<&[u8]>(offset, size)?.to_owned()
-            }
-        }, *offset))
+        Ok((
+            CV_INFO_ELF {
+                cv_signature: src.gread_with(offset, endian)?,
+                build_id: {
+                    let size = src.len() - *offset;
+                    src.gread_with::<&[u8]>(offset, size)?.to_owned()
+                },
+            },
+            *offset,
+        ))
     }
 }
 
@@ -1209,12 +1218,12 @@ pub struct MINIDUMP_SYSTEM_INFO {
 #[repr(u16)]
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ProcessorArchitecture {
-    PROCESSOR_ARCHITECTURE_INTEL =  0,
+    PROCESSOR_ARCHITECTURE_INTEL = 0,
     PROCESSOR_ARCHITECTURE_MIPS = 1,
-    PROCESSOR_ARCHITECTURE_ALPHA =  2,
+    PROCESSOR_ARCHITECTURE_ALPHA = 2,
     PROCESSOR_ARCHITECTURE_PPC = 3,
     PROCESSOR_ARCHITECTURE_SHX = 4,
-    PROCESSOR_ARCHITECTURE_ARM =  5,
+    PROCESSOR_ARCHITECTURE_ARM = 5,
     PROCESSOR_ARCHITECTURE_IA64 = 6,
     PROCESSOR_ARCHITECTURE_ALPHA64 = 7,
     /// Microsoft Intermediate Language
@@ -1224,14 +1233,14 @@ pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_IA32_ON_WIN64 = 10,
     PROCESSOR_ARCHITECTURE_ARM64 = 12,
     /// Breakpad-defined value for SPARC
-    PROCESSOR_ARCHITECTURE_SPARC     = 0x8001,
+    PROCESSOR_ARCHITECTURE_SPARC = 0x8001,
     /// Breakpad-defined value for PPC64
-    PROCESSOR_ARCHITECTURE_PPC64     = 0x8002,
+    PROCESSOR_ARCHITECTURE_PPC64 = 0x8002,
     /// Breakpad-defined value for ARM64
     PROCESSOR_ARCHITECTURE_ARM64_OLD = 0x8003,
     /// Breakpad-defined value for MIPS64
-    PROCESSOR_ARCHITECTURE_MIPS64    = 0x8004,
-    PROCESSOR_ARCHITECTURE_UNKNOWN   = 0xffff,
+    PROCESSOR_ARCHITECTURE_MIPS64 = 0x8004,
+    PROCESSOR_ARCHITECTURE_UNKNOWN = 0xffff,
 }
 
 /// Known values of `MINIDUMP_SYSTEM_INFO.platform_id`

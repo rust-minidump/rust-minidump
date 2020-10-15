@@ -3,8 +3,8 @@
 
 use failure::Error;
 use minidump_common::traits::IntoRangeMapSafe;
-use nom::*;
 use nom::IResult::*;
+use nom::*;
 use range_map::Range;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -16,7 +16,6 @@ use std::str::FromStr;
 
 use sym_file::types::*;
 
-
 enum Line<'a> {
     Info,
     File(u32, &'a str),
@@ -27,7 +26,10 @@ enum Line<'a> {
 }
 
 // Nom's `eol` doesn't use complete! so it will return Incomplete.
-named!(my_eol<char>, complete!(preceded!(many0!(char!('\r')), char!('\n'))));
+named!(
+    my_eol<char>,
+    complete!(preceded!(many0!(char!('\r')), char!('\n')))
+);
 
 /// Match a hex string, parse it to a u64.
 named!(hex_str_u64<&[u8], u64>,
@@ -60,12 +62,12 @@ named!(module_line<&[u8], ()>,
 named!(
     info_line,
     chain!(
-    tag!("INFO") ~
-    space ~
-    x: not_line_ending ~
-    my_eol,
-      ||{ x }
-)
+        tag!("INFO") ~
+        space ~
+        x: not_line_ending ~
+        my_eol,
+          ||{ x }
+    )
 );
 
 /// Matches a FILE record.
@@ -124,39 +126,39 @@ named!(func_line_data<&[u8], SourceLine>,
 
 /// Matches a FUNC record and any following line records.
 named!(func_lines<&[u8], Function>,
-  chain!(
-    tag!("FUNC") ~
-    preceded!(space, tag!("m"))? ~
-    space ~
-    address: hex_str_u64 ~
-    space ~
-    size: hex_u32 ~
-    space ~
-    parameter_size: hex_u32 ~
-    space ~
-    name: map_res!(not_line_ending, str::from_utf8) ~
-    my_eol ~
-    lines: many0!(func_line_data) ,
-      || {
-          Function {
-              address: address,
-              size: size,
-              parameter_size: parameter_size,
-              name: name.to_string(),
-              lines: lines.into_iter()
-                  .filter_map(|l| {
-                      // Line data from PDB files often has a zero-size line entry, so just
-                      // filter those out.
-                      if l.size > 0 {
-                          Some((Range::new(l.address, l.address + l.size as u64 - 1), l))
-                      } else {
-                          None
-                      }
-                  })
-                  .into_rangemap_safe(),
-          }
-      }
-      ));
+chain!(
+  tag!("FUNC") ~
+  preceded!(space, tag!("m"))? ~
+  space ~
+  address: hex_str_u64 ~
+  space ~
+  size: hex_u32 ~
+  space ~
+  parameter_size: hex_u32 ~
+  space ~
+  name: map_res!(not_line_ending, str::from_utf8) ~
+  my_eol ~
+  lines: many0!(func_line_data) ,
+    || {
+        Function {
+            address: address,
+            size: size,
+            parameter_size: parameter_size,
+            name: name.to_string(),
+            lines: lines.into_iter()
+                .filter_map(|l| {
+                    // Line data from PDB files often has a zero-size line entry, so just
+                    // filter those out.
+                    if l.size > 0 {
+                        Some((Range::new(l.address, l.address + l.size as u64 - 1), l))
+                    } else {
+                        None
+                    }
+                })
+                .into_rangemap_safe(),
+        }
+    }
+    ));
 
 /// Matches a STACK WIN record.
 named!(stack_win_line<&[u8], WinFrameType>,
@@ -213,20 +215,20 @@ named!(stack_win_line<&[u8], WinFrameType>,
 
 /// Matches a STACK CFI record.
 named!(stack_cfi<&[u8], CFIRules>,
-       chain!(
-           tag!("STACK CFI") ~
-               space ~
-               address: hex_str_u64 ~
-               space ~
-               rules: map_res!(not_line_ending, str::from_utf8) ~
-               my_eol ,
-           || {
-               CFIRules {
-                   address: address,
-                   rules: rules.to_string(),
-               }
-           }
-           ));
+chain!(
+    tag!("STACK CFI") ~
+        space ~
+        address: hex_str_u64 ~
+        space ~
+        rules: map_res!(not_line_ending, str::from_utf8) ~
+        my_eol ,
+    || {
+        CFIRules {
+            address: address,
+            rules: rules.to_string(),
+        }
+    }
+    ));
 
 /// Matches a STACK CFI INIT record.
 named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
@@ -326,7 +328,10 @@ fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     SymbolFile {
         files: files,
         publics: publics,
-        functions: funcs.into_iter().map(|f| (f.memory_range(), f)).into_rangemap_safe(),
+        functions: funcs
+            .into_iter()
+            .map(|f| (f.memory_range(), f))
+            .into_rangemap_safe(),
         cfi_stack_info: stack_cfi
             .into_iter()
             .map(|s| (s.memory_range(), s))
@@ -358,10 +363,15 @@ pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
                 Ok(symfile)
             } else {
                 // Junk left over, or maybe didn't parse anything.
-                let next_line = rest.split(|b| *b == b'\r').next()
+                let next_line = rest
+                    .split(|b| *b == b'\r')
+                    .next()
                     .map(|bytes| String::from_utf8_lossy(bytes))
                     .unwrap_or(Cow::Borrowed(""));
-                Err(format_err!("Failed to parse file, next line was: `{}`", next_line))
+                Err(format_err!(
+                    "Failed to parse file, next line was: `{}`",
+                    next_line
+                ))
             }
         }
         Error(e) => Err(format_err!("Failed to parse file: {}", e)),
@@ -725,7 +735,8 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(p.name, "func 2".to_string());
     }
     assert_eq!(sym.functions.ranges_values().count(), 3);
-    let funcs = sym.functions
+    let funcs = sym
+        .functions
         .ranges_values()
         .map(|&(_, ref f)| f)
         .collect::<Vec<_>>();
@@ -785,7 +796,8 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(f.lines.ranges_values().count(), 0);
     }
     assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
-    let ws = sym.win_stack_framedata_info
+    let ws = sym
+        .win_stack_framedata_info
         .ranges_values()
         .map(|&(_, ref s)| s)
         .collect::<Vec<_>>();
@@ -805,7 +817,8 @@ STACK CFI INIT f00f f0 more init rules
         );
     }
     assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
-    let ws = sym.win_stack_fpo_info
+    let ws = sym
+        .win_stack_fpo_info
         .ranges_values()
         .map(|&(_, ref s)| s)
         .collect::<Vec<_>>();
@@ -825,7 +838,8 @@ STACK CFI INIT f00f f0 more init rules
         );
     }
     assert_eq!(sym.cfi_stack_info.ranges_values().count(), 2);
-    let cs = sym.cfi_stack_info
+    let cs = sym
+        .cfi_stack_info
         .ranges_values()
         .map(|&(_, ref s)| s.clone())
         .collect::<Vec<_>>();
@@ -896,7 +910,8 @@ FUNC 1001 10 10 some func overlap contained
         assert_eq!(p.name, "func 2".to_string());
     }
     assert_eq!(sym.functions.ranges_values().count(), 1);
-    let funcs = sym.functions
+    let funcs = sym
+        .functions
         .ranges_values()
         .map(|&(_, ref f)| f)
         .collect::<Vec<_>>();
@@ -906,7 +921,7 @@ FUNC 1001 10 10 some func overlap contained
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
-                assert_eq!(
+        assert_eq!(
             f.lines.ranges_values().collect::<Vec<_>>(),
             vec![
                 &(
@@ -944,7 +959,8 @@ fn test_parse_symbol_bytes_malformed() {
             &b"MODULE Linux x86 xxxxxx
 FILE 0 foo.c
 "[..]
-        ).is_err(),
+        )
+        .is_err(),
         "Should fail to parse malformed MODULE line"
     );
 
@@ -953,7 +969,8 @@ FILE 0 foo.c
             &b"MODULE Linux x86 abcd1234 foo
 FILE x foo.c
 "[..]
-        ).is_err(),
+        )
+        .is_err(),
         "Should fail to parse malformed FILE line"
     );
 
@@ -962,7 +979,8 @@ FILE x foo.c
             &b"MODULE Linux x86 abcd1234 foo
 FUNC xx 1 2 foo
 "[..]
-        ).is_err(),
+        )
+        .is_err(),
         "Should fail to parse malformed FUNC line"
     );
 
@@ -971,7 +989,8 @@ FUNC xx 1 2 foo
             &b"MODULE Linux x86 abcd1234 foo
 this is some junk
 "[..]
-        ).is_err(),
+        )
+        .is_err(),
         "Should fail to parse malformed file"
     );
 
@@ -980,7 +999,8 @@ this is some junk
             &b"MODULE Linux x86 abcd1234 foo
 FILE 0 foo.c
 FILE"[..]
-        ).is_err(),
+        )
+        .is_err(),
         "Should fail to parse truncated file"
     );
 

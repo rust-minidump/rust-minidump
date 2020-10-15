@@ -3,12 +3,12 @@
 
 //! Unwind stack frames for a thread.
 
-mod x86;
 mod unwind;
+mod x86;
 
-use SymbolProvider;
 use minidump::*;
 use process_state::*;
+use SymbolProvider;
 
 use self::unwind::Unwind;
 
@@ -26,7 +26,9 @@ fn get_caller_frame(
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
-        MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(&frame.context.valid, stack_memory),
+        MinidumpRawContext::X86(ref ctx) => {
+            ctx.get_caller_frame(&frame.context.valid, stack_memory)
+        }
         _ => None,
     }
 }

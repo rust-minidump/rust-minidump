@@ -20,13 +20,13 @@ extern crate test_assembler;
 extern crate failure;
 
 mod dwarf_symbolizer;
-mod processor;
 mod process_state;
+mod processor;
 mod stackwalker;
 mod system_info;
 
 pub use dwarf_symbolizer::DwarfSymbolizer;
-pub use processor::*;
 pub use process_state::*;
+pub use processor::*;
 pub use stackwalker::*;
 pub use system_info::*;

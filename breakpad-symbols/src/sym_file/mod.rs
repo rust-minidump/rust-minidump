@@ -7,9 +7,9 @@ mod types;
 use failure::Error;
 use std::path::Path;
 
+use sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
 pub use sym_file::types::*;
 use {FrameSymbolizer, Module};
-use sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.

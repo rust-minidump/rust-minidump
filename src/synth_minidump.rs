@@ -4,8 +4,8 @@
 use encoding::all::UTF_16LE;
 use encoding::{EncoderTrap, Encoding};
 use minidump_common::format as md;
-use scroll::LE;
 use scroll::ctx::SizeWith;
+use scroll::LE;
 use std::marker::PhantomData;
 use std::mem;
 use test_assembler::*;
@@ -90,8 +90,7 @@ pub trait Stream: DumpSection {
     fn stream_type(&self) -> u32;
     /// Append an `MDRawDirectory` referring to this stream to `section`.
     fn cite_stream_in(&self, section: Section) -> Section {
-        section.D32(self.stream_type())
-            .cite_location(self)
+        section.D32(self.stream_type()).cite_location(self)
     }
 }
 
@@ -124,9 +123,18 @@ impl SynthMinidump {
             stream_count_label: stream_count_label,
             stream_directory_rva: stream_directory_rva,
             stream_directory: Section::with_endian(endian),
-            module_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::ModuleListStream, endian)),
-            thread_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::ThreadListStream, endian)),
-            memory_list: Some(List::new(md::MINIDUMP_STREAM_TYPE::MemoryListStream, endian)),
+            module_list: Some(List::new(
+                md::MINIDUMP_STREAM_TYPE::ModuleListStream,
+                endian,
+            )),
+            thread_list: Some(List::new(
+                md::MINIDUMP_STREAM_TYPE::ThreadListStream,
+                endian,
+            )),
+            memory_list: Some(List::new(
+                md::MINIDUMP_STREAM_TYPE::MemoryListStream,
+                endian,
+            )),
         }
     }
 
@@ -145,7 +153,8 @@ impl SynthMinidump {
 
     /// Add `module` to `self`, adding it to the module list stream as well.
     pub fn add_module(mut self, module: Module) -> SynthMinidump {
-        self.module_list = self.module_list
+        self.module_list = self
+            .module_list
             .take()
             .map(|module_list| module_list.add(module));
         self
@@ -156,7 +165,8 @@ impl SynthMinidump {
         // The memory list contains `MINIDUMP_MEMORY_DESCRIPTOR`s, so create one here.
         let descriptor = memory.cite_memory_in(Section::with_endian(self.section.endian));
         // And append that descriptor to the memory list.
-        self.memory_list = self.memory_list
+        self.memory_list = self
+            .memory_list
             .take()
             .map(|memory_list| memory_list.add(descriptor));
         // Add the memory region itself.
@@ -165,7 +175,8 @@ impl SynthMinidump {
 
     /// Add `thread` to `self`, adding it to the thread list stream as well.
     pub fn add_thread(mut self, thread: Thread) -> SynthMinidump {
-        self.thread_list = self.thread_list
+        self.thread_list = self
+            .thread_list
             .take()
             .map(|thread_list| thread_list.add(thread));
         self
@@ -180,7 +191,13 @@ impl SynthMinidump {
 
     fn finish_list<T: DumpSection>(self, list: Option<List<T>>) -> SynthMinidump {
         match list {
-            Some(l) => if !l.empty() { self.add_stream(l) } else { self },
+            Some(l) => {
+                if !l.empty() {
+                    self.add_stream(l)
+                } else {
+                    self
+                }
+            }
             None => self,
         }
     }
@@ -290,7 +307,8 @@ impl<T: DumpSection> List<T> {
 
     pub fn add(mut self, entry: T) -> List<T> {
         self.count += 1;
-        self.section = self.section
+        self.section = self
+            .section
             .mark(&entry.file_offset())
             .append_section(entry);
         self
@@ -447,14 +465,15 @@ pub struct Thread {
 
 impl Thread {
     pub fn new<T>(endian: Endian, id: u32, stack: &Memory, context: &T) -> Thread
-        where T: DumpSection
+    where
+        T: DumpSection,
     {
         let section = Section::with_endian(endian)
             .D32(id)
-            .D32(0)  // suspend_count
-            .D32(0)  // priority_class
-            .D32(0)  // priority
-            .D64(0)  // teb
+            .D32(0) // suspend_count
+            .D32(0) // priority_class
+            .D32(0) // priority
+            .D64(0) // teb
             .cite_memory(stack)
             .cite_location(context);
         Thread { section }
@@ -487,8 +506,7 @@ impl Memory {
 
     // Append an `MINIDUMP_MEMORY_DESCRIPTOR` referring to this memory range to `section`.
     pub fn cite_memory_in(&self, section: Section) -> Section {
-        section.D64(self.address)
-            .cite_location(self)
+        section.D64(self.address).cite_location(self)
     }
 }
 
@@ -541,7 +559,8 @@ impl Into<Section> for MiscStream {
         });
         let section = if let Some(time) = process_create_time {
             flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESS_TIMES;
-            section.D32(time)
+            section
+                .D32(time)
                 // user_time
                 .D32(0)
                 // kernel_time
@@ -610,15 +629,16 @@ fn test_dump_header() {
     let dump = SynthMinidump::with_endian(Endian::Little).flags(0x9f738b33685cc84c);
     assert_eq!(
         dump.finish().unwrap(),
-        vec![0x4d, 0x44, 0x4d, 0x50, // signature
-                    0x93, 0xa7, 0x00, 0x00, // version
-                    0, 0, 0, 0,             // stream count
-                    0x20, 0, 0, 0,          // directory RVA
-                    0, 0, 0, 0,             // checksum
-                    0x3d, 0xe1, 0x44, 0x4b, // time_date_stamp
-                    0x4c, 0xc8, 0x5c, 0x68, // flags
-                    0x33, 0x8b, 0x73, 0x9f,
-                    ]
+        vec![
+            0x4d, 0x44, 0x4d, 0x50, // signature
+            0x93, 0xa7, 0x00, 0x00, // version
+            0, 0, 0, 0, // stream count
+            0x20, 0, 0, 0, // directory RVA
+            0, 0, 0, 0, // checksum
+            0x3d, 0xe1, 0x44, 0x4b, // time_date_stamp
+            0x4c, 0xc8, 0x5c, 0x68, // flags
+            0x33, 0x8b, 0x73, 0x9f,
+        ]
     );
 }
 
@@ -627,15 +647,16 @@ fn test_dump_header_bigendian() {
     let dump = SynthMinidump::with_endian(Endian::Big).flags(0x9f738b33685cc84c);
     assert_eq!(
         dump.finish().unwrap(),
-        vec![0x50, 0x4d, 0x44, 0x4d, // signature
-                    0x00, 0x00, 0xa7, 0x93, // version
-                    0, 0, 0, 0,             // stream count
-                    0, 0, 0, 0x20,          // directory RVA
-                    0, 0, 0, 0,             // checksum
-                    0x4b, 0x44, 0xe1, 0x3d, // time_date_stamp
-                    0x9f, 0x73, 0x8b, 0x33, // flags
-                    0x68, 0x5c, 0xc8, 0x4c,
-                    ]
+        vec![
+            0x50, 0x4d, 0x44, 0x4d, // signature
+            0x00, 0x00, 0xa7, 0x93, // version
+            0, 0, 0, 0, // stream count
+            0, 0, 0, 0x20, // directory RVA
+            0, 0, 0, 0, // checksum
+            0x4b, 0x44, 0xe1, 0x3d, // time_date_stamp
+            0x9f, 0x73, 0x8b, 0x33, // flags
+            0x68, 0x5c, 0xc8, 0x4c,
+        ]
     );
 }
 
@@ -660,8 +681,10 @@ fn test_dump_string() {
     // Skip over the header
     assert_eq!(
         &contents[mem::size_of::<md::MINIDUMP_HEADER>()..],
-        &[0xa, 0x0, 0x0, 0x0, // length
-                 b'h', 0x0, b'e', 0x0, b'l', 0x0, b'l', 0x0, b'o', 0x0]
+        &[
+            0xa, 0x0, 0x0, 0x0, // length
+            b'h', 0x0, b'e', 0x0, b'l', 0x0, b'l', 0x0, b'o', 0x0
+        ]
     );
 }
 
@@ -678,13 +701,14 @@ fn test_list() {
         .add(DumpString::new("b", Endian::Little));
     assert_eq!(
         Into::<Section>::into(list).get_contents().unwrap(),
-        vec![2, 0, 0, 0, // entry count
-                    // first entry
-                    0x2, 0x0, 0x0, 0x0, // length
-                    b'a', 0x0,
-                    // second entry
-                    0x2, 0x0, 0x0, 0x0, // length
-                    b'b', 0x0]
+        vec![
+            2, 0, 0, 0, // entry count
+            // first entry
+            0x2, 0x0, 0x0, 0x0, // length
+            b'a', 0x0, // second entry
+            0x2, 0x0, 0x0, 0x0, // length
+            b'b', 0x0
+        ]
     );
 }
 

@@ -3,8 +3,8 @@
 
 use std::env;
 use std::ffi::OsStr;
-use std::path::Path;
 use std::io::Write;
+use std::path::Path;
 
 extern crate minidump;
 extern crate minidump_common;

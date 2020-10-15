@@ -3,8 +3,8 @@
 
 //! General-purpose I/O routines.
 
-use std::io::prelude::*;
 use std::io;
+use std::io::prelude::*;
 
 /// Shorthand for Read + Seek
 pub trait Readable: Read + Seek {}
