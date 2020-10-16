@@ -83,26 +83,4 @@ jobs:
           PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
-          args: --workspace --tests --examples --bins
-  
-  doctest:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
-        rust: [nightly, beta, stable]
-    steps:
-      - uses: actions/checkout@master
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
-      - uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --doc
-  
+          args: --workspace
