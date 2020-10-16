@@ -6,8 +6,6 @@ This Rust crate implements a parser for the [minidump](https://msdn.microsoft.co
 
 It's fairly heavily modeled after the [Google Breakpad](https://chromium.googlesource.com/breakpad/breakpad/) library, and much of it was written as a means to learn Rust, so there are some rough edges, but it implements most of the functionality necessary to work with minidumps.
 
-[Documentation for master](http://luser.github.io/rust-project-docs/minidump/minidump/)
-
 # Examples
 
 Print the raw details of the exception stream from a minidump:

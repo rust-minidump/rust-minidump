@@ -31,6 +31,11 @@ extern crate range_map;
 extern crate scroll;
 #[cfg(test)]
 extern crate test_assembler;
+#[cfg(doctest)]
+extern crate doc_comment;
+
+#[cfg(doctest)]
+doc_comment::doctest!("../README.md");
 
 pub use scroll::Endian;
 
