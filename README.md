@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/luser/rust-minidump.svg?branch=master)](https://travis-ci.org/luser/rust-minidump) [![crates.io](https://img.shields.io/crates/v/minidump.svg)](https://crates.io/crates/minidump) [![](https://docs.rs/minidump/badge.svg)](https://docs.rs/minidump)
+![Rust CI](https://github.com/luser/rust-minidump/workflows/Rust%20CI/badge.svg?branch=master) [![crates.io](https://img.shields.io/crates/v/minidump.svg)](https://crates.io/crates/minidump) [![](https://docs.rs/minidump/badge.svg)](https://docs.rs/minidump)
 
 # Overview
 
