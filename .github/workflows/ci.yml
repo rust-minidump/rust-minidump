@@ -79,6 +79,8 @@ jobs:
         with:
           key: ${{ github.job }}
       - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
           args: --workspace --tests --examples --bins
