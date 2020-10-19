@@ -183,8 +183,8 @@ impl StackFrame {
             source_file_name: None,
             source_line: None,
             source_line_base: None,
-            trust: trust,
-            context: context,
+            trust,
+            context,
         }
     }
 
@@ -251,7 +251,7 @@ impl CallStack {
     /// Create a `CallStack` with `info` and no frames.
     pub fn with_info(info: CallStackInfo) -> CallStack {
         CallStack {
-            info: info,
+            info,
             frames: vec![],
         }
     }
@@ -261,7 +261,7 @@ impl CallStack {
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        if self.frames.len() == 0 {
+        if self.frames.is_empty() {
             writeln!(f, "<no frames>")?;
         }
         for (i, frame) in self.frames.iter().enumerate() {
@@ -298,7 +298,7 @@ impl CallStack {
             } else {
                 writeln!(f, "{:#x}", addr)?;
             }
-            writeln!(f, "")?;
+            writeln!(f)?;
             print_registers(f, &frame.context)?;
             writeln!(f, "    Found by: {}", frame.trust.description())?;
         }
@@ -341,7 +341,7 @@ impl ProcessState {
                 ""
             }
         )?;
-        writeln!(f, "")?;
+        writeln!(f)?;
 
         if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason, &self.crash_address) {
             write!(
@@ -363,7 +363,7 @@ Crash address: {:#x}
         } else {
             writeln!(f, "Process uptime: not available")?;
         }
-        writeln!(f, "")?;
+        writeln!(f)?;
 
         if let Some(requesting_thread) = self.requesting_thread {
             writeln!(
@@ -377,7 +377,7 @@ Crash address: {:#x}
                 }
             )?;
             self.threads[requesting_thread].print(f)?;
-            writeln!(f, "")?;
+            writeln!(f)?;
         }
         for (i, stack) in self.threads.iter().enumerate() {
             if eq_some(self.requesting_thread, i) {
@@ -396,10 +396,7 @@ Crash address: {:#x}
 Loaded modules:
 "
         )?;
-        let main_address = self
-            .modules
-            .main_module()
-            .and_then(|m| Some(m.base_address()));
+        let main_address = self.modules.main_module().map(|m| m.base_address());
         for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
             write!(
@@ -413,7 +410,7 @@ Loaded modules:
             if eq_some(main_address, module.base_address()) {
                 write!(f, "  (main)")?;
             }
-            writeln!(f, "")?;
+            writeln!(f)?;
         }
         Ok(())
     }
