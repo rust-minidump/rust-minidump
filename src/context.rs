@@ -15,7 +15,7 @@ use minidump_common::format as md;
 use minidump_common::format::ContextFlagsCpu;
 
 /// The CPU-specific context structure.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum MinidumpRawContext {
     X86(md::CONTEXT_X86),
     Ppc(md::CONTEXT_PPC),
@@ -218,7 +218,7 @@ pub enum MinidumpContextValidity {
 /// context for the exception handler (which performs minidump generation),
 /// and not the context that caused the exception (which is probably what the
 /// user wants).
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MinidumpContext {
     /// The raw CPU register state.
     pub raw: MinidumpRawContext,
@@ -227,6 +227,7 @@ pub struct MinidumpContext {
 }
 
 /// Errors encountered while reading a `MinidumpContext`.
+#[derive(Debug)]
 pub enum ContextError {
     /// Failed to read data.
     ReadFailure,
