@@ -1,7 +1,6 @@
 use addr2line::{Context, Frame, Location};
 use failure::{bail, format_err, Error};
 use gimli::{EndianRcSlice, RunTimeEndian};
-use memmap;
 use object::{self, Object};
 
 use std::cell::RefCell;
