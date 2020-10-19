@@ -463,7 +463,7 @@ impl MinidumpContext {
                     raw.float_save.register_area.len(),
                 )?;
                 write_bytes(f, &raw.float_save.register_area)?;
-                writeln!(f, "")?;
+                writeln!(f)?;
                 write!(
                     f,
                     r#"  float_save.cr0_npx_state     = {:#x}

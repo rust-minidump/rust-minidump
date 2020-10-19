@@ -840,7 +840,7 @@ Memory
             self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
         )?;
         self.print_contents(f)?;
-        writeln!(f, "")
+        writeln!(f)
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
@@ -849,7 +849,7 @@ Memory
         for byte in self.bytes.iter() {
             write!(f, "{:02x}", byte)?;
         }
-        writeln!(f, "")?;
+        writeln!(f)?;
         Ok(())
     }
 
@@ -1014,7 +1014,7 @@ impl<'a> MinidumpThread<'a> {
         } else {
             writeln!(f, "No stack")?;
         }
-        writeln!(f, "")?;
+        writeln!(f)?;
         Ok(())
     }
 }
@@ -1255,7 +1255,7 @@ impl MinidumpMiscInfo {
             None => writeln!(f, "(invalid)")?,
         }
         // TODO: version 2-4 fields
-        writeln!(f, "")?;
+        writeln!(f)?;
         Ok(())
     }
 }
@@ -1424,7 +1424,7 @@ impl MinidumpException {
             self.raw.thread_context.data_size, self.raw.thread_context.rva
         )?;
         if let Some(ref context) = self.context {
-            writeln!(f, "")?;
+            writeln!(f)?;
             context.print(f)?;
         } else {
             write!(
@@ -1665,7 +1665,7 @@ MDRawDirectory
                 i
             )?;
         }
-        writeln!(f, "")?;
+        writeln!(f)?;
         Ok(())
     }
 }
