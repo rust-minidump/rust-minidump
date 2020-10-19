@@ -840,7 +840,7 @@ Memory
             self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
         )?;
         self.print_contents(f)?;
-        write!(f, "\n")
+        writeln!(f, "")
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
@@ -849,7 +849,7 @@ Memory
         for byte in self.bytes.iter() {
             write!(f, "{:02x}", byte)?;
         }
-        write!(f, "\n")?;
+        writeln!(f, "")?;
         Ok(())
     }
 
@@ -1014,7 +1014,7 @@ impl<'a> MinidumpThread<'a> {
         } else {
             writeln!(f, "No stack")?;
         }
-        write!(f, "\n")?;
+        writeln!(f, "")?;
         Ok(())
     }
 }
@@ -1044,8 +1044,8 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
             });
         }
         Ok(MinidumpThreadList {
-            threads: threads,
-            thread_ids: thread_ids,
+            threads,
+            thread_ids,
         })
     }
 }
@@ -1073,7 +1073,7 @@ impl<'a> MinidumpThreadList<'a> {
         )?;
 
         for (i, thread) in self.threads.iter().enumerate() {
-            write!(f, "thread[{}]\n", i)?;
+            writeln!(f, "thread[{}]", i)?;
             thread.print(f)?;
         }
         Ok(())
@@ -1654,18 +1654,18 @@ MDRawDirectory
                 stream.location.rva
             )?;
         }
-        write!(f, "Streams:\n")?;
+        writeln!(f, "Streams:")?;
         streams.sort_by(|&(&a, &(_, _)), &(&b, &(_, _))| a.cmp(&b));
         for (_, &(i, ref stream)) in streams {
-            write!(
+            writeln!(
                 f,
-                "  stream type {:#x} ({}) at index {}\n",
+                "  stream type {:#x} ({}) at index {}",
                 stream.stream_type,
                 get_stream_name(stream.stream_type),
                 i
             )?;
         }
-        write!(f, "\n")?;
+        writeln!(f, "")?;
         Ok(())
     }
 }
@@ -1889,7 +1889,7 @@ mod test {
 
     #[test]
     fn test_memory_list() {
-        const CONTENTS: &'static [u8] = b"memory_contents";
+        const CONTENTS: &[u8] = b"memory_contents";
         let memory = Memory::with_section(
             Section::with_endian(Endian::Little).append_bytes(CONTENTS),
             0x309d68010bd21b2c,

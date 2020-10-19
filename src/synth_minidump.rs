@@ -117,11 +117,11 @@ impl SynthMinidump {
         assert_eq!(section.size(), mem::size_of::<md::MINIDUMP_HEADER>() as u64);
 
         SynthMinidump {
-            section: section,
-            flags: flags,
+            section,
+            flags,
             stream_count: 0,
-            stream_count_label: stream_count_label,
-            stream_directory_rva: stream_directory_rva,
+            stream_count_label,
+            stream_directory_rva,
             stream_directory: Section::with_endian(endian),
             module_list: Some(List::new(
                 md::MINIDUMP_STREAM_TYPE::ModuleListStream,
@@ -299,7 +299,7 @@ impl<T: DumpSection> List<T> {
         List {
             stream_type: stream_type.into(),
             section: Section::with_endian(endian).D32(&count_label),
-            count_label: count_label,
+            count_label,
             count: 0,
             _type: PhantomData,
         }
@@ -354,7 +354,7 @@ impl DumpString {
         let section = Section::with_endian(endian)
             .D32(u16_s.len() as u32)
             .append_bytes(&u16_s);
-        DumpString { section: section }
+        DumpString { section }
     }
 }
 
@@ -422,7 +422,7 @@ impl Module {
             .D32(version_info.file_date_hi)
             .D32(version_info.file_date_lo);
         Module {
-            section: section,
+            section,
             cv_record: None,
             misc_record: None,
         }
@@ -498,10 +498,7 @@ impl Memory {
     /// Create a new `Memory` object representing memory starting at `address`,
     /// containing the contents of `section`.
     pub fn with_section(section: Section, address: u64) -> Memory {
-        Memory {
-            section: section,
-            address: address,
-        }
+        Memory { section, address }
     }
 
     // Append an `MINIDUMP_MEMORY_DESCRIPTOR` referring to this memory range to `section`.
@@ -721,7 +718,7 @@ fn test_simple_stream() {
         .flags(0x9f738b33685cc84c)
         .add_stream(SimpleStream {
             stream_type: 0x11223344,
-            section: section,
+            section,
         });
     assert_eq!(
         dump.finish().unwrap(),
@@ -789,7 +786,7 @@ fn test_simple_stream_bigendian() {
         .flags(0x9f738b33685cc84c)
         .add_stream(SimpleStream {
             stream_type: 0x11223344,
-            section: section,
+            section,
         });
     assert_eq!(
         dump.finish().unwrap(),
