@@ -60,9 +60,9 @@ impl CiteLocation for (Label, Label) {
 
 impl<T: CiteLocation> CiteLocation for Option<T> {
     fn cite_location_in(&self, section: Section) -> Section {
-        match self {
-            &Some(ref inner) => inner.cite_location_in(section),
-            &None => section.D32(0).D32(0),
+        match *self {
+            Some(ref inner) => inner.cite_location_in(section),
+            None => section.D32(0).D32(0),
         }
     }
 }
@@ -145,6 +145,8 @@ impl SynthMinidump {
     }
 
     /// Append `section` to `self`, setting its location appropriately.
+    // Perhaps should have been called .add_section().
+    #[allow(clippy::should_implement_trait)]
     pub fn add<T: DumpSection>(mut self, section: T) -> SynthMinidump {
         let offset = section.file_offset();
         self.section = self.section.mark(&offset).append_section(section);
@@ -235,6 +237,12 @@ impl SynthMinidump {
     }
 }
 
+impl Default for SynthMinidump {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DumpSection for Section {
     fn file_offset(&self) -> Label {
         self.start()
@@ -305,6 +313,8 @@ impl<T: DumpSection> List<T> {
         }
     }
 
+    // Possibly name this .add_section().
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, entry: T) -> List<T> {
         self.count += 1;
         self.section = self

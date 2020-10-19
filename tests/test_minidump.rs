@@ -138,7 +138,7 @@ fn test_misc_info() {
     assert_eq!(misc_info.raw.process_create_time(), Some(0x45d35f73));
     assert_eq!(
         misc_info.process_create_time().unwrap(),
-        Utc.ymd(2007, 02, 14).and_hms(19, 13, 55)
+        Utc.ymd(2007, 2, 14).and_hms(19, 13, 55)
     );
 }
 
@@ -177,18 +177,18 @@ fn test_exception() {
     if let Some(ref ctx) = exception.context {
         assert_eq!(ctx.get_instruction_pointer(), 0x40429e);
         assert_eq!(ctx.get_stack_pointer(), 0x12fe84);
-        if let &MinidumpContext {
+        if let MinidumpContext {
             raw: MinidumpRawContext::X86(ref raw),
             ref valid,
-        } = ctx
+        } = *ctx
         {
             assert_eq!(raw.eip, 0x40429e);
             assert_eq!(*valid, MinidumpContextValidity::All);
         } else {
-            assert!(false, "Wrong context type");
+            panic!("Wrong context type");
         }
     } else {
-        assert!(false, "Missing context");
+        panic!("Missing context");
     }
 }
 
@@ -196,7 +196,7 @@ fn test_exception() {
 fn test_thread_list() {
     let dump = read_test_minidump().unwrap();
     let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
-    let ref threads = thread_list.threads;
+    let threads = &thread_list.threads;
     assert_eq!(threads.len(), 2);
     assert_eq!(threads[0].raw.thread_id, 0xbf4);
     assert_eq!(threads[1].raw.thread_id, 0x11c0);
@@ -205,18 +205,18 @@ fn test_thread_list() {
     if let Some(ref ctx) = threads[0].context {
         assert_eq!(ctx.get_instruction_pointer(), 0x7c90eb94);
         assert_eq!(ctx.get_stack_pointer(), 0x12f320);
-        if let &MinidumpContext {
+        if let MinidumpContext {
             raw: MinidumpRawContext::X86(ref raw),
             ref valid,
-        } = ctx
+        } = *ctx
         {
             assert_eq!(raw.eip, 0x7c90eb94);
             assert_eq!(*valid, MinidumpContextValidity::All);
         } else {
-            assert!(false, "Wrong context type");
+            panic!("Wrong context type");
         }
     } else {
-        assert!(false, "Missing context");
+        panic!("Missing context");
     }
     if let Some(ref stack) = threads[0].stack {
         // Try the beginning
@@ -236,7 +236,7 @@ fn test_thread_list() {
             0x405443
         );
     } else {
-        assert!(false, "Missing stack memory");
+        panic!("Missing stack memory");
     }
 }
 

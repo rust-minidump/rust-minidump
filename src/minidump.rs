@@ -1695,7 +1695,7 @@ mod test {
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {
         dump.finish()
             .ok_or(Error::FileNotFound)
-            .and_then(|bytes| Minidump::read(bytes))
+            .and_then(Minidump::read)
     }
 
     #[test]
@@ -1883,7 +1883,7 @@ mod test {
         assert_eq!(modules[4].code_file(), "module 5");
 
         // module_at_address should discard overlapping modules.
-        assert_eq!(module_list.by_addr().collect::<Vec<_>>().len(), 2);
+        assert_eq!(module_list.by_addr().count(), 2);
         assert_eq!(
             module_list
                 .module_at_address(0x100001000)
@@ -1965,7 +1965,7 @@ mod test {
         assert_eq!(regions[4].size, 0x1000);
 
         // memory_at_address should discard overlapping regions.
-        assert_eq!(memory_list.by_addr().collect::<Vec<_>>().len(), 2);
+        assert_eq!(memory_list.by_addr().count(), 2);
         let m1 = memory_list.memory_at_address(0x1a00).unwrap();
         assert_eq!(m1.base_address, 0x1000);
         assert_eq!(m1.size, 0x1000);
@@ -2110,7 +2110,7 @@ mod test {
                 assert_eq!(raw.eip, 0xabcd1234);
                 assert_eq!(raw.esp, 0x1010);
             }
-            _ => assert!(false, "Got unexpected raw context type!"),
+            _ => panic!("Got unexpected raw context type!"),
         }
         let stack = thread.stack.take().expect("Should have stack memory");
         assert_eq!(stack.base_address, 0x1000);
@@ -2141,7 +2141,7 @@ mod test {
                 assert_eq!(raw.rip, 0x1234abcd1234abcd);
                 assert_eq!(raw.rsp, 0x1000000010000000);
             }
-            _ => assert!(false, "Got unexpected raw context type!"),
+            _ => panic!("Got unexpected raw context type!"),
         }
         let stack = thread.stack.take().expect("Should have stack memory");
         assert_eq!(stack.base_address, 0x1000000010000000);
