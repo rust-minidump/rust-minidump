@@ -235,18 +235,18 @@ pub enum ContextError {
 }
 
 /// General-purpose registers for x86.
-static X86_REGS: [&'static str; 10] = [
+static X86_REGS: [&str; 10] = [
     "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl",
 ];
 
 /// General-purpose registers for x86-64.
-static X86_64_REGS: [&'static str; 17] = [
+static X86_64_REGS: [&str; 17] = [
     "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12", "r13",
     "r14", "r15", "rip",
 ];
 
 /// General-purpose registers for aarch64.
-static ARM64_REGS: [&'static str; 33] = [
+static ARM64_REGS: [&str; 33] = [
     "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14",
     "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
     "x28", "x29", "x30", "x31", "pc",
@@ -258,7 +258,7 @@ impl MinidumpContext {
     /// Return a MinidumpContext given a `MinidumpRawContext`.
     pub fn from_raw(raw: MinidumpRawContext) -> MinidumpContext {
         MinidumpContext {
-            raw: raw,
+            raw,
             valid: MinidumpContextValidity::All,
         }
     }
@@ -463,7 +463,7 @@ impl MinidumpContext {
                     raw.float_save.register_area.len(),
                 )?;
                 write_bytes(f, &raw.float_save.register_area)?;
-                write!(f, "\n")?;
+                writeln!(f, "")?;
                 write!(
                     f,
                     r#"  float_save.cr0_npx_state     = {:#x}
