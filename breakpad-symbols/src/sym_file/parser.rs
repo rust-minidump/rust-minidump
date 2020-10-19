@@ -31,14 +31,14 @@ named!(
     complete!(preceded!(many0!(char!('\r')), char!('\n')))
 );
 
-/// Match a hex string, parse it to a u64.
+// Match a hex string, parse it to a u64.
 named!(hex_str_u64<&[u8], u64>,
        map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
 
-/// Match a decimal string, parse it to a u32.
+// Match a decimal string, parse it to a u32.
 named!(decimal_u32<&[u8], u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
 
-/// Matches a MODULE record.
+// Matches a MODULE record.
 named!(module_line<&[u8], ()>,
   chain!(
     tag!("MODULE") ~
@@ -58,7 +58,7 @@ named!(module_line<&[u8], ()>,
     || {}
 ));
 
-/// Matches an INFO record.
+// Matches an INFO record.
 named!(
     info_line,
     chain!(
@@ -70,7 +70,7 @@ named!(
     )
 );
 
-/// Matches a FILE record.
+// Matches a FILE record.
 named!(file_line<&[u8], (u32, &str)>,
   chain!(
     tag!("FILE") ~
@@ -82,7 +82,7 @@ named!(file_line<&[u8], (u32, &str)>,
       ||{ (id, filename) }
 ));
 
-/// Matches a PUBLIC record.
+// Matches a PUBLIC record.
 named!(public_line<&[u8], PublicSymbol>,
   chain!(
     tag!("PUBLIC") ~
@@ -103,7 +103,7 @@ named!(public_line<&[u8], PublicSymbol>,
       }
 ));
 
-/// Matches line data after a FUNC record.
+// Matches line data after a FUNC record.
 named!(func_line_data<&[u8], SourceLine>,
   chain!(
     address: hex_str_u64 ~
@@ -124,7 +124,7 @@ named!(func_line_data<&[u8], SourceLine>,
       }
 ));
 
-/// Matches a FUNC record and any following line records.
+// Matches a FUNC record and any following line records.
 named!(func_lines<&[u8], Function>,
 chain!(
   tag!("FUNC") ~
@@ -160,7 +160,7 @@ chain!(
     }
     ));
 
-/// Matches a STACK WIN record.
+// Matches a STACK WIN record.
 named!(stack_win_line<&[u8], WinFrameType>,
   chain!(
     tag!("STACK WIN") ~
@@ -213,7 +213,7 @@ named!(stack_win_line<&[u8], WinFrameType>,
       }
 ));
 
-/// Matches a STACK CFI record.
+// Matches a STACK CFI record.
 named!(stack_cfi<&[u8], CFIRules>,
 chain!(
     tag!("STACK CFI") ~
@@ -230,7 +230,7 @@ chain!(
     }
     ));
 
-/// Matches a STACK CFI INIT record.
+// Matches a STACK CFI INIT record.
 named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
   chain!(
     tag!("STACK CFI INIT") ~
@@ -250,7 +250,7 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
       }
 ));
 
-/// Match a STACK CFI INIT record followed by zero or more STACK CFI records.
+// Match a STACK CFI INIT record followed by zero or more STACK CFI records.
 named!(stack_cfi_lines<&[u8], StackInfoCFI>,
   chain!(
     init: stack_cfi_init ~
@@ -266,7 +266,7 @@ named!(stack_cfi_lines<&[u8], StackInfoCFI>,
       }
 ));
 
-/// Parse any of the line data that can occur in the body of a symbol file.
+// Parse any of the line data that can occur in the body of a symbol file.
 named!(line<&[u8], Line>,
   alt!(
     info_line => { |_| Line::Info } |
@@ -277,7 +277,7 @@ named!(line<&[u8], Line>,
     stack_cfi_lines => { |s| Line::StackCFI(s) }
 ));
 
-/// Return a `SymbolFile` given a vec of `Line` data.
+// Return a `SymbolFile` given a vec of `Line` data.
 fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     let mut files = HashMap::new();
     let mut publics = vec![];
@@ -347,7 +347,7 @@ fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     }
 }
 
-/// Matches an entire symbol file.
+// Matches an entire symbol file.
 named!(symbol_file<&[u8], SymbolFile>,
   chain!(
     module_line? ~
