@@ -10,7 +10,6 @@ on:
 
 env:
   RUSTFLAGS: -Dwarnings
-  PWD: ${{ env.GITHUB_WORKSPACE }}
 
 jobs:
 
@@ -40,6 +39,8 @@ jobs:
             components: clippy
             override: true
       - uses: actions-rs/clippy-check@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --workspace --tests --examples
@@ -81,10 +82,14 @@ jobs:
         with:
           key: ${{ github.job }}
       - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
           args: --workspace
       - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
           args: --workspace --examples --bins
