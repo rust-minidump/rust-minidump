@@ -1,14 +1,17 @@
 use addr2line::{Context, Frame, Location};
-use breakpad_symbols::FrameSymbolizer;
-use failure::Error;
+use failure::{bail, format_err, Error};
 use gimli::{EndianRcSlice, RunTimeEndian};
 use memmap;
-use minidump::Module;
 use object::{self, Object};
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
-use SymbolProvider;
+
+use breakpad_symbols::FrameSymbolizer;
+use minidump::Module;
+
+use crate::SymbolProvider;
 
 #[derive(Default)]
 pub struct DwarfSymbolizer {

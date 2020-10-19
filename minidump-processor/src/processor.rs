@@ -1,14 +1,18 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use breakpad_symbols::{FrameSymbolizer, Symbolizer};
 use chrono::{TimeZone, Utc};
-use minidump::{self, *};
-use process_state::{CallStack, CallStackInfo, ProcessState};
-use stackwalker;
+use failure::Fail;
+
 use std::boxed::Box;
 use std::ops::Deref;
-use system_info::SystemInfo;
+
+use breakpad_symbols::{FrameSymbolizer, Symbolizer};
+use minidump::{self, *};
+
+use crate::process_state::{CallStack, CallStackInfo, ProcessState};
+use crate::stackwalker;
+use crate::system_info::SystemInfo;
 
 pub trait SymbolProvider {
     fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);

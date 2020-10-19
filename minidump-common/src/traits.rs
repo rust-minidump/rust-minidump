@@ -1,9 +1,11 @@
 //! Some common traits used by minidump-related crates.
+
+use log::warn;
+use range_map::{Range, RangeMap};
+
 use std::borrow::Cow;
 use std::cmp;
 use std::fmt::Debug;
-
-use range_map::{Range, RangeMap};
 
 /// An executable or shared library loaded in a process.
 pub trait Module {

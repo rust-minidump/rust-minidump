@@ -14,7 +14,7 @@ exclude = [
     "scripts/*",
     "testdata/*",
 ]
-
+edition = "2018"
 
 [dependencies]
 failure = "0.1.1"

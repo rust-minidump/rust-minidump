@@ -1,31 +1,20 @@
-extern crate breakpad_symbols;
-extern crate disasm;
-extern crate env_logger;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate log;
-extern crate minidump;
-extern crate minidump_common;
-extern crate reqwest;
-#[allow(unused_imports)]
-#[macro_use]
-extern crate structopt;
+use disasm::{Color, CpuArch, SourceLocation, SourceLookup};
+use failure::{bail, format_err, Error};
+use log::{debug, info};
+use reqwest::blocking::Client;
+
+use std::env;
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use structopt::StructOpt;
 
 use breakpad_symbols::{HttpSymbolSupplier, SimpleFrame, Symbolizer};
-use disasm::{Color, CpuArch, SourceLocation, SourceLookup};
-use failure::Error;
 use minidump::system_info::Cpu;
 use minidump::{
     Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
     MinidumpSystemInfo,
 };
 use minidump_common::traits::Module;
-use reqwest::blocking::Client;
-use std::env;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
-use structopt::StructOpt;
 
 #[derive(StructOpt)]
 #[structopt(

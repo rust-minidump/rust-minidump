@@ -6,27 +6,14 @@
 //!
 //! [`process_minidump`]: fn.process_minidump.html
 
-extern crate addr2line;
-extern crate breakpad_symbols;
-extern crate chrono;
-extern crate gimli;
-extern crate memmap;
-extern crate minidump;
-extern crate object;
-#[cfg(test)]
-extern crate test_assembler;
-
-#[macro_use]
-extern crate failure;
-
 mod dwarf_symbolizer;
 mod process_state;
 mod processor;
 mod stackwalker;
 mod system_info;
 
-pub use dwarf_symbolizer::DwarfSymbolizer;
-pub use process_state::*;
-pub use processor::*;
-pub use stackwalker::*;
-pub use system_info::*;
+pub use crate::dwarf_symbolizer::DwarfSymbolizer;
+pub use crate::process_state::*;
+pub use crate::processor::*;
+pub use crate::stackwalker::*;
+pub use crate::system_info::*;

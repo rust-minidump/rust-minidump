@@ -11,7 +11,7 @@ use std::io::prelude::*;
 use breakpad_symbols::FrameSymbolizer;
 use chrono::prelude::*;
 use minidump::*;
-use system_info::SystemInfo;
+use crate::system_info::SystemInfo;
 
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to

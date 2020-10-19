@@ -1,15 +1,17 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-mod parser;
-mod types;
-
 use failure::Error;
+
 use std::path::Path;
 
-use sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
-pub use sym_file::types::*;
-use {FrameSymbolizer, Module};
+use crate::sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
+use crate::{FrameSymbolizer, Module};
+
+pub use crate::sym_file::types::*;
+
+mod parser;
+mod types;
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.

@@ -29,25 +29,11 @@
 //!               "vswprintf");
 //! ```
 
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate log;
-extern crate minidump_common;
-#[allow(unused_imports)]
-#[macro_use]
-extern crate nom;
-extern crate range_map;
-extern crate reqwest;
-#[cfg(test)]
-extern crate tempdir;
-
-mod sym_file;
-
 use failure::Error;
-pub use minidump_common::traits::Module;
+use log::{debug, warn};
 use reqwest::blocking::Client;
 use reqwest::Url;
+
 use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
@@ -56,7 +42,12 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-pub use sym_file::SymbolFile;
+
+pub use minidump_common::traits::Module;
+
+pub use crate::sym_file::SymbolFile;
+
+mod sym_file;
 
 /// A `Module` implementation that holds arbitrary data.
 ///

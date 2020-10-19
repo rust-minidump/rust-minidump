@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::mem;
 
-use iostuff::*;
+use crate::iostuff::*;
 use minidump_common::format as md;
 use minidump_common::format::ContextFlagsCpu;
 
