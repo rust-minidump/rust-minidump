@@ -11,7 +11,7 @@ extern crate minidump_common;
 
 use minidump::*;
 
-const USAGE: &'static str = "Usage: minidump_dump <minidump>";
+const USAGE: &str = "Usage: minidump_dump <minidump>";
 
 macro_rules! streams {
     ( $( $x:ident ),* ) => {

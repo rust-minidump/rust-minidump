@@ -189,6 +189,7 @@ pub struct MinidumpMemory<'a> {
     pub bytes: &'a [u8],
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum RawMiscInfo {
     MiscInfo(md::MINIDUMP_MISC_INFO),
     MiscInfo2(md::MINIDUMP_MISC_INFO2),
@@ -715,7 +716,7 @@ impl MinidumpModuleList {
     pub fn main_module(&self) -> Option<&MinidumpModule> {
         // The main code module is the first one present in a minidump file's
         // MINIDUMP_MODULEList.
-        if self.modules.len() > 0 {
+        if !self.modules.is_empty() {
             Some(&self.modules[0])
         } else {
             None
@@ -730,14 +731,14 @@ impl MinidumpModuleList {
     }
 
     /// Iterate over the modules in arbitrary order.
-    pub fn iter<'a>(&'a self) -> Modules<'a> {
+    pub fn iter(&self) -> Modules<'_> {
         Modules {
             iter: Box::new(self.modules.iter()),
         }
     }
 
     /// Iterate over the modules in order by memory address.
-    pub fn by_addr<'a>(&'a self) -> Modules<'a> {
+    pub fn by_addr(&self) -> Modules<'_> {
         Modules {
             iter: Box::new(
                 self.modules_by_addr
@@ -764,6 +765,12 @@ impl MinidumpModuleList {
             module.print(f)?;
         }
         Ok(())
+    }
+}
+
+impl Default for MinidumpModuleList {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -800,7 +807,7 @@ impl<'a> MinidumpMemory<'a> {
     ) -> Result<MinidumpMemory<'a>, Error> {
         let bytes = location_slice(data, &desc.memory).or(Err(Error::StreamReadFailure))?;
         Ok(MinidumpMemory {
-            desc: desc.clone(),
+            desc: *desc,
             base_address: desc.start_of_memory_range,
             size: desc.memory.data_size as u64,
             bytes,
@@ -941,6 +948,12 @@ impl<'a> MinidumpMemoryList<'a> {
             region.print(f)?;
         }
         Ok(())
+    }
+}
+
+impl<'a> Default for MinidumpMemoryList<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1490,9 +1503,9 @@ impl MinidumpAssertion {
   type                                       = {}
 
 ",
-            self.expression().unwrap_or_else(|| String::new()),
-            self.function().unwrap_or_else(|| String::new()),
-            self.file().unwrap_or_else(|| String::new()),
+            self.expression().unwrap_or_else(String::new),
+            self.function().unwrap_or_else(String::new),
+            self.file().unwrap_or_else(String::new),
             self.raw.line,
             self.raw._type,
         )?;
