@@ -10,6 +10,7 @@ on:
 
 env:
   RUSTFLAGS: -Dwarnings
+  PWD: ${{ env.GITHUB_WORKSPACE }}
 
 jobs:
 
@@ -80,14 +81,10 @@ jobs:
         with:
           key: ${{ github.job }}
       - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
           args: --workspace
       - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
           args: --workspace --examples --bins
