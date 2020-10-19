@@ -184,23 +184,20 @@ impl SourceLookup for SymLookup {
             } = frame;
             if let (Some(file), Some(line)) = (source_file, source_line) {
                 let line = line as u64;
-                match parse_vcs_info(&file) {
-                    Ok(info) => {
-                        let url = info.raw_url();
-                        let local = env::temp_dir().join(info.as_local_filename());
-                        if maybe_fetch_source_file(&self.client, &url, &local).is_ok() {
-                            return Some(SourceLocation {
-                                file: local.to_string_lossy().into_owned(),
-                                file_display: Some(info.annotate_url(line)),
-                                line,
-                            });
-                        }
+                if let Ok(info) = parse_vcs_info(&file) {
+                    let url = info.raw_url();
+                    let local = env::temp_dir().join(info.as_local_filename());
+                    if maybe_fetch_source_file(&self.client, &url, &local).is_ok() {
+                        return Some(SourceLocation {
+                            file: local.to_string_lossy().into_owned(),
+                            file_display: Some(info.annotate_url(line)),
+                            line,
+                        });
                     }
-                    _ => {}
                 }
                 // If fetching the file doesn't work, just hand back the original filename.
                 Some(SourceLocation {
-                    file: file.into(),
+                    file,
                     file_display: None,
                     line,
                 })
@@ -248,11 +245,11 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     let context = exception
         .context
         .as_ref()
-        .ok_or(format_err!("Missing exception context"))?;
+        .ok_or_else(|| format_err!("Missing exception context"))?;
     let ip = context.get_instruction_pointer();
     let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
     let memory = memory_list.memory_at_address(ip)
-        .ok_or(format_err!("Minidump doesn't contain a memory region that contains the instruction pointer from the exception record"))?;
+        .ok_or_else(|| format_err!("Minidump doesn't contain a memory region that contains the instruction pointer from the exception record"))?;
     let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
     let arch = match sys_info.cpu {
         Cpu::X86 => CpuArch::X86,
@@ -344,7 +341,7 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
     let context = exception
         .context
         .as_ref()
-        .ok_or(format_err!("Missing exception context"))?;
+        .ok_or_else(|| format_err!("Missing exception context"))?;
     let sp = context.get_stack_pointer();
     info!("Stack pointer: {:#x}", sp);
     let memory = memory_list.memory_at_address(sp).ok_or_else(|| {
