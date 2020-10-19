@@ -8,9 +8,8 @@ on:
   schedule:
     - cron: '11 7 * * 1,4'
 
-# env:
-#   RUSTFLAGS: -Dwarnings
-#   RUSTDOCFLAGS: -Dwarnings
+env:
+  RUSTFLAGS: -Dwarnings
 
 jobs:
 
@@ -29,23 +28,25 @@ jobs:
           command: fmt
           args: --all -- --check
 
-  # clippy:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v1
-  #     - uses: actions-rs/toolchain@v1
-  #       with:
-  #           toolchain: stable
-  #           profile: minimal
-  #           components: clippy
-  #           override: true
-  #     - uses: actions-rs/clippy-check@v1
-  #       with:
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #         args: --workspace --tests --examples
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            profile: minimal
+            components: clippy
+            override: true
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --workspace --tests --examples
 
   docs:
     runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
     steps:
       - uses: actions/checkout@master
       - uses: actions-rs/toolchain@v1
