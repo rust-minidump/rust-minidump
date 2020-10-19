@@ -317,7 +317,7 @@ fn print_frame(module: &MinidumpModule, frame: SimpleFrame) {
     } else {
         print!(" + {:#x}", frame.instruction - module.base_address());
     }
-    println!("");
+    println!();
 }
 
 pub fn dump_minidump_stack() -> Result<(), Error> {
