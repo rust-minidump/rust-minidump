@@ -190,10 +190,10 @@ impl PartialEq for SymbolResult {
 
 impl fmt::Display for SymbolResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &SymbolResult::Ok(_) => write!(f, "Ok"),
-            &SymbolResult::NotFound => write!(f, "Not found"),
-            &SymbolResult::LoadError(ref e) => write!(f, "Load error: {}", e),
+        match *self {
+            SymbolResult::Ok(_) => write!(f, "Ok"),
+            SymbolResult::NotFound => write!(f, "Not found"),
+            SymbolResult::LoadError(ref e) => write!(f, "Load error: {}", e),
         }
     }
 }
@@ -221,7 +221,7 @@ pub struct SimpleSymbolSupplier {
 impl SimpleSymbolSupplier {
     /// Instantiate a new `SimpleSymbolSupplier` that will search in `paths`.
     pub fn new(paths: Vec<PathBuf>) -> SimpleSymbolSupplier {
-        SimpleSymbolSupplier { paths: paths }
+        SimpleSymbolSupplier { paths }
     }
 }
 
@@ -232,8 +232,8 @@ impl SymbolSupplier for SimpleSymbolSupplier {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
                     return SymbolFile::from_file(&test_path)
-                        .and_then(|s| Ok(SymbolResult::Ok(s)))
-                        .unwrap_or_else(|e| SymbolResult::LoadError(e));
+                        .map(SymbolResult::Ok)
+                        .unwrap_or_else(SymbolResult::LoadError);
                 }
             }
         }
@@ -272,7 +272,7 @@ impl HttpSymbolSupplier {
         let urls = urls
             .into_iter()
             .filter_map(|mut u| {
-                if !u.ends_with("/") {
+                if !u.ends_with('/') {
                     u.push('/');
                 }
                 Url::parse(&u).ok()
@@ -291,10 +291,9 @@ impl HttpSymbolSupplier {
 
 /// Save the data in `contents` to `path`.
 fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
-    let base = path.parent().ok_or(io::Error::new(
-        io::ErrorKind::Other,
-        format!("Bad cache path: {:?}", path),
-    ))?;
+    let base = path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::Other, format!("Bad cache path: {:?}", path))
+    })?;
     fs::create_dir_all(&base)?;
     let mut f = File::create(path)?;
     f.write_all(contents)?;
@@ -330,13 +329,12 @@ impl SymbolSupplier for HttpSymbolSupplier {
             SymbolResult::NotFound => {
                 if let Some(rel_path) = relative_symbol_path(module, "sym") {
                     for ref url in self.urls.iter() {
-                        match fetch_symbol_file(&self.client, url, &rel_path, &self.cache) {
-                            Ok(buf) => {
-                                return SymbolFile::from_bytes(&buf)
-                                    .and_then(|s| Ok(SymbolResult::Ok(s)))
-                                    .unwrap_or_else(|e| SymbolResult::LoadError(e));
-                            }
-                            Err(_) => {}
+                        if let Ok(buf) =
+                            fetch_symbol_file(&self.client, url, &rel_path, &self.cache)
+                        {
+                            return SymbolFile::from_bytes(&buf)
+                                .map(SymbolResult::Ok)
+                                .unwrap_or_else(SymbolResult::LoadError);
                         }
                     }
                 }
@@ -378,7 +376,7 @@ impl SimpleFrame {
     /// Instantiate a `SimpleFrame` with instruction pointer `instruction`.
     pub fn with_instruction(instruction: u64) -> SimpleFrame {
         SimpleFrame {
-            instruction: instruction,
+            instruction,
             ..SimpleFrame::default()
         }
     }
@@ -501,9 +499,8 @@ impl Symbolizer {
             self.symbols.borrow_mut().insert(k.clone(), res);
         }
         if let Some(res) = self.symbols.borrow().get(&k) {
-            match res {
-                &SymbolResult::Ok(ref sym) => sym.fill_symbol(module, frame),
-                _ => {}
+            if let SymbolResult::Ok(ref sym) = *res {
+                sym.fill_symbol(module, frame)
             }
         }
     }
@@ -666,11 +663,7 @@ mod test {
             write_good_symbol_file(&path.join(sym));
             // Should load OK now that it exists.
             assert!(
-                if let SymbolResult::Ok(_) = supplier.locate_symbols(&m) {
-                    true
-                } else {
-                    false
-                },
+                matches!(supplier.locate_symbols(&m), SymbolResult::Ok(_)),
                 format!("Located symbols for {}", sym)
             );
         }
@@ -682,11 +675,7 @@ mod test {
         write_bad_symbol_file(&paths[0].join(sym));
         let res = supplier.locate_symbols(&mal);
         assert!(
-            if let SymbolResult::LoadError(_) = res {
-                true
-            } else {
-                false
-            },
+            matches!(res, SymbolResult::LoadError(_)),
             format!("Correctly failed to parse {}, result: {:?}", sym, res)
         );
     }
