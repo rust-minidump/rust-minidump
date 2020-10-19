@@ -39,7 +39,7 @@ pub trait CPUContext {
     /// if `valid` indicates that it has a valid value, otherwise return
     /// `None`.
     fn get_register(&self, reg: &str, valid: &MinidumpContextValidity) -> Option<Self::Register> {
-        if let &MinidumpContextValidity::Some(ref which) = valid {
+        if let MinidumpContextValidity::Some(ref which) = *valid {
             if !which.contains(reg) {
                 return None;
             }
