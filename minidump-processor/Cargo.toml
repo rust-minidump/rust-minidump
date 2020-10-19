@@ -8,6 +8,7 @@ readme = "README.md"
 documentation = "https://docs.rs/minidump-processor"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "luser/rust-minidump" }

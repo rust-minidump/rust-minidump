@@ -4,7 +4,7 @@
 use chrono::prelude::*;
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
-use failure;
+use failure::Fail;
 use memmap::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -23,12 +23,12 @@ use std::ops::Deref;
 use std::path::Path;
 use std::str;
 
-pub use context::*;
+pub use crate::context::*;
+use crate::system_info::{Cpu, Os};
 use minidump_common::format as md;
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
-use system_info::{Cpu, Os};
 
 /// An index into the contents of a minidump.
 ///
@@ -1686,10 +1686,10 @@ MDRawDirectory
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::synth_minidump::Module as SynthModule;
+    use crate::synth_minidump::{self, MiscStream, SimpleStream, SynthMinidump, Thread};
+    use crate::synth_minidump::{DumpString, Memory, STOCK_VERSION_INFO};
     use std::mem;
-    use synth_minidump::Module as SynthModule;
-    use synth_minidump::{self, MiscStream, SimpleStream, SynthMinidump, Thread};
-    use synth_minidump::{DumpString, Memory, STOCK_VERSION_INFO};
     use test_assembler::*;
 
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {

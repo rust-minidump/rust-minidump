@@ -8,6 +8,7 @@ license = "MIT"
 documentation = "https://docs.rs/minidump-common"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "luser/rust-minidump" }

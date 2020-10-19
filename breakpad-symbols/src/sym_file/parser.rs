@@ -1,11 +1,11 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use failure::Error;
-use minidump_common::traits::IntoRangeMapSafe;
+use failure::{format_err, Error};
 use nom::IResult::*;
 use nom::*;
 use range_map::Range;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
@@ -14,7 +14,9 @@ use std::path::Path;
 use std::str;
 use std::str::FromStr;
 
-use sym_file::types::*;
+use minidump_common::traits::IntoRangeMapSafe;
+
+use crate::sym_file::types::*;
 
 enum Line<'a> {
     Info,

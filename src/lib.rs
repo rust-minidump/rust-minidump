@@ -19,21 +19,6 @@
 //! [read]: struct.Minidump.html#method.read
 //! [read_path]: struct.Minidump.html#method.read_path
 
-extern crate chrono;
-extern crate encoding;
-#[macro_use]
-extern crate failure;
-#[cfg(doctest)]
-extern crate doc_comment;
-extern crate libc;
-extern crate memmap;
-extern crate minidump_common;
-extern crate num_traits;
-extern crate range_map;
-extern crate scroll;
-#[cfg(test)]
-extern crate test_assembler;
-
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
 
@@ -46,7 +31,7 @@ mod minidump;
 pub mod synth_minidump;
 pub mod system_info;
 
-pub use iostuff::Readable;
-pub use minidump::*;
+pub use crate::iostuff::Readable;
+pub use crate::minidump::*;
 pub use minidump_common::format;
 pub use minidump_common::traits::Module;

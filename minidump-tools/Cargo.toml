@@ -2,6 +2,7 @@
 name = "minidump-tools"
 version = "0.2.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
+edition = "2018"
 
 [dependencies]
 breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }

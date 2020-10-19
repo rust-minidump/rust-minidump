@@ -8,6 +8,7 @@ documentation = "https://docs.rs/breakpad-symbols"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
 exclude = [ "testdata/*" ]
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "luser/rust-minidump" }

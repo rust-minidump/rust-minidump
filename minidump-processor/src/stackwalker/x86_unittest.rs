@@ -4,8 +4,8 @@
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::format::CONTEXT_X86;
 use minidump::*;
-use process_state::*;
-use stackwalker::walk_stack;
+use crate::process_state::*;
+use crate::stackwalker::walk_stack;
 use test_assembler::*;
 
 struct TestFixture {

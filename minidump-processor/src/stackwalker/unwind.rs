@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use minidump::{MinidumpContextValidity, MinidumpMemory};
-use process_state::StackFrame;
+use crate::process_state::StackFrame;
 
 /// A trait for things that can unwind to a caller.
 pub trait Unwind {

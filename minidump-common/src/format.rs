@@ -10,7 +10,10 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 
-use scroll::{Endian, Pread};
+use bitflags::bitflags;
+use enum_primitive_derive::Primitive;
+use scroll::{Endian, Pread, SizeWith};
+use smart_default::SmartDefault;
 
 /// An offset from the start of the minidump file.
 pub type RVA = u32;
