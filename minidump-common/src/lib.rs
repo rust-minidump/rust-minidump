@@ -6,5 +6,7 @@
 //!
 //! [minidump]: https://crates.io/crates/minidump
 
+#![warn(missing_debug_implementations)]
+
 pub mod format;
 pub mod traits;

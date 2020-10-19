@@ -34,7 +34,7 @@ pub const MINIDUMP_VERSION: u32 = 42899;
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_header
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_HEADER {
     /// This should be [`MINIDUMP_SIGNATURE`][signature].
     ///
@@ -62,7 +62,7 @@ pub struct MINIDUMP_HEADER {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_location_descriptor
-#[derive(Copy, Debug, Default, Clone, Pread, SizeWith)]
+#[derive(Debug, Copy, Default, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_LOCATION_DESCRIPTOR {
     /// The size of this data.
     pub data_size: u32,
@@ -76,7 +76,7 @@ pub struct MINIDUMP_LOCATION_DESCRIPTOR {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_descriptor
-#[derive(Copy, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Copy, Clone, Default, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_DESCRIPTOR {
     /// The base address of this memory range from the process.
     pub start_of_memory_range: u64,
@@ -91,7 +91,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_directory
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_DIRECTORY {
     /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`][ty] for known stream types,
     /// but user streams can have arbitrary values.
@@ -238,7 +238,7 @@ impl From<MINIDUMP_STREAM_TYPE> for u32 {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_module
-#[derive(Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct MINIDUMP_MODULE {
     /// The base address of the executable image in memory.
     pub base_of_image: u64,
@@ -277,7 +277,7 @@ pub struct MINIDUMP_MODULE {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/verrsrc/ns-verrsrc-tagvs_fixedfileinfo
-#[derive(Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct VS_FIXEDFILEINFO {
     /// Contains the value of `VS_FFI_SIGNATURE`
     pub signature: u32,
@@ -333,7 +333,7 @@ pub enum CvSignature {
 /// CodeView debug information in the older PDB 2.0 ("NB10") format.
 ///
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CV_INFO_PDB20 {
     /// This field will always be [`CvSignature::Pdb20`](enum.CvSignature.html#variant.Pdb20).
     pub cv_signature: u32,
@@ -368,7 +368,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
 /// CodeView debug information in the current PDB 7.0 ("RSDS") format.
 ///
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CV_INFO_PDB70 {
     /// This will always be [`CvSignature::Pdb70`](enum.CvSignature.html#variant.Pdb70)
     pub cv_signature: u32,
@@ -480,7 +480,7 @@ impl fmt::Display for GUID {
 ///
 /// [buildid]: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/developer_guide/compiling-build-id
 /// [binutils]: https://sourceware.org/binutils/docs-2.26/ld/Options.html#index-g_t_002d_002dbuild_002did-292
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CV_INFO_ELF {
     /// This will always be [`CvSignature::Elf`](enum.CvSignature.html#variant.Elf)
     pub cv_signature: u32,
@@ -507,7 +507,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_ELF {
 }
 
 /// Obsolete debug record type defined in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct IMAGE_DEBUG_MISC {
     pub data_type: u32,
     pub length: u32,
@@ -521,7 +521,7 @@ pub struct IMAGE_DEBUG_MISC {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_thread
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_THREAD {
     /// The identifier of this thread
     pub thread_id: u32,
@@ -550,7 +550,7 @@ pub struct MINIDUMP_THREAD {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-minidump_exception_stream
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_EXCEPTION_STREAM {
     /// The identifier of the thread that encountered the exception.
     pub thread_id: u32,
@@ -568,7 +568,7 @@ pub struct MINIDUMP_EXCEPTION_STREAM {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_exception
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_EXCEPTION {
     /// The reason the exception occurred.
     ///
@@ -782,7 +782,7 @@ impl ContextFlagsCpu {
 /// Possible contents of [`CONTEXT_AMD64::float_save`].
 ///
 /// This struct matches the definition of the struct with the same name from WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct XMM_SAVE_AREA32 {
     pub control_word: u16,
     pub status_word: u16,
@@ -806,7 +806,7 @@ pub struct XMM_SAVE_AREA32 {
 ///
 /// This is defined as an anonymous struct inside an anonymous union in
 /// the x86-64 CONTEXT struct in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct SSE_REGISTERS {
     pub header: [u128; 2],
     pub legacy: [u128; 8],
@@ -831,7 +831,7 @@ pub struct SSE_REGISTERS {
 /// An x86-64 (amd64) CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86-64.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_AMD64 {
     pub p1_home: u64,
     pub p2_home: u64,
@@ -889,7 +889,7 @@ pub struct CONTEXT_AMD64 {
 }
 
 /// ARM floating point state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM {
     pub fpscr: u64,
     pub regs: [u64; 32],
@@ -900,7 +900,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for ARM
 /// in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
     pub iregs: [u32; 16],
@@ -920,7 +920,7 @@ pub enum ArmRegisterNumbers {
 }
 
 /// aarch64 floating point state (old)
-#[derive(Clone, Copy, Pread, SizeWith)]
+#[derive(Debug, Clone, Copy, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64_OLD {
     pub fpsr: u32,
     pub fpcr: u32,
@@ -930,7 +930,7 @@ pub struct FLOATING_SAVE_AREA_ARM64_OLD {
 /// An old aarch64 (arm64) CPU context
 ///
 /// This is a Breakpad extension.
-#[derive(Clone, Copy, Pread, SizeWith)]
+#[derive(Debug, Clone, Copy, Pread, SizeWith)]
 #[repr(packed)]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
@@ -941,7 +941,7 @@ pub struct CONTEXT_ARM64_OLD {
 }
 
 /// aarch64 floating point state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64 {
     pub regs: [u128; 32usize],
     pub fpsr: u32,
@@ -952,7 +952,7 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for aarch64
 /// in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
     pub cpsr: u32,
@@ -976,7 +976,7 @@ pub enum Arm64RegisterNumbers {
 }
 
 /// MIPS floating point state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
     pub fpcsr: u32,
@@ -986,7 +986,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 /// A MIPS CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
     pub _pad0: u32,
@@ -1023,7 +1023,7 @@ pub enum MipsRegisterNumbers {
 }
 
 /// PPC floating point state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_PPC {
     pub fpregs: [u64; 32],
     pub fpscr_pad: u32,
@@ -1031,7 +1031,7 @@ pub struct FLOATING_SAVE_AREA_PPC {
 }
 
 /// PPC vector state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct VECTOR_SAVE_AREA_PPC {
     pub save_vr: [u128; 32],
     pub save_vscr: u128,
@@ -1043,7 +1043,7 @@ pub struct VECTOR_SAVE_AREA_PPC {
 /// A PPC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_PPC {
     pub context_flags: u32,
     pub srr0: u32,
@@ -1069,7 +1069,7 @@ pub enum PpcRegisterNumbers {
 /// A PPC64 CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC64 in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_PPC64 {
     pub context_flags: u64,
     pub srr0: u64,
@@ -1092,7 +1092,7 @@ pub enum Ppc64RegisterNumbers {
 }
 
 /// SPARC floating point state
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_SPARC {
     pub regs: [u64; 32],
     pub filler: u64,
@@ -1102,7 +1102,7 @@ pub struct FLOATING_SAVE_AREA_SPARC {
 /// A SPARC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for SPARC in WinNT.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_SPARC {
     pub context_flags: u32,
     pub flag_pad: u32,
@@ -1126,7 +1126,7 @@ pub enum SparcRegisterNumbers {
 /// x86 floating point state
 ///
 /// This struct matches the definition of the `FLOATING_SAVE_AREA` struct from WinNT.h.
-#[derive(Clone, SmartDefault, Pread, SizeWith)]
+#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_X86 {
     pub control_word: u32,
     pub status_word: u32,
@@ -1143,7 +1143,7 @@ pub struct FLOATING_SAVE_AREA_X86 {
 /// An x86 CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86.
-#[derive(Clone, SmartDefault, Pread, SizeWith)]
+#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
 pub struct CONTEXT_X86 {
     pub context_flags: u32,
     pub dr0: u32,
@@ -1176,7 +1176,7 @@ pub struct CONTEXT_X86 {
 /// CPU information contained within the [`MINIDUMP_SYSTEM_INFO`] struct
 ///
 /// This struct matches the definition of the `CPU_INFORMATION` union from minidumpapiset.h.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CPU_INFORMATION {
     /// `data` is defined as a union in the Microsoft headers
     ///
@@ -1191,7 +1191,7 @@ pub struct CPU_INFORMATION {
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
 /// which is contained within the [`CPU_INFORMATION`] union.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct X86CpuInfo {
     pub vendor_id: [u32; 3],
     pub version_information: u32,
@@ -1200,7 +1200,7 @@ pub struct X86CpuInfo {
 }
 
 /// Arm-specific CPU information (Breakpad extension)
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct ARMCpuInfo {
     pub cpuid: u32,
     /// Hardware capabilities
@@ -1213,7 +1213,7 @@ pub struct ARMCpuInfo {
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
 /// which is contained within the [`CPU_INFORMATION`] union.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct OtherCpuInfo {
     pub processor_features: [u64; 2],
 }
@@ -1256,7 +1256,7 @@ bitflags! {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_system_info
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_SYSTEM_INFO {
     /// The system's processor architecture
     ///
@@ -1351,7 +1351,7 @@ pub enum PlatformId {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms724950(v=vs.85).aspx
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct SYSTEMTIME {
     pub year: u16,
     pub month: u16,
@@ -1368,7 +1368,7 @@ pub struct SYSTEMTIME {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/timezoneapi/ns-timezoneapi-_time_zone_information
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct TIME_ZONE_INFORMATION {
     pub bias: i32,
     pub standard_name: [u16; 32],
@@ -1395,7 +1395,7 @@ macro_rules! multi_structs {
     // Declare a single struct.
     ($(#[$attr:meta])* pub struct $name:ident { $( pub $field:ident: $t:tt, )* } $($tail:tt)* ) => {
         $(#[$attr])*
-        #[derive(Clone, Pread, SizeWith)]
+        #[derive(Debug, Clone, Pread, SizeWith)]
         pub struct $name {
             $( pub $field: $t, )*
         }
@@ -1501,7 +1501,7 @@ bitflags! {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_info_list
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO_LIST {
     /// The size of this header
     pub size_of_header: u32,
@@ -1516,7 +1516,7 @@ pub struct MINIDUMP_MEMORY_INFO_LIST {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_info
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO {
     /// The base address of the region of pages
     pub base_address: u64,
@@ -1589,7 +1589,7 @@ bitflags! {
 /// Taken from the definition in Breakpad's [minidump_format.h][fmt].
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#962
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_BREAKPAD_INFO {
     pub validity: u32,
     /// The Thread ID of the handler thread
@@ -1615,7 +1615,7 @@ bitflags! {
 /// Taken from the definition in Breakpad's [minidump_format.h][fmt].
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#998
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_ASSERTION_INFO {
     /// The assertion that failed, as a 0-terminated UTF16-LE string
     pub expression: [u16; 128],
@@ -1644,7 +1644,7 @@ pub enum AssertionType {
 /// Dynamic linker information for a shared library on 32-bit Linux
 ///
 /// This is functionally equivalent to the data in `struct link_map` defined in <link.h>.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct LINK_MAP_32 {
     pub addr: u32,
     /// The offset of a string containing the filename of this shared library
@@ -1656,7 +1656,7 @@ pub struct LINK_MAP_32 {
 ///
 /// Used when converting minidumps to coredumps. This is functionally equivalent to the data
 /// in `struct r_debug` defined in <link.h>.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct DSO_DEBUG_32 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
@@ -1676,7 +1676,7 @@ pub struct DSO_DEBUG_32 {
 /// Dynamic linker information for a shared library on 64-bit Linux
 ///
 /// This is functionally equivalent to the data in `struct link_map` defined in <link.h>.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct LINK_MAP_64 {
     pub addr: u64,
     /// The offset of a string containing the filename of this shared library
@@ -1688,7 +1688,7 @@ pub struct LINK_MAP_64 {
 ///
 /// Used when converting minidumps to coredumps. This is functionally equivalent to the data
 /// in `struct r_debug` defined in <link.h>.
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct DSO_DEBUG_64 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
@@ -1708,7 +1708,7 @@ pub struct DSO_DEBUG_64 {
 /// A variable-length UTF-8-encoded string carried within a minidump file.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpUTF8String.html>
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MINIDUMP_UTF8_STRING {
     /// The length of the #Buffer field in bytes, not including the `NUL` terminator.
     ///

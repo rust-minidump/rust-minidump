@@ -51,7 +51,7 @@ use range_map::{Range, RangeMap};
 ///
 /// [read]: struct.Minidump.html#method.read
 /// [read_path]: struct.Minidump.html#method.read_path
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct Minidump<'a, T>
 where
     T: Deref<Target = [u8]> + 'a,
@@ -116,7 +116,7 @@ pub trait MinidumpStream<'a>: Sized {
 }
 
 /// CodeView data describes how to locate debug symbols
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum CodeView {
     /// PDB 2.0 format data in a separate file
     Pdb20(md::CV_INFO_PDB20),
@@ -129,7 +129,7 @@ pub enum CodeView {
 }
 
 /// An executable or shared library loaded in the process at the time the `Minidump` was written.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MinidumpModule {
     /// The `MINIDUMP_MODULE` direct from the minidump file.
     pub raw: md::MINIDUMP_MODULE,
@@ -142,7 +142,7 @@ pub struct MinidumpModule {
 }
 
 /// A list of `MinidumpModule`s contained in a `Minidump`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules: Vec<MinidumpModule>,
@@ -151,6 +151,7 @@ pub struct MinidumpModuleList {
 }
 
 /// The state of a thread from the process when the minidump was written.
+#[derive(Debug)]
 pub struct MinidumpThread<'a> {
     /// The `MINIDUMP_THREAD` direct from the minidump file.
     pub raw: md::MINIDUMP_THREAD,
@@ -161,6 +162,7 @@ pub struct MinidumpThread<'a> {
 }
 
 /// A list of `MinidumpThread`s contained in a `Minidump`.
+#[derive(Debug)]
 pub struct MinidumpThreadList<'a> {
     /// The threads, in the order they were present in the `Minidump`.
     pub threads: Vec<MinidumpThread<'a>>,
@@ -169,6 +171,7 @@ pub struct MinidumpThreadList<'a> {
 }
 
 /// Information about the system that generated the minidump.
+#[derive(Debug)]
 pub struct MinidumpSystemInfo {
     /// The `MINIDUMP_SYSTEM_INFO` direct from the minidump
     pub raw: md::MINIDUMP_SYSTEM_INFO,
@@ -179,6 +182,7 @@ pub struct MinidumpSystemInfo {
 }
 
 /// A region of memory from the process that wrote the minidump.
+#[derive(Debug)]
 pub struct MinidumpMemory<'a> {
     /// The raw `MINIDUMP_MEMORY_DESCRIPTOR` from the minidump.
     pub desc: md::MINIDUMP_MEMORY_DESCRIPTOR,
@@ -191,6 +195,7 @@ pub struct MinidumpMemory<'a> {
 }
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub enum RawMiscInfo {
     MiscInfo(md::MINIDUMP_MISC_INFO),
     MiscInfo2(md::MINIDUMP_MISC_INFO2),
@@ -199,6 +204,7 @@ pub enum RawMiscInfo {
 }
 
 /// Miscellaneous information about the process that wrote the minidump.
+#[derive(Debug)]
 pub struct MinidumpMiscInfo {
     /// The `MINIDUMP_MISC_INFO` struct direct from the minidump.
     pub raw: RawMiscInfo,
@@ -209,6 +215,7 @@ pub struct MinidumpMiscInfo {
 /// MinidumpBreakpadInfo wraps MINIDUMP_BREAKPAD_INFO, which is an optional stream
 /// in a minidump that provides additional information about the process state
 /// at the time the minidump was generated.
+#[derive(Debug)]
 pub struct MinidumpBreakpadInfo {
     raw: md::MINIDUMP_BREAKPAD_INFO,
     /// The thread that wrote the minidump.
@@ -231,6 +238,7 @@ pub enum CrashReason {
 /// exception.  It also provides access to a `MinidumpContext` object, which
 /// contains the CPU context for the exception thread at the time the exception
 /// occurred.
+#[derive(Debug)]
 pub struct MinidumpException {
     /// The raw exception information from the minidump stream.
     pub raw: md::MINIDUMP_EXCEPTION_STREAM,
@@ -246,6 +254,7 @@ pub struct MinidumpException {
 }
 
 /// A list of memory regions included in a minidump.
+#[derive(Debug)]
 pub struct MinidumpMemoryList<'a> {
     /// The memory regions, in the order they were stored in the minidump.
     regions: Vec<MinidumpMemory<'a>>,
@@ -254,6 +263,7 @@ pub struct MinidumpMemoryList<'a> {
 }
 
 /// Information about an assertion that caused a crash.
+#[derive(Debug)]
 pub struct MinidumpAssertion {
     pub raw: md::MINIDUMP_ASSERTION_INFO,
 }
@@ -728,6 +738,7 @@ where
 }
 
 /// An iterator over `MinidumpModule`s.
+#[allow(missing_debug_implementations)]
 pub struct Modules<'a> {
     iter: Box<dyn Iterator<Item = &'a MinidumpModule> + 'a>,
 }
@@ -915,6 +926,7 @@ Memory
 }
 
 /// An iterator over `MinidumpMemory`s.
+#[allow(missing_debug_implementations)]
 pub struct MemoryRegions<'b, 'a> {
     iter: Box<dyn Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
 }

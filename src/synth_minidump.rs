@@ -1,6 +1,9 @@
 // Copyright 2016 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+// Some test_assembler types do not have Debug, so be a bit more lenient here.
+#![allow(missing_debug_implementations)]
+
 use encoding::all::UTF_16LE;
 use encoding::{EncoderTrap, Encoding};
 use minidump_common::format as md;
