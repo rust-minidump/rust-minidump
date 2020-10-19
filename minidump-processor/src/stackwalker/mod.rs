@@ -6,9 +6,9 @@
 mod unwind;
 mod x86;
 
-use minidump::*;
 use crate::process_state::*;
 use crate::SymbolProvider;
+use minidump::*;
 
 use self::unwind::Unwind;
 

@@ -1,11 +1,11 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use crate::process_state::*;
+use crate::stackwalker::walk_stack;
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::format::CONTEXT_X86;
 use minidump::*;
-use crate::process_state::*;
-use crate::stackwalker::walk_stack;
 use test_assembler::*;
 
 struct TestFixture {

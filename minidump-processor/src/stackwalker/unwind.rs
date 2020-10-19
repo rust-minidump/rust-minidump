@@ -1,8 +1,8 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use minidump::{MinidumpContextValidity, MinidumpMemory};
 use crate::process_state::StackFrame;
+use minidump::{MinidumpContextValidity, MinidumpMemory};
 
 /// A trait for things that can unwind to a caller.
 pub trait Unwind {
