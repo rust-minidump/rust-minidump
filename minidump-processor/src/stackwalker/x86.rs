@@ -1,10 +1,10 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use minidump::format::CONTEXT_X86;
-use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpRawContext};
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
+use minidump::format::CONTEXT_X86;
+use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpRawContext};
 use std::collections::HashSet;
 
 fn get_caller_by_frame_pointer(
