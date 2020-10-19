@@ -51,7 +51,7 @@ impl SymbolFile {
             }
         }
 
-        return None;
+        None
     }
 }
 

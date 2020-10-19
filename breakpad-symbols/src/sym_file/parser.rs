@@ -96,8 +96,8 @@ named!(public_line<&[u8], PublicSymbol>,
     my_eol ,
       || {
           PublicSymbol {
-              address: address,
-              parameter_size: parameter_size,
+              address,
+              parameter_size,
               name: name.to_string()
           }
       }
@@ -116,10 +116,10 @@ named!(func_line_data<&[u8], SourceLine>,
     my_eol ,
       || {
           SourceLine {
-              address: address,
-              size: size,
+              address,
+              size,
               file: filenum,
-              line: line,
+              line,
           }
       }
 ));
@@ -141,9 +141,9 @@ chain!(
   lines: many0!(func_line_data) ,
     || {
         Function {
-            address: address,
-            size: size,
-            parameter_size: parameter_size,
+            address,
+            size,
+            parameter_size,
             name: name.to_string(),
             lines: lines.into_iter()
                 .filter_map(|l| {
@@ -195,14 +195,14 @@ named!(stack_win_line<&[u8], WinFrameType>,
               WinStackThing::AllocatesBasePointer(rest == "1")
           };
           let info = StackInfoWin {
-              address: address,
+              address,
               size: code_size,
-              prologue_size: prologue_size,
-              epilogue_size: epilogue_size,
-              parameter_size: parameter_size,
-              saved_register_size: saved_register_size,
-              local_size: local_size,
-              max_stack_size: max_stack_size,
+              prologue_size,
+              epilogue_size,
+              parameter_size,
+              saved_register_size,
+              local_size,
+              max_stack_size,
               program_string_or_base_pointer,
           };
           match ty {
@@ -224,7 +224,7 @@ chain!(
         my_eol ,
     || {
         CFIRules {
-            address: address,
+            address,
             rules: rules.to_string(),
         }
     }
@@ -243,7 +243,7 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
     my_eol ,
       || {
           (CFIRules {
-              address: address,
+              address,
               rules: rules.to_string(),
           },
            size)
@@ -260,8 +260,8 @@ named!(stack_cfi_lines<&[u8], StackInfoCFI>,
           add_rules.sort();
           StackInfoCFI {
               init: init_rules,
-              size: size,
-              add_rules: add_rules,
+              size,
+              add_rules,
           }
       }
 ));
@@ -278,7 +278,7 @@ named!(line<&[u8], Line>,
 ));
 
 // Return a `SymbolFile` given a vec of `Line` data.
-fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
+fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
     let mut files = HashMap::new();
     let mut publics = vec![];
     let mut funcs = vec![];
@@ -326,8 +326,8 @@ fn symbol_file_from_lines<'a>(lines: Vec<Line<'a>>) -> SymbolFile {
     }
     publics.sort();
     SymbolFile {
-        files: files,
-        publics: publics,
+        files,
+        publics,
         functions: funcs
             .into_iter()
             .map(|f| (f.memory_range(), f))
@@ -550,7 +550,7 @@ fn test_func_lines_and_lines() {
             ]
         );
     } else {
-        assert!(false, "Failed to parse!");
+        panic!("Failed to parse!");
     }
 }
 
@@ -564,7 +564,7 @@ fn test_func_with_m() {
     if let Done(rest, _) = func_lines(data) {
         assert_eq!(rest, &b""[..]);
     } else {
-        assert!(false, "Failed to parse!");
+        panic!("Failed to parse!");
     }
 }
 
@@ -591,12 +591,12 @@ fn test_stack_win_line_program_string() {
             );
         }
         Error(e) => {
-            assert!(false, format!("Parse error: {:?}", e));
+            panic!(format!("Parse error: {:?}", e));
         }
         Incomplete(_) => {
-            assert!(false, "Incomplete parse!");
+            panic!("Incomplete parse!");
         }
-        _ => assert!(false, "Something bad happened"),
+        _ => panic!("Something bad happened"),
     }
 }
 
@@ -620,12 +620,12 @@ fn test_stack_win_line_frame_data() {
             );
         }
         Error(e) => {
-            assert!(false, format!("Parse error: {:?}", e));
+            panic!(format!("Parse error: {:?}", e));
         }
         Incomplete(_) => {
-            assert!(false, "Incomplete parse!");
+            panic!("Incomplete parse!");
         }
-        _ => assert!(false, "Something bad happened"),
+        _ => panic!("Something bad happened"),
     }
 }
 
