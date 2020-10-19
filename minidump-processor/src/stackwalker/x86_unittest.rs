@@ -39,7 +39,7 @@ impl TestFixture {
         let stack_memory = MinidumpMemory {
             desc: Default::default(),
             base_address: base,
-            size: size,
+            size,
             bytes: &stack,
         };
         walk_stack(

@@ -41,7 +41,7 @@ fn fill_source_line_info<P>(
     P: SymbolProvider,
 {
     // Find the module whose address range covers this frame's instruction.
-    if let &Some(module) = &modules.module_at_address(frame.instruction) {
+    if let Some(module) = modules.module_at_address(frame.instruction) {
         // FIXME: this shouldn't need to clone, we should be able to use
         // the same lifetime as the module list that's passed in.
         frame.module = Some(module.clone());
@@ -62,7 +62,7 @@ where
     // no more.
     let mut frames = vec![];
     let mut info = CallStackInfo::Ok;
-    if let &Some(context) = maybe_context {
+    if let Some(context) = *maybe_context {
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
@@ -74,10 +74,7 @@ where
     } else {
         info = CallStackInfo::MissingContext;
     }
-    CallStack {
-        frames: frames,
-        info: info,
-    }
+    CallStack { frames, info }
 }
 
 #[cfg(test)]

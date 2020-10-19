@@ -12,9 +12,9 @@ fn get_caller_by_frame_pointer(
     valid: &MinidumpContextValidity,
     stack_memory: &MinidumpMemory,
 ) -> Option<StackFrame> {
-    match valid {
-        &MinidumpContextValidity::All => {}
-        &MinidumpContextValidity::Some(ref which) => {
+    match *valid {
+        MinidumpContextValidity::All => {}
+        MinidumpContextValidity::Some(ref which) => {
             if !which.contains("ebp") {
                 return None;
             }

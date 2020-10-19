@@ -139,7 +139,7 @@ where
     // Get assertion
     let assertion = None;
     let modules = if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
-        module_list.clone()
+        module_list
     } else {
         // Just give an empty list, simplifies things.
         MinidumpModuleList::new()
@@ -159,7 +159,7 @@ where
             && requesting_thread_id.unwrap() == thread.raw.thread_id
         {
             requesting_thread = Some(i);
-            exception_context.or(thread.context.as_ref())
+            exception_context.or_else(|| thread.context.as_ref())
         } else {
             thread.context.as_ref()
         };
@@ -169,13 +169,13 @@ where
     // if exploitability enabled, run exploitability analysis
     Ok(ProcessState {
         time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
-        process_create_time: process_create_time,
-        crash_reason: crash_reason,
-        crash_address: crash_address,
-        assertion: assertion,
-        requesting_thread: requesting_thread,
-        system_info: system_info,
-        threads: threads,
-        modules: modules,
+        process_create_time,
+        crash_reason,
+        crash_address,
+        assertion,
+        requesting_thread,
+        system_info,
+        threads,
+        modules,
     })
 }
