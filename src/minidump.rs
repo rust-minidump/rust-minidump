@@ -1902,10 +1902,9 @@ where
     /// the stream data as a specific type.
     ///
     /// [stream]: trait.MinidumpStream.html
-    pub fn get_stream<'b, S>(&'b self) -> Result<S, Error>
+    pub fn get_stream<S>(&'a self) -> Result<S, Error>
     where
         S: MinidumpStream<'a>,
-        'b: 'a,
     {
         match self.get_raw_stream(S::STREAM_TYPE) {
             Err(e) => Err(e),
@@ -1923,10 +1922,9 @@ where
     /// [`get_stream`][get_stream] instead.
     ///
     /// [get_stream]: #get_stream
-    pub fn get_raw_stream<'b, S>(&'b self, stream_type: S) -> Result<&'a [u8], Error>
+    pub fn get_raw_stream<S>(&'a self, stream_type: S) -> Result<&'a [u8], Error>
     where
         S: Into<u32>,
-        'b: 'a,
     {
         match self.streams.get(&stream_type.into()) {
             None => Err(Error::StreamNotFound),
