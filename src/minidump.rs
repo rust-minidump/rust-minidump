@@ -927,24 +927,24 @@ Memory
 
 /// An iterator over `MinidumpMemory`s.
 #[allow(missing_debug_implementations)]
-pub struct MemoryRegions<'b, 'a> {
-    iter: Box<dyn Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
+pub struct MemoryRegions<'iter, 'data> {
+    iter: Box<dyn Iterator<Item = &'iter MinidumpMemory<'data>> + 'iter>,
 }
 
-impl<'b, 'a> Iterator for MemoryRegions<'b, 'a>
+impl<'iter, 'data> Iterator for MemoryRegions<'iter, 'data>
 where
-    'a: 'b,
+    'data: 'iter,
 {
-    type Item = &'b MinidumpMemory<'a>;
+    type Item = &'iter MinidumpMemory<'data>;
 
-    fn next(&mut self) -> Option<&'b MinidumpMemory<'a>> {
+    fn next(&mut self) -> Option<&'iter MinidumpMemory<'data>> {
         self.iter.next()
     }
 }
 
-impl<'a> MinidumpMemoryList<'a> {
+impl<'mdmp> MinidumpMemoryList<'mdmp> {
     /// Return an empty `MinidumpMemoryList`.
-    pub fn new() -> MinidumpMemoryList<'a> {
+    pub fn new() -> MinidumpMemoryList<'mdmp> {
         MinidumpMemoryList {
             regions: vec![],
             regions_by_addr: RangeMap::new(),
@@ -952,7 +952,7 @@ impl<'a> MinidumpMemoryList<'a> {
     }
 
     /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
-    pub fn from_regions(regions: Vec<MinidumpMemory<'a>>) -> MinidumpMemoryList<'a> {
+    pub fn from_regions(regions: Vec<MinidumpMemory<'mdmp>>) -> MinidumpMemoryList<'mdmp> {
         let regions_by_addr = regions
             .iter()
             .enumerate()
@@ -965,21 +965,26 @@ impl<'a> MinidumpMemoryList<'a> {
     }
 
     /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
-    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory<'a>> {
+    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory<'mdmp>> {
         self.regions_by_addr
             .get(address)
             .map(|&index| &self.regions[index])
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
-    pub fn iter<'b>(&'b self) -> MemoryRegions<'a, 'b> {
+    ///
+    /// The iterator returns items of [MinidumpMemory] as `&'slf MinidumpMemory<'mdmp>`.
+    /// That is the lifetime of the item is bound to the lifetime of the iterator itself
+    /// (`'slf`), while the slice inside [MinidumpMemory] pointing at the memory itself has
+    /// the lifetime of the [Minidump] struct ('mdmp).
+    pub fn iter<'slf>(&'slf self) -> MemoryRegions<'slf, 'mdmp> {
         MemoryRegions {
             iter: Box::new(self.regions.iter()),
         }
     }
 
     /// Iterate over the memory regions in order by memory address.
-    pub fn by_addr<'b>(&'b self) -> MemoryRegions<'a, 'b> {
+    pub fn by_addr<'slf>(&'slf self) -> MemoryRegions<'slf, 'mdmp> {
         MemoryRegions {
             iter: Box::new(
                 self.regions_by_addr
@@ -2233,6 +2238,23 @@ mod test {
         assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
         assert_eq!(regions[0].size, CONTENTS.len() as u64);
         assert_eq!(&regions[0].bytes, &CONTENTS);
+    }
+
+    #[test]
+    fn test_memory_list_lifetimes() {
+        // A memory list should not own any of it's data.
+        const CONTENTS: &[u8] = b"memory_contents";
+        let memory = Memory::with_section(
+            Section::with_endian(Endian::Little).append_bytes(CONTENTS),
+            0x309d68010bd21b2c,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory);
+        let dump = read_synth_dump(dump).unwrap();
+        let mem_slices: Vec<&[u8]> = {
+            let mem_list: MinidumpMemoryList<'_> = dump.get_stream().unwrap();
+            mem_list.iter().map(|mem| mem.bytes).collect()
+        };
+        assert_eq!(mem_slices[0], CONTENTS);
     }
 
     #[test]
