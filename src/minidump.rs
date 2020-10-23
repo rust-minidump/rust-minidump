@@ -1906,6 +1906,10 @@ where
     /// [`MinidumpStream`][stream] trait, this method allows reading
     /// the stream data as a specific type.
     ///
+    /// Note that the lifetime of the returned stream is bound to the lifetime of the this
+    /// `Minidump` struct itself and not to the lifetime of the data backing this minidump.
+    /// This is a consequence of how this struct relies on [Deref] to access the data.
+    ///
     /// [stream]: trait.MinidumpStream.html
     pub fn get_stream<S>(&'a self) -> Result<S, Error>
     where
@@ -1925,6 +1929,10 @@ where
     /// This can be used to get the contents of arbitrary minidump streams.
     /// For streams of known types you almost certainly want to use
     /// [`get_stream`][get_stream] instead.
+    ///
+    /// Note that the lifetime of the returned stream is bound to the lifetime of the this
+    /// `Minidump` struct itself and not to the lifetime of the data backing this minidump.
+    /// This is a consequence of how this struct relies on [Deref] to access the data.
     ///
     /// [get_stream]: #get_stream
     pub fn get_raw_stream<S>(&'a self, stream_type: S) -> Result<&'a [u8], Error>
