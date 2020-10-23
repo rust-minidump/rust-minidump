@@ -2250,7 +2250,7 @@ mod test {
 
     #[test]
     fn test_memory_list_lifetimes() {
-        // A memory list should not own any of it's data.
+        // A memory list should not own any of the minidump data.
         const CONTENTS: &[u8] = b"memory_contents";
         let memory = Memory::with_section(
             Section::with_endian(Endian::Little).append_bytes(CONTENTS),
