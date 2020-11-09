@@ -506,15 +506,15 @@ pub struct MINIDUMP_EXCEPTION_STREAM {
 pub struct MINIDUMP_EXCEPTION {
     /// The reason the exception occurred.
     ///
-    /// Possible values are in the `ExceptionCodeWindows`, `ExceptionCodeLinux`, and
-    /// `ExceptionCodeMac` enums.
+    /// Possible values are in the [`ExceptionCodeWindows`], [`ExceptionCodeLinux`], and
+    /// [`ExceptionCodeMac`] enums.
     pub exception_code: u32,
     /// Flags related to the exception.
     ///
     /// On Windows this is 1 for noncontinuable exceptions and 0 otherwise. For Breakpad-produced
     /// minidumps on macOS this field is used to store additional exception information.
     pub exception_flags: u32,
-    /// The address of an associated `MINIDUMP_EXCEPTION` for a nested exception.
+    /// The address of an associated [`MINIDUMP_EXCEPTION`] for a nested exception.
     ///
     /// This address is in the minidump producing host's memory.
     pub exception_record: u64,
@@ -523,7 +523,7 @@ pub struct MINIDUMP_EXCEPTION {
     /// For Breakpad-produced minidumps on macOS this is the exception subcode, which is
     /// typically the address.
     pub exception_address: u64,
-    /// The number of valid elements in `exception_information`.
+    /// The number of valid elements in [`MINIDUMP_EXCEPTION::exception_information`].
     pub number_parameters: u32,
     pub __align: u32,
     /// An array of additional arguments that describe the exception.
@@ -534,7 +534,7 @@ pub struct MINIDUMP_EXCEPTION {
     pub exception_information: [u64; 15], // EXCEPTION_MAXIMUM_PARAMETERS
 }
 
-/// Values for `MINIDUMP_EXCEPTION.exception_code` for crashes on Windows
+/// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on Windows
 ///
 /// These values primarily come from WinBase.h and WinNT.h, with a few additions.
 #[repr(u32)]
@@ -576,7 +576,7 @@ pub enum ExceptionCodeWindows {
     SIMULATED = 0x0517a7ed,
 }
 
-/// Values for `MINIDUMP_EXCEPTION.exception_code` for crashes on Linux
+/// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on Linux
 ///
 /// These are primarily signal numbers from bits/signum.h.
 #[repr(u32)]
@@ -648,7 +648,7 @@ pub enum ExceptionCodeLinux {
     DUMP_REQUESTED = 0xffffffff,
 }
 
-/// Values for `MINIDUMP_EXCEPTION.exception_code` for crashes on macOS
+/// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on macOS
 ///
 /// Based on Darwin/macOS' mach/exception_types.h. This is what macOS calls an "exception",
 /// not a "code".
@@ -673,11 +673,15 @@ pub enum ExceptionCodeMac {
     SIMULATED = 0x43507378,
 }
 
-/// Valid bits in a `context_flags` for `ContextFlagsCpu`
+/// Valid bits in a `context_flags` for [`ContextFlagsCpu`]
 pub const CONTEXT_CPU_MASK: u32 = 0xffffff00;
 
 bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs
+    ///
+    /// This applies to the [`CONTEXT_ARM`], [`CONTEXT_PPC`], [`CONTEXT_MIPS`],
+    /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`] and
+    /// [`CONTEXT_ARM64_OLD`] structs.
     pub struct ContextFlagsCpu: u32 {
         const CONTEXT_IA64 = 0x80000;
         /// Super-H, includes SH3, from winnt.h in the Windows CE 5.0 SDK
@@ -703,13 +707,13 @@ bitflags! {
 }
 
 impl ContextFlagsCpu {
-    /// Populate a `ContextFlagsCpu` with valid bits from `flags`
+    /// Populate a [`ContextFlagsCpu`] with valid bits from `flags`
     pub fn from_flags(flags: u32) -> ContextFlagsCpu {
         ContextFlagsCpu::from_bits_truncate(flags & CONTEXT_CPU_MASK)
     }
 }
 
-/// Possible contents of `CONTEXT_AMD64.float_save`.
+/// Possible contents of [`CONTEXT_AMD64::float_save`].
 ///
 /// This struct matches the definition of the struct with the same name from WinNT.h.
 #[derive(Clone, Pread, SizeWith)]
@@ -732,7 +736,7 @@ pub struct XMM_SAVE_AREA32 {
     pub reserved4: [u8; 96],
 }
 
-/// Possible contents of `CONTEXT_AMD64.float_save`.
+/// Possible contents of [`CONTEXT_AMD64::float_save`].
 ///
 /// This is defined as an anonymous struct inside an anonymous union in
 /// the x86-64 CONTEXT struct in WinNT.h.
@@ -806,8 +810,8 @@ pub struct CONTEXT_AMD64 {
     /// This is defined as a union in the C headers, but also
     /// ` MAXIMUM_SUPPORTED_EXTENSION` is defined as 512 bytes.
     ///
-    /// Callers that want to access the underlying data can use `Pread` to read either
-    /// an `XMM_SAVE_AREA32` or `SSE_REGISTERS` struct from this raw data as appropriate.
+    /// Callers that want to access the underlying data can use [`Pread`] to read either
+    /// an [`XMM_SAVE_AREA32`] or [`SSE_REGISTERS`] struct from this raw data as appropriate.
     pub float_save: [u8; 512],
     pub vector_register: [u128; 26],
     pub vector_control: u64,
@@ -838,7 +842,7 @@ pub struct CONTEXT_ARM {
     pub float_save: FLOATING_SAVE_AREA_ARM,
 }
 
-/// Offsets into `CONTEXT_ARM.iregs` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_ARM::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ArmRegisterNumbers {
@@ -895,7 +899,7 @@ pub struct CONTEXT_ARM64 {
     pub wvr: [u64; 2],
 }
 
-/// Offsets into `CONTEXT_ARM64.iregs` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_ARM64::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Arm64RegisterNumbers {
@@ -934,7 +938,7 @@ pub struct CONTEXT_MIPS {
     pub float_save: FLOATING_SAVE_AREA_MIPS,
 }
 
-/// Offsets into `CONTEXT_MIPS.iregs` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_MIPS::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MipsRegisterNumbers {
@@ -989,7 +993,7 @@ pub struct CONTEXT_PPC {
     pub vector_save: VECTOR_SAVE_AREA_PPC,
 }
 
-/// Offsets into `CONTEXT_PPC.gpr` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_PPC::gpr`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PpcRegisterNumbers {
@@ -1014,7 +1018,7 @@ pub struct CONTEXT_PPC64 {
     pub vector_save: VECTOR_SAVE_AREA_PPC,
 }
 
-/// Offsets into `CONTEXT_PPC64.gpr` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_PPC64::gpr`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Ppc64RegisterNumbers {
@@ -1046,7 +1050,7 @@ pub struct CONTEXT_SPARC {
     pub float_save: FLOATING_SAVE_AREA_SPARC,
 }
 
-/// Offsets into `CONTEXT_SPARC.g_r` for registers with a dedicated or conventional purpose
+/// Offsets into [`CONTEXT_SPARC::g_r`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum SparcRegisterNumbers {
@@ -1103,24 +1107,24 @@ pub struct CONTEXT_X86 {
     pub extended_registers: [u8; 512], // MAXIMUM_SUPPORTED_EXTENSION
 }
 
-/// CPU information contained within the `MINIDUMP_SYSTEM_INFO` struct
+/// CPU information contained within the [`MINIDUMP_SYSTEM_INFO`] struct
 ///
 /// This struct matches the definition of the `CPU_INFORMATION` union from minidumpapiset.h.
 #[derive(Clone, Pread, SizeWith)]
 pub struct CPU_INFORMATION {
     /// `data` is defined as a union in the Microsoft headers
     ///
-    /// It is the union of `X86CpuInfo`, `ARMCpuInfo` (Breakpad-specific), and
-    /// `OtherCpuInfo` defined below. It does not seem possible to safely derive `Pread`
+    /// It is the union of [`X86CpuInfo`], [`ARMCpuInfo`] (Breakpad-specific), and
+    /// [`OtherCpuInfo`] defined below. It does not seem possible to safely derive [`Pread`]
     /// on an actual union, so we provide the raw data here and expect callers to use
-    /// `Pread` to derive the specific union representation desired.
+    /// [`Pread`] to derive the specific union representation desired.
     pub data: [u8; 24],
 }
 
 /// x86-specific CPU information derived from the `cpuid` instruction
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
-/// which is contained within the `CPU_INFORMATION` union.
+/// which is contained within the [`CPU_INFORMATION`] union.
 #[derive(Clone, Pread, SizeWith)]
 pub struct X86CpuInfo {
     pub vendor_id: [u32; 3],
@@ -1142,14 +1146,14 @@ pub struct ARMCpuInfo {
 /// CPU information for non-x86 CPUs
 ///
 /// This struct matches the definition of the struct of the same name from minidumpapiset.h,
-/// which is contained within the `CPU_INFORMATION` union.
+/// which is contained within the [`CPU_INFORMATION`] union.
 #[derive(Clone, Pread, SizeWith)]
 pub struct OtherCpuInfo {
     pub processor_features: [u64; 2],
 }
 
 bitflags! {
-    /// Possible values of `ARMCpuInfo.elf_hwcaps`
+    /// Possible values of [`ARMCpuInfo::elf_hwcaps`]
     ///
     /// This matches the Linux kernel definitions from [<asm/hwcaps.h>](hwcap).
     ///
@@ -1211,7 +1215,7 @@ pub struct MINIDUMP_SYSTEM_INFO {
     pub cpu: CPU_INFORMATION,
 }
 
-/// Known values of `MINIDUMP_SYSTEM_INFO.processor_architecture`
+/// Known values of [`MINIDUMP_SYSTEM_INFO::processor_architecture`]
 ///
 /// Many of these are taken from definitions in WinNT.h, but several of them are
 /// Breakpad extensions.
@@ -1243,7 +1247,7 @@ pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_UNKNOWN = 0xffff,
 }
 
-/// Known values of `MINIDUMP_SYSTEM_INFO.platform_id`
+/// Known values of [`MINIDUMP_SYSTEM_INFO::platform_id`]
 ///
 /// The Windows values here are taken from defines in WinNT.h, but the rest are Breakpad
 /// extensions.
@@ -1425,8 +1429,8 @@ bitflags! {
 
 /// A list of memory regions in a minidump
 ///
-/// This is the format of the `MemoryInfoListStream`. The individual `MINIDUMP_MEMORY_INFO`
-/// entries follow this header in the stream.
+/// This is the format of the [`MINIDUMP_STREAM_TYPE::MemoryInfoListStream`]. The individual
+/// [`MINIDUMP_MEMORY_INFO`] entries follow this header in the stream.
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
@@ -1475,7 +1479,7 @@ pub struct MINIDUMP_MEMORY_INFO {
 }
 
 bitflags! {
-    /// Potential values for `MINIDUMP_MEMORY_INFO.state`
+    /// Potential values for [`MINIDUMP_MEMORY_INFO::state`]
     pub struct MemoryState: u32 {
         const MEM_COMMIT  = 0x01000;
         const MEM_FREE    = 0x10000;
@@ -1484,7 +1488,7 @@ bitflags! {
 }
 
 bitflags! {
-    /// Potential values for `MINIDUMP_MEMORY_INFO.protection` and `allocation_protection`
+    /// Potential values for [`MINIDUMP_MEMORY_INFO::protection`] and `allocation_protection`
     ///
     /// See [Microsoft's documentation](msdn) for details.
     ///
@@ -1506,7 +1510,7 @@ bitflags! {
 }
 
 bitflags! {
-    /// Potential values for `MINIDUMP_MEMORY_INFO._type`
+    /// Potential values for [`MINIDUMP_MEMORY_INFO::_type`]
     pub struct MemoryType: u32 {
         const MEM_PRIVATE = 0x00020000;
         const MEM_MAPPED  = 0x00040000;
@@ -1529,7 +1533,7 @@ pub struct MINIDUMP_BREAKPAD_INFO {
 }
 
 bitflags! {
-    /// Potential values for `MINIDUMP_BREAKPAD_INFO.validity`
+    /// Potential values for [`MINIDUMP_BREAKPAD_INFO::validity`]
     ///
     /// Taken from definitions in Breakpad's [minidump_format.h][fmt].
     ///
@@ -1553,13 +1557,13 @@ pub struct MINIDUMP_ASSERTION_INFO {
     pub function: [u16; 128],
     /// The source file containing the assertion, as a 0-terminated UTF16-LE string
     pub file: [u16; 128],
-    /// The line number in `file` containing the assertion
+    /// The line number in [`file`] containing the assertion
     pub line: u32,
     /// The assertion type
     pub _type: u32,
 }
 
-/// Known values of `MINIDUMP_ASSERTION_INFO._type`
+/// Known values of [`MINIDUMP_ASSERTION_INFO::_type`]
 /// Taken from the definition in Breakpad's [minidump_format.h][fmt].
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#1011
@@ -1590,9 +1594,9 @@ pub struct LINK_MAP_32 {
 pub struct DSO_DEBUG_32 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
-    /// The offset of an array of `LINK_MAP_32` structs
+    /// The offset of an array of [`LINK_MAP_32`] structs
     pub map: RVA,
-    /// The number of `LINK_MAP_32` entries pointed to by `map`
+    /// The number of [`LINK_MAP_32`] entries pointed to by `map`
     pub dso_count: u32,
     /// The address of a function internal to the run-time linker used by debuggers to
     /// set a breakpoint.
@@ -1622,9 +1626,9 @@ pub struct LINK_MAP_64 {
 pub struct DSO_DEBUG_64 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
-    /// The offset of an array of `LINK_MAP_64` structs
+    /// The offset of an array of [`LINK_MAP_64`] structs
     pub map: RVA,
-    /// The number of `LINK_MAP_64` entries pointed to by `map`
+    /// The number of [`LINK_MAP_64`] entries pointed to by `map`
     pub dso_count: u32,
     /// The address of a function internal to the run-time linker used by debuggers to
     /// set a breakpoint.
