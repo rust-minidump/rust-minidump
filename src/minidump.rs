@@ -11,6 +11,7 @@ use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{self, Pread, BE, LE};
 use std::borrow::Cow;
 use std::boxed::Box;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -257,6 +258,13 @@ pub struct MinidumpAssertion {
     pub raw: md::MINIDUMP_ASSERTION_INFO,
 }
 
+/// Additional Crashpad-specific information carried within a minidump file.
+#[derive(Debug)]
+pub struct MinidumpCrashpadInfo {
+    pub raw: md::MINIDUMP_CRASHPAD_INFO,
+    pub simple_annotations: BTreeMap<String, String>,
+}
+
 //======================================================
 // Implementations
 
@@ -301,6 +309,16 @@ fn read_string_utf16(
         }
         Err(_) => Err(()),
     }
+}
+
+fn read_string_utf8<'a>(
+    offset: &mut usize,
+    bytes: &'a [u8],
+    endian: scroll::Endian,
+) -> Result<&'a str, ()> {
+    let length: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
+    let bytes = bytes.gread_with(offset, length as usize).or(Err(()))?;
+    std::str::from_utf8(bytes).or(Err(()))
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
@@ -1509,6 +1527,64 @@ impl MinidumpAssertion {
         Ok(())
     }
 }
+
+fn read_simple_string_dictionary(
+    all: &[u8],
+    location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
+    endian: scroll::Endian,
+) -> Result<BTreeMap<String, String>, Error> {
+    let mut dictionary = BTreeMap::new();
+
+    let data = location_slice(all, location).or(Err(Error::StreamReadFailure))?;
+    if data.is_empty() {
+        return Ok(dictionary);
+    }
+
+    let mut offset = 0;
+
+    let count: u32 = data
+        .gread_with(&mut offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    for _ in 0..count {
+        let entry: md::MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY = data
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let key = read_string_utf8(&mut (entry.key as usize), all, endian)
+            .or(Err(Error::StreamReadFailure))?;
+        let value = read_string_utf8(&mut (entry.value as usize), all, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        dictionary.insert(key.to_owned(), value.to_owned());
+    }
+
+    Ok(dictionary)
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::CrashpadInfoStream;
+
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+        let raw: md::MINIDUMP_CRASHPAD_INFO = bytes
+            .pread_with(0, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        if raw.version > md::MINIDUMP_CRASHPAD_INFO::VERSION {
+            return Err(Error::VersionMismatch);
+        }
+
+        let simple_annotations =
+            read_simple_string_dictionary(all, &raw.simple_annotations, endian)?;
+
+        Ok(Self {
+            raw,
+            simple_annotations,
+        })
+    }
+}
+
+impl MinidumpCrashpadInfo {}
 
 impl<'a> Minidump<'a, Mmap> {
     /// Read a `Minidump` from a `Path` to a file on disk.
