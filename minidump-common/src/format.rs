@@ -59,7 +59,7 @@ pub struct MINIDUMP_HEADER {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_location_descriptor
-#[derive(Copy, Default, Clone, Pread, SizeWith)]
+#[derive(Copy, Debug, Default, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_LOCATION_DESCRIPTOR {
     /// The size of this data.
     pub data_size: u32,
@@ -217,8 +217,9 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// See ['DSO_DEBUG_64'](struct.DSO_DEBUG_64.html) and
     /// ['DSO_DEBUG_32'](struct.DSO_DEBUG_32.html).
     LinuxDsoDebug = 0x4767000A,
-    /* Crashpad extension types. 0x4350 = "CP"
-     * See Crashpad's minidump/minidump_extensions.h. */
+    /// Crashpad extension types.
+    ///
+    /// See [`MinidumpCrashpadInfo`](struct.MinidumpCrashpadInfo.html).
     CrashpadInfoStream = 0x43500001,
 }
 
@@ -400,7 +401,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 /// Matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/aa373931(v=vs.85).aspx
-#[derive(Clone, Pread, SizeWith)]
+#[derive(Clone, Debug, Pread, SizeWith)]
 pub struct GUID {
     pub data1: u32,
     pub data2: u16,
@@ -1640,4 +1641,96 @@ pub struct DSO_DEBUG_64 {
     pub ldbase: u64,
     /// The address of the "dynamic structure"
     pub dynamic: u64,
+}
+
+/// A variable-length UTF-8-encoded string carried within a minidump file.
+#[derive(Clone)]
+pub struct MINIDUMP_STRING {
+    /// The length of the #Buffer field in bytes, not including the `NUL` terminator.
+    ///
+    /// This field is interpreted as a byte count, not a count of Unicode code points.
+    pub length: u32,
+    /// The string, encoded in UTF-8, and terminated with a `NUL` byte.
+    pub buffer: Vec<u8>,
+}
+
+impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_STRING {
+    type Error = scroll::Error;
+
+    fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
+        let offset = &mut 0;
+        let length: u32 = src.gread_with(offset, endian)?;
+        let data: &[u8] = src.gread_with(offset, length as usize)?;
+
+        if !data.ends_with(&[0]) {
+            return Err(scroll::Error::Custom(
+                "Minidump String does not end with NUL byte".to_owned(),
+            ));
+        }
+
+        let buffer = data.to_vec();
+        Ok((Self { length, buffer }, *offset))
+    }
+}
+
+/// A key-value pair.
+#[derive(Clone, Debug, Pread, SizeWith)]
+pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY {
+    /// RVA of a MinidumpUTF8String containing the key of a key-value pair.
+    pub key: RVA,
+    /// RVA of a MinidumpUTF8String containing the value of a key-value pair.
+    pub value: RVA,
+}
+
+/// A list of key-value pairs.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
+    /// The number of key-value pairs present.
+    pub count: u32,
+}
+
+/// Additional Crashpad-specific information carried within a minidump file.
+///
+/// This structure is versioned. When changing this structure, leave the existing structure intact
+/// so that earlier parsers will be able to understand the fields they are aware of, and make
+/// additions at the end of the structure. Revise #kVersion and document each field’s validity based
+/// on `version`, so that newer parsers will be able to determine whether the added fields are valid
+/// or not.
+#[derive(Clone, Debug, Pread, SizeWith)]
+pub struct MINIDUMP_CRASHPAD_INFO {
+    /// The structure’s version number.
+    ///
+    /// Readers can use this field to determine which other fields in the structure are valid. Upon
+    /// encountering a value greater than `VERSION`, a reader should assume that the structure’s
+    /// layout is compatible with the structure defined as having value #kVersion.
+    ///
+    /// Writers may produce values less than `VERSION` in this field if there is no need for any
+    /// fields present in later versions.
+    pub version: u32,
+    /// A `Uuid` identifying an individual crash report.
+    ///
+    /// This provides a stable identifier for a crash even as the report is converted to different
+    /// formats, provided that all formats support storing a crash report ID.
+    ///
+    /// If no identifier is available, this field will contain zeroes.
+    pub report_id: GUID,
+    /// A `Uuid` identifying the client that crashed.
+    ///
+    /// Client identification is within the scope of the application, but it is expected that the
+    /// identifier will be unique for an instance of Crashpad monitoring an application or set of
+    /// applications for a user. The identifier shall remain stable over time.
+    ///
+    /// If no identifier is available, this field will contain zeroes.
+    pub client_id: GUID,
+    /// A MinidumpSimpleStringDictionary pointing to strings interpreted as key-value pairs.
+    ///
+    /// These key-value pairs correspond to Crashpad's `ProcessSnapshot::AnnotationsSimpleMap()`.
+    pub simple_annotations: MINIDUMP_LOCATION_DESCRIPTOR,
+    /// A pointer to a MinidumpModuleCrashpadInfoList structure.
+    pub module_list: MINIDUMP_LOCATION_DESCRIPTOR,
+}
+
+impl MINIDUMP_CRASHPAD_INFO {
+    /// The structure’s currently-defined version number.
+    pub const VERSION: u32 = 1;
 }
