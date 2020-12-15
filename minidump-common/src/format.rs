@@ -1689,6 +1689,124 @@ pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
     pub count: u32,
 }
 
+/// A list of RVA pointers.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_RVA_LIST {
+    /// The number of pointers present.
+    pub count: u32,
+}
+
+/// A typed annotation object.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_ANNOTATION {
+    /// RVA of a MinidumpUTF8String containing the name of the annotation.
+    pub name: RVA,
+    /// The type of data stored in the `value` of the annotation. This may correspond to an \a
+    /// `MINIDUMP_ANNOTATION_TYPE` or it may be user-defined.
+    pub ty: u16,
+    /// This field is always `0`.
+    pub _reserved: u16,
+    /// RVA of a `MinidumpByteArray` to the data for the annotation.
+    pub value: RVA,
+}
+
+impl MINIDUMP_ANNOTATION {
+    /// An invalid annotation. Reserved for internal use.
+    pub const TYPE_INVALID: u16 = 0;
+    /// A `NUL`-terminated C-string.
+    pub const TYPE_STRING: u16 = 1;
+    /// Clients may declare their own custom types by using values greater than this.
+    pub const TYPE_USER_DEFINED: u16 = 0x8000;
+}
+
+/// Additional Crashpad-specific information about a module carried within a minidump file.
+///
+/// This structure augments the information provided by MINIDUMP_MODULE. The minidump file must
+/// contain a module list stream (::kMinidumpStreamTypeModuleList) in order for this structure to
+/// appear.
+///
+/// This structure is versioned. When changing this structure, leave the existing structure intact
+/// so that earlier parsers will be able to understand the fields they are aware of, and make
+/// additions at the end of the structure. Revise #kVersion and document each field’s validity based
+/// on #version, so that newer parsers will be able to determine whether the added fields are valid
+/// or not.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_MODULE_CRASHPAD_INFO {
+    /// The structure’s version number.
+    ///
+    /// Readers can use this field to determine which other fields in the structure are valid. Upon
+    /// encountering a value greater than `VERSION`, a reader should assume that the structure’s
+    /// layout is compatible with the structure defined as having value #kVersion.
+    ///
+    /// Writers may produce values less than `VERSION` in this field if there is no need for any
+    /// fields present in later versions.
+    pub version: u32,
+    /// A `MinidumpRVAList` pointing to MinidumpUTF8String objects. The module controls the data
+    /// that appears here.
+    ///
+    /// These strings correspond to `ModuleSnapshot::AnnotationsVector()` and do not duplicate
+    /// anything in `simple_annotations` or `annotation_objects`.
+    pub list_annotations: MINIDUMP_LOCATION_DESCRIPTOR,
+    /// A `MinidumpSimpleStringDictionary` pointing to strings interpreted as key-value pairs. The
+    /// module controls the data that appears here.
+    ///
+    /// These key-value pairs correspond to `ModuleSnapshot::AnnotationsSimpleMap()` and do not
+    /// duplicate anything in `list_annotations` or `annotation_objects`.
+    pub simple_annotations: MINIDUMP_LOCATION_DESCRIPTOR,
+    /// A `MinidumpAnnotationList` object containing the annotation objects stored within the
+    /// module. The module controls the data that appears here.
+    ///
+    /// These key-value pairs correspond to `ModuleSnapshot::AnnotationObjects()` and do not
+    /// duplicate anything in `list_annotations` or `simple_annotations`.
+    pub annotation_objects: MINIDUMP_LOCATION_DESCRIPTOR,
+}
+
+impl MINIDUMP_MODULE_CRASHPAD_INFO {
+    /// The structure’s version number.
+    ///
+    /// Readers can use this field to determine which other fields in the structure are valid. Upon
+    /// encountering a value greater than `VERSION`, a reader should assume that the structure’s
+    /// layout is compatible with the structure defined as having value #kVersion.
+    ///
+    /// Writers may produce values less than `VERSION` in this field if there is no need for any
+    /// fields present in later versions.
+    pub const VERSION: u32 = 1;
+}
+
+/// A link between a `MINIDUMP_MODULE` structure and additional Crashpad-specific information about a
+/// module carried within a minidump file.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
+    /// A link to a MINIDUMP_MODULE structure in the module list stream.
+    ///
+    /// This field is an index into `MINIDUMP_MODULE_LIST::Modules`. This field’s value must be in
+    /// the range of `MINIDUMP_MODULE_LIST::NumberOfEntries`.
+    pub minidump_module_list_index: u32,
+
+    /// A link to a MinidumpModuleCrashpadInfo structure.
+    ///
+    /// MinidumpModuleCrashpadInfo structures are accessed indirectly through
+    /// `MINIDUMP_LOCATION_DESCRIPTOR` pointers to allow for future growth of the
+    /// `MinidumpModuleCrashpadInfo` structure.
+    pub location: MINIDUMP_LOCATION_DESCRIPTOR,
+}
+
+/// Additional Crashpad-specific information about modules carried within a minidump file.
+///
+/// This structure augments the information provided by `MINIDUMP_MODULE_LIST`. The minidump file
+/// must contain a module list stream (::kMinidumpStreamTypeModuleList) in order for this structure
+/// to appear.
+///
+/// `MinidumpModuleCrashpadInfoList::count` may be less than the value of
+/// `MINIDUMP_MODULE_LIST::NumberOfModules` because not every `MINIDUMP_MODULE` structure carried
+/// within the minidump file will necessarily have Crashpad-specific information provided by a
+/// `MinidumpModuleCrashpadInfo` structure.
+#[derive(Clone, Debug, Pread)]
+pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LIST {
+    /// The number of key-value pairs present.
+    pub count: u32,
+}
+
 /// Additional Crashpad-specific information carried within a minidump file.
 ///
 /// This structure is versioned. When changing this structure, leave the existing structure intact
