@@ -258,11 +258,37 @@ pub struct MinidumpAssertion {
     pub raw: md::MINIDUMP_ASSERTION_INFO,
 }
 
+/// A typed annotation object.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MinidumpAnnotation {
+    /// An invalid annotation. Reserved for internal use.
+    Invalid,
+    /// A `NUL`-terminated C-string.
+    String(String),
+    /// Clients may declare their own custom types.
+    UserDefined(md::MINIDUMP_ANNOTATION),
+    /// An unsupported annotation from a future crashpad version.
+    Unsupported(md::MINIDUMP_ANNOTATION),
+}
+/// Additional Crashpad-specific information about a module carried within a minidump file.
+#[derive(Debug)]
+pub struct MinidumpModuleCrashpadInfo {
+    /// The raw crashpad module extension information.
+    pub raw: md::MINIDUMP_MODULE_CRASHPAD_INFO,
+    /// Index of the corresponding module in the `MinidumpModuleList`.
+    pub module_index: usize,
+    pub list_annotations: Vec<String>,
+    pub simple_annotations: BTreeMap<String, String>,
+    pub annotation_objects: BTreeMap<String, MinidumpAnnotation>,
+}
+
 /// Additional Crashpad-specific information carried within a minidump file.
 #[derive(Debug)]
 pub struct MinidumpCrashpadInfo {
     pub raw: md::MINIDUMP_CRASHPAD_INFO,
     pub simple_annotations: BTreeMap<String, String>,
+    pub module_list: Vec<MinidumpModuleCrashpadInfo>,
 }
 
 //======================================================
@@ -1528,6 +1554,38 @@ impl MinidumpAssertion {
     }
 }
 
+fn read_string_list(
+    all: &[u8],
+    location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
+    endian: scroll::Endian,
+) -> Result<Vec<String>, Error> {
+    let data = location_slice(all, location).or(Err(Error::StreamReadFailure))?;
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut offset = 0;
+
+    let count: u32 = data
+        .gread_with(&mut offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    let mut strings = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let rva: md::RVA = data
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let string = read_string_utf8(&mut (rva as usize), all, endian)
+            .or(Err(Error::StreamReadFailure))?
+            .to_owned();
+
+        strings.push(string);
+    }
+
+    Ok(strings)
+}
+
 fn read_simple_string_dictionary(
     all: &[u8],
     location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
@@ -1562,6 +1620,107 @@ fn read_simple_string_dictionary(
     Ok(dictionary)
 }
 
+fn read_annotation_objects(
+    all: &[u8],
+    location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
+    endian: scroll::Endian,
+) -> Result<BTreeMap<String, MinidumpAnnotation>, Error> {
+    let mut dictionary = BTreeMap::new();
+
+    let data = location_slice(all, location).or(Err(Error::StreamReadFailure))?;
+    if data.is_empty() {
+        return Ok(dictionary);
+    }
+
+    let mut offset = 0;
+
+    let count: u32 = data
+        .gread_with(&mut offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    for _ in 0..count {
+        let raw: md::MINIDUMP_ANNOTATION = data
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let key = read_string_utf8(&mut (raw.name as usize), all, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let value = match raw.ty {
+            md::MINIDUMP_ANNOTATION::TYPE_INVALID => MinidumpAnnotation::Invalid,
+            md::MINIDUMP_ANNOTATION::TYPE_STRING => {
+                let string = read_string_utf8(&mut (raw.value as usize), all, endian)
+                    .or(Err(Error::StreamReadFailure))?
+                    .to_owned();
+
+                MinidumpAnnotation::String(string)
+            }
+            _ if raw.ty >= md::MINIDUMP_ANNOTATION::TYPE_USER_DEFINED => {
+                MinidumpAnnotation::UserDefined(raw)
+            }
+            _ => MinidumpAnnotation::Unsupported(raw),
+        };
+
+        dictionary.insert(key.to_owned(), value);
+    }
+
+    Ok(dictionary)
+}
+
+impl MinidumpModuleCrashpadInfo {
+    pub fn read(
+        link: md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK,
+        all: &[u8],
+        endian: scroll::Endian,
+    ) -> Result<Self, Error> {
+        let raw: md::MINIDUMP_MODULE_CRASHPAD_INFO = all
+            .pread_with(link.location.rva as usize, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let list_annotations = read_string_list(all, &raw.list_annotations, endian)?;
+        let simple_annotations =
+            read_simple_string_dictionary(all, &raw.simple_annotations, endian)?;
+        let annotation_objects = read_annotation_objects(all, &raw.annotation_objects, endian)?;
+
+        Ok(Self {
+            raw,
+            module_index: link.minidump_module_list_index as usize,
+            list_annotations,
+            simple_annotations,
+            annotation_objects,
+        })
+    }
+}
+
+fn read_crashpad_module_links(
+    all: &[u8],
+    location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
+    endian: scroll::Endian,
+) -> Result<Vec<MinidumpModuleCrashpadInfo>, Error> {
+    let data = location_slice(all, location).or(Err(Error::StreamReadFailure))?;
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut offset = 0;
+
+    let count: u32 = data
+        .gread_with(&mut offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    let mut module_links = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let link: md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK = data
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let info = MinidumpModuleCrashpadInfo::read(link, all, endian)?;
+        module_links.push(info);
+    }
+
+    Ok(module_links)
+}
+
 impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::CrashpadInfoStream;
 
@@ -1577,9 +1736,12 @@ impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
         let simple_annotations =
             read_simple_string_dictionary(all, &raw.simple_annotations, endian)?;
 
+        let module_list = read_crashpad_module_links(all, &raw.module_list, endian)?;
+
         Ok(Self {
             raw,
             simple_annotations,
+            module_list,
         })
     }
 }
