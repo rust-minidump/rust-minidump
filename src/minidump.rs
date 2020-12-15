@@ -343,8 +343,12 @@ fn read_string_utf8<'a>(
     endian: scroll::Endian,
 ) -> Result<&'a str, ()> {
     let length: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
-    let bytes = bytes.gread_with(offset, length as usize).or(Err(()))?;
-    std::str::from_utf8(bytes).or(Err(()))
+    let slice = bytes.gread_with(offset, length as usize).or(Err(()))?;
+    if !matches!(bytes.gread(offset), Ok(0u8)) {
+        return Err(());
+    }
+
+    std::str::from_utf8(slice).or(Err(()))
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
@@ -1729,7 +1733,8 @@ impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
             .pread_with(0, endian)
             .or(Err(Error::StreamReadFailure))?;
 
-        if raw.version > md::MINIDUMP_CRASHPAD_INFO::VERSION {
+        if raw.version == 0 {
+            // 0 is an invalid version, but all future versions are compatible with v1.
             return Err(Error::VersionMismatch);
         }
 
@@ -1745,8 +1750,6 @@ impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
         })
     }
 }
-
-impl MinidumpCrashpadInfo {}
 
 impl<'a> Minidump<'a, Mmap> {
     /// Read a `Minidump` from a `Path` to a file on disk.
