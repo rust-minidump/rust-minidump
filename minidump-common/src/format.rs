@@ -217,7 +217,8 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// See ['DSO_DEBUG_64'](struct.DSO_DEBUG_64.html) and
     /// ['DSO_DEBUG_32'](struct.DSO_DEBUG_32.html).
     LinuxDsoDebug = 0x4767000A,
-    /// Crashpad extension types.
+    // Crashpad extension types. 0x4350 = "CP"
+    /// Crashpad-specific information containing annotations.
     ///
     /// See [`MinidumpCrashpadInfo`](struct.MinidumpCrashpadInfo.html).
     CrashpadInfoStream = 0x43500001,
@@ -1644,8 +1645,10 @@ pub struct DSO_DEBUG_64 {
 }
 
 /// A variable-length UTF-8-encoded string carried within a minidump file.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpUTF8String.html>
 #[derive(Clone)]
-pub struct MINIDUMP_STRING {
+pub struct MINIDUMP_UTF8_STRING {
     /// The length of the #Buffer field in bytes, not including the `NUL` terminator.
     ///
     /// This field is interpreted as a byte count, not a count of Unicode code points.
@@ -1654,13 +1657,13 @@ pub struct MINIDUMP_STRING {
     pub buffer: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_STRING {
+impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_UTF8_STRING {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
         let offset = &mut 0;
         let length: u32 = src.gread_with(offset, endian)?;
-        let data: &[u8] = src.gread_with(offset, length as usize)?;
+        let data: &[u8] = src.gread_with(offset, length as usize + 1)?; // +1 for NUL
 
         if !data.ends_with(&[0]) {
             return Err(scroll::Error::Custom(
@@ -1674,6 +1677,8 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_STRING {
 }
 
 /// A key-value pair.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpSimpleStringDictionaryEntry.html>
 #[derive(Clone, Debug, Pread, SizeWith)]
 pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY {
     /// RVA of a MinidumpUTF8String containing the key of a key-value pair.
@@ -1683,6 +1688,8 @@ pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY_ENTRY {
 }
 
 /// A list of key-value pairs.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpSimpleStringDictionary.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
     /// The number of key-value pairs present.
@@ -1690,6 +1697,8 @@ pub struct MINIDUMP_SIMPLE_STRING_DICTIONARY {
 }
 
 /// A list of RVA pointers.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpRVAList.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_RVA_LIST {
     /// The number of pointers present.
@@ -1697,6 +1706,8 @@ pub struct MINIDUMP_RVA_LIST {
 }
 
 /// A typed annotation object.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpAnnotation.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_ANNOTATION {
     /// RVA of a MinidumpUTF8String containing the name of the annotation.
@@ -1712,10 +1723,16 @@ pub struct MINIDUMP_ANNOTATION {
 
 impl MINIDUMP_ANNOTATION {
     /// An invalid annotation. Reserved for internal use.
+    ///
+    /// See <https://crashpad.chromium.org/doxygen/classcrashpad_1_1Annotation.html#a734ee64cd20afdb78acb8656ed867d34>
     pub const TYPE_INVALID: u16 = 0;
     /// A `NUL`-terminated C-string.
+    ///
+    /// See <https://crashpad.chromium.org/doxygen/classcrashpad_1_1Annotation.html#a734ee64cd20afdb78acb8656ed867d34>
     pub const TYPE_STRING: u16 = 1;
     /// Clients may declare their own custom types by using values greater than this.
+    ///
+    /// See <https://crashpad.chromium.org/doxygen/classcrashpad_1_1Annotation.html#a734ee64cd20afdb78acb8656ed867d34>
     pub const TYPE_USER_DEFINED: u16 = 0x8000;
 }
 
@@ -1730,6 +1747,8 @@ impl MINIDUMP_ANNOTATION {
 /// additions at the end of the structure. Revise #kVersion and document each field’s validity based
 /// on #version, so that newer parsers will be able to determine whether the added fields are valid
 /// or not.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfo.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO {
     /// The structure’s version number.
@@ -1775,6 +1794,8 @@ impl MINIDUMP_MODULE_CRASHPAD_INFO {
 
 /// A link between a `MINIDUMP_MODULE` structure and additional Crashpad-specific information about a
 /// module carried within a minidump file.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfoLink.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
     /// A link to a MINIDUMP_MODULE structure in the module list stream.
@@ -1801,6 +1822,8 @@ pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
 /// `MINIDUMP_MODULE_LIST::NumberOfModules` because not every `MINIDUMP_MODULE` structure carried
 /// within the minidump file will necessarily have Crashpad-specific information provided by a
 /// `MinidumpModuleCrashpadInfo` structure.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfoList.html>
 #[derive(Clone, Debug, Pread)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LIST {
     /// The number of key-value pairs present.
@@ -1814,6 +1837,8 @@ pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LIST {
 /// additions at the end of the structure. Revise #kVersion and document each field’s validity based
 /// on `version`, so that newer parsers will be able to determine whether the added fields are valid
 /// or not.
+///
+/// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpCrashpadInfo.html>
 #[derive(Clone, Debug, Pread, SizeWith)]
 pub struct MINIDUMP_CRASHPAD_INFO {
     /// The structure’s version number.
