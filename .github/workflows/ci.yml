@@ -53,13 +53,11 @@ jobs:
       - uses: actions/checkout@master
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           profile: minimal
           components: rust-docs
           override: true
       - uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
       - uses: actions-rs/cargo@v1
         with:
           command: doc
@@ -79,8 +77,6 @@ jobs:
           profile: minimal
           override: true
       - uses: swatinem/rust-cache@v1
-        with:
-          key: ${{ github.job }}
       - uses: actions-rs/cargo@v1
         env:
           PWD: ${{ env.GITHUB_WORKSPACE }}
