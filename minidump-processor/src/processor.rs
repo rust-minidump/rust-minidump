@@ -75,6 +75,7 @@ impl From<minidump::Error> for ProcessError {
 /// use std::path::PathBuf;
 /// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
 ///
+/// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 /// # fn foo() -> Result<(), minidump_processor::ProcessError> {
 /// let mut dump = Minidump::read_path("../testdata/test.dmp")?;
 /// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
