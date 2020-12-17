@@ -1,13 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-extern crate chrono;
-extern crate failure;
-extern crate memmap;
-extern crate minidump;
-extern crate minidump_common;
-extern crate num_traits;
-
 use chrono::prelude::*;
 use memmap::Mmap;
 use minidump::system_info::{Cpu, Os};
@@ -195,7 +188,7 @@ fn test_exception() {
 #[test]
 fn test_thread_list() {
     let dump = read_test_minidump().unwrap();
-    let thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+    let thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
     let threads = &thread_list.threads;
     assert_eq!(threads.len(), 2);
     assert_eq!(threads[0].raw.thread_id, 0xbf4);

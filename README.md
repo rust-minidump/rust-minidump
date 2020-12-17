@@ -11,8 +11,6 @@ It's fairly heavily modeled after the [Google Breakpad](https://chromium.googles
 Print the raw details of the exception stream from a minidump:
 
 ```rust
-extern crate minidump;
-
 use minidump::{Error, Minidump, MinidumpException, MinidumpStream};
 use std::io::{self, Write};
 

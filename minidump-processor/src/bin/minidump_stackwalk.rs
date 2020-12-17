@@ -6,10 +6,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-extern crate breakpad_symbols;
-extern crate minidump;
-extern crate minidump_processor;
-
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::*;
 use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};

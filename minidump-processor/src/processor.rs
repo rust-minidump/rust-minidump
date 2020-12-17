@@ -71,10 +71,6 @@ impl From<minidump::Error> for ProcessError {
 /// # Examples
 ///
 /// ```
-/// extern crate breakpad_symbols;
-/// extern crate minidump;
-/// extern crate minidump_processor;
-///
 /// use minidump::Minidump;
 /// use std::path::PathBuf;
 /// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};

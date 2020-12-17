@@ -45,7 +45,7 @@ impl Os {
     }
 
     /// Get a human-readable friendly name for an `Os`
-    pub fn long_name(&self) -> Cow<str> {
+    pub fn long_name(&self) -> Cow<'_, str> {
         match *self {
             Os::Windows => Cow::Borrowed("Windows"),
             Os::MacOs => Cow::Borrowed("Mac OS X"),
@@ -61,7 +61,7 @@ impl Os {
 }
 
 impl fmt::Display for Os {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -117,7 +117,7 @@ impl Cpu {
 }
 
 impl fmt::Display for Cpu {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",

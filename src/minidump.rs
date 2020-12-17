@@ -304,7 +304,7 @@ fn read_string_utf16(
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
-fn string_from_bytes_nul(bytes: &[u8]) -> Option<Cow<str>> {
+fn string_from_bytes_nul(bytes: &[u8]) -> Option<Cow<'_, str>> {
     bytes
         .split(|&b| b == 0)
         .next()
@@ -553,10 +553,10 @@ impl Module for MinidumpModule {
     fn size(&self) -> u64 {
         self.raw.size_of_image as u64
     }
-    fn code_file(&self) -> Cow<str> {
+    fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
-    fn code_identifier(&self) -> Cow<str> {
+    fn code_identifier(&self) -> Cow<'_, str> {
         match self.codeview_info {
             Some(CodeView::Elf(ref raw)) => Cow::Owned(bytes_to_hex(&raw.build_id)),
             _ => {
@@ -568,7 +568,7 @@ impl Module for MinidumpModule {
             }
         }
     }
-    fn debug_file(&self) -> Option<Cow<str>> {
+    fn debug_file(&self) -> Option<Cow<'_, str>> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => string_from_bytes_nul(&raw.pdb_file_name),
             Some(CodeView::Pdb20(ref raw)) => string_from_bytes_nul(&raw.pdb_file_name),
@@ -577,7 +577,7 @@ impl Module for MinidumpModule {
             _ => None,
         }
     }
-    fn debug_identifier(&self) -> Option<Cow<str>> {
+    fn debug_identifier(&self) -> Option<Cow<'_, str>> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
                 let id = format!("{}{:x}", guid_to_string(&raw.signature), raw.age,);
@@ -610,7 +610,7 @@ impl Module for MinidumpModule {
             _ => None,
         }
     }
-    fn version(&self) -> Option<Cow<str>> {
+    fn version(&self) -> Option<Cow<'_, str>> {
         if self.raw.version_info.signature == md::VS_FFI_SIGNATURE
             && self.raw.version_info.struct_version == md::VS_FFI_STRUCVERSION
         {
@@ -866,10 +866,7 @@ Memory
 }
 
 /// An iterator over `MinidumpMemory`s.
-pub struct MemoryRegions<'b, 'a>
-where
-    'a: 'b,
-{
+pub struct MemoryRegions<'b, 'a> {
     iter: Box<dyn Iterator<Item = &'b MinidumpMemory<'a>> + 'b>,
 }
 
@@ -1303,7 +1300,7 @@ impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
     }
 }
 
-fn option_or_invalid<T: fmt::LowerHex>(what: &Option<T>) -> Cow<str> {
+fn option_or_invalid<T: fmt::LowerHex>(what: &Option<T>) -> Cow<'_, str> {
     match *what {
         Some(ref val) => Cow::Owned(format!("{:#x}", val)),
         None => Cow::Borrowed("(invalid)"),
@@ -1346,7 +1343,7 @@ impl fmt::Display for CrashReason {
     /// For example, "EXCEPTION_ACCESS_VIOLATION" (Windows),
     /// "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV"
     /// (other Unix).
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -1909,7 +1906,7 @@ mod test {
         );
         let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory);
         let dump = read_synth_dump(dump).unwrap();
-        let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
         let regions = memory_list.iter().collect::<Vec<_>>();
         assert_eq!(regions.len(), 1);
         assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
@@ -1950,7 +1947,7 @@ mod test {
             .add_memory(memory4)
             .add_memory(memory5);
         let dump = read_synth_dump(dump).unwrap();
-        let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
         let regions = memory_list.iter().collect::<Vec<_>>();
         assert_eq!(regions.len(), 5);
         assert_eq!(regions[0].base_address, 0x1000);
@@ -2100,7 +2097,7 @@ mod test {
             .add(context)
             .add_memory(stack);
         let dump = read_synth_dump(dump).unwrap();
-        let mut thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+        let mut thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
         assert_eq!(thread_list.threads.len(), 1);
         let mut thread = thread_list.threads.pop().unwrap();
         assert_eq!(thread.raw.thread_id, 0x1234);
@@ -2131,7 +2128,7 @@ mod test {
             .add(context)
             .add_memory(stack);
         let dump = read_synth_dump(dump).unwrap();
-        let mut thread_list = dump.get_stream::<MinidumpThreadList>().unwrap();
+        let mut thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
         assert_eq!(thread_list.threads.len(), 1);
         let mut thread = thread_list.threads.pop().unwrap();
         assert_eq!(thread.raw.thread_id, 0x1234);

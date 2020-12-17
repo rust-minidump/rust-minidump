@@ -6,9 +6,6 @@ use std::ffi::OsStr;
 use std::io::Write;
 use std::path::Path;
 
-extern crate minidump;
-extern crate minidump_common;
-
 use minidump::*;
 use minidump_common::traits::Module;
 
