@@ -14,6 +14,7 @@
 //! # Examples
 //!
 //! ```
+//! # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 //! use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
 //! use std::path::PathBuf;
 //! let paths = vec!(PathBuf::from("../testdata/symbols/"));
@@ -476,6 +477,7 @@ impl Symbolizer {
     /// # Examples
     ///
     /// ```
+    /// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
     /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
     /// use std::path::PathBuf;
     /// let paths = vec!(PathBuf::from("../testdata/symbols/"));
