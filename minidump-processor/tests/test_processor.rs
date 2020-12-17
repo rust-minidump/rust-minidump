@@ -1,12 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-extern crate breakpad_symbols;
-extern crate failure;
-extern crate memmap;
-extern crate minidump;
-extern crate minidump_processor;
-
 use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;

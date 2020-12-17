@@ -1,5 +1,3 @@
-extern crate minidump_tools;
-
 use std::process;
 
 fn main() {

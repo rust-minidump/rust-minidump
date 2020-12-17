@@ -6,9 +6,6 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::str;
 
-extern crate minidump;
-extern crate minidump_common;
-
 use minidump::*;
 
 const USAGE: &str = "Usage: minidump_dump <minidump>";
@@ -34,13 +31,13 @@ fn print_minidump_dump(path: &Path) {
         Ok(dump) => {
             let stdout = &mut std::io::stdout();
             dump.print(stdout).unwrap();
-            if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList>() {
+            if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
                 thread_list.print(stdout).unwrap();
             }
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
-            if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList>() {
+            if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList<'_>>() {
                 memory_list.print(stdout).unwrap();
             }
             // TODO: MemoryList
