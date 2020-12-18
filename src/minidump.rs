@@ -259,7 +259,7 @@ pub struct MinidumpAssertion {
 }
 
 /// A typed annotation object.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum MinidumpAnnotation {
     /// An invalid annotation. Reserved for internal use.
@@ -271,6 +271,17 @@ pub enum MinidumpAnnotation {
     /// An unsupported annotation from a future crashpad version.
     Unsupported(md::MINIDUMP_ANNOTATION),
 }
+
+impl PartialEq for MinidumpAnnotation {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Invalid, Self::Invalid) => true,
+            (Self::String(a), Self::String(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
 /// Additional Crashpad-specific information about a module carried within a minidump file.
 #[derive(Debug)]
 pub struct MinidumpModuleCrashpadInfo {
@@ -1924,16 +1935,16 @@ MDRawDirectory
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::synth_minidump::Module as SynthModule;
-    use crate::synth_minidump::{self, MiscStream, SimpleStream, SynthMinidump, Thread};
-    use crate::synth_minidump::{DumpString, Memory, STOCK_VERSION_INFO};
+    use crate::synth_minidump::{
+        self, AnnotationValue, CrashpadInfo, DumpString, Memory, MiscStream, Module as SynthModule,
+        ModuleCrashpadInfo, SimpleStream, SynthMinidump, Thread, STOCK_VERSION_INFO,
+    };
+    use md::GUID;
     use std::mem;
     use test_assembler::*;
 
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {
-        dump.finish()
-            .ok_or(Error::FileNotFound)
-            .and_then(Minidump::read)
+        Minidump::read(dump.finish().unwrap())
     }
 
     #[test]
@@ -2384,5 +2395,78 @@ mod test {
         let stack = thread.stack.take().expect("Should have stack memory");
         assert_eq!(stack.base_address, 0x1000000010000000);
         assert_eq!(stack.size, 0x1000);
+    }
+
+    #[test]
+    fn test_crashpad_info_missing() {
+        let dump = SynthMinidump::with_endian(Endian::Little);
+        let dump = read_synth_dump(dump).unwrap();
+
+        assert!(matches!(
+            dump.get_stream::<MinidumpCrashpadInfo>(),
+            Err(Error::StreamNotFound)
+        ));
+    }
+
+    #[test]
+    fn test_crashpad_info_ids() {
+        let report_id = GUID {
+            data1: 1,
+            data2: 2,
+            data3: 3,
+            data4: [4, 5, 6, 7, 8, 9, 10, 11],
+        };
+
+        let client_id = GUID {
+            data1: 11,
+            data2: 10,
+            data3: 9,
+            data4: [8, 7, 6, 5, 4, 3, 2, 1],
+        };
+
+        let crashpad_info = CrashpadInfo::new(Endian::Little)
+            .report_id(report_id)
+            .client_id(client_id);
+
+        let dump = SynthMinidump::with_endian(Endian::Little).add_crashpad_info(crashpad_info);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let crashpad_info = dump.get_stream::<MinidumpCrashpadInfo>().unwrap();
+
+        assert_eq!(crashpad_info.raw.report_id, report_id);
+        assert_eq!(crashpad_info.raw.client_id, client_id);
+    }
+
+    #[test]
+    fn test_crashpad_info_annotations() {
+        let module = ModuleCrashpadInfo::new(42, Endian::Little)
+            .add_list_annotation("annotation")
+            .add_simple_annotation("simple", "module")
+            .add_annotation_object("string", AnnotationValue::String("value".to_owned()))
+            .add_annotation_object("invalid", AnnotationValue::Invalid)
+            .add_annotation_object("custom", AnnotationValue::Custom(0x8001, vec![42]));
+
+        let crashpad_info = CrashpadInfo::new(Endian::Little)
+            .add_module(module)
+            .add_simple_annotation("simple", "info");
+
+        let dump = SynthMinidump::with_endian(Endian::Little).add_crashpad_info(crashpad_info);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let crashpad_info = dump.get_stream::<MinidumpCrashpadInfo>().unwrap();
+        let module = &crashpad_info.module_list[0];
+
+        assert_eq!(crashpad_info.simple_annotations["simple"], "info");
+        assert_eq!(module.module_index, 42);
+        assert_eq!(module.list_annotations, vec!["annotation".to_owned()]);
+        assert_eq!(module.simple_annotations["simple"], "module");
+        assert_eq!(
+            module.annotation_objects["string"],
+            MinidumpAnnotation::String("value".to_owned())
+        );
+        assert_eq!(
+            module.annotation_objects["invalid"],
+            MinidumpAnnotation::Invalid
+        );
     }
 }

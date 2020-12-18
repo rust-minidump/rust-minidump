@@ -402,7 +402,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 /// Matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/aa373931(v=vs.85).aspx
-#[derive(Clone, Debug, Pread, SizeWith)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pread, SizeWith)]
 pub struct GUID {
     pub data1: u32,
     pub data2: u16,
