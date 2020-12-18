@@ -144,6 +144,38 @@ fn test_breakpad_info() {
 }
 
 #[test]
+fn test_crashpad_info() {
+    let path = get_test_minidump_path("simple-crashpad.dmp");
+    let dump = Minidump::read_path(&path).unwrap();
+    let crashpad_info = dump.get_stream::<MinidumpCrashpadInfo>().unwrap();
+
+    let report_id = md::GUID {
+        data1: 0x42F9_DE72,
+        data2: 0x518A,
+        data3: 0x43DD,
+        data4: [0x97, 0xD7, 0x8D, 0xDC, 0x32, 0x8D, 0x36, 0x62],
+    };
+    assert_eq!(crashpad_info.raw.report_id, report_id);
+
+    let client_id = md::GUID {
+        data1: 0x6FD2_B3B9,
+        data2: 0x9833,
+        data3: 0x4B2F,
+        data4: [0xBB, 0xF7, 0xB, 0xCF, 0x50, 0x1B, 0xAD, 0x7E],
+    };
+    assert_eq!(crashpad_info.raw.client_id, client_id);
+
+    assert_eq!(crashpad_info.simple_annotations["hello"], "world");
+    assert_eq!(crashpad_info.module_list.len(), 2);
+
+    let module = &crashpad_info.module_list[0];
+    assert_eq!(module.module_index, 16);
+    assert_eq!(module.list_annotations, vec!["abort() called".to_owned()]);
+    assert!(module.simple_annotations.is_empty());
+    assert!(module.annotation_objects.is_empty());
+}
+
+#[test]
 fn test_assertion() {
     let path = get_test_minidump_path("invalid-parameter.dmp");
     let dump = Minidump::read_path(&path).unwrap();

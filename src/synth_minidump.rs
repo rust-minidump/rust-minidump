@@ -30,14 +30,31 @@ pub struct SynthMinidump {
     thread_list: Option<List<Thread>>,
     /// List of memory regions in this minidump.
     memory_list: Option<List<Section>>,
+    /// Crashpad extension containing annotations.
+    crashpad_info: Option<CrashpadInfo>,
 }
 
 /// A block of data contained in a minidump.
-pub trait DumpSection: Into<Section> {
+pub trait DumpSection {
     /// A label representing this `DumpSection`'s offset in bytes from the start of the minidump.
     fn file_offset(&self) -> Label;
+
     /// A label representing this `DumpSection`'s size in bytes within the minidump.
     fn file_size(&self) -> Label;
+}
+
+pub trait ListItem: DumpSection {
+    /// Returns a pair of sections for in-band and out-of-band data.
+    fn into_sections(self) -> (Section, Option<Section>);
+}
+
+impl<T> ListItem for T
+where
+    T: Into<Section> + DumpSection,
+{
+    fn into_sections(self) -> (Section, Option<Section>) {
+        (self.into(), None)
+    }
 }
 
 pub trait CiteLocation {
@@ -85,7 +102,7 @@ impl SectionExtra for Section {
 }
 
 /// A minidump stream.
-pub trait Stream: DumpSection {
+pub trait Stream: DumpSection + Into<Section> {
     /// The stream type, used in the stream directory.
     fn stream_type(&self) -> u32;
     /// Append an `MDRawDirectory` referring to this stream to `section`.
@@ -135,6 +152,7 @@ impl SynthMinidump {
                 md::MINIDUMP_STREAM_TYPE::MemoryListStream,
                 endian,
             )),
+            crashpad_info: None,
         }
     }
 
@@ -147,7 +165,10 @@ impl SynthMinidump {
     /// Append `section` to `self`, setting its location appropriately.
     // Perhaps should have been called .add_section().
     #[allow(clippy::should_implement_trait)]
-    pub fn add<T: DumpSection>(mut self, section: T) -> SynthMinidump {
+    pub fn add<T>(mut self, section: T) -> SynthMinidump
+    where
+        T: DumpSection + Into<Section>,
+    {
         let offset = section.file_offset();
         self.section = self.section.mark(&offset).append_section(section);
         self
@@ -191,7 +212,7 @@ impl SynthMinidump {
         self.add(stream)
     }
 
-    fn finish_list<T: DumpSection>(self, list: Option<List<T>>) -> SynthMinidump {
+    fn finish_list<T: ListItem>(self, list: Option<List<T>>) -> SynthMinidump {
         match list {
             Some(l) => {
                 if !l.empty() {
@@ -204,18 +225,27 @@ impl SynthMinidump {
         }
     }
 
+    pub fn add_crashpad_info(mut self, crashpad_info: CrashpadInfo) -> Self {
+        self.crashpad_info = Some(crashpad_info);
+        self
+    }
+
     /// Finish generating the minidump and return the contents.
-    pub fn finish(self) -> Option<Vec<u8>> {
-        let mut this = self;
+    pub fn finish(mut self) -> Option<Vec<u8>> {
         // Add module list stream if any modules were added.
-        let modules = this.module_list.take();
-        let mut this = this.finish_list(modules);
+        let modules = self.module_list.take();
+        self = self.finish_list(modules);
         // Add memory list stream if any memory regions were added.
-        let memories = this.memory_list.take();
-        let mut this = this.finish_list(memories);
+        let memories = self.memory_list.take();
+        self = self.finish_list(memories);
         // Add thread list stream if any threads were added.
-        let threads = this.thread_list.take();
-        let this = this.finish_list(threads);
+        let threads = self.thread_list.take();
+        self = self.finish_list(threads);
+        // Add crashpad info stream if any.
+        if let Some(crashpad_info) = self.crashpad_info.take() {
+            self = self.add_stream(crashpad_info);
+        }
+
         let SynthMinidump {
             section,
             flags,
@@ -224,7 +254,7 @@ impl SynthMinidump {
             stream_directory_rva,
             stream_directory,
             ..
-        } = this;
+        } = self;
         if flags.value().is_none() {
             flags.set_const(0);
         }
@@ -289,7 +319,7 @@ impl Stream for SimpleStream {
 }
 
 /// A stream containing a list of dump entries.
-pub struct List<T: DumpSection> {
+pub struct List<T: ListItem> {
     /// The stream type.
     stream_type: u32,
     /// The stream's contents.
@@ -298,10 +328,12 @@ pub struct List<T: DumpSection> {
     count: u32,
     /// The number of entries, as a `Label`.
     count_label: Label,
+    /// Child section of entries in this list.
+    children: Section,
     _type: PhantomData<T>,
 }
 
-impl<T: DumpSection> List<T> {
+impl<T: ListItem> List<T> {
     pub fn new<S: Into<u32>>(stream_type: S, endian: Endian) -> List<T> {
         let count_label = Label::new();
         List {
@@ -309,6 +341,7 @@ impl<T: DumpSection> List<T> {
             section: Section::with_endian(endian).D32(&count_label),
             count_label,
             count: 0,
+            children: Section::with_endian(endian),
             _type: PhantomData,
         }
     }
@@ -317,10 +350,21 @@ impl<T: DumpSection> List<T> {
     #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, entry: T) -> List<T> {
         self.count += 1;
+
+        let (section, children_opt) = entry.into_sections();
+
         self.section = self
             .section
-            .mark(&entry.file_offset())
-            .append_section(entry);
+            .mark(&section.file_offset())
+            .append_section(section);
+
+        if let Some(children) = children_opt {
+            self.children = self
+                .children
+                .mark(&children.file_offset())
+                .append_section(children);
+        }
+
         self
     }
 
@@ -329,24 +373,29 @@ impl<T: DumpSection> List<T> {
     }
 }
 
-impl<T: DumpSection> Into<Section> for List<T> {
+impl<T: ListItem> Into<Section> for List<T> {
     fn into(self) -> Section {
         // Finalize the entry count.
         self.count_label.set_const(self.count as u64);
+
+        // Serialize all (transitive) children after the dense list of entry records.
         self.section
+            .mark(&self.children.file_offset())
+            .append_section(self.children)
     }
 }
 
-impl<T: DumpSection> DumpSection for List<T> {
+impl<T: ListItem> DumpSection for List<T> {
     fn file_offset(&self) -> Label {
         self.section.file_offset()
     }
+
     fn file_size(&self) -> Label {
         self.section.file_size()
     }
 }
 
-impl<T: DumpSection> Stream for List<T> {
+impl<T: ListItem> Stream for List<T> {
     fn stream_type(&self) -> u32 {
         self.stream_type
     }
@@ -375,6 +424,29 @@ impl Into<Section> for DumpString {
 }
 
 impl_dumpsection!(DumpString);
+
+pub struct DumpUtf8String {
+    section: Section,
+}
+
+impl DumpUtf8String {
+    pub fn new(s: &str, endian: Endian) -> Self {
+        let section = Section::with_endian(endian)
+            .D32(s.len() as u32)
+            .append_bytes(s.as_bytes())
+            .D8(0);
+
+        Self { section }
+    }
+}
+
+impl Into<Section> for DumpUtf8String {
+    fn into(self) -> Section {
+        self.section
+    }
+}
+
+impl_dumpsection!(DumpUtf8String);
 
 /// A fixed set of version info to use for tests.
 pub const STOCK_VERSION_INFO: md::VS_FIXEDFILEINFO = md::VS_FIXEDFILEINFO {
@@ -629,6 +701,290 @@ pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
         .append_repeated(0, mem::size_of::<u64>() * 6); // trailing stuff
     assert_eq!(section.size(), md::CONTEXT_AMD64::size_with(&LE) as u64);
     section
+}
+
+pub struct SectionRef {
+    section: Section,
+    data_section: Section,
+}
+
+impl SectionRef {
+    pub fn new(data_section: impl Into<Section>, endian: Endian) -> Self {
+        let data_section = data_section.into();
+        let section = Section::with_endian(endian).D32(data_section.file_offset());
+        Self {
+            section,
+            data_section,
+        }
+    }
+}
+
+impl_dumpsection!(SectionRef);
+
+impl ListItem for SectionRef {
+    fn into_sections(self) -> (Section, Option<Section>) {
+        (self.section, Some(self.data_section))
+    }
+}
+
+pub struct SimpleStringDictionaryEntry {
+    endian: Endian,
+    section: Section,
+    key: DumpUtf8String,
+    value: DumpUtf8String,
+}
+
+impl SimpleStringDictionaryEntry {
+    pub fn new(key: &str, value: &str, endian: Endian) -> Self {
+        Self {
+            endian,
+            section: Section::with_endian(endian),
+            key: DumpUtf8String::new(key, endian),
+            value: DumpUtf8String::new(value, endian),
+        }
+    }
+}
+
+impl_dumpsection!(SimpleStringDictionaryEntry);
+
+impl ListItem for SimpleStringDictionaryEntry {
+    fn into_sections(self) -> (Section, Option<Section>) {
+        let section = self
+            .section
+            .D32(self.key.file_offset())
+            .D32(self.value.file_offset());
+
+        let children = Section::with_endian(self.endian)
+            .mark(&self.key.file_offset())
+            .append_section(self.key)
+            .mark(&self.value.file_offset())
+            .append_section(self.value);
+
+        (section, Some(children))
+    }
+}
+
+pub type SimpleStringDictionary = List<SimpleStringDictionaryEntry>;
+
+#[derive(Clone, Debug)]
+pub enum AnnotationValue {
+    Invalid,
+    String(String),
+    Custom(u16, Vec<u8>),
+}
+
+pub struct AnnotationObject {
+    section: Section,
+    children: Section,
+}
+
+impl AnnotationObject {
+    pub fn new(name: &str, value: AnnotationValue, endian: Endian) -> Self {
+        let name = DumpUtf8String::new(name, endian);
+
+        let (ty, value) = match value {
+            AnnotationValue::Invalid => (md::MINIDUMP_ANNOTATION::TYPE_INVALID, None),
+            AnnotationValue::String(s) => (
+                md::MINIDUMP_ANNOTATION::TYPE_STRING,
+                Some(DumpUtf8String::new(&s, endian).into()),
+            ),
+            AnnotationValue::Custom(ty, bytes) => (ty, Some(Section::new().append_bytes(&bytes))),
+        };
+
+        let mut section = Section::with_endian(endian)
+            .D32(name.file_offset())
+            .D16(ty)
+            .D16(0); // reserved, always 0
+
+        section = match value {
+            Some(ref value) => section.D32(value.file_offset()),
+            None => section.D32(0),
+        };
+
+        let mut children = Section::with_endian(endian)
+            .mark(&name.file_offset())
+            .append_section(name);
+
+        if let Some(value) = value {
+            children = children.mark(&value.file_offset()).append_section(value);
+        }
+
+        Self { section, children }
+    }
+}
+
+impl_dumpsection!(AnnotationObject);
+
+impl ListItem for AnnotationObject {
+    fn into_sections(self) -> (Section, Option<Section>) {
+        (self.section, Some(self.children))
+    }
+}
+
+pub type AnnotationObjects = List<AnnotationObject>;
+
+/// Link + Info
+pub struct ModuleCrashpadInfo {
+    endian: Endian,
+    section: Section,
+    list_annotations: List<SectionRef>,
+    simple_annotations: SimpleStringDictionary,
+    annotation_objects: AnnotationObjects,
+}
+
+impl ModuleCrashpadInfo {
+    pub fn new(index: u32, endian: Endian) -> Self {
+        Self {
+            endian,
+            section: Section::with_endian(endian).D32(index),
+            list_annotations: List::new(0u32, endian),
+            simple_annotations: SimpleStringDictionary::new(0u32, endian),
+            annotation_objects: AnnotationObjects::new(0u32, endian),
+        }
+    }
+
+    pub fn add_list_annotation(mut self, value: &str) -> Self {
+        let section = SectionRef::new(DumpUtf8String::new(value, self.endian), self.endian);
+        self.list_annotations = self.list_annotations.add(section);
+        self
+    }
+
+    pub fn add_simple_annotation(mut self, key: &str, value: &str) -> Self {
+        let entry = SimpleStringDictionaryEntry::new(key, value, self.endian);
+        self.simple_annotations = self.simple_annotations.add(entry);
+        self
+    }
+
+    pub fn add_annotation_object(mut self, key: &str, value: AnnotationValue) -> Self {
+        let object = AnnotationObject::new(key, value, self.endian);
+        self.annotation_objects = self.annotation_objects.add(object);
+        self
+    }
+}
+
+impl_dumpsection!(ModuleCrashpadInfo);
+
+impl ListItem for ModuleCrashpadInfo {
+    fn into_sections(self) -> (Section, Option<Section>) {
+        let info = Section::with_endian(self.endian)
+            .D32(md::MINIDUMP_MODULE_CRASHPAD_INFO::VERSION)
+            .cite_location(&self.list_annotations)
+            .cite_location(&self.simple_annotations)
+            .cite_location(&self.annotation_objects)
+            .mark(&self.list_annotations.file_offset())
+            .append_section(self.list_annotations)
+            .mark(&self.simple_annotations.file_offset())
+            .append_section(self.simple_annotations)
+            .mark(&self.annotation_objects.file_offset())
+            .append_section(self.annotation_objects);
+
+        let link = self.section.cite_location(&info);
+
+        (link, Some(info))
+    }
+}
+
+pub type ModuleCrashpadInfoList = List<ModuleCrashpadInfo>;
+
+pub struct Guid {
+    section: Section,
+}
+
+impl Guid {
+    pub fn new(guid: md::GUID, endian: Endian) -> Self {
+        let section = Section::with_endian(endian)
+            .D32(guid.data1)
+            .D16(guid.data2)
+            .D16(guid.data3)
+            .append_bytes(&guid.data4);
+
+        Self { section }
+    }
+
+    pub fn empty(endian: Endian) -> Self {
+        let guid = md::GUID {
+            data1: 0,
+            data2: 0,
+            data3: 0,
+            data4: [0, 0, 0, 0, 0, 0, 0, 0],
+        };
+
+        Self::new(guid, endian)
+    }
+}
+
+// Guid does not impl DumpSections as it cannot be cited.
+
+impl Into<Section> for Guid {
+    fn into(self) -> Section {
+        self.section
+    }
+}
+
+pub struct CrashpadInfo {
+    endian: Endian,
+    section: Section,
+    report_id: Guid,
+    client_id: Guid,
+    simple_annotations: SimpleStringDictionary,
+    module_list: ModuleCrashpadInfoList,
+}
+
+impl CrashpadInfo {
+    pub fn new(endian: Endian) -> Self {
+        Self {
+            endian,
+            section: Section::with_endian(endian),
+            report_id: Guid::empty(endian),
+            client_id: Guid::empty(endian),
+            simple_annotations: SimpleStringDictionary::new(0u32, endian),
+            module_list: ModuleCrashpadInfoList::new(0u32, endian),
+        }
+    }
+
+    pub fn report_id(mut self, report_id: md::GUID) -> Self {
+        self.report_id = Guid::new(report_id, self.endian);
+        self
+    }
+
+    pub fn client_id(mut self, client_id: md::GUID) -> Self {
+        self.client_id = Guid::new(client_id, self.endian);
+        self
+    }
+
+    pub fn add_simple_annotation(mut self, key: &str, value: &str) -> Self {
+        let entry = SimpleStringDictionaryEntry::new(key, value, self.endian);
+        self.simple_annotations = self.simple_annotations.add(entry);
+        self
+    }
+
+    pub fn add_module(mut self, info: ModuleCrashpadInfo) -> Self {
+        self.module_list = self.module_list.add(info);
+        self
+    }
+}
+
+impl_dumpsection!(CrashpadInfo);
+
+impl Into<Section> for CrashpadInfo {
+    fn into(self) -> Section {
+        self.section
+            .D32(md::MINIDUMP_CRASHPAD_INFO::VERSION)
+            .append_section(self.report_id)
+            .append_section(self.client_id)
+            .cite_location(&self.simple_annotations)
+            .cite_location(&self.module_list)
+            .mark(&self.simple_annotations.file_offset())
+            .append_section(self.simple_annotations)
+            .mark(&self.module_list.file_offset())
+            .append_section(self.module_list)
+    }
+}
+
+impl Stream for CrashpadInfo {
+    fn stream_type(&self) -> u32 {
+        md::MINIDUMP_STREAM_TYPE::CrashpadInfoStream.into()
+    }
 }
 
 #[test]
