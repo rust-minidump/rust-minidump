@@ -25,11 +25,11 @@ pub struct SynthMinidump {
     /// The contents of the stream directory.
     stream_directory: Section,
     /// List of modules in this minidump.
-    module_list: Option<List<Module>>,
+    module_list: Option<ListStream<Module>>,
     /// List of threads in this minidump.
-    thread_list: Option<List<Thread>>,
+    thread_list: Option<ListStream<Thread>>,
     /// List of memory regions in this minidump.
-    memory_list: Option<List<Section>>,
+    memory_list: Option<ListStream<Section>>,
     /// Crashpad extension containing annotations.
     crashpad_info: Option<CrashpadInfo>,
 }
@@ -43,6 +43,14 @@ pub trait DumpSection {
     fn file_size(&self) -> Label;
 }
 
+/// A list item with optional out-of-band data.
+///
+/// Items can be added to [`List`]. The main sections returned from [`ListItem::into_sections`] are
+/// stored in a compact list, followed by all out-of-band data in implementation-defined order.
+///
+/// For convenience, `ListItem` is implemented for every type that implements `Into<Section>`, so
+/// that it can be used directly for types that do not require out-of-band data. Prefer to implement
+/// `Into<Section>` unless out-of-band data is explicitly required.
 pub trait ListItem: DumpSection {
     /// Returns a pair of sections for in-band and out-of-band data.
     fn into_sections(self) -> (Section, Option<Section>);
@@ -140,15 +148,15 @@ impl SynthMinidump {
             stream_count_label,
             stream_directory_rva,
             stream_directory: Section::with_endian(endian),
-            module_list: Some(List::new(
+            module_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::ModuleListStream,
                 endian,
             )),
-            thread_list: Some(List::new(
+            thread_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::ThreadListStream,
                 endian,
             )),
-            memory_list: Some(List::new(
+            memory_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::MemoryListStream,
                 endian,
             )),
@@ -205,6 +213,12 @@ impl SynthMinidump {
         self
     }
 
+    /// Add crashpad module and annotation extension information.
+    pub fn add_crashpad_info(mut self, crashpad_info: CrashpadInfo) -> Self {
+        self.crashpad_info = Some(crashpad_info);
+        self
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -212,10 +226,10 @@ impl SynthMinidump {
         self.add(stream)
     }
 
-    fn finish_list<T: ListItem>(self, list: Option<List<T>>) -> SynthMinidump {
+    fn finish_list<T: ListItem>(self, list: Option<ListStream<T>>) -> SynthMinidump {
         match list {
             Some(l) => {
-                if !l.empty() {
+                if !l.is_empty() {
                     self.add_stream(l)
                 } else {
                     self
@@ -223,11 +237,6 @@ impl SynthMinidump {
             }
             None => self,
         }
-    }
-
-    pub fn add_crashpad_info(mut self, crashpad_info: CrashpadInfo) -> Self {
-        self.crashpad_info = Some(crashpad_info);
-        self
     }
 
     /// Finish generating the minidump and return the contents.
@@ -320,55 +329,52 @@ impl Stream for SimpleStream {
 
 /// A stream containing a list of dump entries.
 pub struct List<T: ListItem> {
-    /// The stream type.
-    stream_type: u32,
     /// The stream's contents.
     section: Section,
     /// The number of entries.
     count: u32,
     /// The number of entries, as a `Label`.
     count_label: Label,
-    /// Child section of entries in this list.
-    children: Section,
+    /// Out-of-band data referenced by this stream's contents.
+    out_of_band: Section,
     _type: PhantomData<T>,
 }
 
 impl<T: ListItem> List<T> {
-    pub fn new<S: Into<u32>>(stream_type: S, endian: Endian) -> List<T> {
+    pub fn new(endian: Endian) -> Self {
         let count_label = Label::new();
         List {
-            stream_type: stream_type.into(),
             section: Section::with_endian(endian).D32(&count_label),
             count_label,
             count: 0,
-            children: Section::with_endian(endian),
+            out_of_band: Section::with_endian(endian),
             _type: PhantomData,
         }
     }
 
     // Possibly name this .add_section().
     #[allow(clippy::should_implement_trait)]
-    pub fn add(mut self, entry: T) -> List<T> {
+    pub fn add(mut self, entry: T) -> Self {
         self.count += 1;
 
-        let (section, children_opt) = entry.into_sections();
+        let (section, out_of_band_opt) = entry.into_sections();
 
         self.section = self
             .section
             .mark(&section.file_offset())
             .append_section(section);
 
-        if let Some(children) = children_opt {
-            self.children = self
-                .children
-                .mark(&children.file_offset())
-                .append_section(children);
+        if let Some(out_of_band) = out_of_band_opt {
+            self.out_of_band = self
+                .out_of_band
+                .mark(&out_of_band.file_offset())
+                .append_section(out_of_band);
         }
 
         self
     }
 
-    pub fn empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.count == 0
     }
 }
@@ -378,10 +384,10 @@ impl<T: ListItem> Into<Section> for List<T> {
         // Finalize the entry count.
         self.count_label.set_const(self.count as u64);
 
-        // Serialize all (transitive) children after the dense list of entry records.
+        // Serialize all (transitive) out-of-band data after the dense list of entry records.
         self.section
-            .mark(&self.children.file_offset())
-            .append_section(self.children)
+            .mark(&self.out_of_band.file_offset())
+            .append_section(self.out_of_band)
     }
 }
 
@@ -395,7 +401,49 @@ impl<T: ListItem> DumpSection for List<T> {
     }
 }
 
-impl<T: ListItem> Stream for List<T> {
+pub struct ListStream<T: ListItem> {
+    /// The stream type.
+    stream_type: u32,
+    /// The list containing items.
+    list: List<T>,
+}
+
+impl<T: ListItem> ListStream<T> {
+    pub fn new<S: Into<u32>>(stream_type: S, endian: Endian) -> Self {
+        Self {
+            stream_type: stream_type.into(),
+            list: List::new(endian),
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn add(mut self, entry: T) -> Self {
+        self.list = self.list.add(entry);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+}
+
+impl<T: ListItem> Into<Section> for ListStream<T> {
+    fn into(self) -> Section {
+        self.list.into()
+    }
+}
+
+impl<T: ListItem> DumpSection for ListStream<T> {
+    fn file_offset(&self) -> Label {
+        self.list.file_offset()
+    }
+
+    fn file_size(&self) -> Label {
+        self.list.file_size()
+    }
+}
+
+impl<T: ListItem> Stream for ListStream<T> {
     fn stream_type(&self) -> u32 {
         self.stream_type
     }
@@ -754,13 +802,13 @@ impl ListItem for SimpleStringDictionaryEntry {
             .D32(self.key.file_offset())
             .D32(self.value.file_offset());
 
-        let children = Section::with_endian(self.endian)
+        let out_of_band = Section::with_endian(self.endian)
             .mark(&self.key.file_offset())
             .append_section(self.key)
             .mark(&self.value.file_offset())
             .append_section(self.value);
 
-        (section, Some(children))
+        (section, Some(out_of_band))
     }
 }
 
@@ -775,7 +823,7 @@ pub enum AnnotationValue {
 
 pub struct AnnotationObject {
     section: Section,
-    children: Section,
+    out_of_band: Section,
 }
 
 impl AnnotationObject {
@@ -801,15 +849,18 @@ impl AnnotationObject {
             None => section.D32(0),
         };
 
-        let mut children = Section::with_endian(endian)
+        let mut out_of_band = Section::with_endian(endian)
             .mark(&name.file_offset())
             .append_section(name);
 
         if let Some(value) = value {
-            children = children.mark(&value.file_offset()).append_section(value);
+            out_of_band = out_of_band.mark(&value.file_offset()).append_section(value);
         }
 
-        Self { section, children }
+        Self {
+            section,
+            out_of_band,
+        }
     }
 }
 
@@ -817,7 +868,7 @@ impl_dumpsection!(AnnotationObject);
 
 impl ListItem for AnnotationObject {
     fn into_sections(self) -> (Section, Option<Section>) {
-        (self.section, Some(self.children))
+        (self.section, Some(self.out_of_band))
     }
 }
 
@@ -837,9 +888,9 @@ impl ModuleCrashpadInfo {
         Self {
             endian,
             section: Section::with_endian(endian).D32(index),
-            list_annotations: List::new(0u32, endian),
-            simple_annotations: SimpleStringDictionary::new(0u32, endian),
-            annotation_objects: AnnotationObjects::new(0u32, endian),
+            list_annotations: List::new(endian),
+            simple_annotations: SimpleStringDictionary::new(endian),
+            annotation_objects: AnnotationObjects::new(endian),
         }
     }
 
@@ -937,8 +988,8 @@ impl CrashpadInfo {
             section: Section::with_endian(endian),
             report_id: Guid::empty(endian),
             client_id: Guid::empty(endian),
-            simple_annotations: SimpleStringDictionary::new(0u32, endian),
-            module_list: ModuleCrashpadInfoList::new(0u32, endian),
+            simple_annotations: SimpleStringDictionary::new(endian),
+            module_list: ModuleCrashpadInfoList::new(endian),
         }
     }
 
@@ -1052,14 +1103,14 @@ fn test_dump_string() {
 }
 
 #[test]
-fn test_list() {
+fn test_list_stream() {
     // Empty list
-    let list = List::<DumpString>::new(0x11223344u32, Endian::Little);
+    let list = ListStream::<DumpString>::new(0x11223344u32, Endian::Little);
     assert_eq!(
         Into::<Section>::into(list).get_contents().unwrap(),
         vec![0, 0, 0, 0]
     );
-    let list = List::new(0x11223344u32, Endian::Little)
+    let list = ListStream::new(0x11223344u32, Endian::Little)
         .add(DumpString::new("a", Endian::Little))
         .add(DumpString::new("b", Endian::Little));
     assert_eq!(
