@@ -1103,6 +1103,31 @@ fn test_dump_string() {
 }
 
 #[test]
+fn test_list_out_of_band() {
+    let list = List::<SectionRef>::new(Endian::Little);
+    assert_eq!(
+        Into::<Section>::into(list).get_contents().unwrap(),
+        vec![0, 0, 0, 0]
+    );
+
+    let a = SectionRef::new(DumpUtf8String::new("foo", Endian::Little), Endian::Little);
+    let b = SectionRef::new(DumpUtf8String::new("bar", Endian::Little), Endian::Little);
+    let section: Section = List::new(Endian::Little).add(a).add(b).into();
+    assert_eq!(
+        section.set_start_const(0).get_contents().unwrap(),
+        vec![
+            2, 0, 0, 0, // entry count
+            12, 0, 0, 0, // first RVA
+            20, 0, 0, 0, // second RVA
+            3, 0, 0, 0, // "foo".len()
+            102, 111, 111, 0, // "foo\0"
+            3, 0, 0, 0, // "bar".len()
+            98, 97, 114, 0 // "bar\0"
+        ]
+    );
+}
+
+#[test]
 fn test_list_stream() {
     // Empty list
     let list = ListStream::<DumpString>::new(0x11223344u32, Endian::Little);
