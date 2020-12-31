@@ -14,7 +14,7 @@ edition = "2018"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
-addr2line = "0.7.0"
+addr2line = "0.14.1"
 breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
 chrono = "0.4.6"
 failure = "0.1.1"
