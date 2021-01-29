@@ -321,11 +321,7 @@ fn location_slice<'a>(
 ) -> Result<&'a [u8], Error> {
     let start = loc.rva as usize;
     let end = (loc.rva + loc.data_size) as usize;
-    if start < bytes.len() && end <= bytes.len() {
-        Ok(&bytes[start..end])
-    } else {
-        Err(Error::StreamReadFailure)
-    }
+    bytes.get(start..end).ok_or(Error::StreamReadFailure)
 }
 
 /// Read a u32 length-prefixed UTF-16 string from `bytes` at `offset`.
