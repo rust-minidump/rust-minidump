@@ -320,8 +320,10 @@ fn location_slice<'a>(
     loc: &md::MINIDUMP_LOCATION_DESCRIPTOR,
 ) -> Result<&'a [u8], Error> {
     let start = loc.rva as usize;
-    let end = (loc.rva + loc.data_size) as usize;
-    bytes.get(start..end).ok_or(Error::StreamReadFailure)
+    start
+        .checked_add(loc.data_size as usize)
+        .and_then(|end| bytes.get(start..end))
+        .ok_or(Error::StreamReadFailure)
 }
 
 /// Read a u32 length-prefixed UTF-16 string from `bytes` at `offset`.
