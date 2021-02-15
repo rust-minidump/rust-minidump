@@ -13,4 +13,4 @@ structopt = { version = "0.2", default-features = false }
 disasm = { git = "https://github.com/luser/rust-disasm", rev = "274ff86cd5258e8e6534d93ad7a063105b7ecb99" }
 reqwest = { version = "0.10.8", features = ["blocking"] }
 log = "0.4.1"
-env_logger = "0.5.6"
+env_logger = "0.8.3"
