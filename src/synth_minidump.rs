@@ -649,12 +649,85 @@ impl From<Memory> for Section {
 }
 
 /// MINIDUMP_MISC_INFO stream.
+///
+/// Fields that must be initialized together (i.e. because they are guarded
+/// by the same flag) are grouped under substructs to enforce this.
 pub struct MiscStream {
     /// The stream's contents.
     section: Section,
+
+    /// MISC_INFO field guarded by MINIDUMP_MISC1_PROCESS_ID
     pub process_id: Option<u32>,
-    pub process_create_time: Option<u32>,
+    /// MISC_INFO fields guarded by MINIDUMP_MISC1_PROCESS_TIMES
+    pub process_times: Option<MiscFieldsProcessTimes>,
+
+    /// MISC_INFO_2 fields guarded by MINIDUMP_MISC1_PROCESSOR_POWER_INFO
+    pub power_info: Option<MiscFieldsPowerInfo>,
+
+    /// MISC_INFO_3 field guarded by MINIDUMP_MISC3_PROCESS_INTEGRITY
+    pub process_integrity_level: Option<u32>,
+    /// MISC_INFO_3 field guarded by MINIDUMP_MISC3_PROCESS_EXECUTE_FLAGS
+    pub process_execute_flags: Option<u32>,
+    /// MISC_INFO_3 field guarded by MINIDUMP_MISC3_PROTECTED_PROCESS
+    pub protected_process: Option<u32>,
+    /// MISC_INFO_3 fields guarded by MINIDUMP_MISC3_TIMEZONE
+    pub time_zone: Option<MiscFieldsTimeZone>,
+
+    /// MISC_INFO_4 fields guarded by MINIDUMP_MISC4_BUILDSTRING
+    pub build_strings: Option<MiscFieldsBuildString>,
+
+    /// MISC_INFO_5 fields
+    pub misc_5: Option<MiscInfo5Fields>,
+
     pub pad_to_size: Option<usize>,
+}
+
+/// MISC_INFO fields guardard by MINIDUMP_MISC1_PROCESS_TIMES
+#[derive(Default)]
+pub struct MiscFieldsProcessTimes {
+    pub process_create_time: u32,
+    pub process_user_time: u32,
+    pub process_kernel_time: u32,
+}
+
+/// MISC_INFO_2 fields guarded by MINIDUMP_MISC1_PROCESSOR_POWER_INFO
+#[derive(Default)]
+pub struct MiscFieldsPowerInfo {
+    pub processor_max_mhz: u32,
+    pub processor_current_mhz: u32,
+    pub processor_mhz_limit: u32,
+    pub processor_max_idle_state: u32,
+    pub processor_current_idle_state: u32,
+}
+
+/// MISC_INFO_3 fields guarded by MINIDUMP_MISC3_TIMEZONE
+#[derive(Default)]
+pub struct MiscFieldsTimeZone {
+    pub time_zone_id: u32,
+    pub time_zone: md::TIME_ZONE_INFORMATION,
+}
+
+/// MISC_INFO_4 fields guarded by MINIDUMP_MISC4_BUILDSTRING
+pub struct MiscFieldsBuildString {
+    pub build_string: [u16; 260],
+    pub dbg_bld_str: [u16; 40],
+}
+
+impl Default for MiscFieldsBuildString {
+    fn default() -> Self {
+        Self {
+            build_string: [0; 260],
+            dbg_bld_str: [0; 40],
+        }
+    }
+}
+
+/// MISC_INFO_5 fields (xstate_data must exist if process_cookie is set).
+#[derive(Default)]
+pub struct MiscInfo5Fields {
+    pub xstate_data: md::XSTATE_CONFIG_FEATURE_MSC_INFO,
+    /// MISC_INFO_5 field guarded by MINIDUMP_MISC5_PROCESS_COOKIE
+    pub process_cookie: Option<u32>,
 }
 
 impl MiscStream {
@@ -664,7 +737,14 @@ impl MiscStream {
         MiscStream {
             section: section.D32(size),
             process_id: None,
-            process_create_time: None,
+            process_times: None,
+            power_info: None,
+            process_integrity_level: None,
+            process_execute_flags: None,
+            protected_process: None,
+            time_zone: None,
+            build_strings: None,
+            misc_5: None,
             pad_to_size: None,
         }
     }
@@ -674,31 +754,153 @@ impl From<MiscStream> for Section {
     fn from(stream: MiscStream) -> Self {
         let MiscStream {
             section,
+
             process_id,
-            process_create_time,
+            process_times,
+
+            power_info,
+
+            process_integrity_level,
+            process_execute_flags,
+            protected_process,
+            time_zone,
+
+            build_strings,
+
+            misc_5,
+
             pad_to_size,
         } = stream;
-        let flags_label = Label::new();
-        let section = section.D32(&flags_label);
+
+        // Derive the flags and misc_info version we'll be using.
+        let mut misc_info_version = 1;
         let mut flags = md::MiscInfoFlags::empty();
-        let section = section.D32(if let Some(pid) = process_id {
+
+        if process_id.is_some() {
             flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESS_ID;
-            pid
-        } else {
-            0
-        });
-        let section = if let Some(time) = process_create_time {
+        }
+        if process_times.is_some() {
             flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESS_TIMES;
-            section
-                .D32(time)
-                // user_time
-                .D32(0)
-                // kernel_time
-                .D32(0)
-        } else {
-            section.D32(0).D32(0).D32(0)
-        };
-        flags_label.set_const(flags.bits() as u64);
+        }
+
+        if power_info.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC1_PROCESSOR_POWER_INFO;
+            misc_info_version = 2;
+        }
+
+        if process_integrity_level.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC3_PROCESS_INTEGRITY;
+            misc_info_version = 3;
+        }
+        if process_execute_flags.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC3_PROCESS_EXECUTE_FLAGS;
+            misc_info_version = 3;
+        }
+        if protected_process.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC3_PROTECTED_PROCESS;
+            misc_info_version = 3;
+        }
+        if time_zone.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC3_TIMEZONE;
+            misc_info_version = 3;
+        }
+
+        if build_strings.is_some() {
+            flags |= md::MiscInfoFlags::MINIDUMP_MISC4_BUILDSTRING;
+            misc_info_version = 4;
+        }
+
+        if let Some(ref misc_5) = misc_5 {
+            if misc_5.process_cookie.is_some() {
+                flags |= md::MiscInfoFlags::MINIDUMP_MISC5_PROCESS_COOKIE
+            }
+            misc_info_version = 5;
+        }
+
+        // Now that we know what version we are, emit all the fields necessary
+        // for that version, leaning on Default to fill in values that are None.
+        let mut section = section.D32(flags.bits() as u64 as u32);
+
+        let process_id = process_id.unwrap_or_else(Default::default);
+        let process_times = process_times.unwrap_or_else(Default::default);
+        section = section.D32(process_id);
+        section = section
+            .D32(process_times.process_create_time)
+            .D32(process_times.process_user_time)
+            .D32(process_times.process_kernel_time);
+
+        if misc_info_version >= 2 {
+            let power_info = power_info.unwrap_or_else(Default::default);
+            section = section
+                .D32(power_info.processor_max_mhz)
+                .D32(power_info.processor_current_mhz)
+                .D32(power_info.processor_mhz_limit)
+                .D32(power_info.processor_max_idle_state)
+                .D32(power_info.processor_current_idle_state);
+        }
+
+        if misc_info_version >= 3 {
+            let process_integrity_level = process_integrity_level.unwrap_or_else(Default::default);
+            let process_execute_flags = process_execute_flags.unwrap_or_else(Default::default);
+            let protected_process = protected_process.unwrap_or_else(Default::default);
+            let time_zone = time_zone.unwrap_or_else(Default::default);
+
+            section = section.D32(process_integrity_level);
+            section = section.D32(process_execute_flags);
+            section = section.D32(protected_process);
+
+            fn write_system_time(section: Section, time: &md::SYSTEMTIME) -> Section {
+                section
+                    .D16(time.year)
+                    .D16(time.month)
+                    .D16(time.day_of_week)
+                    .D16(time.day)
+                    .D16(time.hour)
+                    .D16(time.minute)
+                    .D16(time.second)
+                    .D16(time.milliseconds)
+            }
+
+            section = section.D32(time_zone.time_zone_id);
+            let time_zone = time_zone.time_zone;
+            section = section.D32(time_zone.bias as u32);
+            for &val in &time_zone.standard_name {
+                section = section.D16(val);
+            }
+            section = write_system_time(section, &time_zone.standard_date);
+            section = section.D32(time_zone.standard_bias as u32);
+            for &val in &time_zone.daylight_name {
+                section = section.D16(val);
+            }
+            section = write_system_time(section, &time_zone.daylight_date);
+            section = section.D32(time_zone.daylight_bias as u32);
+        }
+
+        if misc_info_version >= 4 {
+            let build_strings = build_strings.unwrap_or_else(Default::default);
+            for &val in &build_strings.build_string {
+                section = section.D16(val);
+            }
+            for &val in &build_strings.dbg_bld_str {
+                section = section.D16(val);
+            }
+        }
+
+        if misc_info_version >= 5 {
+            let misc_5 = misc_5.unwrap_or_else(Default::default);
+            let process_cookie = misc_5.process_cookie.unwrap_or_else(Default::default);
+            let xstate = misc_5.xstate_data;
+            section = section
+                .D32(xstate.size_of_info)
+                .D32(xstate.context_size)
+                .D64(xstate.enabled_features);
+
+            for feature in &xstate.features {
+                section = section.D32(feature.offset).D32(feature.size);
+            }
+            section = section.D32(process_cookie);
+        }
+
         // Pad to final size, if necessary.
         if let Some(size) = pad_to_size {
             let size = (size as u64 - section.size()) as usize;

@@ -127,8 +127,8 @@ fn test_system_info() {
 fn test_misc_info() {
     let dump = read_test_minidump().unwrap();
     let misc_info = dump.get_stream::<MinidumpMiscInfo>().unwrap();
-    assert_eq!(misc_info.raw.process_id(), Some(3932));
-    assert_eq!(misc_info.raw.process_create_time(), Some(0x45d35f73));
+    assert_eq!(misc_info.raw.process_id(), Some(&3932));
+    assert_eq!(misc_info.raw.process_create_time(), Some(&0x45d35f73));
     assert_eq!(
         misc_info.process_create_time().unwrap(),
         Utc.ymd(2007, 2, 14).and_hms(19, 13, 55)
