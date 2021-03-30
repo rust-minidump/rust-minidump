@@ -1364,7 +1364,7 @@ multi_structs! {
     /// This struct matches the [Microsoft struct][msdn] of the same name.
     ///
     /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_misc_info_2
-    pub struct MINIDUMP_MISC_INFO2 {
+    pub struct MINIDUMP_MISC_INFO_2 {
         pub processor_max_mhz: u32,
         pub processor_current_mhz: u32,
         pub processor_mhz_limit: u32,
@@ -1375,7 +1375,7 @@ multi_structs! {
     /// Miscellaneous process and system information
     ///
     /// This struct matches the struct of the same name from minidumpapiset.h.
-    pub struct MINIDUMP_MISC_INFO3 {
+    pub struct MINIDUMP_MISC_INFO_3 {
         pub process_integrity_level: u32,
         pub process_execute_flags: u32,
         pub protected_process: u32,
@@ -1386,37 +1386,91 @@ multi_structs! {
     /// Miscellaneous process and system information
     ///
     /// This struct matches the struct of the same name from minidumpapiset.h.
-    pub struct MINIDUMP_MISC_INFO4 {
+    pub struct MINIDUMP_MISC_INFO_4 {
         pub build_string: [u16; 260], // MAX_PATH
         pub dbg_bld_str: [u16; 40],
     }
+
+    // Includes fields from MINIDUMP_MISC_INFO..4
+    /// Miscellaneous process and system information
+    ///
+    /// This struct matches the struct of the same name from minidumpapiset.h.
+    pub struct MINIDUMP_MISC_INFO_5 {
+        pub xstate_data: XSTATE_CONFIG_FEATURE_MSC_INFO,
+        pub process_cookie: u32,
+    }
+    // TODO: read xstate_data and process the extra XSAVE sections at the
+    // end of each thread's cpu context.
 }
 
-//TODO: MINIDUMP_MISC_INFO_5
-/*
-typedef struct _MINIDUMP_MISC_INFO_5 {
-    ULONG32 SizeOfInfo;
-    ULONG32 Flags1;
-    ULONG32 ProcessId;
-    ULONG32 ProcessCreateTime;
-    ULONG32 ProcessUserTime;
-    ULONG32 ProcessKernelTime;
-    ULONG32 ProcessorMaxMhz;
-    ULONG32 ProcessorCurrentMhz;
-    ULONG32 ProcessorMhzLimit;
-    ULONG32 ProcessorMaxIdleState;
-    ULONG32 ProcessorCurrentIdleState;
-    ULONG32 ProcessIntegrityLevel;
-    ULONG32 ProcessExecuteFlags;
-    ULONG32 ProtectedProcess;
-    ULONG32 TimeZoneId;
-    TIME_ZONE_INFORMATION TimeZone;
-    WCHAR   BuildString[MAX_PATH];
-    WCHAR   DbgBldStr[40];
-    XSTATE_CONFIG_FEATURE_MSC_INFO XStateData;
-    ULONG32 ProcessCookie;
-} MINIDUMP_MISC_INFO_5, *PMINIDUMP_MISC_INFO_5;
-*/
+/// A descriptor of the XSAVE context which can be found at the end of
+/// each thread's cpu context.
+///
+/// The sections of this context are dumps of some of the CPUs registers
+/// (e.g. one section might contain the contents of the SSE registers).
+///
+/// Intel documents its XSAVE entries in Volume 1, Chapter 13 of the
+/// "Intel 64 and IA-32 Architectures Software Developer’s Manual".
+#[derive(Clone, Pread, SizeWith)]
+pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
+    /// The size of this struct.
+    pub size_of_info: u32,
+    /// The size of the XSAVE context.
+    pub context_size: u32,
+    /// The bit `enabled_features[i]` indicates that `features[i]` contains valid data.
+    pub enabled_features: XStateFeatures,
+    /// The offset and size of each XSAVE entry inside the XSAVE context.
+    pub features: [XSTATE_FEATURE; 64],
+}
+
+/// Several known entries in `XSTATE_CONFIG_FEATURE_MSC_INFO.features`.
+#[repr(usize)]
+pub enum XStateFeatureIndex {
+    LEGACY_FLOATING_POINT = 0,
+    LEGACY_SSE = 1,
+    GSSE_AND_AVX = 2,
+    MPX_BNDREGS = 3,
+    MPX_BNDCSR = 4,
+    AVX512_KMASK = 5,
+    AVX512_ZMM_H = 6,
+    ACK512_ZMM = 7,
+    XSTATE_IPT = 8,
+    XSTATE_LWP = 62,
+}
+
+bitflags! {
+    #[derive(Pread, SizeWith)]
+    pub struct XStateFeatures: u64 {
+        const XSTATE_LEGACY_FLOATING_POINT  = 1 << (XStateFeatureIndex::LEGACY_FLOATING_POINT as usize);
+        const XSTATE_LEGACY_SSE             = 1 << (XStateFeatureIndex::LEGACY_SSE as usize);
+        const XSTATE_GSSE                   = 1 << (XStateFeatureIndex::GSSE_AND_AVX as usize);
+        const XSTATE_AVX                    = 1 << (XStateFeatureIndex::GSSE_AND_AVX as usize);
+        const XSTATE_MPX_BNDREGS            = 1 << (XStateFeatureIndex::MPX_BNDREGS as usize);
+        const XSTATE_MPX_BNDCSR             = 1 << (XStateFeatureIndex::MPX_BNDCSR as usize);
+        const XSTATE_AVX512_KMASK           = 1 << (XStateFeatureIndex::AVX512_KMASK as usize);
+        const XSTATE_AVX512_ZMM_H           = 1 << (XStateFeatureIndex::AVX512_ZMM_H as usize);
+        const XSTATE_AVX512_ZMM             = 1 << (XStateFeatureIndex::ACK512_ZMM as usize);
+        const XSTATE_IPT                    = 1 << (XStateFeatureIndex::XSTATE_IPT as usize);
+        const XSTATE_LWP                    = 1 << (XStateFeatureIndex::XSTATE_LWP as usize);
+    }
+}
+
+/// The offset and size of each XSAVE entry inside the XSAVE context.
+#[derive(Clone, Copy, Pread, SizeWith)]
+pub struct XSTATE_FEATURE {
+    /// This entry's offset from the start of the context (in bytes).
+    pub offset: u32,
+    /// This entry's size (in bytes).
+    pub size: u32,
+}
+
+// For whatever reason Pread array derives use 0u8.into() instead of Default to
+// create an initial array to write into. Weird.
+impl From<u8> for XSTATE_FEATURE {
+    fn from(_input: u8) -> Self {
+        XSTATE_FEATURE { offset: 0, size: 0 }
+    }
+}
 
 bitflags! {
     /// Known flags for `MINIDUMP_MISC_INFO*.flags1`

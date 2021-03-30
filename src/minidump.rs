@@ -193,9 +193,10 @@ pub struct MinidumpMemory<'a> {
 #[allow(clippy::large_enum_variant)]
 pub enum RawMiscInfo {
     MiscInfo(md::MINIDUMP_MISC_INFO),
-    MiscInfo2(md::MINIDUMP_MISC_INFO2),
-    MiscInfo3(md::MINIDUMP_MISC_INFO3),
-    MiscInfo4(md::MINIDUMP_MISC_INFO4),
+    MiscInfo2(md::MINIDUMP_MISC_INFO_2),
+    MiscInfo3(md::MINIDUMP_MISC_INFO_3),
+    MiscInfo4(md::MINIDUMP_MISC_INFO_4),
+    MiscInfo5(md::MINIDUMP_MISC_INFO_5),
 }
 
 /// Miscellaneous information about the process that wrote the minidump.
@@ -1223,11 +1224,11 @@ macro_rules! misc_accessors {
         }
     };
     (1: $name:ident -> $t:ty, $($rest:tt)*) => {
-        misc_accessors!(@defnoflag $name $t [MiscInfo MiscInfo2 MiscInfo3 MiscInfo4]);
+        misc_accessors!(@defnoflag $name $t [MiscInfo MiscInfo2 MiscInfo3 MiscInfo4 MiscInfo5]);
         misc_accessors!($($rest)*);
     };
     (1: $name:ident if $flag:ident -> $t:ty, $($rest:tt)*) => {
-        misc_accessors!(@def $name $flag $t [MiscInfo MiscInfo2 MiscInfo3 MiscInfo4]);
+        misc_accessors!(@def $name $flag $t [MiscInfo MiscInfo2 MiscInfo3 MiscInfo4 MiscInfo5]);
         misc_accessors!($($rest)*);
     };
 }
@@ -1262,9 +1263,10 @@ impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
         }
 
         do_read!(
-            (md::MINIDUMP_MISC_INFO4, MiscInfo4),
-            (md::MINIDUMP_MISC_INFO3, MiscInfo3),
-            (md::MINIDUMP_MISC_INFO2, MiscInfo2),
+            (md::MINIDUMP_MISC_INFO_5, MiscInfo5),
+            (md::MINIDUMP_MISC_INFO_4, MiscInfo4),
+            (md::MINIDUMP_MISC_INFO_3, MiscInfo3),
+            (md::MINIDUMP_MISC_INFO_2, MiscInfo2),
             (md::MINIDUMP_MISC_INFO, MiscInfo),
         );
         Err(Error::StreamReadFailure)
