@@ -57,6 +57,11 @@ fn print_minidump_dump(path: &Path) {
                 breakpad_info.print(stdout).unwrap();
             }
             // TODO: MemoryInfoList
+            match dump.get_stream::<MinidumpCrashpadInfo>() {
+                Ok(crashpad_info) => crashpad_info.print(stdout).unwrap(),
+                Err(Error::StreamNotFound) => (),
+                Err(_) => write!(stdout, "MinidumpCrashpadInfo cannot print invalid data").unwrap(),
+            }
             for &(stream, name) in streams!(
                 LinuxCmdLine,
                 LinuxEnviron,
