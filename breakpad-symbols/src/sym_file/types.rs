@@ -78,7 +78,7 @@ impl Function {
 
 /// DWARF CFI rules for recovering registers at a specific address.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct CFIRules {
+pub struct CfiRules {
     /// The address in question.
     pub address: u64,
     /// Postfix expressions to evaluate to recover register values.
@@ -87,16 +87,16 @@ pub struct CFIRules {
 
 /// Information used for unwinding stack frames using DWARF CFI.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StackInfoCFI {
+pub struct StackInfoCfi {
     /// The initial rules for this address range.
-    pub init: CFIRules,
+    pub init: CfiRules,
     /// The size of this entire address range.
     pub size: u32,
     /// Additional rules to use at specified addresses.
-    pub add_rules: Vec<CFIRules>,
+    pub add_rules: Vec<CfiRules>,
 }
 
-impl StackInfoCFI {
+impl StackInfoCfi {
     pub fn memory_range(&self) -> Range<u64> {
         Range::new(self.init.address, self.init.address + self.size as u64 - 1)
     }
@@ -107,7 +107,7 @@ impl StackInfoCFI {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WinFrameType {
     /// This frame uses FPO-style data.
-    FPO(StackInfoWin),
+    Fpo(StackInfoWin),
     /// This frame uses new-style frame data, has a program string.
     FrameData(StackInfoWin),
     /// Some other type of frame.
@@ -159,7 +159,7 @@ pub struct SymbolFile {
     /// Functions.
     pub functions: RangeMap<u64, Function>,
     /// DWARF CFI unwind information.
-    pub cfi_stack_info: RangeMap<u64, StackInfoCFI>,
+    pub cfi_stack_info: RangeMap<u64, StackInfoCfi>,
     /// Windows unwind information (frame data).
     pub win_stack_framedata_info: RangeMap<u64, StackInfoWin>,
     /// Windows unwind information (FPO data).

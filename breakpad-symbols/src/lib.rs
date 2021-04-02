@@ -491,10 +491,8 @@ impl Symbolizer {
             debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
         }
-        if let Some(res) = self.symbols.borrow().get(&k) {
-            if let SymbolResult::Ok(ref sym) = *res {
-                sym.fill_symbol(module, frame)
-            }
+        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            sym.fill_symbol(module, frame)
         }
     }
 }
@@ -657,6 +655,7 @@ mod test {
             // Should load OK now that it exists.
             assert!(
                 matches!(supplier.locate_symbols(&m), SymbolResult::Ok(_)),
+                "{}",
                 format!("Located symbols for {}", sym)
             );
         }
@@ -669,6 +668,7 @@ mod test {
         let res = supplier.locate_symbols(&mal);
         assert!(
             matches!(res, SymbolResult::LoadError(_)),
+            "{}",
             format!("Correctly failed to parse {}, result: {:?}", sym, res)
         );
     }

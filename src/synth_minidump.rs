@@ -313,9 +313,9 @@ pub struct SimpleStream {
     pub section: Section,
 }
 
-impl Into<Section> for SimpleStream {
-    fn into(self) -> Section {
-        self.section
+impl From<SimpleStream> for Section {
+    fn from(stream: SimpleStream) -> Self {
+        stream.section
     }
 }
 
@@ -379,15 +379,15 @@ impl<T: ListItem> List<T> {
     }
 }
 
-impl<T: ListItem> Into<Section> for List<T> {
-    fn into(self) -> Section {
+impl<T: ListItem> From<List<T>> for Section {
+    fn from(list: List<T>) -> Self {
         // Finalize the entry count.
-        self.count_label.set_const(self.count as u64);
+        list.count_label.set_const(list.count as u64);
 
         // Serialize all (transitive) out-of-band data after the dense list of entry records.
-        self.section
-            .mark(&self.out_of_band.file_offset())
-            .append_section(self.out_of_band)
+        list.section
+            .mark(&list.out_of_band.file_offset())
+            .append_section(list.out_of_band)
     }
 }
 
@@ -427,9 +427,9 @@ impl<T: ListItem> ListStream<T> {
     }
 }
 
-impl<T: ListItem> Into<Section> for ListStream<T> {
-    fn into(self) -> Section {
-        self.list.into()
+impl<T: ListItem> From<ListStream<T>> for Section {
+    fn from(stream: ListStream<T>) -> Self {
+        stream.list.into()
     }
 }
 
@@ -465,9 +465,9 @@ impl DumpString {
     }
 }
 
-impl Into<Section> for DumpString {
-    fn into(self) -> Section {
-        self.section
+impl From<DumpString> for Section {
+    fn from(string: DumpString) -> Self {
+        string.section
     }
 }
 
@@ -488,9 +488,9 @@ impl DumpUtf8String {
     }
 }
 
-impl Into<Section> for DumpUtf8String {
-    fn into(self) -> Section {
-        self.section
+impl From<DumpUtf8String> for Section {
+    fn from(string: DumpUtf8String) -> Self {
+        string.section
     }
 }
 
@@ -571,13 +571,13 @@ impl Module {
 
 impl_dumpsection!(Module);
 
-impl Into<Section> for Module {
-    fn into(self) -> Section {
+impl From<Module> for Section {
+    fn from(module: Module) -> Self {
         let Module {
             section,
             cv_record,
             misc_record,
-        } = self;
+        } = module;
         section
             .cite_location(&cv_record)
             .cite_location(&misc_record)
@@ -612,9 +612,9 @@ impl Thread {
 
 impl_dumpsection!(Thread);
 
-impl Into<Section> for Thread {
-    fn into(self) -> Section {
-        self.section
+impl From<Thread> for Section {
+    fn from(thread: Thread) -> Self {
+        thread.section
     }
 }
 
@@ -639,9 +639,9 @@ impl Memory {
 
 impl_dumpsection!(Memory);
 
-impl Into<Section> for Memory {
-    fn into(self) -> Section {
-        self.section
+impl From<Memory> for Section {
+    fn from(memory: Memory) -> Self {
+        memory.section
     }
 }
 
@@ -667,14 +667,14 @@ impl MiscStream {
     }
 }
 
-impl Into<Section> for MiscStream {
-    fn into(self) -> Section {
+impl From<MiscStream> for Section {
+    fn from(stream: MiscStream) -> Self {
         let MiscStream {
             section,
             process_id,
             process_create_time,
             pad_to_size,
-        } = self;
+        } = stream;
         let flags_label = Label::new();
         let section = section.D32(&flags_label);
         let mut flags = md::MiscInfoFlags::empty();
@@ -966,9 +966,9 @@ impl Guid {
 
 // Guid does not impl DumpSections as it cannot be cited.
 
-impl Into<Section> for Guid {
-    fn into(self) -> Section {
-        self.section
+impl From<Guid> for Section {
+    fn from(guid: Guid) -> Self {
+        guid.section
     }
 }
 
@@ -1017,18 +1017,18 @@ impl CrashpadInfo {
 
 impl_dumpsection!(CrashpadInfo);
 
-impl Into<Section> for CrashpadInfo {
-    fn into(self) -> Section {
-        self.section
+impl From<CrashpadInfo> for Section {
+    fn from(info: CrashpadInfo) -> Self {
+        info.section
             .D32(md::MINIDUMP_CRASHPAD_INFO::VERSION)
-            .append_section(self.report_id)
-            .append_section(self.client_id)
-            .cite_location(&self.simple_annotations)
-            .cite_location(&self.module_list)
-            .mark(&self.simple_annotations.file_offset())
-            .append_section(self.simple_annotations)
-            .mark(&self.module_list.file_offset())
-            .append_section(self.module_list)
+            .append_section(info.report_id)
+            .append_section(info.client_id)
+            .cite_location(&info.simple_annotations)
+            .cite_location(&info.module_list)
+            .mark(&info.simple_annotations.file_offset())
+            .append_section(info.simple_annotations)
+            .mark(&info.module_list.file_offset())
+            .append_section(info.module_list)
     }
 }
 

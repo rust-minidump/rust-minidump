@@ -9,6 +9,7 @@
 //! [crashpad]: https://chromium.googlesource.com/crashpad/crashpad/+/master/README.md
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
+#![allow(clippy::upper_case_acronyms)]
 
 use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
@@ -224,9 +225,9 @@ pub enum MINIDUMP_STREAM_TYPE {
     CrashpadInfoStream = 0x43500001,
 }
 
-impl Into<u32> for MINIDUMP_STREAM_TYPE {
-    fn into(self) -> u32 {
-        self as u32
+impl From<MINIDUMP_STREAM_TYPE> for u32 {
+    fn from(ty: MINIDUMP_STREAM_TYPE) -> Self {
+        ty as u32
     }
 }
 
