@@ -98,7 +98,7 @@ pub enum CallStackInfo {
     /// No stack memory was provided, couldn't unwind past the top frame.
     MissingMemory,
     /// The CPU type is unsupported.
-    UnsupportedCPU,
+    UnsupportedCpu,
     /// This thread wrote the minidump, it was skipped.
     DumpThreadSkipped,
 }

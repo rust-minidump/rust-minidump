@@ -71,7 +71,7 @@ pub enum Error {
     #[fail(display = "File not found")]
     FileNotFound,
     #[fail(display = "I/O error")]
-    IOError,
+    IoError,
     #[fail(display = "Missing minidump header")]
     MissingHeader,
     #[fail(display = "Header mismatch")]
@@ -1769,7 +1769,7 @@ impl<'a> Minidump<'a, Mmap> {
         P: AsRef<Path>,
     {
         let f = File::open(path).or(Err(Error::FileNotFound))?;
-        let mmap = unsafe { Mmap::map(&f).or(Err(Error::IOError))? };
+        let mmap = unsafe { Mmap::map(&f).or(Err(Error::IoError))? };
         Minidump::read(mmap)
     }
 }
@@ -2384,7 +2384,7 @@ mod test {
         assert_eq!(thread.raw.thread_id, 0x1234);
         let context = thread.context.expect("Should have a thread context");
         match context.raw {
-            MinidumpRawContext::AMD64(raw) => {
+            MinidumpRawContext::Amd64(raw) => {
                 assert_eq!(raw.rip, 0x1234abcd1234abcd);
                 assert_eq!(raw.rsp, 0x1000000010000000);
             }

@@ -66,13 +66,13 @@ struct GitHubFile {
     path: String,
 }
 
-trait VCSFile {
+trait VcsFile {
     fn raw_url(&self) -> String;
     fn annotate_url(&self, line: u64) -> String;
     fn as_local_filename(&self) -> String;
 }
 
-impl VCSFile for HgWebFile {
+impl VcsFile for HgWebFile {
     fn raw_url(&self) -> String {
         format!(
             "https://{}/{}/raw-file/{}/{}",
@@ -91,7 +91,7 @@ impl VCSFile for HgWebFile {
     }
 }
 
-impl VCSFile for GitHubFile {
+impl VcsFile for GitHubFile {
     fn raw_url(&self) -> String {
         format!(
             "http://raw.githubusercontent.com/{}/{}/{}",
@@ -127,7 +127,7 @@ fn fetch_url_to_path(client: &Client, url: &str, path: &Path) -> Result<(), Erro
     Ok(())
 }
 
-fn parse_vcs_info(filename: &str) -> Result<Box<dyn VCSFile>, Error> {
+fn parse_vcs_info(filename: &str) -> Result<Box<dyn VcsFile>, Error> {
     let mut bits = filename.split(':');
     Ok(match (bits.next(), bits.next(), bits.next(), bits.next()) {
         (Some("hg"), Some(repo), Some(path), Some(rev)) if repo.starts_with("hg.mozilla.org/") => {

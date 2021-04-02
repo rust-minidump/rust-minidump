@@ -24,7 +24,7 @@ enum Line<'a> {
     Public(PublicSymbol),
     Function(Function),
     StackWin(WinFrameType),
-    StackCFI(StackInfoCFI),
+    StackCfi(StackInfoCfi),
 }
 
 // Nom's `eol` doesn't use complete! so it will return Incomplete.
@@ -209,14 +209,14 @@ named!(stack_win_line<&[u8], WinFrameType>,
           };
           match ty {
               b"4" => WinFrameType::FrameData(info),
-              b"0" => WinFrameType::FPO(info),
+              b"0" => WinFrameType::Fpo(info),
               _ => WinFrameType::Unhandled,
           }
       }
 ));
 
 // Matches a STACK CFI record.
-named!(stack_cfi<&[u8], CFIRules>,
+named!(stack_cfi<&[u8], CfiRules>,
 chain!(
     tag!("STACK CFI") ~
         space ~
@@ -225,7 +225,7 @@ chain!(
         rules: map_res!(not_line_ending, str::from_utf8) ~
         my_eol ,
     || {
-        CFIRules {
+        CfiRules {
             address,
             rules: rules.to_string(),
         }
@@ -233,7 +233,7 @@ chain!(
     ));
 
 // Matches a STACK CFI INIT record.
-named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
+named!(stack_cfi_init<&[u8], (CfiRules, u32)>,
   chain!(
     tag!("STACK CFI INIT") ~
     space ~
@@ -244,7 +244,7 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
     rules: map_res!(not_line_ending, str::from_utf8) ~
     my_eol ,
       || {
-          (CFIRules {
+          (CfiRules {
               address,
               rules: rules.to_string(),
           },
@@ -253,14 +253,14 @@ named!(stack_cfi_init<&[u8], (CFIRules, u32)>,
 ));
 
 // Match a STACK CFI INIT record followed by zero or more STACK CFI records.
-named!(stack_cfi_lines<&[u8], StackInfoCFI>,
+named!(stack_cfi_lines<&[u8], StackInfoCfi>,
   chain!(
     init: stack_cfi_init ~
     mut add_rules: many0!(stack_cfi) ,
       move || {
           let (init_rules, size) = init;
           add_rules.sort();
-          StackInfoCFI {
+          StackInfoCfi {
               init: init_rules,
               size,
               add_rules,
@@ -276,7 +276,7 @@ named!(line<&[u8], Line>,
     public_line => { |p| Line::Public(p) } |
     func_lines => { |f| Line::Function(f) } |
     stack_win_line => { |s| Line::StackWin(s) } |
-    stack_cfi_lines => { |s| Line::StackCFI(s) }
+    stack_cfi_lines => { |s| Line::StackCfi(s) }
 ));
 
 // Return a `SymbolFile` given a vec of `Line` data.
@@ -314,14 +314,14 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
                     WinFrameType::FrameData(s) => {
                         insert_win_stack_info(&mut stack_win_framedata, s);
                     }
-                    WinFrameType::FPO(s) => {
+                    WinFrameType::Fpo(s) => {
                         insert_win_stack_info(&mut stack_win_fpo, s);
                     }
                     // Just ignore other types.
                     _ => {}
                 }
             }
-            Line::StackCFI(s) => {
+            Line::StackCfi(s) => {
                 stack_cfi.push(s);
             }
         }
@@ -592,12 +592,8 @@ fn test_stack_win_line_program_string() {
                 )
             );
         }
-        Error(e) => {
-            panic!(format!("Parse error: {:?}", e));
-        }
-        Incomplete(_) => {
-            panic!("Incomplete parse!");
-        }
+        Error(e) => panic!("{}", format!("Parse error: {:?}", e)),
+        Incomplete(_) => panic!("Incomplete parse!"),
         _ => panic!("Something bad happened"),
     }
 }
@@ -606,7 +602,7 @@ fn test_stack_win_line_program_string() {
 fn test_stack_win_line_frame_data() {
     let line = b"STACK WIN 0 1000 30 a1 b2 c3 d4 e5 f6 0 1\n";
     match stack_win_line(line) {
-        Done(rest, WinFrameType::FPO(stack)) => {
+        Done(rest, WinFrameType::Fpo(stack)) => {
             assert_eq!(rest, &b""[..]);
             assert_eq!(stack.address, 0x1000);
             assert_eq!(stack.size, 0x30);
@@ -621,12 +617,8 @@ fn test_stack_win_line_frame_data() {
                 WinStackThing::AllocatesBasePointer(true)
             );
         }
-        Error(e) => {
-            panic!(format!("Parse error: {:?}", e));
-        }
-        Incomplete(_) => {
-            panic!("Incomplete parse!");
-        }
+        Error(e) => panic!("{}", format!("Parse error: {:?}", e)),
+        Incomplete(_) => panic!("Incomplete parse!"),
         _ => panic!("Something bad happened"),
     }
 }
@@ -639,7 +631,7 @@ fn test_stack_cfi() {
         stack_cfi(line),
         Done(
             rest,
-            CFIRules {
+            CfiRules {
                 address: 0xdeadf00d,
                 rules: "some rules".to_string(),
             }
@@ -656,7 +648,7 @@ fn test_stack_cfi_init() {
         Done(
             rest,
             (
-                CFIRules {
+                CfiRules {
                     address: 0xbadf00d,
                     rules: "init rules".to_string(),
                 },
@@ -677,18 +669,18 @@ STACK CFI deadbeef more rules
         stack_cfi_lines(data),
         Done(
             rest,
-            StackInfoCFI {
-                init: CFIRules {
+            StackInfoCfi {
+                init: CfiRules {
                     address: 0xbadf00d,
                     rules: "init rules".to_string(),
                 },
                 size: 0xabc,
                 add_rules: vec![
-                    CFIRules {
+                    CfiRules {
                         address: 0xdeadbeef,
                         rules: "more rules".to_string(),
                     },
-                    CFIRules {
+                    CfiRules {
                         address: 0xdeadf00d,
                         rules: "some rules".to_string(),
                     },
@@ -847,8 +839,8 @@ STACK CFI INIT f00f f0 more init rules
         .collect::<Vec<_>>();
     assert_eq!(
         cs[0],
-        StackInfoCFI {
-            init: CFIRules {
+        StackInfoCfi {
+            init: CfiRules {
                 address: 0xf00f,
                 rules: "more init rules".to_string(),
             },
@@ -858,18 +850,18 @@ STACK CFI INIT f00f f0 more init rules
     );
     assert_eq!(
         cs[1],
-        StackInfoCFI {
-            init: CFIRules {
+        StackInfoCfi {
+            init: CfiRules {
                 address: 0xbadf00d,
                 rules: "init rules".to_string(),
             },
             size: 0xabc,
             add_rules: vec![
-                CFIRules {
+                CfiRules {
                     address: 0xdeadbeef,
                     rules: "more rules".to_string(),
                 },
-                CFIRules {
+                CfiRules {
                     address: 0xdeadf00d,
                     rules: "some rules".to_string(),
                 },
