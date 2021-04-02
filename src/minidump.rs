@@ -346,18 +346,27 @@ fn read_string_utf16(
     }
 }
 
-fn read_string_utf8<'a>(
+#[inline]
+fn read_string_utf8_unterminated<'a>(
     offset: &mut usize,
     bytes: &'a [u8],
     endian: scroll::Endian,
 ) -> Result<&'a str, ()> {
     let length: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
     let slice = bytes.gread_with(offset, length as usize).or(Err(()))?;
-    if !matches!(bytes.gread(offset), Ok(0u8)) {
-        return Err(());
-    }
-
     std::str::from_utf8(slice).or(Err(()))
+}
+
+fn read_string_utf8<'a>(
+    offset: &mut usize,
+    bytes: &'a [u8],
+    endian: scroll::Endian,
+) -> Result<&'a str, ()> {
+    let string = read_string_utf8_unterminated(offset, bytes, endian)?;
+    match bytes.gread(offset) {
+        Ok(0u8) => Ok(string),
+        _ => Err(()),
+    }
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
@@ -1662,7 +1671,7 @@ fn read_annotation_objects(
         let value = match raw.ty {
             md::MINIDUMP_ANNOTATION::TYPE_INVALID => MinidumpAnnotation::Invalid,
             md::MINIDUMP_ANNOTATION::TYPE_STRING => {
-                let string = read_string_utf8(&mut (raw.value as usize), all, endian)
+                let string = read_string_utf8_unterminated(&mut (raw.value as usize), all, endian)
                     .or(Err(Error::StreamReadFailure))?
                     .to_owned();
 
