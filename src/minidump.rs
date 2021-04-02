@@ -586,23 +586,6 @@ impl MinidumpModule {
     }
 }
 
-fn guid_to_string(guid: &md::GUID) -> String {
-    format!(
-        "{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        guid.data1,
-        guid.data2,
-        guid.data3,
-        guid.data4[0],
-        guid.data4[1],
-        guid.data4[2],
-        guid.data4[3],
-        guid.data4[4],
-        guid.data4[5],
-        guid.data4[6],
-        guid.data4[7],
-    )
-}
-
 impl Module for MinidumpModule {
     fn base_address(&self) -> u64 {
         self.raw.base_of_image
@@ -637,7 +620,7 @@ impl Module for MinidumpModule {
     fn debug_identifier(&self) -> Option<Cow<'_, str>> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
-                let id = format!("{}{:x}", guid_to_string(&raw.signature), raw.age,);
+                let id = format!("{:#}{:x}", raw.signature, raw.age,);
                 Some(Cow::Owned(id))
             }
             Some(CodeView::Pdb20(ref raw)) => {
@@ -662,7 +645,7 @@ impl Module for MinidumpModule {
                 } else {
                     raw.build_id.pread_with::<md::GUID>(0, LE).ok()
                 };
-                guid.map(|g| Cow::Owned(format!("{}0", guid_to_string(&g))))
+                guid.map(|g| Cow::Owned(format!("{:#}0", g)))
             }
             _ => None,
         }
@@ -1757,6 +1740,75 @@ impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
             simple_annotations,
             module_list,
         })
+    }
+}
+
+impl MinidumpCrashpadInfo {
+    /// Write a human-readable description of this `MinidumpCrashpadInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MDRawCrashpadInfo
+  version = {}
+  report_id = {}
+  client_id = {}
+",
+            self.raw.version, self.raw.report_id, self.raw.client_id,
+        )?;
+
+        for (name, value) in &self.simple_annotations {
+            writeln!(f, "  simple_annotations[\"{}\"] = {}", name, value)?;
+        }
+
+        for (index, module) in self.module_list.iter().enumerate() {
+            writeln!(
+                f,
+                "  module_list[{}].minidump_module_list_index = {}",
+                index, module.module_index,
+            )?;
+            writeln!(
+                f,
+                "  module_list[{}].version = {}",
+                index, module.raw.version,
+            )?;
+
+            for (annotation_index, annotation) in module.list_annotations.iter().enumerate() {
+                writeln!(
+                    f,
+                    "  module_list[{}].list_annotations[{}] = {}",
+                    index, annotation_index, annotation,
+                )?;
+            }
+
+            for (name, value) in &module.simple_annotations {
+                writeln!(
+                    f,
+                    "  module_list[{}].simple_annotations[\"{}\"] = {}",
+                    index, name, value,
+                )?;
+            }
+
+            for (name, value) in &module.annotation_objects {
+                write!(
+                    f,
+                    "  module_list[{}].annotation_objects[\"{}\"] = ",
+                    index, name,
+                )?;
+
+                match value {
+                    MinidumpAnnotation::Invalid => writeln!(f, "<invalid>"),
+                    MinidumpAnnotation::String(string) => writeln!(f, "{}", string),
+                    MinidumpAnnotation::UserDefined(_) => writeln!(f, "<user defined>"),
+                    MinidumpAnnotation::Unsupported(_) => writeln!(f, "<unsupported>"),
+                }?;
+            }
+        }
+
+        writeln!(f)?;
+
+        Ok(())
     }
 }
 

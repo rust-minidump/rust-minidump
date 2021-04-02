@@ -11,6 +11,8 @@
 #![allow(non_upper_case_globals)]
 #![allow(clippy::upper_case_acronyms)]
 
+use std::fmt;
+
 use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
 use scroll::{Endian, Pread, SizeWith};
@@ -402,6 +404,24 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 ///
 /// Matches the [Microsoft struct][msdn] of the same name.
 ///
+/// # Display
+///
+/// There are two `Display` implementations for GUIDs. The regular formatting is lowercase with
+/// hyphens. The alternate formatting used with `#` is the symbol server format (uppercase without
+/// hyphens).
+///
+/// ```
+/// use minidump_common::format::GUID;
+///
+/// let guid = GUID { data1: 10, data2: 11, data3: 12, data4: [1,2,3,4,5,6,7,8]};
+///
+/// // default formatting
+/// assert_eq!("0000000a-000b-000c-0102-030405060708", guid.to_string());
+///
+/// // symbol server formatting
+/// assert_eq!("0000000A000B000C0102030405060708", format!("{:#}", guid));
+/// ```
+///
 /// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/aa373931(v=vs.85).aspx
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Pread, SizeWith)]
 pub struct GUID {
@@ -409,6 +429,46 @@ pub struct GUID {
     pub data2: u16,
     pub data3: u16,
     pub data4: [u8; 8],
+}
+
+impl fmt::Display for GUID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // NB: This formatting is not endianness aware. GUIDs read from LE minidumps are printed
+        // with reversed fields.
+        if f.alternate() {
+            write!(
+                f,
+                "{:08X}{:04X}{:04X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+                self.data1,
+                self.data2,
+                self.data3,
+                self.data4[0],
+                self.data4[1],
+                self.data4[2],
+                self.data4[3],
+                self.data4[4],
+                self.data4[5],
+                self.data4[6],
+                self.data4[7],
+            )
+        } else {
+            write!(
+                f,
+                "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                self.data1,
+                self.data2,
+                self.data3,
+                self.data4[0],
+                self.data4[1],
+                self.data4[2],
+                self.data4[3],
+                self.data4[4],
+                self.data4[5],
+                self.data4[6],
+                self.data4[7],
+            )
+        }
+    }
 }
 
 /// An ELF Build ID.
