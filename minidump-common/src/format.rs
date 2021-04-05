@@ -1425,6 +1425,7 @@ pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
 
 /// Several known entries in `XSTATE_CONFIG_FEATURE_MSC_INFO.features`.
 #[repr(usize)]
+#[derive(Debug)]
 pub enum XStateFeatureIndex {
     LEGACY_FLOATING_POINT = 0,
     LEGACY_SSE = 1,
@@ -1436,6 +1437,25 @@ pub enum XStateFeatureIndex {
     ACK512_ZMM = 7,
     XSTATE_IPT = 8,
     XSTATE_LWP = 62,
+}
+
+impl XStateFeatureIndex {
+    pub fn from_index(idx: usize) -> Option<Self> {
+        use XStateFeatureIndex::*;
+        match idx {
+            0 => Some(LEGACY_FLOATING_POINT),
+            1 => Some(LEGACY_SSE),
+            2 => Some(GSSE_AND_AVX),
+            3 => Some(MPX_BNDREGS),
+            4 => Some(MPX_BNDCSR),
+            5 => Some(AVX512_KMASK),
+            6 => Some(AVX512_ZMM_H),
+            7 => Some(ACK512_ZMM),
+            8 => Some(XSTATE_IPT),
+            62 => Some(XSTATE_LWP),
+            _ => None,
+        }
+    }
 }
 
 bitflags! {

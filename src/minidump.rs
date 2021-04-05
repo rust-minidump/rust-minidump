@@ -314,6 +314,19 @@ fn format_time_t(t: u32) -> String {
     }
 }
 
+fn format_system_time(time: &md::SYSTEMTIME) -> String {
+    // Note this drops the day_of_week field on the ground -- is that fine?
+    let date = NaiveDate::from_ymd(time.year as i32, time.month as u32, time.day as u32);
+    let time = NaiveTime::from_hms_milli(
+        time.hour as u32,
+        time.minute as u32,
+        time.second as u32,
+        time.milliseconds as u32,
+    );
+    let datetime = NaiveDateTime::new(date, time);
+    datetime.format("%Y-%m-%d %H:%M:%S:%f").to_string()
+}
+
 /// Produce a slice of `bytes` corresponding to the offset and size in `loc`, or an
 /// `Error` if the data is not fully contained within `bytes`.
 fn location_slice<'a>(
@@ -1203,23 +1216,38 @@ impl MinidumpSystemInfo {
     }
 }
 
+// Generates an accessor for a MISC_INFO field with two possible syntaxes:
+//
+// * VERSION_NUMBER: FIELD_NAME -> FIELD_TYPE
+// * VERSION_NUMBER: FIELD_NAME if FLAG -> FIELD_TYPE
+//
+// With the following definitions:
+//
+// * VERSION_NUMBER: The MISC_INFO version this field was introduced in
+// * FIELD_NAME: The name of the field to read
+// * FLAG: A MiscInfoFlag that defines if this field contains valid data
+// * FIELD_TYPE: The type of the field
 macro_rules! misc_accessors {
     () => {};
     (@defnoflag $name:ident $t:ty [$($variant:ident)+]) => {
-        pub fn $name(&self) -> $t {
+        #[allow(unreachable_patterns)]
+        pub fn $name(&self) -> Option<&$t> {
             match self {
                 $(
-                    RawMiscInfo::$variant(ref raw) => raw.$name,
+                    RawMiscInfo::$variant(ref raw) => Some(&raw.$name),
                 )+
+                _ => None,
             }
         }
     };
     (@def $name:ident $flag:ident $t:ty [$($variant:ident)+]) => {
-        pub fn $name(&self) -> Option<$t> {
+        #[allow(unreachable_patterns)]
+        pub fn $name(&self) -> Option<&$t> {
             match self {
                 $(
-                    RawMiscInfo::$variant(ref raw) => if md::MiscInfoFlags::from_bits_truncate(raw.flags1).contains(md::MiscInfoFlags::$flag) { Some(raw.$name) } else { None },
+                    RawMiscInfo::$variant(ref raw) => if md::MiscInfoFlags::from_bits_truncate(raw.flags1).contains(md::MiscInfoFlags::$flag) { Some(&raw.$name) } else { None },
                 )+
+                _ => None,
             }
         }
     };
@@ -1231,16 +1259,77 @@ macro_rules! misc_accessors {
         misc_accessors!(@def $name $flag $t [MiscInfo MiscInfo2 MiscInfo3 MiscInfo4 MiscInfo5]);
         misc_accessors!($($rest)*);
     };
+
+    (2: $name:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@defnoflag $name $t [MiscInfo2 MiscInfo3 MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+    (2: $name:ident if $flag:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@def $name $flag $t [MiscInfo2 MiscInfo3 MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+
+    (3: $name:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@defnoflag $name $t [MiscInfo3 MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+    (3: $name:ident if $flag:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@def $name $flag $t [MiscInfo3 MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+
+    (4: $name:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@defnoflag $name $t [MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+    (4: $name:ident if $flag:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@def $name $flag $t [MiscInfo4 MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+
+    (5: $name:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@defnoflag $name $t [MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
+    (5: $name:ident if $flag:ident -> $t:ty, $($rest:tt)*) => {
+        misc_accessors!(@def $name $flag $t [MiscInfo5]);
+        misc_accessors!($($rest)*);
+    };
 }
 
 impl RawMiscInfo {
+    // Fields are grouped by the flag that guards them.
     misc_accessors!(
         1: size_of_info -> u32,
         1: flags1 -> u32,
+
         1: process_id if MINIDUMP_MISC1_PROCESS_ID -> u32,
+
         1: process_create_time if MINIDUMP_MISC1_PROCESS_TIMES -> u32,
         1: process_user_time if MINIDUMP_MISC1_PROCESS_TIMES -> u32,
         1: process_kernel_time if MINIDUMP_MISC1_PROCESS_TIMES -> u32,
+
+        2: processor_max_mhz if MINIDUMP_MISC1_PROCESSOR_POWER_INFO -> u32,
+        2: processor_current_mhz if MINIDUMP_MISC1_PROCESSOR_POWER_INFO -> u32,
+        2: processor_mhz_limit if MINIDUMP_MISC1_PROCESSOR_POWER_INFO -> u32,
+        2: processor_max_idle_state if MINIDUMP_MISC1_PROCESSOR_POWER_INFO -> u32,
+        2: processor_current_idle_state if MINIDUMP_MISC1_PROCESSOR_POWER_INFO -> u32,
+
+        3: process_integrity_level if MINIDUMP_MISC3_PROCESS_INTEGRITY -> u32,
+
+        3: process_execute_flags if MINIDUMP_MISC3_PROCESS_EXECUTE_FLAGS -> u32,
+
+        3: protected_process if MINIDUMP_MISC3_PROTECTED_PROCESS -> u32,
+
+        3: time_zone_id if MINIDUMP_MISC3_TIMEZONE -> u32,
+        3: time_zone if MINIDUMP_MISC3_TIMEZONE -> md::TIME_ZONE_INFORMATION,
+
+        4: build_string if MINIDUMP_MISC4_BUILDSTRING -> [u16; 260],
+        4: dbg_bld_str if MINIDUMP_MISC4_BUILDSTRING -> [u16; 40],
+
+        5: xstate_data -> md::XSTATE_CONFIG_FEATURE_MSC_INFO,
+
+        5: process_cookie if MINIDUMP_MISC5_PROCESS_COOKIE -> u32,
     );
 }
 
@@ -1277,29 +1366,35 @@ impl MinidumpMiscInfo {
     pub fn process_create_time(&self) -> Option<DateTime<Utc>> {
         self.raw
             .process_create_time()
-            .map(|t| Utc.timestamp(t as i64, 0))
+            .map(|t| Utc.timestamp(*t as i64, 0))
     }
 
     /// Write a human-readable description of this `MinidumpMiscInfo` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        write!(
-            f,
-            "MINIDUMP_MISC_INFO
-  size_of_info                 = {}
-  flags1                       = {:#x}
-  process_id                   = ",
-            self.raw.size_of_info(),
-            self.raw.flags1()
-        )?;
-        match self.raw.process_id() {
-            Some(process_id) => writeln!(f, "{}", process_id)?,
-            None => writeln!(f, "(invalid)")?,
+        macro_rules! write_simple_field {
+            ($stream:ident, $field:ident, $format:literal) => {
+                write!(f, "  {:29}= ", stringify!($field))?;
+                match self.raw.$field() {
+                    Some($field) => {
+                        writeln!(f, $format, $field)?;
+                    }
+                    None => writeln!(f, "(invalid)")?,
+                }
+            };
+            ($stream:ident, $field:ident) => {
+                write_simple_field!($stream, $field, "{}");
+            };
         }
+        writeln!(f, "MINIDUMP_MISC_INFO")?;
+
+        write_simple_field!(f, size_of_info);
+        write_simple_field!(f, flags1, "{:x}");
+        write_simple_field!(f, process_id);
         write!(f, "  process_create_time          = ")?;
         match self.raw.process_create_time() {
-            Some(process_create_time) => {
+            Some(&process_create_time) => {
                 writeln!(
                     f,
                     "{:#x} {}",
@@ -1309,21 +1404,94 @@ impl MinidumpMiscInfo {
             }
             None => writeln!(f, "(invalid)")?,
         }
-        write!(f, "  process_user_time            = ")?;
-        match self.raw.process_user_time() {
-            Some(process_user_time) => {
-                writeln!(f, "{}", process_user_time)?;
+        write_simple_field!(f, process_user_time);
+        write_simple_field!(f, process_kernel_time);
+
+        write_simple_field!(f, processor_max_mhz);
+        write_simple_field!(f, processor_current_mhz);
+        write_simple_field!(f, processor_mhz_limit);
+        write_simple_field!(f, processor_max_idle_state);
+        write_simple_field!(f, processor_current_idle_state);
+
+        write_simple_field!(f, process_integrity_level);
+        write_simple_field!(f, process_execute_flags, "{:x}");
+        write_simple_field!(f, protected_process);
+        write_simple_field!(f, time_zone_id);
+
+        write!(f, "  time_zone                    = ")?;
+        match self.raw.time_zone() {
+            Some(time_zone) => {
+                writeln!(f)?;
+                writeln!(f, "    bias          = {}", time_zone.bias)?;
+                writeln!(
+                    f,
+                    "    standard_name = {}",
+                    utf16_to_string(&time_zone.standard_name[..])
+                        .unwrap_or_else(|| String::from("(invalid)"))
+                )?;
+                writeln!(
+                    f,
+                    "    standard_date = {}",
+                    format_system_time(&time_zone.standard_date)
+                )?;
+                writeln!(f, "    standard_bias = {}", time_zone.standard_bias)?;
+                writeln!(
+                    f,
+                    "    daylight_name = {}",
+                    utf16_to_string(&time_zone.daylight_name[..])
+                        .unwrap_or_else(|| String::from("(invalid)"))
+                )?;
+                writeln!(
+                    f,
+                    "    daylight_date = {}",
+                    format_system_time(&time_zone.daylight_date)
+                )?;
+                writeln!(f, "    daylight_bias = {}", time_zone.daylight_bias)?;
             }
             None => writeln!(f, "(invalid)")?,
         }
-        write!(f, "  process_kernel_time          = ")?;
-        match self.raw.process_kernel_time() {
-            Some(process_kernel_time) => {
-                writeln!(f, "{}", process_kernel_time)?;
+
+        write!(f, "  build_string                 = ")?;
+        match self
+            .raw
+            .build_string()
+            .and_then(|string| utf16_to_string(&string[..]))
+        {
+            Some(build_string) => writeln!(f, "{}", build_string)?,
+            None => writeln!(f, "(invalid)")?,
+        }
+        write!(f, "  dbg_bld_str                  = ")?;
+        match self
+            .raw
+            .dbg_bld_str()
+            .and_then(|string| utf16_to_string(&string[..]))
+        {
+            Some(dbg_bld_str) => writeln!(f, "{}", dbg_bld_str)?,
+            None => writeln!(f, "(invalid)")?,
+        }
+
+        write!(f, "  xstate_data                  = ")?;
+        match self.raw.xstate_data() {
+            Some(xstate_data) => {
+                writeln!(f)?;
+                let enabled_features = xstate_data.enabled_features;
+                for i in 0..64 {
+                    if (enabled_features.bits() & (1 << i)) != 0 {
+                        let feature = &xstate_data.features[i];
+                        if let Some(feature) = md::XStateFeatureIndex::from_index(i) {
+                            write!(f, "    feature {:2} - {:22}: ", i, format!("{:?}", feature))?;
+                        } else {
+                            write!(f, "    feature {:2} - (unknown)           : ", i)?;
+                        }
+                        writeln!(f, " offset {:4}, size {:4}", feature.offset, feature.size)?;
+                        // TODO: load the XSAVE state and print it?
+                    }
+                }
             }
             None => writeln!(f, "(invalid)")?,
         }
-        // TODO: version 2-4 fields
+
+        write_simple_field!(f, process_cookie);
         writeln!(f)?;
         Ok(())
     }
@@ -2235,7 +2403,7 @@ mod test {
         let dump = SynthMinidump::with_endian(Endian::Little).add_stream(misc);
         let dump = read_synth_dump(dump).unwrap();
         let misc = dump.get_stream::<MinidumpMiscInfo>().unwrap();
-        assert_eq!(misc.raw.process_id(), Some(PID));
+        assert_eq!(misc.raw.process_id(), Some(&PID));
         assert_eq!(
             misc.process_create_time().unwrap(),
             Utc.timestamp(CREATE_TIME as i64, 0)
@@ -2254,7 +2422,7 @@ mod test {
         let dump = SynthMinidump::with_endian(Endian::Little).add_stream(misc);
         let dump = read_synth_dump(dump).unwrap();
         let misc = dump.get_stream::<MinidumpMiscInfo>().unwrap();
-        assert_eq!(misc.raw.process_id(), Some(PID));
+        assert_eq!(misc.raw.process_id(), Some(&PID));
         assert_eq!(
             misc.process_create_time().unwrap(),
             Utc.timestamp(CREATE_TIME as i64, 0)
