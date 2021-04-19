@@ -326,15 +326,18 @@ fn format_time_t(t: u32) -> String {
 
 fn format_system_time(time: &md::SYSTEMTIME) -> String {
     // Note this drops the day_of_week field on the ground -- is that fine?
-    let date = NaiveDate::from_ymd(time.year as i32, time.month as u32, time.day as u32);
-    let time = NaiveTime::from_hms_milli(
-        time.hour as u32,
-        time.minute as u32,
-        time.second as u32,
-        time.milliseconds as u32,
-    );
-    let datetime = NaiveDateTime::new(date, time);
-    datetime.format("%Y-%m-%d %H:%M:%S:%f").to_string()
+    if let Some(date) = NaiveDate::from_ymd_opt(time.year as i32, time.month as u32, time.day as u32) {
+        let time = NaiveTime::from_hms_milli(
+            time.hour as u32,
+            time.minute as u32,
+            time.second as u32,
+            time.milliseconds as u32,
+        );
+        let datetime = NaiveDateTime::new(date, time);
+        datetime.format("%Y-%m-%d %H:%M:%S:%f").to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// Produce a slice of `bytes` corresponding to the offset and size in `loc`, or an
