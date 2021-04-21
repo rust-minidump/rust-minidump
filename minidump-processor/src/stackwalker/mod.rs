@@ -3,6 +3,7 @@
 
 //! Unwind stack frames for a thread.
 
+mod amd64;
 mod unwind;
 mod x86;
 
@@ -19,7 +20,6 @@ fn get_caller_frame(
 ) -> Option<StackFrame> {
     match frame.context.raw {
         /*
-        MinidumpRawContext::AMD64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::ARM64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
@@ -27,6 +27,9 @@ fn get_caller_frame(
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
+        MinidumpRawContext::Amd64(ref ctx) => {
+            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
+        }
         MinidumpRawContext::X86(ref ctx) => {
             ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
         }

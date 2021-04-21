@@ -831,7 +831,7 @@ pub struct SSE_REGISTERS {
 /// An x86-64 (amd64) CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86-64.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, SmartDefault, Clone, Pread, SizeWith)]
 pub struct CONTEXT_AMD64 {
     pub p1_home: u64,
     pub p2_home: u64,
@@ -878,7 +878,9 @@ pub struct CONTEXT_AMD64 {
     ///
     /// Callers that want to access the underlying data can use [`Pread`] to read either
     /// an [`XMM_SAVE_AREA32`] or [`SSE_REGISTERS`] struct from this raw data as appropriate.
+    #[default = "[0; 512]"]
     pub float_save: [u8; 512],
+    #[default = "[0; 26]"]
     pub vector_register: [u128; 26],
     pub vector_control: u64,
     pub debug_control: u64,
