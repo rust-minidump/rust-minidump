@@ -15,6 +15,7 @@ use self::unwind::Unwind;
 fn get_caller_frame(
     frame: &StackFrame,
     stack_memory: &Option<MinidumpMemory>,
+    modules: &MinidumpModuleList,
 ) -> Option<StackFrame> {
     match frame.context.raw {
         /*
@@ -27,7 +28,7 @@ fn get_caller_frame(
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
         MinidumpRawContext::X86(ref ctx) => {
-            ctx.get_caller_frame(&frame.context.valid, stack_memory)
+            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
         }
         _ => None,
     }
@@ -69,7 +70,7 @@ where
             fill_source_line_info(&mut frame, modules, symbol_provider);
             frames.push(frame);
             let last_frame = &frames.last().unwrap();
-            maybe_frame = get_caller_frame(last_frame, stack_memory);
+            maybe_frame = get_caller_frame(last_frame, stack_memory, modules);
         }
     } else {
         info = CallStackInfo::MissingContext;
