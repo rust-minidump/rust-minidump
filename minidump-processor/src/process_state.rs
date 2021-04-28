@@ -35,6 +35,7 @@ pub enum FrameTrust {
 }
 
 /// A single stack frame produced from unwinding a thread's stack.
+#[derive(Debug)]
 pub struct StackFrame {
     // The program counter location as an absolute virtual address.
     //

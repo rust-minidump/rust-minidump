@@ -82,4 +82,6 @@ where
 }
 
 #[cfg(test)]
+mod amd64_unittest;
+#[cfg(test)]
 mod x86_unittest;

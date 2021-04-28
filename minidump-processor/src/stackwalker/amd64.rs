@@ -28,12 +28,9 @@ fn get_caller_by_frame_pointer(
     stack_memory: &MinidumpMemory,
     _modules: &MinidumpModuleList,
 ) -> Option<StackFrame> {
-    match valid {
-        MinidumpContextValidity::All => {}
-        MinidumpContextValidity::Some(ref which) => {
-            if !which.contains(FRAME_POINTER_REGISTER) {
-                return None;
-            }
+    if let MinidumpContextValidity::Some(ref which) = valid {
+        if !which.contains(FRAME_POINTER_REGISTER) {
+            return None;
         }
     }
 
@@ -41,20 +38,20 @@ fn get_caller_by_frame_pointer(
     // Assume that the standard %bp-using x64 calling convention is in
     // use.
     //
-    // The typical x86 calling convention, when frame pointers are present,
+    // The typical x64 calling convention, when frame pointers are present,
     // is for the calling procedure to use CALL, which pushes the return
     // address onto the stack and sets the instruction pointer (%ip) to
     // the entry point of the called routine.  The called routine then
     // PUSHes the calling routine's frame pointer (%bp) onto the stack
-    // before copying the stack pointer (%esp) to the frame pointer (%bp).
+    // before copying the stack pointer (%sp) to the frame pointer (%bp).
     // Therefore, the calling procedure's frame pointer is always available
     // by dereferencing the called procedure's frame pointer, and the return
     // address is always available at the memory location immediately above
     // the address pointed to by the called procedure's frame pointer.  The
-    // calling procedure's stack pointer (%esp) is 8 higher than the value
-    // of the called procedure's frame pointer at the time the calling
-    // procedure made the CALL: 4 bytes for the return address pushed by the
-    // CALL itself, and 4 bytes for the callee's PUSH of the caller's frame
+    // calling procedure's stack pointer (%sp) is 2 pointers higher than the
+    // value of the called procedure's frame pointer at the time the calling
+    // procedure made the CALL: 1 pointer for the return address pushed by the
+    // CALL itself, and 1 pointer for the callee's PUSH of the caller's frame
     // pointer.
     //
     // %ip_new = *(%bp_old + ptr)
@@ -64,6 +61,19 @@ fn get_caller_by_frame_pointer(
     let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
+
+    // If the recovered ip is not a canonical address it can't be
+    // the return address, so bp must not have been a frame pointer.
+    if is_non_canonical(caller_ip) {
+        return None;
+    }
+    // Check that bp is within the right frame
+    if caller_sp <= last_bp || caller_bp < caller_sp {
+        return None;
+    }
+    // Sanity check that resulting bp is still inside stack memory.
+    let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp as u64)?;
+
     let caller_ctx = CONTEXT_AMD64 {
         rip: caller_ip,
         rsp: caller_sp,
@@ -151,17 +161,45 @@ fn get_caller_by_scan(
             // 2. This function does not use bp, and has just preserved it
             //    from the caller. If this is the case, bp should be before
             //    (after in memory) address_of_ip.
+            //
+            // We then try our best to eliminate bogus-looking bp's with some
+            // simple heuristics like "is a valid stack address".
             let mut caller_bp = None;
 
+            // This value was specifically computed for x86 frames (see the x86
+            // impl for details), but 128 KB is still an extremely generous
+            // frame size on x64.
+            const MAX_REASONABLE_GAP_BETWEEN_FRAMES: Pointer = 128 * 1024;
+
+            // NOTE: minor divergence from the x86 impl here: for whatever
+            // reason the x64 breakpad tests only work if gate option (1) on
+            // having a valid `bp` that points next to address_of_ip already.
+            // It's unclear why, perhaps the test is buggy, but for now we
+            // preserve that behaviour.
             if let Some(last_bp) = last_bp {
                 let address_of_bp = address_of_ip - POINTER_WIDTH;
-                if last_bp == address_of_bp {
-                    let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
-                    if bp > address_of_ip {
+                // Can assume this resolves because we already walked over it when
+                // checking address_of_ip values.
+                let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+                if last_bp == address_of_bp
+                    && bp > address_of_ip
+                    && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
+                {
+                    // Final sanity check that resulting bp is still inside stack memory.
+                    if stack_memory
+                        .get_memory_at_address::<Pointer>(bp as u64)
+                        .is_some()
+                    {
                         caller_bp = Some(bp);
                     }
                 } else if last_bp >= address_of_ip + POINTER_WIDTH {
-                    caller_bp = Some(last_bp);
+                    // Sanity check that resulting bp is still inside stack memory.
+                    if stack_memory
+                        .get_memory_at_address::<Pointer>(last_bp as u64)
+                        .is_some()
+                    {
+                        caller_bp = Some(last_bp);
+                    }
                 }
             }
 
@@ -208,6 +246,22 @@ fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
     if caller_ip > 0 {
         frame.instruction = caller_ip as u64 - 1;
     }
+}
+
+fn is_non_canonical(ptr: Pointer) -> bool {
+    // x64 has the notion of a "canonical address", as a result of only 48 bits
+    // of a pointer actually being used, because this is all that a 4-level page
+    // table can support. A canonical address copies bit 47 to all the otherwise
+    // unused high bits. This creates two ranges where no valid pointers should
+    // ever exist.
+    //
+    // Note that as of this writing, 5-level page tables *do* exist, and when enabled
+    // 57 bits are used. However modern JS engines rely on only 48 bits being used
+    // to perform "NaN boxing" optimizations, so it's reasonable to assume
+    // by default that only 4-level page tables are used. (Even if enabled at
+    // the system level, Linux only exposes non-48-bit pointers to a process
+    // if that process explicitly opts in with a special operation.)
+    ptr > 0x7FFFFFFFFFFF && ptr < 0xFFFF800000000000
 }
 
 impl Unwind for CONTEXT_AMD64 {

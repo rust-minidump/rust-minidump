@@ -28,12 +28,9 @@ fn get_caller_by_frame_pointer(
     stack_memory: &MinidumpMemory,
     _modules: &MinidumpModuleList,
 ) -> Option<StackFrame> {
-    match valid {
-        MinidumpContextValidity::All => {}
-        MinidumpContextValidity::Some(ref which) => {
-            if !which.contains(FRAME_POINTER_REGISTER) {
-                return None;
-            }
+    if let MinidumpContextValidity::Some(ref which) = valid {
+        if !which.contains(FRAME_POINTER_REGISTER) {
+            return None;
         }
     }
 
@@ -46,15 +43,15 @@ fn get_caller_by_frame_pointer(
     // address onto the stack and sets the instruction pointer (%ip) to
     // the entry point of the called routine.  The called routine then
     // PUSHes the calling routine's frame pointer (%bp) onto the stack
-    // before copying the stack pointer (%esp) to the frame pointer (%bp).
+    // before copying the stack pointer (%sp) to the frame pointer (%bp).
     // Therefore, the calling procedure's frame pointer is always available
     // by dereferencing the called procedure's frame pointer, and the return
     // address is always available at the memory location immediately above
     // the address pointed to by the called procedure's frame pointer.  The
-    // calling procedure's stack pointer (%esp) is 8 higher than the value
-    // of the called procedure's frame pointer at the time the calling
-    // procedure made the CALL: 4 bytes for the return address pushed by the
-    // CALL itself, and 4 bytes for the callee's PUSH of the caller's frame
+    // calling procedure's stack pointer (%sp) is 2 pointers higher than the
+    // value of the called procedure's frame pointer at the time the calling
+    // procedure made the CALL: 1 pointer for the return address pushed by the
+    // CALL itself, and 1 pointer for the callee's PUSH of the caller's frame
     // pointer.
     //
     // %ip_new = *(%bp_old + ptr)
@@ -64,6 +61,13 @@ fn get_caller_by_frame_pointer(
     let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
+
+    // NOTE: minor divergence from x64 impl here: doing extra validation on the
+    // value of `caller_sp` and `caller_bp` here encourages the stack scanner
+    // to kick in and start outputting extra frames for `/testdata/test.dmp`.
+    // Since breakpad also doesn't output those frames, let's assume that's
+    // desirable.
+
     let caller_ctx = CONTEXT_X86 {
         eip: caller_ip,
         esp: caller_sp,
@@ -151,17 +155,37 @@ fn get_caller_by_scan(
             // 2. This function does not use bp, and has just preserved it
             //    from the caller. If this is the case, bp should be before
             //    (after in memory) address_of_ip.
+            //
+            // We then try our best to eliminate bogus-looking bp's with some
+            // simple heuristics like "is a valid stack address".
             let mut caller_bp = None;
 
-            if let Some(last_bp) = last_bp {
-                let address_of_bp = address_of_ip - POINTER_WIDTH;
-                if last_bp == address_of_bp {
-                    let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
-                    if bp > address_of_ip {
-                        caller_bp = Some(bp);
+            // Max reasonable size for a single x86 frame is 128 KB.  This value is used in
+            // a heuristic for recovering of the EBP chain after a scan for return address.
+            // This value is based on a stack frame size histogram built for a set of
+            // popular third party libraries which suggests that 99.5% of all frames are
+            // smaller than 128 KB.
+            const MAX_REASONABLE_GAP_BETWEEN_FRAMES: Pointer = 128 * 1024;
+
+            let address_of_bp = address_of_ip - POINTER_WIDTH;
+            let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+            if bp > address_of_ip && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES {
+                // Sanity check that resulting bp is still inside stack memory.
+                if stack_memory
+                    .get_memory_at_address::<Pointer>(bp as u64)
+                    .is_some()
+                {
+                    caller_bp = Some(bp);
+                }
+            } else if let Some(last_bp) = last_bp {
+                if last_bp >= address_of_ip + POINTER_WIDTH {
+                    // Sanity check that resulting bp is still inside stack memory.
+                    if stack_memory
+                        .get_memory_at_address::<Pointer>(last_bp as u64)
+                        .is_some()
+                    {
+                        caller_bp = Some(last_bp);
                     }
-                } else if last_bp >= address_of_ip + POINTER_WIDTH {
-                    caller_bp = Some(last_bp);
                 }
             }
 
