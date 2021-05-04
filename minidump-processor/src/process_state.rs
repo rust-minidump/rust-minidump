@@ -12,11 +12,11 @@ use crate::system_info::SystemInfo;
 use breakpad_symbols::FrameSymbolizer;
 use chrono::prelude::*;
 use minidump::*;
-
+use serde::Serialize;
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -35,7 +35,7 @@ pub enum FrameTrust {
 }
 
 /// A single stack frame produced from unwinding a thread's stack.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct StackFrame {
     // The program counter location as an absolute virtual address.
     //
@@ -90,7 +90,7 @@ pub struct StackFrame {
 }
 
 /// Information about the results of unwinding a thread's stack.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum CallStackInfo {
     /// Everything went great.
     Ok,
@@ -105,6 +105,7 @@ pub enum CallStackInfo {
 }
 
 /// A stack of `StackFrame`s produced as a result of unwinding a thread.
+#[derive(Serialize)]
 pub struct CallStack {
     /// The stack frames.
     /// By convention, the stack frame at index 0 is the innermost callee frame,
@@ -116,6 +117,7 @@ pub struct CallStack {
 }
 
 /// The state of a process as recorded by a `Minidump`.
+#[derive(Serialize)]
 pub struct ProcessState {
     /// When the minidump was written.
     pub time: DateTime<Utc>,
@@ -414,5 +416,13 @@ Loaded modules:
             writeln!(f)?;
         }
         Ok(())
+    }
+
+    pub fn print_json<T: Write>(&self, f: &mut T, pretty: bool) -> Result<(), serde_json::Error> {
+        if pretty {
+            serde_json::to_writer_pretty(f, self)
+        } else {
+            serde_json::to_writer(f, self)
+        }
     }
 }

@@ -22,3 +22,4 @@ range-map = "0.1.5"
 scroll = { version = "0.10.2", features = ["derive"] }
 smart-default = "0.2.0"
 bitflags = "1.0.4"
+serde = { version = "1.0", features = ["derive"] }

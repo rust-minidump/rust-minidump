@@ -10,11 +10,12 @@ use std::fmt;
 use minidump_common::format as md;
 use minidump_common::format::PlatformId;
 use minidump_common::format::ProcessorArchitecture::*;
+use serde::Serialize;
 
 /// Known operating systems
 ///
 /// This is a slightly nicer layer over the `PlatformId` enum defined in the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
 pub enum Os {
     Windows,
     MacOs,
@@ -84,7 +85,7 @@ impl fmt::Display for Os {
 ///
 /// This is a slightly nicer layer over the `ProcessorArchitecture` enum defined in
 /// the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
 pub enum Cpu {
     X86,
     X86_64,
