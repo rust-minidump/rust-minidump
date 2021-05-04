@@ -338,7 +338,7 @@ fn format_system_time(time: &md::SYSTEMTIME) -> String {
         let datetime = NaiveDateTime::new(date, time);
         datetime.format("%Y-%m-%d %H:%M:%S:%f").to_string()
     } else {
-        String::new()
+        "<invalid date>".to_owned()
     }
 }
 
