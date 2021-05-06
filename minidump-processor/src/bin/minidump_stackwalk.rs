@@ -8,7 +8,7 @@ use std::panic;
 use std::path::Path;
 use std::path::PathBuf;
 
-use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
+use breakpad_symbols::{HttpSymbolSupplier, SimpleSymbolSupplier, Symbolizer};
 use minidump::*;
 use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};
 
@@ -16,13 +16,30 @@ use clap::{crate_authors, crate_version, App, Arg};
 use log::error;
 use simplelog::{Config, LevelFilter, TermLogger, TerminalMode};
 
-fn print_minidump_process(path: &Path, symbol_paths: Vec<PathBuf>, human: bool, pretty: bool) {
+fn print_minidump_process(
+    path: &Path,
+    symbol_paths: Vec<PathBuf>,
+    symbol_urls: Vec<String>,
+    symbols_cache: Option<PathBuf>,
+    human: bool,
+    pretty: bool,
+) {
     if let Ok(dump) = Minidump::read_path(path) {
         let mut provider = MultiSymbolProvider::new();
-        provider.add(Box::new(Symbolizer::new(SimpleSymbolSupplier::new(
-            symbol_paths,
-        ))));
+
+        if let Some(symbols_cache) = symbols_cache {
+            provider.add(Box::new(Symbolizer::new(HttpSymbolSupplier::new(
+                symbol_urls,
+                symbols_cache,
+                symbol_paths,
+            ))));
+        } else if !symbol_paths.is_empty() {
+            provider.add(Box::new(Symbolizer::new(SimpleSymbolSupplier::new(
+                symbol_paths,
+            ))));
+        }
         provider.add(Box::new(DwarfSymbolizer::new()));
+
         match minidump_processor::process_minidump(&dump, &provider) {
             Ok(state) => {
                 let mut stdout = std::io::stdout();
@@ -145,11 +162,14 @@ fn main() {
     // All options the original minidump-stackwalk has, stubbed out for when we need them:
     let _pipe = matches.is_present("pipe-dump");
     let _json_path = matches.value_of_os("raw-json").map(Path::new);
-    let _symbols_cache = matches.value_of_os("symbols-cache").map(Path::new);
+    let symbols_cache = matches
+        .value_of_os("symbols-cache")
+        .map(|os_str| Path::new(os_str).to_owned());
     let _symbols_tmp = matches.value_of_os("symbols-tmp").map(Path::new);
-    let _symbols_urls = matches
+    let symbols_urls = matches
         .values_of("symbols-url")
-        .map(|v| v.collect::<Vec<_>>());
+        .map(|v| v.map(String::from).collect::<Vec<_>>())
+        .unwrap_or_else(Vec::new);
 
     let pretty = matches.is_present("pretty");
     let human = matches.is_present("human");
@@ -163,5 +183,17 @@ fn main() {
         })
         .unwrap_or_else(Vec::new);
 
-    print_minidump_process(minidump_path, symbols_paths, human, pretty);
+    if symbols_urls.is_empty() != symbols_cache.is_none() {
+        eprintln!("You must specify both --symbols-url and --symbols-cache when using one of these options");
+        std::process::exit(1);
+    }
+
+    print_minidump_process(
+        minidump_path,
+        symbols_paths,
+        symbols_urls,
+        symbols_cache,
+        human,
+        pretty,
+    );
 }
