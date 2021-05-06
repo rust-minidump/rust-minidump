@@ -16,7 +16,7 @@ use minidump::*;
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -35,6 +35,7 @@ pub enum FrameTrust {
 }
 
 /// A single stack frame produced from unwinding a thread's stack.
+#[derive(Debug)]
 pub struct StackFrame {
     // The program counter location as an absolute virtual address.
     //

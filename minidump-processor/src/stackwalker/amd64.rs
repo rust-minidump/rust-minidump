@@ -8,21 +8,21 @@
 
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
-use minidump::format::CONTEXT_X86;
+use minidump::format::CONTEXT_AMD64;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
 };
 use std::collections::HashSet;
 
-type Pointer = u32;
-const POINTER_WIDTH: Pointer = 4;
-const INSTRUCTION_REGISTER: &str = "eip";
-const STACK_POINTER_REGISTER: &str = "esp";
-const FRAME_POINTER_REGISTER: &str = "ebp";
+type Pointer = u64;
+const POINTER_WIDTH: Pointer = 8;
+const INSTRUCTION_REGISTER: &str = "rip";
+const STACK_POINTER_REGISTER: &str = "rsp";
+const FRAME_POINTER_REGISTER: &str = "rbp";
 
 fn get_caller_by_frame_pointer(
-    ctx: &CONTEXT_X86,
+    ctx: &CONTEXT_AMD64,
     valid: &MinidumpContextValidity,
     _trust: FrameTrust,
     stack_memory: &MinidumpMemory,
@@ -34,11 +34,11 @@ fn get_caller_by_frame_pointer(
         }
     }
 
-    let last_bp = ctx.ebp;
-    // Assume that the standard %bp-using x86 calling convention is in
+    let last_bp = ctx.rbp;
+    // Assume that the standard %bp-using x64 calling convention is in
     // use.
     //
-    // The typical x86 calling convention, when frame pointers are present,
+    // The typical x64 calling convention, when frame pointers are present,
     // is for the calling procedure to use CALL, which pushes the return
     // address onto the stack and sets the instruction pointer (%ip) to
     // the entry point of the called routine.  The called routine then
@@ -62,24 +62,30 @@ fn get_caller_by_frame_pointer(
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
 
-    // NOTE: minor divergence from x64 impl here: doing extra validation on the
-    // value of `caller_sp` and `caller_bp` here encourages the stack scanner
-    // to kick in and start outputting extra frames for `/testdata/test.dmp`.
-    // Since breakpad also doesn't output those frames, let's assume that's
-    // desirable.
+    // If the recovered ip is not a canonical address it can't be
+    // the return address, so bp must not have been a frame pointer.
+    if is_non_canonical(caller_ip) {
+        return None;
+    }
+    // Check that bp is within the right frame
+    if caller_sp <= last_bp || caller_bp < caller_sp {
+        return None;
+    }
+    // Sanity check that resulting bp is still inside stack memory.
+    let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp as u64)?;
 
-    let caller_ctx = CONTEXT_X86 {
-        eip: caller_ip,
-        esp: caller_sp,
-        ebp: caller_bp,
-        ..CONTEXT_X86::default()
+    let caller_ctx = CONTEXT_AMD64 {
+        rip: caller_ip,
+        rsp: caller_sp,
+        rbp: caller_bp,
+        ..CONTEXT_AMD64::default()
     };
     let mut valid = HashSet::new();
     valid.insert(INSTRUCTION_REGISTER);
     valid.insert(STACK_POINTER_REGISTER);
     valid.insert(FRAME_POINTER_REGISTER);
     let context = MinidumpContext {
-        raw: MinidumpRawContext::X86(caller_ctx),
+        raw: MinidumpRawContext::Amd64(caller_ctx),
         valid: MinidumpContextValidity::Some(valid),
     };
     let mut frame = StackFrame::from_context(context, FrameTrust::FramePointer);
@@ -88,7 +94,7 @@ fn get_caller_by_frame_pointer(
 }
 
 fn get_caller_by_cfi(
-    _ctx: &CONTEXT_X86,
+    _ctx: &CONTEXT_AMD64,
     _valid: &MinidumpContextValidity,
     _trust: FrameTrust,
     _stack_memory: &MinidumpMemory,
@@ -99,7 +105,7 @@ fn get_caller_by_cfi(
 }
 
 fn get_caller_by_scan(
-    ctx: &CONTEXT_X86,
+    ctx: &CONTEXT_AMD64,
     valid: &MinidumpContextValidity,
     trust: FrameTrust,
     stack_memory: &MinidumpMemory,
@@ -108,24 +114,24 @@ fn get_caller_by_scan(
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
-    // we assume it's a ip value that was pushed by the CALL instruction that created
+    // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
     let last_bp = match valid {
-        MinidumpContextValidity::All => Some(ctx.ebp),
+        MinidumpContextValidity::All => Some(ctx.rbp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
                 return None;
             }
             if which.contains(FRAME_POINTER_REGISTER) {
-                Some(ctx.ebp)
+                Some(ctx.rbp)
             } else {
                 None
             }
         }
     };
     // TODO: pointer-align this..? Does CALL push aligned ip values? Is sp aligned?
-    let last_sp = ctx.esp;
+    let last_sp = ctx.rsp;
 
     // Number of pointer-sized values to scan through in our search.
     let default_scan_range = 40;
@@ -160,25 +166,33 @@ fn get_caller_by_scan(
             // simple heuristics like "is a valid stack address".
             let mut caller_bp = None;
 
-            // Max reasonable size for a single x86 frame is 128 KB.  This value is used in
-            // a heuristic for recovering of the EBP chain after a scan for return address.
-            // This value is based on a stack frame size histogram built for a set of
-            // popular third party libraries which suggests that 99.5% of all frames are
-            // smaller than 128 KB.
+            // This value was specifically computed for x86 frames (see the x86
+            // impl for details), but 128 KB is still an extremely generous
+            // frame size on x64.
             const MAX_REASONABLE_GAP_BETWEEN_FRAMES: Pointer = 128 * 1024;
 
-            let address_of_bp = address_of_ip - POINTER_WIDTH;
-            let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
-            if bp > address_of_ip && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES {
-                // Sanity check that resulting bp is still inside stack memory.
-                if stack_memory
-                    .get_memory_at_address::<Pointer>(bp as u64)
-                    .is_some()
+            // NOTE: minor divergence from the x86 impl here: for whatever
+            // reason the x64 breakpad tests only work if gate option (1) on
+            // having a valid `bp` that points next to address_of_ip already.
+            // It's unclear why, perhaps the test is buggy, but for now we
+            // preserve that behaviour.
+            if let Some(last_bp) = last_bp {
+                let address_of_bp = address_of_ip - POINTER_WIDTH;
+                // Can assume this resolves because we already walked over it when
+                // checking address_of_ip values.
+                let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+                if last_bp == address_of_bp
+                    && bp > address_of_ip
+                    && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
                 {
-                    caller_bp = Some(bp);
-                }
-            } else if let Some(last_bp) = last_bp {
-                if last_bp >= address_of_ip + POINTER_WIDTH {
+                    // Final sanity check that resulting bp is still inside stack memory.
+                    if stack_memory
+                        .get_memory_at_address::<Pointer>(bp as u64)
+                        .is_some()
+                    {
+                        caller_bp = Some(bp);
+                    }
+                } else if last_bp >= address_of_ip + POINTER_WIDTH {
                     // Sanity check that resulting bp is still inside stack memory.
                     if stack_memory
                         .get_memory_at_address::<Pointer>(last_bp as u64)
@@ -189,11 +203,11 @@ fn get_caller_by_scan(
                 }
             }
 
-            let caller_ctx = CONTEXT_X86 {
-                eip: caller_ip,
-                esp: caller_sp,
-                ebp: caller_bp.unwrap_or(0),
-                ..CONTEXT_X86::default()
+            let caller_ctx = CONTEXT_AMD64 {
+                rip: caller_ip,
+                rsp: caller_sp,
+                rbp: caller_bp.unwrap_or(0),
+                ..CONTEXT_AMD64::default()
             };
             let mut valid = HashSet::new();
             valid.insert(INSTRUCTION_REGISTER);
@@ -202,7 +216,7 @@ fn get_caller_by_scan(
                 valid.insert(FRAME_POINTER_REGISTER);
             }
             let context = MinidumpContext {
-                raw: MinidumpRawContext::X86(caller_ctx),
+                raw: MinidumpRawContext::Amd64(caller_ctx),
                 valid: MinidumpContextValidity::Some(valid),
             };
             let mut frame = StackFrame::from_context(context, FrameTrust::Scan);
@@ -234,7 +248,23 @@ fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
     }
 }
 
-impl Unwind for CONTEXT_X86 {
+fn is_non_canonical(ptr: Pointer) -> bool {
+    // x64 has the notion of a "canonical address", as a result of only 48 bits
+    // of a pointer actually being used, because this is all that a 4-level page
+    // table can support. A canonical address copies bit 47 to all the otherwise
+    // unused high bits. This creates two ranges where no valid pointers should
+    // ever exist.
+    //
+    // Note that as of this writing, 5-level page tables *do* exist, and when enabled
+    // 57 bits are used. However modern JS engines rely on only 48 bits being used
+    // to perform "NaN boxing" optimizations, so it's reasonable to assume
+    // by default that only 4-level page tables are used. (Even if enabled at
+    // the system level, Linux only exposes non-48-bit pointers to a process
+    // if that process explicitly opts in with a special operation.)
+    ptr > 0x7FFFFFFFFFFF && ptr < 0xFFFF800000000000
+}
+
+impl Unwind for CONTEXT_AMD64 {
     fn get_caller_frame(
         &self,
         valid: &MinidumpContextValidity,
@@ -257,7 +287,7 @@ impl Unwind for CONTEXT_X86 {
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() as u32 <= self.esp {
+                if frame.context.get_stack_pointer() <= self.rsp {
                     return None;
                 }
                 Some(frame)

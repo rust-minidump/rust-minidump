@@ -3,6 +3,7 @@
 
 //! Unwind stack frames for a thread.
 
+mod amd64;
 mod unwind;
 mod x86;
 
@@ -15,10 +16,10 @@ use self::unwind::Unwind;
 fn get_caller_frame(
     frame: &StackFrame,
     stack_memory: &Option<MinidumpMemory>,
+    modules: &MinidumpModuleList,
 ) -> Option<StackFrame> {
     match frame.context.raw {
         /*
-        MinidumpRawContext::AMD64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::ARM64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
@@ -26,8 +27,11 @@ fn get_caller_frame(
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
+        MinidumpRawContext::Amd64(ref ctx) => {
+            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
+        }
         MinidumpRawContext::X86(ref ctx) => {
-            ctx.get_caller_frame(&frame.context.valid, stack_memory)
+            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
         }
         _ => None,
     }
@@ -69,7 +73,7 @@ where
             fill_source_line_info(&mut frame, modules, symbol_provider);
             frames.push(frame);
             let last_frame = &frames.last().unwrap();
-            maybe_frame = get_caller_frame(last_frame, stack_memory);
+            maybe_frame = get_caller_frame(last_frame, stack_memory, modules);
         }
     } else {
         info = CallStackInfo::MissingContext;
@@ -77,5 +81,7 @@ where
     CallStack { frames, info }
 }
 
+#[cfg(test)]
+mod amd64_unittest;
 #[cfg(test)]
 mod x86_unittest;
