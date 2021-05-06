@@ -1153,10 +1153,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
 impl<'a> MinidumpThreadList<'a> {
     /// Get the thread with id `id` from this thread list if it exists.
     pub fn get_thread(&self, id: u32) -> Option<&MinidumpThread<'a>> {
-        match self.thread_ids.get(&id) {
-            None => None,
-            Some(&index) => Some(&self.threads[index]),
-        }
+        self.thread_ids.get(&id).map(|&index| &self.threads[index])
     }
 
     /// Write a human-readable description of this `MinidumpThreadList` to `f`.
