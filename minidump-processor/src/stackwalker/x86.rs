@@ -8,6 +8,9 @@
 
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
+use crate::stackwalker::CfiStackWalker;
+use crate::SymbolProvider;
+use log::trace;
 use minidump::format::CONTEXT_X86;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
@@ -87,17 +90,52 @@ fn get_caller_by_frame_pointer(
     Some(frame)
 }
 
-fn get_caller_by_cfi(
-    _ctx: &CONTEXT_X86,
-    _valid: &MinidumpContextValidity,
+fn get_caller_by_cfi<P>(
+    ctx: &CONTEXT_X86,
+    valid: &MinidumpContextValidity,
     _trust: FrameTrust,
-    _stack_memory: &MinidumpMemory,
-    _modules: &MinidumpModuleList,
-) -> Option<StackFrame> {
-    // TODO
-    None
-}
+    stack_memory: &MinidumpMemory,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
+    trace!("trying to get frame by cfi");
+    if let MinidumpContextValidity::Some(ref which) = valid {
+        if !which.contains(INSTRUCTION_REGISTER) {
+            return None;
+        }
+    }
 
+    trace!("  ...context was good");
+
+    let instruction = ctx.eip;
+    let module = modules.module_at_address(instruction as u64)?;
+
+    let mut stack_walker = CfiStackWalker {
+        instruction: instruction as u64,
+
+        callee_ctx: ctx,
+        callee_validity: valid,
+
+        caller_ctx: CONTEXT_X86::default(),
+        caller_validity: HashSet::new(),
+
+        stack_memory,
+    };
+
+    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    let ip = stack_walker.caller_ctx.eip;
+
+    let context = MinidumpContext {
+        raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
+        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
+    };
+    let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
+    adjust_instruction(&mut frame, ip);
+    Some(frame)
+}
 fn get_caller_by_scan(
     ctx: &CONTEXT_X86,
     valid: &MinidumpContextValidity,
@@ -235,17 +273,21 @@ fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
 }
 
 impl Unwind for CONTEXT_X86 {
-    fn get_caller_frame(
+    fn get_caller_frame<P>(
         &self,
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
         stack_memory: Option<&MinidumpMemory>,
         modules: &MinidumpModuleList,
-    ) -> Option<StackFrame> {
+        symbol_provider: &P,
+    ) -> Option<StackFrame>
+    where
+        P: SymbolProvider,
+    {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, modules)
+                get_caller_by_cfi(self, valid, trust, stack, modules, symbol_provider)
                     .or_else(|| get_caller_by_frame_pointer(self, valid, trust, stack, modules))
                     .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules))
             })

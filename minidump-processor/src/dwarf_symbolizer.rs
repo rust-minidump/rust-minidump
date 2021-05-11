@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 
-use breakpad_symbols::FrameSymbolizer;
+use breakpad_symbols::{FrameSymbolizer, FrameWalker};
 use minidump::Module;
 
 use crate::SymbolProvider;
@@ -70,5 +70,9 @@ impl SymbolProvider for DwarfSymbolizer {
                 }
             }
         }
+    }
+    fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
+        // unimplemented
+        None
     }
 }

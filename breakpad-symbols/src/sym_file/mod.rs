@@ -6,12 +6,13 @@ use failure::Error;
 use std::path::Path;
 
 use crate::sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
-use crate::{FrameSymbolizer, Module};
+use crate::{FrameSymbolizer, FrameWalker, Module};
 
 pub use crate::sym_file::types::*;
 
 mod parser;
 mod types;
+mod walker;
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.
@@ -42,6 +43,32 @@ impl SymbolFile {
         } else if let Some(ref public) = self.find_nearest_public(addr) {
             // Settle for a PUBLIC.
             frame.set_function(&public.name, public.address + module.base_address());
+        }
+    }
+
+    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        if walker.get_instruction() < module.base_address() {
+            return None;
+        }
+        let addr = walker.get_instruction() - module.base_address();
+
+        // Preferentially use framedata over fpo, because if both are present,
+        // the former tends to be more precise (breakpad heuristic).
+        if let Some(info) = self.win_stack_framedata_info.get(addr) {
+            walker::walk_with_stack_win_framedata(info, walker)
+        } else if let Some(info) = self.win_stack_fpo_info.get(addr) {
+            walker::walk_with_stack_win_fpo(info, walker)
+        } else if let Some(info) = self.cfi_stack_info.get(addr) {
+            // Don't use add_rules that come after this address
+            let mut count = 0;
+            let len = info.add_rules.len();
+            while count < len && info.add_rules[count].address <= addr {
+                count += 1;
+            }
+
+            walker::walk_with_stack_cfi(&info.init, &info.add_rules[0..count], walker)
+        } else {
+            None
         }
     }
 

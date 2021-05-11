@@ -7,7 +7,7 @@ use failure::Fail;
 use std::boxed::Box;
 use std::ops::Deref;
 
-use breakpad_symbols::{FrameSymbolizer, Symbolizer};
+use breakpad_symbols::{FrameSymbolizer, FrameWalker, Symbolizer};
 use minidump::{self, *};
 
 use crate::process_state::{CallStack, CallStackInfo, ProcessState};
@@ -16,11 +16,15 @@ use crate::system_info::SystemInfo;
 
 pub trait SymbolProvider {
     fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
+    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
 }
 
 impl SymbolProvider for Symbolizer {
     fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         self.fill_symbol(module, frame);
+    }
+    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        self.walk_frame(module, walker)
     }
 }
 
@@ -44,6 +48,16 @@ impl SymbolProvider for MultiSymbolProvider {
         for p in self.providers.iter() {
             p.fill_symbol(module, frame);
         }
+    }
+
+    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        for p in self.providers.iter() {
+            let result = p.walk_frame(module, walker);
+            if result.is_some() {
+                return result;
+            }
+        }
+        None
     }
 }
 

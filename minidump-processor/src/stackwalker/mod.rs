@@ -10,14 +10,75 @@ mod x86;
 use crate::process_state::*;
 use crate::SymbolProvider;
 use minidump::*;
+use scroll::ctx::{SizeWith, TryFromCtx};
 
 use self::unwind::Unwind;
+use breakpad_symbols::FrameWalker;
+use std::collections::HashSet;
+use std::convert::TryFrom;
 
-fn get_caller_frame(
+struct CfiStackWalker<'a, C: CpuContext> {
+    instruction: u64,
+
+    callee_ctx: &'a C,
+    callee_validity: &'a MinidumpContextValidity,
+
+    caller_ctx: C,
+    caller_validity: HashSet<&'static str>,
+
+    stack_memory: &'a MinidumpMemory<'a>,
+}
+
+impl<'a, C> FrameWalker for CfiStackWalker<'a, C>
+where
+    C: CpuContext,
+    C::Register: TryFrom<u64>,
+    u64: TryFrom<C::Register>,
+    C::Register: TryFromCtx<'a, Endian, [u8], Error = scroll::Error> + SizeWith<Endian>,
+{
+    fn get_instruction(&self) -> u64 {
+        self.instruction
+    }
+    fn get_register_at_address(&self, address: u64) -> Option<u64> {
+        let result: Option<C::Register> = self.stack_memory.get_memory_at_address(address);
+        result.and_then(|val| u64::try_from(val).ok())
+    }
+    fn get_callee_register(&self, name: &str) -> Option<u64> {
+        self.callee_ctx
+            .get_register(name, self.callee_validity)
+            .and_then(|val| u64::try_from(val).ok())
+    }
+    fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()> {
+        let memoized = self.caller_ctx.memoize_register(name)?;
+        let val = C::Register::try_from(val).ok()?;
+        self.caller_validity.insert(memoized);
+        self.caller_ctx.set_register(name, val)
+    }
+    fn set_cfa(&mut self, val: u64) -> Option<()> {
+        // TODO: some things have alluded to architectures where this isn't
+        // how the CFA should be handled, but I don't know what they are.
+        let stack_pointer_reg = self.caller_ctx.stack_pointer_register_name();
+        let val = C::Register::try_from(val).ok()?;
+        self.caller_validity.insert(stack_pointer_reg);
+        self.caller_ctx.set_register(stack_pointer_reg, val)
+    }
+    fn set_ra(&mut self, val: u64) -> Option<()> {
+        let instruction_pointer_reg = self.caller_ctx.instruction_pointer_register_name();
+        let val = C::Register::try_from(val).ok()?;
+        self.caller_validity.insert(instruction_pointer_reg);
+        self.caller_ctx.set_register(instruction_pointer_reg, val)
+    }
+}
+
+fn get_caller_frame<P>(
     frame: &StackFrame,
     stack_memory: Option<&MinidumpMemory>,
     modules: &MinidumpModuleList,
-) -> Option<StackFrame> {
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
     match frame.context.raw {
         /*
         MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
@@ -27,12 +88,20 @@ fn get_caller_frame(
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
-        MinidumpRawContext::Amd64(ref ctx) => {
-            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
-        }
-        MinidumpRawContext::X86(ref ctx) => {
-            ctx.get_caller_frame(&frame.context.valid, frame.trust, stack_memory, modules)
-        }
+        MinidumpRawContext::Amd64(ref ctx) => ctx.get_caller_frame(
+            &frame.context.valid,
+            frame.trust,
+            stack_memory,
+            modules,
+            symbol_provider,
+        ),
+        MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(
+            &frame.context.valid,
+            frame.trust,
+            stack_memory,
+            modules,
+            symbol_provider,
+        ),
         _ => None,
     }
 }
@@ -73,7 +142,7 @@ where
             fill_source_line_info(&mut frame, modules, symbol_provider);
             frames.push(frame);
             let last_frame = &frames.last().unwrap();
-            maybe_frame = get_caller_frame(last_frame, stack_memory, modules);
+            maybe_frame = get_caller_frame(last_frame, stack_memory, modules, symbol_provider);
         }
     } else {
         info = CallStackInfo::MissingContext;

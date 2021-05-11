@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 
 pub use minidump_common::traits::Module;
 
-pub use crate::sym_file::SymbolFile;
+pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
@@ -346,6 +346,21 @@ pub trait FrameSymbolizer {
     fn set_source_file(&mut self, file: &str, line: u32, base: u64);
 }
 
+pub trait FrameWalker {
+    /// Get the instruction address that we're trying to unwind from.
+    fn get_instruction(&self) -> u64;
+    /// Get a register-sized value stored at this address.
+    fn get_register_at_address(&self, address: u64) -> Option<u64>;
+    /// Get the value of a register from the callee's frame.
+    fn get_callee_register(&self, name: &str) -> Option<u64>;
+    /// Set the value of a register for the caller's frame.
+    fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()>;
+    /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
+    fn set_cfa(&mut self, val: u64) -> Option<()>;
+    /// Set whatever registers in the caller should be set based on the return address (e.g. rip).
+    fn set_ra(&mut self, val: u64) -> Option<()>;
+}
+
 /// A simple implementation of `FrameSymbolizer` that just holds data.
 #[derive(Debug, Default)]
 pub struct SimpleFrame {
@@ -486,13 +501,27 @@ impl Symbolizer {
     /// [simpleframe]: struct.SimpleFrame.html
     pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let k = key(module);
+        self.ensure_module(module, &k);
+        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            sym.fill_symbol(module, frame)
+        }
+    }
+
+    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        let k = key(module);
+        self.ensure_module(module, &k);
+        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            sym.walk_frame(module, walker)
+        } else {
+            None
+        }
+    }
+
+    fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
         if !self.symbols.borrow().contains_key(&k) {
             let res = self.supplier.locate_symbols(module);
             debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
-        }
-        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
-            sym.fill_symbol(module, frame)
         }
     }
 }

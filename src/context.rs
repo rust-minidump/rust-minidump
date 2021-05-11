@@ -48,6 +48,17 @@ pub trait CpuContext {
         Some(self.get_register_always(reg))
     }
 
+    /// Get a register value regardless of whether it is valid.
+    fn get_register_always(&self, reg: &str) -> Self::Register;
+
+    /// Set a register value, if that register name it exists.
+    ///
+    /// Returns None if the register name isn't supported.
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()>;
+
+    /// Gets a static version of the given register name, if possible.
+    fn memoize_register(&self, reg: &str) -> Option<&'static str>;
+
     /// Return a String containing the value of `reg` formatted to its natural width.
     fn format_register(&self, reg: &str) -> String {
         format!(
@@ -57,8 +68,10 @@ pub trait CpuContext {
         )
     }
 
-    /// Get a register value regardless of whether it is valid.
-    fn get_register_always(&self, reg: &str) -> Self::Register;
+    /// Gets the name of the stack pointer register (for use with get_register/set_register).
+    fn stack_pointer_register_name(&self) -> &'static str;
+    /// Gets the name of the instruction pointer register (for use with get_register/set_register).
+    fn instruction_pointer_register_name(&self) -> &'static str;
 }
 
 impl CpuContext for md::CONTEXT_X86 {
@@ -78,6 +91,36 @@ impl CpuContext for md::CONTEXT_X86 {
             "efl" => self.eflags,
             _ => unreachable!("Invalid x86 register!"),
         }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "eip" => self.eip = val,
+            "esp" => self.esp = val,
+            "ebp" => self.ebp = val,
+            "ebx" => self.ebx = val,
+            "esi" => self.esi = val,
+            "edi" => self.edi = val,
+            "eax" => self.eax = val,
+            "ecx" => self.ecx = val,
+            "edx" => self.edx = val,
+            "efl" => self.eflags = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        let idx = X86_REGS.iter().position(|val| *val == reg)?;
+        Some(X86_REGS[idx])
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "esp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "eip"
     }
 }
 
@@ -105,6 +148,43 @@ impl CpuContext for md::CONTEXT_AMD64 {
             "rip" => self.rip,
             _ => unreachable!("Invalid x86-64 register!"),
         }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "rax" => self.rax = val,
+            "rdx" => self.rdx = val,
+            "rcx" => self.rcx = val,
+            "rbx" => self.rbx = val,
+            "rsi" => self.rsi = val,
+            "rdi" => self.rdi = val,
+            "rbp" => self.rbp = val,
+            "rsp" => self.rsp = val,
+            "r8" => self.r8 = val,
+            "r9" => self.r9 = val,
+            "r10" => self.r10 = val,
+            "r11" => self.r11 = val,
+            "r12" => self.r12 = val,
+            "r13" => self.r13 = val,
+            "r14" => self.r14 = val,
+            "r15" => self.r15 = val,
+            "rip" => self.rip = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        let idx = X86_64_REGS.iter().position(|val| *val == reg)?;
+        Some(X86_64_REGS[idx])
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "rsp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "rip"
     }
 }
 
@@ -151,6 +231,61 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
             _ => unreachable!("Invalid aarch64 register!"),
         }
     }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "x0" => self.iregs[0] = val,
+            "x1" => self.iregs[1] = val,
+            "x2" => self.iregs[2] = val,
+            "x3" => self.iregs[3] = val,
+            "x4" => self.iregs[4] = val,
+            "x5" => self.iregs[5] = val,
+            "x6" => self.iregs[6] = val,
+            "x7" => self.iregs[7] = val,
+            "x8" => self.iregs[8] = val,
+            "x9" => self.iregs[9] = val,
+            "x10" => self.iregs[10] = val,
+            "x11" => self.iregs[11] = val,
+            "x12" => self.iregs[12] = val,
+            "x13" => self.iregs[13] = val,
+            "x14" => self.iregs[14] = val,
+            "x15" => self.iregs[15] = val,
+            "x16" => self.iregs[16] = val,
+            "x17" => self.iregs[17] = val,
+            "x18" => self.iregs[18] = val,
+            "x19" => self.iregs[19] = val,
+            "x20" => self.iregs[20] = val,
+            "x21" => self.iregs[21] = val,
+            "x22" => self.iregs[22] = val,
+            "x23" => self.iregs[23] = val,
+            "x24" => self.iregs[24] = val,
+            "x25" => self.iregs[25] = val,
+            "x26" => self.iregs[26] = val,
+            "x27" => self.iregs[27] = val,
+            "x28" => self.iregs[28] = val,
+            "x29" => self.iregs[29] = val,
+            "x30" => self.iregs[30] = val,
+            "x31" => self.iregs[31] = val,
+            "pc" => self.pc = val,
+            "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
+            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        let idx = ARM64_REGS.iter().position(|val| *val == reg)?;
+        Some(ARM64_REGS[idx])
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
 }
 
 impl CpuContext for md::CONTEXT_ARM64 {
@@ -195,6 +330,61 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
             _ => unreachable!("Invalid aarch64 register!"),
         }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "x0" => self.iregs[0] = val,
+            "x1" => self.iregs[1] = val,
+            "x2" => self.iregs[2] = val,
+            "x3" => self.iregs[3] = val,
+            "x4" => self.iregs[4] = val,
+            "x5" => self.iregs[5] = val,
+            "x6" => self.iregs[6] = val,
+            "x7" => self.iregs[7] = val,
+            "x8" => self.iregs[8] = val,
+            "x9" => self.iregs[9] = val,
+            "x10" => self.iregs[10] = val,
+            "x11" => self.iregs[11] = val,
+            "x12" => self.iregs[12] = val,
+            "x13" => self.iregs[13] = val,
+            "x14" => self.iregs[14] = val,
+            "x15" => self.iregs[15] = val,
+            "x16" => self.iregs[16] = val,
+            "x17" => self.iregs[17] = val,
+            "x18" => self.iregs[18] = val,
+            "x19" => self.iregs[19] = val,
+            "x20" => self.iregs[20] = val,
+            "x21" => self.iregs[21] = val,
+            "x22" => self.iregs[22] = val,
+            "x23" => self.iregs[23] = val,
+            "x24" => self.iregs[24] = val,
+            "x25" => self.iregs[25] = val,
+            "x26" => self.iregs[26] = val,
+            "x27" => self.iregs[27] = val,
+            "x28" => self.iregs[28] = val,
+            "x29" => self.iregs[29] = val,
+            "x30" => self.iregs[30] = val,
+            "x31" => self.iregs[31] = val,
+            "pc" => self.pc = val,
+            "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
+            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        let idx = ARM64_REGS.iter().position(|val| *val == reg)?;
+        Some(ARM64_REGS[idx])
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
     }
 }
 

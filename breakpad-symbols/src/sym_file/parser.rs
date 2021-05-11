@@ -17,6 +17,7 @@ use std::str::FromStr;
 use minidump_common::traits::IntoRangeMapSafe;
 
 use crate::sym_file::types::*;
+use log::debug;
 
 enum Line<'a> {
     Info,
@@ -312,9 +313,11 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
                 }
                 match frame_type {
                     WinFrameType::FrameData(s) => {
+                        debug!("stack_win: {:?}", s.program_string_or_base_pointer);
                         insert_win_stack_info(&mut stack_win_framedata, s);
                     }
                     WinFrameType::Fpo(s) => {
+                        debug!("stack win: {:?}", s.program_string_or_base_pointer);
                         insert_win_stack_info(&mut stack_win_fpo, s);
                     }
                     // Just ignore other types.
