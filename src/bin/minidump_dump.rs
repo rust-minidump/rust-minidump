@@ -37,6 +37,12 @@ fn print_minidump_dump(path: &Path) {
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
+            println!("hello?");
+            if let Ok(unloaded_module_list) = dbg!(dump.get_stream::<MinidumpUnloadedModuleList>())
+            {
+                unloaded_module_list.print(stdout).unwrap();
+            }
+            panic!("boom");
             if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList<'_>>() {
                 memory_list.print(stdout).unwrap();
             }

@@ -155,6 +155,17 @@ pub struct MinidumpModuleList {
     modules_by_addr: RangeMap<u64, usize>,
 }
 
+#[derive(Clone, Debug)]
+pub struct MinidumpUnloadedModule {
+    pub raw: md::MINIDUMP_UNLOADED_MODULE,
+    name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct MinidumpUnloadedModuleList {
+    unloaded_modules: Vec<MinidumpUnloadedModule>,
+}
+
 /// The state of a thread from the process when the minidump was written.
 #[derive(Debug)]
 pub struct MinidumpThread<'a> {
@@ -881,6 +892,84 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
             modules.push(MinidumpModule::read(raw, all, endian)?);
         }
         Ok(MinidumpModuleList::from_modules(modules))
+    }
+}
+
+impl MinidumpUnloadedModule {
+    pub fn read(
+        raw: md::MINIDUMP_UNLOADED_MODULE,
+        bytes: &[u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpUnloadedModule, Error> {
+        println!("reading one unloaded module");
+        let mut offset = raw.module_name_rva as usize;
+        let name =
+            read_string_utf16(&mut offset, bytes, endian).or(Err(Error::StreamReadFailure))?;
+        Ok(MinidumpUnloadedModule { raw, name })
+    }
+
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MINIDUMP_UNLOADED_MODULEconst
+base_of_image = {:#x}
+size_of_image = {:#x}
+checksum      = {:#x}
+time_date_stamp = {:#x} {}
+module_name_rva = {:#x} \"{}\"
+",
+            self.raw.base_of_image,
+            self.raw.size_of_image,
+            self.raw.checksum,
+            self.raw.time_date_stamp,
+            format_time_t(self.raw.time_date_stamp),
+            self.raw.module_name_rva,
+            self.name
+        )
+    }
+}
+
+impl MinidumpUnloadedModuleList {
+    pub fn from_unloaded_modules(
+        unloaded_modules: Vec<MinidumpUnloadedModule>,
+    ) -> MinidumpUnloadedModuleList {
+        MinidumpUnloadedModuleList { unloaded_modules }
+    }
+
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpUnloadedModuleList
+  unloaded_module_count = {}
+
+",
+            self.unloaded_modules.len()
+        )?;
+        for (i, unloaded_module) in self.unloaded_modules.iter().enumerate() {
+            writeln!(f, "unloaded_module[{}]", i)?;
+            unloaded_module.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::UnloadedModuleListStream;
+
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpUnloadedModuleList, Error> {
+        println!("reading!");
+        let mut offset = 0;
+        let raw_modules: Vec<md::MINIDUMP_UNLOADED_MODULE> =
+            dbg!(read_stream_list(&mut offset, bytes, endian)?);
+        let mut modules = dbg!(Vec::with_capacity(raw_modules.len()));
+        for raw in raw_modules.into_iter() {
+            modules.push(MinidumpUnloadedModule::read(raw, all, endian)?);
+        }
+        Ok(MinidumpUnloadedModuleList::from_unloaded_modules(modules))
     }
 }
 
@@ -2112,7 +2201,7 @@ where
     where
         S: Into<u32>,
     {
-        match self.streams.get(&stream_type.into()) {
+        match dbg!(self.streams.get(&stream_type.into())) {
             None => Err(Error::StreamNotFound),
             Some(&(_, ref dir)) => {
                 let bytes = self.data.deref();

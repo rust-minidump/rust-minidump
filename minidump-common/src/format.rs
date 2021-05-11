@@ -273,6 +273,15 @@ pub struct MINIDUMP_MODULE {
     pub reserved1: [u32; 2],
 }
 
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
+pub struct MINIDUMP_UNLOADED_MODULE {
+    pub base_of_image: u64,
+    pub size_of_image: u32,
+    pub checksum: u32,
+    pub time_date_stamp: u32,
+    pub module_name_rva: RVA,
+}
+
 /// Version information for a file
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
