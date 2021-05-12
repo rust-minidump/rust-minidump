@@ -1637,6 +1637,10 @@ impl MinidumpException {
         CrashReason::from_exception(&self.raw, os)
     }
 
+    pub fn get_crashing_thread_id(&self) -> u32 {
+        self.thread_id
+    }
+
     /// Write a human-readable description of this `MinidumpException` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
