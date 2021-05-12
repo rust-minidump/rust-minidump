@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 
 struct CfiStackWalker<'a, C: CpuContext> {
     instruction: u64,
+    grand_callee_parameter_size: u32,
 
     callee_ctx: &'a C,
     callee_validity: &'a MinidumpContextValidity,
@@ -38,6 +39,9 @@ where
 {
     fn get_instruction(&self) -> u64 {
         self.instruction
+    }
+    fn get_grand_callee_parameter_size(&self) -> u32 {
+        self.grand_callee_parameter_size
     }
     fn get_register_at_address(&self, address: u64) -> Option<u64> {
         let result: Option<C::Register> = self.stack_memory.get_memory_at_address(address);
@@ -71,7 +75,8 @@ where
 }
 
 fn get_caller_frame<P>(
-    frame: &StackFrame,
+    callee_frame: &StackFrame,
+    grand_callee_frame: Option<&StackFrame>,
     stack_memory: Option<&MinidumpMemory>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -79,7 +84,7 @@ fn get_caller_frame<P>(
 where
     P: SymbolProvider,
 {
-    match frame.context.raw {
+    match callee_frame.context.raw {
         /*
         MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::ARM64(ctx) => ctx.get_caller_frame(stack_memory),
@@ -89,16 +94,18 @@ where
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
         MinidumpRawContext::Amd64(ref ctx) => ctx.get_caller_frame(
-            &frame.context.valid,
-            frame.trust,
+            &callee_frame.context.valid,
+            callee_frame.trust,
             stack_memory,
+            grand_callee_frame,
             modules,
             symbol_provider,
         ),
         MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(
-            &frame.context.valid,
-            frame.trust,
+            &callee_frame.context.valid,
+            callee_frame.trust,
             stack_memory,
+            grand_callee_frame,
             modules,
             symbol_provider,
         ),
@@ -141,8 +148,15 @@ where
         while let Some(mut frame) = maybe_frame {
             fill_source_line_info(&mut frame, modules, symbol_provider);
             frames.push(frame);
-            let last_frame = &frames.last().unwrap();
-            maybe_frame = get_caller_frame(last_frame, stack_memory, modules, symbol_provider);
+            let callee_frame = &frames.last().unwrap();
+            let grand_callee_frame = frames.len().checked_sub(2).and_then(|idx| frames.get(idx));
+            maybe_frame = get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            );
         }
     } else {
         info = CallStackInfo::MissingContext;

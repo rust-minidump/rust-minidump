@@ -33,7 +33,11 @@ impl SymbolFile {
         }
         let addr = frame.get_instruction() - module.base_address();
         if let Some(ref func) = self.functions.get(addr) {
-            frame.set_function(&func.name, func.address + module.base_address());
+            frame.set_function(
+                &func.name,
+                func.address + module.base_address(),
+                func.parameter_size,
+            );
             // See if there's source line info as well.
             func.lines.get(addr).map(|ref line| {
                 self.files.get(&line.file).map(|ref file| {
@@ -42,7 +46,11 @@ impl SymbolFile {
             });
         } else if let Some(ref public) = self.find_nearest_public(addr) {
             // Settle for a PUBLIC.
-            frame.set_function(&public.name, public.address + module.base_address());
+            frame.set_function(
+                &public.name,
+                public.address + module.base_address(),
+                public.parameter_size,
+            );
         }
     }
 
@@ -54,22 +62,29 @@ impl SymbolFile {
 
         // Preferentially use framedata over fpo, because if both are present,
         // the former tends to be more precise (breakpad heuristic).
-        if let Some(info) = self.win_stack_framedata_info.get(addr) {
+        let win_stack_result = if let Some(info) = self.win_stack_framedata_info.get(addr) {
             walker::walk_with_stack_win_framedata(info, walker)
         } else if let Some(info) = self.win_stack_fpo_info.get(addr) {
             walker::walk_with_stack_win_fpo(info, walker)
-        } else if let Some(info) = self.cfi_stack_info.get(addr) {
-            // Don't use add_rules that come after this address
-            let mut count = 0;
-            let len = info.add_rules.len();
-            while count < len && info.add_rules[count].address <= addr {
-                count += 1;
-            }
-
-            walker::walk_with_stack_cfi(&info.init, &info.add_rules[0..count], walker)
         } else {
             None
-        }
+        };
+
+        // If STACK WIN failed, try STACK CFI
+        win_stack_result.or_else(|| {
+            if let Some(info) = self.cfi_stack_info.get(addr) {
+                // Don't use add_rules that come after this address
+                let mut count = 0;
+                let len = info.add_rules.len();
+                while count < len && info.add_rules[count].address <= addr {
+                    count += 1;
+                }
+
+                walker::walk_with_stack_cfi(&info.init, &info.add_rules[0..count], walker)
+            } else {
+                None
+            }
+        })
     }
 
     /// Find the nearest `PublicSymbol` whose address is less than or equal to `addr`.

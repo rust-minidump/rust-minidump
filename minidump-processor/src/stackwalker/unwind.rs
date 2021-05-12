@@ -13,6 +13,7 @@ pub trait Unwind {
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
         stack_memory: Option<&MinidumpMemory>,
+        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         symbol_provider: &P,
     ) -> Option<StackFrame>

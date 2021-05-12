@@ -95,6 +95,7 @@ fn get_caller_by_cfi<P>(
     valid: &MinidumpContextValidity,
     _trust: FrameTrust,
     stack_memory: &MinidumpMemory,
+    grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -106,15 +107,24 @@ where
         if !which.contains(INSTRUCTION_REGISTER) {
             return None;
         }
+        if !which.contains(STACK_POINTER_REGISTER) {
+            return None;
+        }
     }
 
     trace!("  ...context was good");
 
     let instruction = ctx.eip;
     let module = modules.module_at_address(instruction as u64)?;
+    trace!("  ...found module");
+
+    let grand_callee_parameter_size = grand_callee_frame
+        .and_then(|f| f.parameter_size)
+        .unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
         instruction: instruction as u64,
+        grand_callee_parameter_size,
 
         callee_ctx: ctx,
         callee_validity: valid,
@@ -126,14 +136,24 @@ where
     };
 
     symbol_provider.walk_frame(module, &mut stack_walker)?;
-    let ip = stack_walker.caller_ctx.eip;
+    let caller_ip = stack_walker.caller_ctx.eip;
+    let caller_sp = stack_walker.caller_ctx.esp;
+    let callee_sp = ctx.esp;
+
+    // Sanity-check the output
+    if !instruction_seems_valid(caller_ip, modules) {
+        return None;
+    }
+    if caller_sp <= callee_sp {
+        return None;
+    }
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
         valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
     };
     let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
-    adjust_instruction(&mut frame, ip);
+    adjust_instruction(&mut frame, caller_ip);
     Some(frame)
 }
 fn get_caller_by_scan(
@@ -278,6 +298,7 @@ impl Unwind for CONTEXT_X86 {
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
         stack_memory: Option<&MinidumpMemory>,
+        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         symbol_provider: &P,
     ) -> Option<StackFrame>
@@ -287,9 +308,17 @@ impl Unwind for CONTEXT_X86 {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, modules, symbol_provider)
-                    .or_else(|| get_caller_by_frame_pointer(self, valid, trust, stack, modules))
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules))
+                get_caller_by_cfi(
+                    self,
+                    valid,
+                    trust,
+                    stack,
+                    grand_callee_frame,
+                    modules,
+                    symbol_provider,
+                )
+                .or_else(|| get_caller_by_frame_pointer(self, valid, trust, stack, modules))
+                .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules))
             })
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.

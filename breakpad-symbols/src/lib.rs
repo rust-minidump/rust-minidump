@@ -340,8 +340,9 @@ impl SymbolSupplier for HttpSymbolSupplier {
 pub trait FrameSymbolizer {
     /// Get the program counter value for this frame.
     fn get_instruction(&self) -> u64;
-    /// Set the name and base address of the function in which this frame is executing.
-    fn set_function(&mut self, name: &str, base: u64);
+    /// Set the name, base address, and paramter size of the function in
+    // which this frame is executing.
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
     /// Set the source file and (1-based) line number this frame represents.
     fn set_source_file(&mut self, file: &str, line: u32, base: u64);
 }
@@ -349,6 +350,10 @@ pub trait FrameSymbolizer {
 pub trait FrameWalker {
     /// Get the instruction address that we're trying to unwind from.
     fn get_instruction(&self) -> u64;
+    /// Get the number of bytes the callee's callee's parameters take up
+    /// on the stack (or 0 if unknown/invalid). This is needed for
+    /// STACK WIN unwinding.
+    fn get_grand_callee_parameter_size(&self) -> u32;
     /// Get a register-sized value stored at this address.
     fn get_register_at_address(&self, address: u64) -> Option<u64>;
     /// Get the value of a register from the callee's frame.
@@ -370,6 +375,8 @@ pub struct SimpleFrame {
     pub function: Option<String>,
     /// The offset of the start of `function` from the module base.
     pub function_base: Option<u64>,
+    /// The size, in bytes, that this function's parameters take up on the stack.
+    pub parameter_size: Option<u32>,
     /// The name of the source file in which the current instruction is executing.
     pub source_file: Option<String>,
     /// The 1-based index of the line number in `source_file` in which the current instruction is
@@ -393,9 +400,10 @@ impl FrameSymbolizer for SimpleFrame {
     fn get_instruction(&self) -> u64 {
         self.instruction
     }
-    fn set_function(&mut self, name: &str, base: u64) {
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32) {
         self.function = Some(String::from(name));
         self.function_base = Some(base);
+        self.parameter_size = Some(parameter_size);
     }
     fn set_source_file(&mut self, file: &str, line: u32, base: u64) {
         self.source_file = Some(String::from(file));
