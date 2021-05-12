@@ -44,7 +44,7 @@ impl TestFixture {
         };
         walk_stack(
             &Some(&context),
-            &Some(stack_memory),
+            Some(&stack_memory),
             &self.modules,
             &self.symbolizer,
         )

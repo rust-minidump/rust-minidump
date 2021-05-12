@@ -15,7 +15,7 @@ use self::unwind::Unwind;
 
 fn get_caller_frame(
     frame: &StackFrame,
-    stack_memory: &Option<MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory>,
     modules: &MinidumpModuleList,
 ) -> Option<StackFrame> {
     match frame.context.raw {
@@ -55,7 +55,7 @@ fn fill_source_line_info<P>(
 
 pub fn walk_stack<P>(
     maybe_context: &Option<&MinidumpContext>,
-    stack_memory: &Option<MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> CallStack
