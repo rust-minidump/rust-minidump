@@ -128,13 +128,14 @@ where
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
-    let (crash_reason, crash_address) = if let Some(exception) = exception_ref {
+    let (crash_reason, crash_address, crashing_thread_id) = if let Some(exception) = exception_ref {
         (
             Some(exception.get_crash_reason(system_info.os)),
             Some(exception.get_crash_address(system_info.os)),
+            Some(exception.get_crashing_thread_id()),
         )
     } else {
-        (None, None)
+        (None, None, None)
     };
     let exception_context = exception_ref.and_then(|e| e.context.as_ref());
     // Get assertion
@@ -155,9 +156,12 @@ where
             continue;
         }
         // If this thread requested the dump then try to use the exception
-        // context if it exists.
-        let context = if requesting_thread_id.is_some()
-            && requesting_thread_id.unwrap() == thread.raw.thread_id
+        // context if it exists. (prefer the exception stream's thread id over
+        // the breakpad info stream's thread id.)
+        let context = if crashing_thread_id
+            .or(requesting_thread_id)
+            .map(|id| id == thread.raw.thread_id)
+            .unwrap_or(false)
         {
             requesting_thread = Some(i);
             exception_context.or_else(|| thread.context.as_ref())
