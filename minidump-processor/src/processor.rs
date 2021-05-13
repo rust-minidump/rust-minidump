@@ -146,6 +146,9 @@ where
         // Just give an empty list, simplifies things.
         MinidumpModuleList::new()
     };
+
+    let memory_list = dump.get_stream::<MinidumpMemoryList>().ok();
+
     // Get memory list
     let mut threads = vec![];
     let mut requesting_thread = None;
@@ -168,7 +171,17 @@ where
         } else {
             thread.context.as_ref()
         };
-        let stack = stackwalker::walk_stack(&context, &thread.stack, &modules, symbol_provider);
+
+        let stack = thread.stack.as_ref().or_else(|| {
+            // Windows probably gave us null RVAs for our stack memory descriptors.
+            // If this happens, then we need to look up the memory region by address.
+            let stack_addr = thread.raw.stack.start_of_memory_range;
+            memory_list
+                .as_ref()
+                .and_then(|memory| memory.memory_at_address(stack_addr))
+        });
+
+        let stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis

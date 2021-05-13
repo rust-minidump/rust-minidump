@@ -889,6 +889,13 @@ impl<'a> MinidumpMemory<'a> {
         desc: &md::MINIDUMP_MEMORY_DESCRIPTOR,
         data: &'a [u8],
     ) -> Result<MinidumpMemory<'a>, Error> {
+        if desc.memory.rva == 0 || desc.memory.data_size == 0 {
+            // Windows will sometimes emit null stack RVAs, indicating that
+            // we need to lookup the address in a memory region. It's ok to
+            // emit an error for that here, the thread processing code will
+            // catch it.
+            return Err(Error::MemoryReadFailure);
+        }
         let bytes = location_slice(data, &desc.memory).or(Err(Error::StreamReadFailure))?;
         Ok(MinidumpMemory {
             desc: *desc,
@@ -1058,14 +1065,12 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
         // read memory contents for each region
         let mut regions = Vec::with_capacity(descriptors.len());
         for raw in descriptors.into_iter() {
-            if raw.memory.data_size == 0
-                || raw.memory.data_size as u64 > (u64::max_value() - raw.start_of_memory_range)
-            {
-                // Bad size.
-                // TODO: just drop this memory, keep the rest?
-                return Err(Error::MemoryReadFailure);
+            if let Ok(memory) = MinidumpMemory::read(&raw, all) {
+                regions.push(memory);
+            } else {
+                // Just skip over corrupt entries and try to limp along.
+                continue;
             }
-            regions.push(MinidumpMemory::read(&raw, all)?);
         }
         Ok(MinidumpMemoryList::from_regions(regions))
     }
@@ -1135,7 +1140,10 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
             thread_ids.insert(raw.thread_id, threads.len());
             let context_data = location_slice(all, &raw.thread_context)?;
             let context = MinidumpContext::read(context_data, endian).ok();
-            // TODO: check memory region
+
+            // If this fails, it's ok. That probably means the RVA was null
+            // and we need to lookup the stack's memory by address in the
+            // mapped memory regions (minidump-processor will handle this).
             let stack = MinidumpMemory::read(&raw.stack, all).ok();
             threads.push(MinidumpThread {
                 raw,

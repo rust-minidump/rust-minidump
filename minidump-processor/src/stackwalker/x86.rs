@@ -239,7 +239,7 @@ impl Unwind for CONTEXT_X86 {
         &self,
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
-        stack_memory: &Option<MinidumpMemory>,
+        stack_memory: Option<&MinidumpMemory>,
         modules: &MinidumpModuleList,
     ) -> Option<StackFrame> {
         stack_memory
