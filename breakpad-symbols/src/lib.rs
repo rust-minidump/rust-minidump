@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 
 pub use minidump_common::traits::Module;
 
-pub use crate::sym_file::SymbolFile;
+pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
@@ -340,10 +340,30 @@ impl SymbolSupplier for HttpSymbolSupplier {
 pub trait FrameSymbolizer {
     /// Get the program counter value for this frame.
     fn get_instruction(&self) -> u64;
-    /// Set the name and base address of the function in which this frame is executing.
-    fn set_function(&mut self, name: &str, base: u64);
+    /// Set the name, base address, and paramter size of the function in
+    // which this frame is executing.
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
     /// Set the source file and (1-based) line number this frame represents.
     fn set_source_file(&mut self, file: &str, line: u32, base: u64);
+}
+
+pub trait FrameWalker {
+    /// Get the instruction address that we're trying to unwind from.
+    fn get_instruction(&self) -> u64;
+    /// Get the number of bytes the callee's callee's parameters take up
+    /// on the stack (or 0 if unknown/invalid). This is needed for
+    /// STACK WIN unwinding.
+    fn get_grand_callee_parameter_size(&self) -> u32;
+    /// Get a register-sized value stored at this address.
+    fn get_register_at_address(&self, address: u64) -> Option<u64>;
+    /// Get the value of a register from the callee's frame.
+    fn get_callee_register(&self, name: &str) -> Option<u64>;
+    /// Set the value of a register for the caller's frame.
+    fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()>;
+    /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
+    fn set_cfa(&mut self, val: u64) -> Option<()>;
+    /// Set whatever registers in the caller should be set based on the return address (e.g. rip).
+    fn set_ra(&mut self, val: u64) -> Option<()>;
 }
 
 /// A simple implementation of `FrameSymbolizer` that just holds data.
@@ -355,6 +375,8 @@ pub struct SimpleFrame {
     pub function: Option<String>,
     /// The offset of the start of `function` from the module base.
     pub function_base: Option<u64>,
+    /// The size, in bytes, that this function's parameters take up on the stack.
+    pub parameter_size: Option<u32>,
     /// The name of the source file in which the current instruction is executing.
     pub source_file: Option<String>,
     /// The 1-based index of the line number in `source_file` in which the current instruction is
@@ -378,9 +400,10 @@ impl FrameSymbolizer for SimpleFrame {
     fn get_instruction(&self) -> u64 {
         self.instruction
     }
-    fn set_function(&mut self, name: &str, base: u64) {
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32) {
         self.function = Some(String::from(name));
         self.function_base = Some(base);
+        self.parameter_size = Some(parameter_size);
     }
     fn set_source_file(&mut self, file: &str, line: u32, base: u64) {
         self.source_file = Some(String::from(file));
@@ -486,13 +509,27 @@ impl Symbolizer {
     /// [simpleframe]: struct.SimpleFrame.html
     pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let k = key(module);
+        self.ensure_module(module, &k);
+        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            sym.fill_symbol(module, frame)
+        }
+    }
+
+    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        let k = key(module);
+        self.ensure_module(module, &k);
+        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            sym.walk_frame(module, walker)
+        } else {
+            None
+        }
+    }
+
+    fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
         if !self.symbols.borrow().contains_key(&k) {
             let res = self.supplier.locate_symbols(module);
             debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
-        }
-        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
-            sym.fill_symbol(module, frame)
         }
     }
 }

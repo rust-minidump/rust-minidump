@@ -8,6 +8,9 @@
 
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
+use crate::stackwalker::CfiStackWalker;
+use crate::SymbolProvider;
+use log::trace;
 use minidump::format::CONTEXT_X86;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
@@ -21,13 +24,17 @@ const INSTRUCTION_REGISTER: &str = "eip";
 const STACK_POINTER_REGISTER: &str = "esp";
 const FRAME_POINTER_REGISTER: &str = "ebp";
 
-fn get_caller_by_frame_pointer(
+fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_X86,
     valid: &MinidumpContextValidity,
     _trust: FrameTrust,
     stack_memory: &MinidumpMemory,
     _modules: &MinidumpModuleList,
-) -> Option<StackFrame> {
+    _symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
     if let MinidumpContextValidity::Some(ref which) = valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
@@ -87,28 +94,88 @@ fn get_caller_by_frame_pointer(
     Some(frame)
 }
 
-fn get_caller_by_cfi(
-    _ctx: &CONTEXT_X86,
-    _valid: &MinidumpContextValidity,
+fn get_caller_by_cfi<P>(
+    ctx: &CONTEXT_X86,
+    valid: &MinidumpContextValidity,
     _trust: FrameTrust,
-    _stack_memory: &MinidumpMemory,
-    _modules: &MinidumpModuleList,
-) -> Option<StackFrame> {
-    // TODO
-    None
+    stack_memory: &MinidumpMemory,
+    grand_callee_frame: Option<&StackFrame>,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
+    trace!("trying to get frame by cfi");
+    if let MinidumpContextValidity::Some(ref which) = valid {
+        if !which.contains(INSTRUCTION_REGISTER) {
+            return None;
+        }
+        if !which.contains(STACK_POINTER_REGISTER) {
+            return None;
+        }
+    }
+    trace!("  ...context was good");
+
+    let last_sp = ctx.esp;
+    let last_ip = ctx.eip;
+    let module = modules.module_at_address(last_ip as u64)?;
+    trace!("  ...found module");
+
+    let grand_callee_parameter_size = grand_callee_frame
+        .and_then(|f| f.parameter_size)
+        .unwrap_or(0);
+
+    let mut stack_walker = CfiStackWalker {
+        instruction: last_ip as u64,
+        grand_callee_parameter_size,
+
+        callee_ctx: ctx,
+        callee_validity: valid,
+
+        caller_ctx: CONTEXT_X86::default(),
+        caller_validity: HashSet::new(),
+
+        stack_memory,
+    };
+
+    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    let caller_ip = stack_walker.caller_ctx.eip;
+    let caller_sp = stack_walker.caller_ctx.esp;
+
+    // Don't accept obviously wrong instruction pointers.
+    if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
+        return None;
+    }
+    // Don't accept obviously wrong stack pointers.
+    if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
+        return None;
+    }
+
+    let context = MinidumpContext {
+        raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
+        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
+    };
+    let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
+    adjust_instruction(&mut frame, caller_ip);
+    Some(frame)
 }
 
-fn get_caller_by_scan(
+fn get_caller_by_scan<P>(
     ctx: &CONTEXT_X86,
     valid: &MinidumpContextValidity,
     trust: FrameTrust,
     stack_memory: &MinidumpMemory,
     modules: &MinidumpModuleList,
-) -> Option<StackFrame> {
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
-    // we assume it's a ip value that was pushed by the CALL instruction that created
+    // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
     let last_bp = match valid {
@@ -142,7 +209,7 @@ fn get_caller_by_scan(
     for i in 0..scan_range {
         let address_of_ip = last_sp + i * POINTER_WIDTH;
         let caller_ip = stack_memory.get_memory_at_address(address_of_ip as u64)?;
-        if instruction_seems_valid(caller_ip, modules) {
+        if instruction_seems_valid(caller_ip, modules, symbol_provider) {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
             let caller_sp = address_of_ip + POINTER_WIDTH;
 
@@ -215,13 +282,37 @@ fn get_caller_by_scan(
 }
 
 #[allow(clippy::match_like_matches_macro)]
-fn instruction_seems_valid(instruction: Pointer, modules: &MinidumpModuleList) -> bool {
+fn instruction_seems_valid<P>(
+    instruction: Pointer,
+    modules: &MinidumpModuleList,
+    _symbol_provider: &P,
+) -> bool
+where
+    P: SymbolProvider,
+{
+    // NOTE: x86 has no notion of pointer canonicity (divergence from AMD64)
     if let Some(_module) = modules.module_at_address(instruction as u64) {
         // TODO: if mapped, check if this instruction actually maps to a function line
         true
     } else {
         false
     }
+}
+
+fn stack_seems_valid(
+    caller_sp: Pointer,
+    callee_sp: Pointer,
+    stack_memory: &MinidumpMemory,
+) -> bool {
+    // The stack shouldn't *grow* when we unwind
+    if caller_sp <= callee_sp {
+        return false;
+    }
+
+    // The stack pointer should be in the stack
+    stack_memory
+        .get_memory_at_address::<Pointer>(caller_sp as u64)
+        .is_some()
 }
 
 fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
@@ -235,19 +326,26 @@ fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
 }
 
 impl Unwind for CONTEXT_X86 {
-    fn get_caller_frame(
+    fn get_caller_frame<P>(
         &self,
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
         stack_memory: Option<&MinidumpMemory>,
+        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
-    ) -> Option<StackFrame> {
+        syms: &P,
+    ) -> Option<StackFrame>
+    where
+        P: SymbolProvider,
+    {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, modules)
-                    .or_else(|| get_caller_by_frame_pointer(self, valid, trust, stack, modules))
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules))
+                get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
+                    .or_else(|| {
+                        get_caller_by_frame_pointer(self, valid, trust, stack, modules, syms)
+                    })
+                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))
             })
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.

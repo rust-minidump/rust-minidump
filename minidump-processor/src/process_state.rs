@@ -70,6 +70,10 @@ pub struct StackFrame {
     /// are not available.
     pub function_base: Option<u64>,
 
+    /// The size, in bytes, of the arguments pushed on the stack for this function.
+    /// WIN STACK unwinding needs this value to work; it's otherwise uninteresting.
+    pub parameter_size: Option<u32>,
+
     /// The source file name, may be omitted if debug symbols are not available.
     pub source_file_name: Option<String>,
 
@@ -183,6 +187,7 @@ impl StackFrame {
             module: None,
             function_name: None,
             function_base: None,
+            parameter_size: None,
             source_file_name: None,
             source_line: None,
             source_line_base: None,
@@ -202,9 +207,10 @@ impl FrameSymbolizer for StackFrame {
     fn get_instruction(&self) -> u64 {
         self.instruction
     }
-    fn set_function(&mut self, name: &str, base: u64) {
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32) {
         self.function_name = Some(String::from(name));
         self.function_base = Some(base);
+        self.parameter_size = Some(parameter_size);
     }
     fn set_source_file(&mut self, file: &str, line: u32, base: u64) {
         self.source_file_name = Some(String::from(file));

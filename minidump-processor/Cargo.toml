@@ -27,6 +27,7 @@ object = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = "0.9"
+scroll = "0.10.2"
 
 [dev-dependencies]
 test-assembler = "0.1.5"
