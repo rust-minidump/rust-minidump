@@ -13,10 +13,9 @@ use std::mem;
 use crate::iostuff::*;
 use minidump_common::format as md;
 use minidump_common::format::ContextFlagsCpu;
-use serde::Serialize;
 
 /// The CPU-specific context structure.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub enum MinidumpRawContext {
     X86(md::CONTEXT_X86),
     Ppc(md::CONTEXT_PPC),
@@ -389,7 +388,7 @@ impl CpuContext for md::CONTEXT_ARM64 {
 }
 
 /// Information about which registers are valid in a `MinidumpContext`.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MinidumpContextValidity {
     // All registers are valid.
     All,
@@ -409,7 +408,7 @@ pub enum MinidumpContextValidity {
 /// context for the exception handler (which performs minidump generation),
 /// and not the context that caused the exception (which is probably what the
 /// user wants).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct MinidumpContext {
     /// The raw CPU register state.
     pub raw: MinidumpRawContext,

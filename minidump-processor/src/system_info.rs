@@ -1,8 +1,6 @@
 use minidump::system_info::{Cpu, Os};
-use serde::Serialize;
 
 /// Information about the system that produced a `Minidump`.
-#[derive(Serialize)]
 pub struct SystemInfo {
     /// The operating system that produced the minidump
     pub os: Os,

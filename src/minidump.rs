@@ -30,7 +30,6 @@ use minidump_common::format as md;
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
-use serde::Serialize;
 
 /// An index into the contents of a minidump.
 ///
@@ -130,28 +129,24 @@ pub enum CodeView {
 }
 
 /// An executable or shared library loaded in the process at the time the `Minidump` was written.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct MinidumpModule {
     /// The `MINIDUMP_MODULE` direct from the minidump file.
-    #[serde(skip)]
     pub raw: md::MINIDUMP_MODULE,
     /// The module name. This is stored separately in the minidump.
-    name: String,
+    pub name: String,
     /// A `CodeView` record, if one is present.
-    #[serde(skip)]
     pub codeview_info: Option<CodeView>,
     /// A misc debug record, if one is present.
-    #[serde(skip)]
     pub misc_info: Option<md::IMAGE_DEBUG_MISC>,
 }
 
 /// A list of `MinidumpModule`s contained in a `Minidump`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules: Vec<MinidumpModule>,
     /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
-    #[serde(skip)]
     modules_by_addr: RangeMap<u64, usize>,
 }
 
@@ -231,7 +226,7 @@ pub struct MinidumpBreakpadInfo {
 }
 
 /// The reason for a process crash.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CrashReason {
     Unknown,
 }
