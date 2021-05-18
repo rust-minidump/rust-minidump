@@ -150,6 +150,26 @@ pub struct MinidumpModuleList {
     modules_by_addr: RangeMap<u64, usize>,
 }
 
+/// An executable or shared library that was once loaded into the process, but was unloaded
+/// by the time the `Minidump` was written.
+#[derive(Debug, Clone)]
+pub struct MinidumpUnloadedModule {
+    /// The `MINIDUMP_UNLOADED_MODULE` direct from the minidump file.
+    pub raw: md::MINIDUMP_UNLOADED_MODULE,
+    /// The module name. This is stored separately in the minidump.
+    pub name: String,
+}
+
+/// A list of `MinidumpUnloadedModule`s contained in a `Minidump`.
+#[derive(Debug, Clone)]
+pub struct MinidumpUnloadedModuleList {
+    /// The modules, in the order they were stored in the minidump.
+    modules: Vec<MinidumpUnloadedModule>,
+    /// Map from address range to index in modules.
+    /// Use `MinidumpUnloadedModuleList::module_at_address`.
+    modules_by_addr: RangeMap<u64, usize>,
+}
+
 /// The state of a thread from the process when the minidump was written.
 #[derive(Debug)]
 pub struct MinidumpThread<'a> {
@@ -706,6 +726,93 @@ impl Module for MinidumpModule {
     }
 }
 
+impl MinidumpUnloadedModule {
+    /// Create a `MinidumpUnloadedModule` with some basic info.
+    ///
+    /// Useful for testing.
+    pub fn new(base: u64, size: u32, name: &str) -> MinidumpUnloadedModule {
+        MinidumpUnloadedModule {
+            raw: md::MINIDUMP_UNLOADED_MODULE {
+                base_of_image: base,
+                size_of_image: size,
+                ..md::MINIDUMP_UNLOADED_MODULE::default()
+            },
+            name: String::from(name),
+        }
+    }
+
+    /// Read additional data to construct a `MinidumpUnloadedModule` from `bytes` using the information
+    /// from the module list in `raw`.
+    pub fn read(
+        raw: md::MINIDUMP_UNLOADED_MODULE,
+        bytes: &[u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpUnloadedModule, Error> {
+        let mut offset = raw.module_name_rva as usize;
+        let name = read_string_utf16(&mut offset, bytes, endian).or(Err(Error::DataError))?;
+        Ok(MinidumpUnloadedModule { raw, name })
+    }
+
+    /// Write a human-readable description of this `MinidumpModule` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MINIDUMP_UNLOADED_MODULE
+  base_of_image                   = {:#x}
+  size_of_image                   = {:#x}
+  checksum                        = {:#x}
+  time_date_stamp                 = {:#x} {}
+  module_name_rva                 = {:#x}
+  (code_file)                     = \"{}\"
+  (code_identifier)               = \"{}\"
+",
+            self.raw.base_of_image,
+            self.raw.size_of_image,
+            self.raw.checksum,
+            self.raw.time_date_stamp,
+            format_time_t(self.raw.time_date_stamp),
+            self.raw.module_name_rva,
+            self.code_file(),
+            self.code_identifier(),
+        )?;
+
+        Ok(())
+    }
+
+    fn memory_range(&self) -> Range<u64> {
+        Range::new(self.base_address(), self.base_address() + self.size() - 1)
+    }
+}
+
+impl Module for MinidumpUnloadedModule {
+    fn base_address(&self) -> u64 {
+        self.raw.base_of_image
+    }
+    fn size(&self) -> u64 {
+        self.raw.size_of_image as u64
+    }
+    fn code_file(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.name)
+    }
+    fn code_identifier(&self) -> Cow<'_, str> {
+        Cow::Owned(format!(
+            "{0:08X}{1:x}",
+            self.raw.time_date_stamp, self.raw.size_of_image
+        ))
+    }
+    fn debug_file(&self) -> Option<Cow<'_, str>> {
+        None
+    }
+    fn debug_identifier(&self) -> Option<Cow<'_, str>> {
+        None
+    }
+    fn version(&self) -> Option<Cow<'_, str>> {
+        None
+    }
+}
+
 fn read_stream_list<'a, T>(
     offset: &mut usize,
     bytes: &'a [u8],
@@ -756,18 +863,76 @@ where
     Ok(raw_entries)
 }
 
-/// An iterator over `MinidumpModule`s.
-#[allow(missing_debug_implementations)]
-pub struct Modules<'a> {
-    iter: Box<dyn Iterator<Item = &'a MinidumpModule> + 'a>,
-}
+fn read_ex_stream_list<'a, T>(
+    offset: &mut usize,
+    bytes: &'a [u8],
+    endian: scroll::Endian,
+) -> Result<Vec<T>, Error>
+where
+    T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
+    T: SizeWith<scroll::Endian>,
+{
+    // Some newer list streams have an extended header:
+    //
+    // size_of_header: u32,
+    // size_of_entry: u32,
+    // number_of_entries: u32,
+    // ...entries
 
-impl<'a> Iterator for Modules<'a> {
-    type Item = &'a MinidumpModule;
+    // In theory this allows the format of the stream to be extended without
+    // us knowing how to handle the new parts.
 
-    fn next(&mut self) -> Option<&'a MinidumpModule> {
-        self.iter.next()
+    let size_of_header: u32 = bytes
+        .gread_with(offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    let size_of_entry: u32 = bytes
+        .gread_with(offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    let number_of_entries: u32 = bytes
+        .gread_with(offset, endian)
+        .or(Err(Error::StreamReadFailure))?;
+
+    let expected_size_of_entry = <T>::size_with(&endian);
+
+    if size_of_entry as usize != expected_size_of_entry {
+        // For now, conservatively bail out if entries don't have
+        // the expected size. In theory we can assume entries are
+        // always extended with new trailing fields, and this information
+        // would let us walk over trailing fields we don't know about?
+        // But without an example let's be safe.
+        return Err(Error::StreamReadFailure);
     }
+
+    let stream_size = match number_of_entries
+        .checked_mul(size_of_entry)
+        .and_then(|v| v.checked_add(size_of_header))
+    {
+        Some(s) => s as usize,
+        None => return Err(Error::StreamReadFailure),
+    };
+    if bytes.len() < stream_size {
+        return Err(Error::StreamSizeMismatch {
+            expected: stream_size,
+            actual: bytes.len(),
+        });
+    }
+    let header_padding = match (size_of_header as usize).checked_sub(*offset) {
+        Some(s) => s,
+        None => return Err(Error::StreamReadFailure),
+    };
+    *offset += header_padding;
+
+    // read count T raw stream entries
+    let mut raw_entries = Vec::with_capacity(number_of_entries as usize);
+    for _ in 0..number_of_entries {
+        let raw: T = bytes
+            .gread_with(offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+        raw_entries.push(raw);
+    }
+    Ok(raw_entries)
 }
 
 impl MinidumpModuleList {
@@ -810,21 +975,15 @@ impl MinidumpModuleList {
     }
 
     /// Iterate over the modules in arbitrary order.
-    pub fn iter(&self) -> Modules<'_> {
-        Modules {
-            iter: Box::new(self.modules.iter()),
-        }
+    pub fn iter(&self) -> impl Iterator<Item = &MinidumpModule> {
+        self.modules.iter()
     }
 
     /// Iterate over the modules in order by memory address.
-    pub fn by_addr(&self) -> Modules<'_> {
-        Modules {
-            iter: Box::new(
-                self.modules_by_addr
-                    .ranges_values()
-                    .map(move |&(_, index)| &self.modules[index]),
-            ),
-        }
+    pub fn by_addr(&self) -> impl Iterator<Item = &MinidumpModule> {
+        self.modules_by_addr
+            .ranges_values()
+            .map(move |&(_, index)| &self.modules[index])
     }
 
     /// Write a human-readable description of this `MinidumpModuleList` to `f`.
@@ -876,6 +1035,99 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
             modules.push(MinidumpModule::read(raw, all, endian)?);
         }
         Ok(MinidumpModuleList::from_modules(modules))
+    }
+}
+
+impl MinidumpUnloadedModuleList {
+    /// Return an empty `MinidumpModuleList`.
+    pub fn new() -> MinidumpUnloadedModuleList {
+        MinidumpUnloadedModuleList {
+            modules: vec![],
+            modules_by_addr: RangeMap::new(),
+        }
+    }
+    /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
+    pub fn from_modules(modules: Vec<MinidumpUnloadedModule>) -> MinidumpUnloadedModuleList {
+        let modules_by_addr = modules
+            .iter()
+            .enumerate()
+            .map(|(i, module)| (module.memory_range(), i))
+            .into_rangemap_safe();
+        MinidumpUnloadedModuleList {
+            modules,
+            modules_by_addr,
+        }
+    }
+
+    /// Return a `MinidumpUnloadedModule` whose address range covers `address`.
+    pub fn module_at_address(&self, address: u64) -> Option<&MinidumpUnloadedModule> {
+        self.modules_by_addr
+            .get(address)
+            .map(|&index| &self.modules[index])
+    }
+
+    /// Iterate over the modules in arbitrary order.
+    pub fn iter(&self) -> impl Iterator<Item = &MinidumpUnloadedModule> {
+        self.modules.iter()
+    }
+
+    /// Iterate over the modules in order by memory address.
+    pub fn by_addr(&self) -> impl Iterator<Item = &MinidumpUnloadedModule> {
+        self.modules_by_addr
+            .ranges_values()
+            .map(move |&(_, index)| &self.modules[index])
+    }
+
+    /// Write a human-readable description of this `MinidumpModuleList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpUnloadedModuleList
+  module_count = {}
+
+",
+            self.modules.len()
+        )?;
+        for (i, module) in self.modules.iter().enumerate() {
+            writeln!(f, "module[{}]", i)?;
+            module.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for MinidumpUnloadedModuleList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::UnloadedModuleListStream;
+
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpUnloadedModuleList, Error> {
+        let mut offset = 0;
+        let raw_modules: Vec<md::MINIDUMP_UNLOADED_MODULE> =
+            read_ex_stream_list(&mut offset, bytes, endian)?;
+        // read auxiliary data for each module
+        let mut modules = Vec::with_capacity(raw_modules.len());
+        for raw in raw_modules.into_iter() {
+            if raw.size_of_image == 0
+                || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image)
+            {
+                // Bad image size.
+                // TODO: just drop this module, keep the rest?
+                return Err(Error::ModuleReadFailure);
+            }
+            modules.push(MinidumpUnloadedModule::read(raw, all, endian)?);
+        }
+        Ok(MinidumpUnloadedModuleList::from_modules(modules))
     }
 }
 
@@ -2201,7 +2453,7 @@ mod test {
         self, AnnotationValue, CrashpadInfo, DumpString, Memory, MiscFieldsBuildString,
         MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields,
         MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, Thread,
-        STOCK_VERSION_INFO,
+        UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
     };
     use md::GUID;
     use std::mem;
@@ -2291,6 +2543,31 @@ mod test {
             modules[0].debug_identifier().unwrap(),
             "ABCD1234F00DBEEF01020304050607081"
         );
+    }
+
+    #[test]
+    fn test_unloaded_module_list() {
+        let name = DumpString::new("single module", Endian::Little);
+        let module = SynthUnloadedModule::new(
+            Endian::Little,
+            0xa90206ca83eb2852,
+            0xada542bd,
+            &name,
+            0xb1054d2a,
+            0x34571371,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_unloaded_module(module)
+            .add(name);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpUnloadedModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].base_address(), 0xa90206ca83eb2852);
+        assert_eq!(modules[0].size(), 0xada542bd);
+        assert_eq!(modules[0].code_file(), "single module");
+        // time_date_stamp and size_of_image concatenated
+        assert_eq!(modules[0].code_identifier(), "B1054D2Aada542bd");
     }
 
     #[test]
