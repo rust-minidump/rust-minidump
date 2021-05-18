@@ -127,11 +127,15 @@ where
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
     // Process create time is optional.
-    let process_create_time = if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
-        misc_info.process_create_time()
-    } else {
-        None
-    };
+    let (process_id, process_create_time) =
+        if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
+            (
+                misc_info.raw.process_id().cloned(),
+                misc_info.process_create_time(),
+            )
+        } else {
+            (None, None)
+        };
     // If Breakpad info exists in dump, get dump and requesting thread ids.
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
     let (dump_thread_id, requesting_thread_id) = if let Ok(info) = breakpad_info {
@@ -200,6 +204,7 @@ where
     }
     // if exploitability enabled, run exploitability analysis
     Ok(ProcessState {
+        process_id,
         time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time,
         crash_reason,

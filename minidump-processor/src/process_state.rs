@@ -11,12 +11,14 @@ use std::io::prelude::*;
 use crate::system_info::SystemInfo;
 use breakpad_symbols::FrameSymbolizer;
 use chrono::prelude::*;
+use minidump::system_info::Cpu;
 use minidump::*;
-use serde::Serialize;
+use serde_json::json;
+
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -35,7 +37,7 @@ pub enum FrameTrust {
 }
 
 /// A single stack frame produced from unwinding a thread's stack.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct StackFrame {
     // The program counter location as an absolute virtual address.
     //
@@ -94,7 +96,7 @@ pub struct StackFrame {
 }
 
 /// Information about the results of unwinding a thread's stack.
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub enum CallStackInfo {
     /// Everything went great.
     Ok,
@@ -109,7 +111,6 @@ pub enum CallStackInfo {
 }
 
 /// A stack of `StackFrame`s produced as a result of unwinding a thread.
-#[derive(Serialize)]
 pub struct CallStack {
     /// The stack frames.
     /// By convention, the stack frame at index 0 is the innermost callee frame,
@@ -121,8 +122,9 @@ pub struct CallStack {
 }
 
 /// The state of a process as recorded by a `Minidump`.
-#[derive(Serialize)]
 pub struct ProcessState {
+    /// The PID of the process.
+    pub process_id: Option<u32>,
     /// When the minidump was written.
     pub time: DateTime<Utc>,
     /// When the process started, if available
@@ -175,6 +177,18 @@ impl FrameTrust {
             FrameTrust::FramePointer => "previous frame's frame pointer",
             FrameTrust::Scan => "stack scanning",
             FrameTrust::None => "unknown",
+        }
+    }
+
+    fn json_name(&self) -> &'static str {
+        match *self {
+            FrameTrust::Context => "context",
+            FrameTrust::PreWalked => "prewalked",
+            FrameTrust::CallFrameInfo => "cfi",
+            FrameTrust::CfiScan => "cfi_scan",
+            FrameTrust::FramePointer => "frame_pointer",
+            FrameTrust::Scan => "scan",
+            FrameTrust::None => "non",
         }
     }
 }
@@ -254,6 +268,26 @@ fn print_registers<T: Write>(f: &mut T, ctx: &MinidumpContext) -> io::Result<()>
         writeln!(f, " {}", output)?;
     }
     Ok(())
+}
+
+fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
+    let registers: Cow<HashSet<&str>> = match ctx.valid {
+        MinidumpContextValidity::All => {
+            let gpr = ctx.general_purpose_registers();
+            let set: HashSet<&str> = gpr.iter().cloned().collect();
+            Cow::Owned(set)
+        }
+        MinidumpContextValidity::Some(ref which) => Cow::Borrowed(which),
+    };
+
+    let mut output = serde_json::Map::new();
+    for &reg in ctx.general_purpose_registers() {
+        if registers.contains(reg) {
+            let reg_val = ctx.format_register(reg);
+            output.insert(String::from(reg), json!(reg_val));
+        }
+    }
+    json!(output)
 }
 
 impl CallStack {
@@ -424,11 +458,159 @@ Loaded modules:
         Ok(())
     }
 
+    /// Outputs json in a schema compatible with mozilla's Socorro crash reporting servers.
     pub fn print_json<T: Write>(&self, f: &mut T, pretty: bool) -> Result<(), serde_json::Error> {
+        let sys = &self.system_info;
+
+        // Curry self for use in `map`
+        let json_hex = |val: u64| -> String { self.json_hex(val) };
+
+        // TODO: Issue #168
+        let unloaded_modules = Vec::<()>::new();
+
+        let mut output = json!({
+            // TODO: I guess we should still produce some JSON in some failure modes?
+            // OK | ERROR_* | SYMBOL_SUPPLIER_INTERRUPTED
+            "status": "OK",
+            "system_info": {
+                // Linux | Windows NT | Mac OS X
+                "os": sys.os.long_name(),
+                "os_ver": sys.os_version,
+                // x86 | amd64 | arm | ppc | sparc
+                "cpu_arch": sys.cpu.to_string(),
+                "cpu_info": sys.cpu_info,
+                "cpu_count": sys.cpu_count,
+            },
+            "crash_info": {
+                // TODO: Issue #22
+                "type": "TODO",
+                "crash_address": self.crash_address.map(json_hex),
+                // thread index | null
+                "crashing_thread": self.requesting_thread,
+            },
+
+            // TODO: Issue #169
+            // "largest_free_vm_block": 0x000000
+
+            // the first module is always the main one
+            "main_module": 0,
+            "modules_contain_cert_info": false,
+            "modules": self.modules.iter().map(|module| json!({
+                "base_addr": json_hex(module.raw.base_of_image),
+                // TODO: only take end of path
+                // filename | empty string
+                "debug_file": module.debug_file().unwrap_or(Cow::Borrowed("")),
+                // [[:xdigit:]]{33} | empty string
+                "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
+                "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
+                "filename": module.name,
+                "version": module.version(),
+
+                // These are all just metrics for debugging minidump-processor's execution
+
+                // optional, if mdsw looked for the file and it does exist
+                // "loaded_symbols": true,
+                // optional, if mdsw looked for the file and it doesn't exist
+                // "missing_symbols": true,
+                // optional, if mdsw found a file that has parse errors
+                // "corrupt_symbols": true,
+                // optional, whether or not the SYM file was fetched from disk cache
+                // "symbol_disk_cache_hit": <bool>,
+                // optional, time in ms it took to fetch symbol file from url; omitted
+                // if the symbol file was in disk cache
+                // "symbols_fetch_time": <float>,
+                // optional, url of symbol file
+                // "symbol_url": <string>
+
+            })).collect::<Vec<_>>(),
+            "pid": self.process_id,
+            "thread_count": self.threads.len(),
+            "threads": self.threads.iter().map(|thread| json!({
+                "frame_count": thread.frames.len(),
+                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| {
+                    let mut value = json!({
+                        "frame": idx,
+                        // TODO: only take end of path
+                        // optional
+                        "module": frame.module.as_ref().map(|module| &module.name),
+                        // optional
+                        "function": frame.function_name,
+                        // optional
+                        "file": frame.source_file_name,
+                        // optional
+                        "line": frame.source_line,
+                        "offset": json_hex(frame.instruction),
+                        // optional
+                        "module_offset": frame
+                            .module
+                            .as_ref()
+                            .map(|module| frame.instruction - module.raw.base_of_image)
+                            .map(json_hex),
+                        // optional
+                        "function_offset": frame
+                            .function_base
+                            .map(|func_base| frame.instruction - func_base)
+                            .map(json_hex),
+                        "missing_symbols": frame.function_name.is_none(),
+                        // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
+                        "trust": frame.trust.json_name(),
+                    });
+
+                    if idx == 0 {
+                        let registers = json_registers(&frame.context);
+                        value.as_object_mut().unwrap().insert(String::from("registers"), registers);
+                    }
+
+                    value
+                }).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+
+            // TODO: Issue #169
+            // "tiny_block_size": <string>,
+
+            "unloaded_modules": unloaded_modules.iter().map(|_module| json!({
+                "base_addr": json_hex(0),
+                "code_id": "TODO",
+                "end_addr": json_hex(0),
+                "filename": "TODO",
+            })).collect::<Vec<_>>(),
+
+            "sensitive": {
+                // TODO: Issue #25
+                // low | medium | high | interesting | none | ERROR: *
+                "exploitable": "TODO",
+            }
+        });
+
+        if let Some(requesting_thread) = self.requesting_thread {
+            let mut thread =
+                output.get("threads").unwrap().as_array().unwrap()[requesting_thread].clone();
+            thread
+                .as_object_mut()
+                .unwrap()
+                .insert(String::from("thread_index"), json!(requesting_thread));
+            output
+                .as_object_mut()
+                .unwrap()
+                .insert(String::from("crashing_thread"), thread);
+        }
+
         if pretty {
-            serde_json::to_writer_pretty(f, self)
+            serde_json::to_writer_pretty(f, &output)
         } else {
-            serde_json::to_writer(f, self)
+            serde_json::to_writer(f, &output)
+        }
+    }
+
+    // Convert an integer to a hex string, with leading 0's for uniform width.
+    fn json_hex(&self, val: u64) -> String {
+        match self.system_info.cpu {
+            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm => {
+                format!("0x{:08x}", val)
+            }
+            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 | Cpu::Unknown(_) => {
+                format!("0x{:016x}", val)
+            }
         }
     }
 }

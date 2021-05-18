@@ -10,12 +10,11 @@ use std::fmt;
 use minidump_common::format as md;
 use minidump_common::format::PlatformId;
 use minidump_common::format::ProcessorArchitecture::*;
-use serde::Serialize;
 
 /// Known operating systems
 ///
 /// This is a slightly nicer layer over the `PlatformId` enum defined in the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Os {
     Windows,
     MacOs,
@@ -48,7 +47,7 @@ impl Os {
     /// Get a human-readable friendly name for an `Os`
     pub fn long_name(&self) -> Cow<'_, str> {
         match *self {
-            Os::Windows => Cow::Borrowed("Windows"),
+            Os::Windows => Cow::Borrowed("Windows NT"),
             Os::MacOs => Cow::Borrowed("Mac OS X"),
             Os::Ios => Cow::Borrowed("iOS"),
             Os::Linux => Cow::Borrowed("Linux"),
@@ -85,7 +84,7 @@ impl fmt::Display for Os {
 ///
 /// This is a slightly nicer layer over the `ProcessorArchitecture` enum defined in
 /// the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Cpu {
     X86,
     X86_64,
@@ -124,7 +123,7 @@ impl fmt::Display for Cpu {
             "{}",
             match *self {
                 Cpu::X86 => "x86",
-                Cpu::X86_64 => "x86-64",
+                Cpu::X86_64 => "amd64",
                 Cpu::Ppc => "ppc",
                 Cpu::Ppc64 => "ppc64",
                 Cpu::Sparc => "sparc",

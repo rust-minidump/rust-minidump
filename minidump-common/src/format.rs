@@ -16,7 +16,6 @@ use std::fmt;
 use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
 use scroll::{Endian, Pread, SizeWith};
-use serde::Serialize;
 use smart_default::SmartDefault;
 
 /// An offset from the start of the minidump file.
@@ -832,7 +831,7 @@ pub struct SSE_REGISTERS {
 /// An x86-64 (amd64) CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86-64.
-#[derive(Debug, SmartDefault, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, SmartDefault, Clone, Pread, SizeWith)]
 pub struct CONTEXT_AMD64 {
     pub p1_home: u64,
     pub p2_home: u64,
@@ -880,7 +879,6 @@ pub struct CONTEXT_AMD64 {
     /// Callers that want to access the underlying data can use [`Pread`] to read either
     /// an [`XMM_SAVE_AREA32`] or [`SSE_REGISTERS`] struct from this raw data as appropriate.
     #[default = "[0; 512]"]
-    #[serde(skip)]
     pub float_save: [u8; 512],
     #[default = "[0; 26]"]
     pub vector_register: [u128; 26],
@@ -893,7 +891,7 @@ pub struct CONTEXT_AMD64 {
 }
 
 /// ARM floating point state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM {
     pub fpscr: u64,
     pub regs: [u64; 32],
@@ -904,7 +902,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for ARM
 /// in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
     pub iregs: [u32; 16],
@@ -924,7 +922,7 @@ pub enum ArmRegisterNumbers {
 }
 
 /// aarch64 floating point state (old)
-#[derive(Debug, Clone, Copy, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Copy, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64_OLD {
     pub fpsr: u32,
     pub fpcr: u32,
@@ -934,7 +932,7 @@ pub struct FLOATING_SAVE_AREA_ARM64_OLD {
 /// An old aarch64 (arm64) CPU context
 ///
 /// This is a Breakpad extension.
-#[derive(Debug, Clone, Copy, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Copy, Pread, SizeWith)]
 #[repr(packed)]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
@@ -945,7 +943,7 @@ pub struct CONTEXT_ARM64_OLD {
 }
 
 /// aarch64 floating point state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64 {
     pub regs: [u128; 32usize],
     pub fpsr: u32,
@@ -956,7 +954,7 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for aarch64
 /// in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
     pub cpsr: u32,
@@ -980,7 +978,7 @@ pub enum Arm64RegisterNumbers {
 }
 
 /// MIPS floating point state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
     pub fpcsr: u32,
@@ -990,7 +988,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 /// A MIPS CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
     pub _pad0: u32,
@@ -1027,7 +1025,7 @@ pub enum MipsRegisterNumbers {
 }
 
 /// PPC floating point state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_PPC {
     pub fpregs: [u64; 32],
     pub fpscr_pad: u32,
@@ -1035,7 +1033,7 @@ pub struct FLOATING_SAVE_AREA_PPC {
 }
 
 /// PPC vector state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct VECTOR_SAVE_AREA_PPC {
     pub save_vr: [u128; 32],
     pub save_vscr: u128,
@@ -1047,7 +1045,7 @@ pub struct VECTOR_SAVE_AREA_PPC {
 /// A PPC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_PPC {
     pub context_flags: u32,
     pub srr0: u32,
@@ -1073,7 +1071,7 @@ pub enum PpcRegisterNumbers {
 /// A PPC64 CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC64 in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_PPC64 {
     pub context_flags: u64,
     pub srr0: u64,
@@ -1096,7 +1094,7 @@ pub enum Ppc64RegisterNumbers {
 }
 
 /// SPARC floating point state
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_SPARC {
     pub regs: [u64; 32],
     pub filler: u64,
@@ -1106,7 +1104,7 @@ pub struct FLOATING_SAVE_AREA_SPARC {
 /// A SPARC CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for SPARC in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, Pread, SizeWith)]
 pub struct CONTEXT_SPARC {
     pub context_flags: u32,
     pub flag_pad: u32,
@@ -1130,7 +1128,7 @@ pub enum SparcRegisterNumbers {
 /// x86 floating point state
 ///
 /// This struct matches the definition of the `FLOATING_SAVE_AREA` struct from WinNT.h.
-#[derive(Debug, Clone, SmartDefault, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_X86 {
     pub control_word: u32,
     pub status_word: u32,
@@ -1140,7 +1138,6 @@ pub struct FLOATING_SAVE_AREA_X86 {
     pub data_offset: u32,
     pub data_selector: u32,
     #[default = "[0; 80]"]
-    #[serde(skip)]
     pub register_area: [u8; 80], // SIZE_OF_80387_REGISTERS
     pub cr0_npx_state: u32,
 }
@@ -1148,7 +1145,7 @@ pub struct FLOATING_SAVE_AREA_X86 {
 /// An x86 CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86.
-#[derive(Debug, Clone, SmartDefault, Pread, SizeWith, Serialize)]
+#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
 pub struct CONTEXT_X86 {
     pub context_flags: u32,
     pub dr0: u32,
@@ -1175,7 +1172,6 @@ pub struct CONTEXT_X86 {
     pub esp: u32,
     pub ss: u32,
     #[default = "[0; 512]"]
-    #[serde(skip)]
     pub extended_registers: [u8; 512], // MAXIMUM_SUPPORTED_EXTENSION
 }
 
