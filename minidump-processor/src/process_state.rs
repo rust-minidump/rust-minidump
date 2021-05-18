@@ -480,21 +480,32 @@ Loaded modules:
                 "cpu_arch": sys.cpu.to_string(),
                 "cpu_info": sys.cpu_info,
                 "cpu_count": sys.cpu_count,
+                // TODO: Issue #19
+                // optional
+                "cpu_microcode_version": null,
             },
             "crash_info": {
                 // TODO: Issue #22
                 "type": "TODO",
-                "crash_address": self.crash_address.map(json_hex),
+                "address": self.crash_address.map(json_hex),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
+                "assertion": self.assertion,
             },
 
-            // TODO: Issue #169
-            // "largest_free_vm_block": 0x000000
+            // optional, Linux Standard Base information
+            // TODO: Issue #172
+            // "lsb_release": {
+            //   "id": <string>,
+            //   "release": <string>,
+            //   "codename": <string>,
+            //   "description": <string>
+            // },
 
             // the first module is always the main one
             "main_module": 0,
-            "modules_contain_cert_info": false,
+            // TODO: Issue #171
+            "modules_contains_cert_info": false,
             "modules": self.modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
                 // TODO: only take end of path
@@ -504,6 +515,7 @@ Loaded modules:
                 "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                 "filename": module.name,
+                "code_id": module.code_identifier(),
                 "version": module.version(),
 
                 // These are all just metrics for debugging minidump-processor's execution
@@ -522,51 +534,58 @@ Loaded modules:
                 // optional, url of symbol file
                 // "symbol_url": <string>
 
+                // TODO: Issue #171
+                // optional
+                // "cert_subject": <string>
+
             })).collect::<Vec<_>>(),
             "pid": self.process_id,
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
                 "frame_count": thread.frames.len(),
-                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| {
-                    let mut value = json!({
-                        "frame": idx,
-                        // TODO: only take end of path
-                        // optional
-                        "module": frame.module.as_ref().map(|module| &module.name),
-                        // optional
-                        "function": frame.function_name,
-                        // optional
-                        "file": frame.source_file_name,
-                        // optional
-                        "line": frame.source_line,
-                        "offset": json_hex(frame.instruction),
-                        // optional
-                        "module_offset": frame
-                            .module
-                            .as_ref()
-                            .map(|module| frame.instruction - module.raw.base_of_image)
-                            .map(json_hex),
-                        // optional
-                        "function_offset": frame
-                            .function_base
-                            .map(|func_base| frame.instruction - func_base)
-                            .map(json_hex),
-                        "missing_symbols": frame.function_name.is_none(),
-                        // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
-                        "trust": frame.trust.json_name(),
-                    });
-
-                    if idx == 0 {
-                        let registers = json_registers(&frame.context);
-                        value.as_object_mut().unwrap().insert(String::from("registers"), registers);
-                    }
-
-                    value
-                }).collect::<Vec<_>>(),
+                // TODO: I think this is legacy gunk that we don't ever do?
+                "frames_truncated": false,
+                // optional, if truncated, this is the original total
+                "total_frames": thread.frames.len(),
+                // TODO: Issue #156
+                // optional
+                "last_error_value": null,
+                // TODO: Issue #173
+                // optional
+                "thread_name": null,
+                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
+                    "frame": idx,
+                    // TODO: only take end of path
+                    // optional
+                    "module": frame.module.as_ref().map(|module| &module.name),
+                    // optional
+                    "function": frame.function_name,
+                    // optional
+                    "file": frame.source_file_name,
+                    // optional
+                    "line": frame.source_line,
+                    "offset": json_hex(frame.instruction),
+                    // optional
+                    "module_offset": frame
+                        .module
+                        .as_ref()
+                        .map(|module| frame.instruction - module.raw.base_of_image)
+                        .map(json_hex),
+                    // optional
+                    "function_offset": frame
+                        .function_base
+                        .map(|func_base| frame.instruction - func_base)
+                        .map(json_hex),
+                    "missing_symbols": frame.function_name.is_none(),
+                    // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
+                    "trust": frame.trust.json_name(),
+                })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
 
             // TODO: Issue #169
-            // "tiny_block_size": <string>,
+            // "largest_free_vm_block": 0x000000
+            // "tiny_block_size": <int>,
+            // "write_combine_size": <int>,
 
             "unloaded_modules": unloaded_modules.iter().map(|_module| json!({
                 "base_addr": json_hex(0),
@@ -578,17 +597,35 @@ Loaded modules:
             "sensitive": {
                 // TODO: Issue #25
                 // low | medium | high | interesting | none | ERROR: *
-                "exploitable": "TODO",
+                "exploitability": "TODO",
             }
         });
 
         if let Some(requesting_thread) = self.requesting_thread {
+            // Copy the crashing thread into a top-level "crashing_thread" field and:
+            // * Add a "thread_index" field to indicate which thread it was
+            // * Add a "registers" field to its first frame
+            //
+            // Note that we currently make crashing_thread a strict superset
+            // of a normal "threads" entry, while the original schema strips
+            // many of the fields here. We don't to keep things more uniform.
+
+            let registers = json_registers(&self.threads[requesting_thread].frames[0].context);
+
+            // Yuck, spidering through json...
             let mut thread =
-                output.get("threads").unwrap().as_array().unwrap()[requesting_thread].clone();
-            thread
-                .as_object_mut()
+                output.get_mut("threads").unwrap().as_array().unwrap()[requesting_thread].clone();
+            let thread_obj = thread.as_object_mut().unwrap();
+            let frames = thread_obj
+                .get_mut("frames")
                 .unwrap()
-                .insert(String::from("thread_index"), json!(requesting_thread));
+                .as_array_mut()
+                .unwrap();
+            let frame = frames[0].as_object_mut().unwrap();
+
+            frame.insert(String::from("registers"), registers);
+            thread_obj.insert(String::from("thread_index"), json!(requesting_thread));
+
             output
                 .as_object_mut()
                 .unwrap()
