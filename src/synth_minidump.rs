@@ -29,6 +29,8 @@ pub struct SynthMinidump {
     stream_directory: Section,
     /// List of modules in this minidump.
     module_list: Option<ListStream<Module>>,
+    /// List of unloaded modules in this minidump.
+    unloaded_module_list: Option<ExListStream<UnloadedModule>>,
     /// List of threads in this minidump.
     thread_list: Option<ListStream<Thread>>,
     /// List of memory regions in this minidump.
@@ -155,6 +157,11 @@ impl SynthMinidump {
                 md::MINIDUMP_STREAM_TYPE::ModuleListStream,
                 endian,
             )),
+            unloaded_module_list: Some(ExListStream::new(
+                md::MINIDUMP_STREAM_TYPE::UnloadedModuleListStream,
+                mem::size_of::<md::MINIDUMP_UNLOADED_MODULE>(),
+                endian,
+            )),
             thread_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::ThreadListStream,
                 endian,
@@ -189,6 +196,15 @@ impl SynthMinidump {
     pub fn add_module(mut self, module: Module) -> SynthMinidump {
         self.module_list = self
             .module_list
+            .take()
+            .map(|module_list| module_list.add(module));
+        self
+    }
+
+    /// Add `module` to `self`, adding it to the unloaded module list stream as well.
+    pub fn add_unloaded_module(mut self, module: UnloadedModule) -> SynthMinidump {
+        self.unloaded_module_list = self
+            .unloaded_module_list
             .take()
             .map(|module_list| module_list.add(module));
         self
@@ -242,11 +258,27 @@ impl SynthMinidump {
         }
     }
 
+    fn finish_ex_list<T: ListItem>(self, list: Option<ExListStream<T>>) -> SynthMinidump {
+        match list {
+            Some(l) => {
+                if !l.is_empty() {
+                    self.add_stream(l)
+                } else {
+                    self
+                }
+            }
+            None => self,
+        }
+    }
+
     /// Finish generating the minidump and return the contents.
     pub fn finish(mut self) -> Option<Vec<u8>> {
         // Add module list stream if any modules were added.
         let modules = self.module_list.take();
         self = self.finish_list(modules);
+        // Add unloaded module list stream if any unloaded modules were added.
+        let unloaded_modules = self.unloaded_module_list.take();
+        self = self.finish_ex_list(unloaded_modules);
         // Add memory list stream if any memory regions were added.
         let memories = self.memory_list.take();
         self = self.finish_list(memories);
@@ -452,6 +484,141 @@ impl<T: ListItem> Stream for ListStream<T> {
     }
 }
 
+/// A stream containing a list of dump entries, using the extended header format.
+pub struct ExList<T: ListItem> {
+    /// The stream's contents.
+    section: Section,
+    /// The number of entries.
+    count: u32,
+    /// The number of entries, as a `Label`.
+    count_label: Label,
+    /// Out-of-band data referenced by this stream's contents.
+    out_of_band: Section,
+    _type: PhantomData<T>,
+}
+
+impl<T: ListItem> ExList<T> {
+    pub fn new(size_of_entry: usize, endian: Endian) -> Self {
+        let count_label = Label::new();
+
+        // Newer list streams have an extended header:
+        //
+        // size_of_header: u32,
+        // size_of_entry: u32,
+        // number_of_entries: u32,
+        // ...entries
+
+        let section = Section::with_endian(endian)
+            .D32(12)
+            .D32(size_of_entry as u32)
+            .D32(&count_label);
+
+        ExList {
+            section,
+            count_label,
+            count: 0,
+            out_of_band: Section::with_endian(endian),
+            _type: PhantomData,
+        }
+    }
+
+    // Possibly name this .add_section().
+    #[allow(clippy::should_implement_trait)]
+    pub fn add(mut self, entry: T) -> Self {
+        self.count += 1;
+
+        let (section, out_of_band_opt) = entry.into_sections();
+
+        self.section = self
+            .section
+            .mark(&section.file_offset())
+            .append_section(section);
+
+        if let Some(out_of_band) = out_of_band_opt {
+            self.out_of_band = self
+                .out_of_band
+                .mark(&out_of_band.file_offset())
+                .append_section(out_of_band);
+        }
+
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
+impl<T: ListItem> From<ExList<T>> for Section {
+    fn from(list: ExList<T>) -> Self {
+        // Finalize the entry count.
+        list.count_label.set_const(list.count as u64);
+
+        // Serialize all (transitive) out-of-band data after the dense list of entry records.
+        list.section
+            .mark(&list.out_of_band.file_offset())
+            .append_section(list.out_of_band)
+    }
+}
+
+impl<T: ListItem> DumpSection for ExList<T> {
+    fn file_offset(&self) -> Label {
+        self.section.file_offset()
+    }
+
+    fn file_size(&self) -> Label {
+        self.section.file_size()
+    }
+}
+
+pub struct ExListStream<T: ListItem> {
+    /// The stream type.
+    stream_type: u32,
+    /// The list containing items.
+    list: ExList<T>,
+}
+
+impl<T: ListItem> ExListStream<T> {
+    pub fn new<S: Into<u32>>(stream_type: S, size_of_entry: usize, endian: Endian) -> Self {
+        Self {
+            stream_type: stream_type.into(),
+            list: ExList::new(size_of_entry, endian),
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn add(mut self, entry: T) -> Self {
+        self.list = self.list.add(entry);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+}
+
+impl<T: ListItem> From<ExListStream<T>> for Section {
+    fn from(stream: ExListStream<T>) -> Self {
+        stream.list.into()
+    }
+}
+
+impl<T: ListItem> DumpSection for ExListStream<T> {
+    fn file_offset(&self) -> Label {
+        self.list.file_offset()
+    }
+
+    fn file_size(&self) -> Label {
+        self.list.file_size()
+    }
+}
+
+impl<T: ListItem> Stream for ExListStream<T> {
+    fn stream_type(&self) -> u32 {
+        self.stream_type
+    }
+}
+
 /// An `MINIDUMP_STRING`, a UTF-16 string preceded by a 4-byte length.
 pub struct DumpString {
     section: Section,
@@ -584,6 +751,43 @@ impl From<Module> for Section {
         section
             .cite_location(&cv_record)
             .cite_location(&misc_record)
+            // reserved0
+            .D64(0)
+            // reserved1
+            .D64(0)
+    }
+}
+
+/// A minidump unloaded module.
+pub struct UnloadedModule {
+    section: Section,
+}
+
+impl UnloadedModule {
+    pub fn new(
+        endian: Endian,
+        base_of_image: u64,
+        size_of_image: u32,
+        name: &DumpString,
+        time_date_stamp: u32,
+        checksum: u32,
+    ) -> UnloadedModule {
+        let section = Section::with_endian(endian)
+            .D64(base_of_image)
+            .D32(size_of_image)
+            .D32(checksum)
+            .D32(time_date_stamp)
+            .D32(name.file_offset());
+        UnloadedModule { section }
+    }
+}
+
+impl_dumpsection!(UnloadedModule);
+
+impl From<UnloadedModule> for Section {
+    fn from(module: UnloadedModule) -> Self {
+        let UnloadedModule { section } = module;
+        section
             // reserved0
             .D64(0)
             // reserved1

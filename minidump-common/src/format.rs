@@ -159,6 +159,17 @@ pub enum MINIDUMP_STREAM_TYPE {
     CommentStreamW = 11,
     HandleDataStream = 12,
     FunctionTable = 13,
+    /// The list of executable modules from the process that were unloaded by the time of the crash
+    ///
+    /// See [`MINIDUMP_UNLOADED_MODULE`](struct.MINIDUMP_UNLOADED_MODULE.html).
+    ///
+    /// Microsoft declares a [`MINIDUMP_UNLOADED_MODULE_LIST`][list] struct which is the actual
+    /// format of this stream, but it is a variable-length struct so no matching definition is
+    /// in this crate.
+    ///
+    /// Note that unlike other lists, this one has the newer "extended" header.
+    ///
+    /// [list]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-minidump_unloaded_module_list
     UnloadedModuleListStream = 14,
     /// Miscellaneous process and system information
     ///
@@ -270,6 +281,25 @@ pub struct MINIDUMP_MODULE {
     pub misc_record: MINIDUMP_LOCATION_DESCRIPTOR,
     pub reserved0: [u32; 2],
     pub reserved1: [u32; 2],
+}
+
+/// Information about a single unloaded module (executable or shared library) from a minidump.
+///
+/// This struct matches the [Microsoft struct][msdn] of the same name.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_unloaded_module
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
+pub struct MINIDUMP_UNLOADED_MODULE {
+    /// The base address of the executable image in memory (when it was loaded).
+    pub base_of_image: u64,
+    /// The size of the executable image in memory, in bytes.
+    pub size_of_image: u32,
+    /// The checksum value from the PE headers.
+    pub checksum: u32,
+    /// The timestamp value from the PE headers in `time_t` format.
+    pub time_date_stamp: u32,
+    /// An offset to a length-prefixed UTF-16LE string containing the name of the module.
+    pub module_name_rva: RVA,
 }
 
 /// Version information for a file

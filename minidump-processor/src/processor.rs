@@ -158,11 +158,15 @@ where
     let exception_context = exception_ref.and_then(|e| e.context.as_ref());
     // Get assertion
     let assertion = None;
-    let modules = if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
-        module_list
-    } else {
+    let modules = match dump.get_stream::<MinidumpModuleList>() {
+        Ok(module_list) => module_list,
         // Just give an empty list, simplifies things.
-        MinidumpModuleList::new()
+        Err(_) => MinidumpModuleList::new(),
+    };
+    let unloaded_modules = match dump.get_stream::<MinidumpUnloadedModuleList>() {
+        Ok(module_list) => module_list,
+        // Just give an empty list, simplifies things.
+        Err(_) => MinidumpUnloadedModuleList::new(),
     };
 
     let memory_list = dump.get_stream::<MinidumpMemoryList>().ok();
@@ -214,5 +218,6 @@ where
         system_info,
         threads,
         modules,
+        unloaded_modules,
     })
 }

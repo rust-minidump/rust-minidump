@@ -3,7 +3,7 @@
 
 //! The state of a process.
 
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::collections::HashSet;
 use std::io;
 use std::io::prelude::*;
@@ -160,6 +160,7 @@ pub struct ProcessState {
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
+    pub unloaded_modules: MinidumpUnloadedModuleList,
     // modules_without_symbols
     // modules_with_corrupt_symbols
     // exploitability
@@ -455,6 +456,21 @@ Loaded modules:
             }
             writeln!(f)?;
         }
+        write!(
+            f,
+            "
+Unloaded modules:
+"
+        )?;
+        for module in self.unloaded_modules.by_addr() {
+            writeln!(
+                f,
+                "{:#010x} - {:#010x}  {}",
+                module.base_address(),
+                module.base_address() + module.size() - 1,
+                basename(&module.code_file()),
+            )?;
+        }
         Ok(())
     }
 
@@ -464,9 +480,6 @@ Loaded modules:
 
         // Curry self for use in `map`
         let json_hex = |val: u64| -> String { self.json_hex(val) };
-
-        // TODO: Issue #168
-        let unloaded_modules = Vec::<()>::new();
 
         let mut output = json!({
             // TODO: I guess we should still produce some JSON in some failure modes?
@@ -508,9 +521,8 @@ Loaded modules:
             "modules_contains_cert_info": false,
             "modules": self.modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
-                // TODO: only take end of path
                 // filename | empty string
-                "debug_file": module.debug_file().unwrap_or(Cow::Borrowed("")),
+                "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
                 // [[:xdigit:]]{33} | empty string
                 "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
@@ -555,9 +567,8 @@ Loaded modules:
                 "thread_name": null,
                 "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
                     "frame": idx,
-                    // TODO: only take end of path
                     // optional
-                    "module": frame.module.as_ref().map(|module| &module.name),
+                    "module": frame.module.as_ref().map(|module| basename(&module.name)),
                     // optional
                     "function": frame.function_name,
                     // optional
@@ -587,11 +598,11 @@ Loaded modules:
             // "tiny_block_size": <int>,
             // "write_combine_size": <int>,
 
-            "unloaded_modules": unloaded_modules.iter().map(|_module| json!({
-                "base_addr": json_hex(0),
-                "code_id": "TODO",
-                "end_addr": json_hex(0),
-                "filename": "TODO",
+            "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({
+                "base_addr": json_hex(module.raw.base_of_image),
+                "code_id": module.code_identifier(),
+                "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
+                "filename": module.name,
             })).collect::<Vec<_>>(),
 
             "sensitive": {
