@@ -672,6 +672,34 @@ pub enum ExceptionCodeWindows {
     SIMULATED = 0x0517a7ed,
 }
 
+/// The different kinds of EXCEPTION_ACCESS_VIOLATION.
+///
+/// These constants are defined in the [MSDN documentation][msdn] of
+/// the EXCEPTION_RECORD structure.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record
+#[repr(u64)]
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeWindowsAccessType {
+    READ = 0,
+    WRITE = 1,
+    EXEC = 8,
+}
+
+/// The different kinds of EXCEPTION_IN_PAGE_ERROR.
+///
+/// These constants are defined in the [MSDN documentation][msdn] of
+/// the EXCEPTION_RECORD structure.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record
+#[repr(u64)]
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeWindowsInPageErrorType {
+    READ = 0,
+    WRITE = 1,
+    EXEC = 8,
+}
+
 /// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on Linux
 ///
 /// These are primarily signal numbers from bits/signum.h.
@@ -744,6 +772,48 @@ pub enum ExceptionCodeLinux {
     DUMP_REQUESTED = 0xffffffff,
 }
 
+// These values come from asm-generic/siginfo.h
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigillKind {
+    ILL_ILLOPC = 1,
+    ILL_ILLOPN = 2,
+    ILL_ILLADR = 3,
+    ILL_ILLTRP = 4,
+    ILL_PRVOPC = 5,
+    ILL_PRVREG = 6,
+    ILL_COPROC = 7,
+    ILL_BADSTK = 8,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigfpeKind {
+    FPE_INTDIV = 1,
+    FPE_INTOVF = 2,
+    FPE_FLTDIV = 3,
+    FPE_FLTOVF = 4,
+    FPE_FLTUND = 5,
+    FPE_FLTRES = 6,
+    FPE_FLTINV = 7,
+    FPE_FLTSUB = 8,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigsegvKind {
+    SEGV_MAPERR = 1,
+    SEGV_ACCERR = 2,
+    SEGV_BNDERR = 3,
+    SEGV_PKUERR = 4,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigbusKind {
+    BUS_ADRALN = 1,
+    BUS_ADRERR = 2,
+    BUS_OBJERR = 3,
+    BUS_MCEERR_AR = 4,
+    BUS_MCEERR_AO = 5,
+}
+
 /// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on macOS
 ///
 /// Based on Darwin/macOS' mach/exception_types.h. This is what macOS calls an "exception",
@@ -767,6 +837,166 @@ pub enum ExceptionCodeMac {
     EXC_RPC_ALERT = 9,
     /// Fake exception code used by Crashpad's SimulateCrash ('CPsx')
     SIMULATED = 0x43507378,
+}
+
+// These error codes are based on
+// * mach/ppc/exception.h
+// * mach/i386/exception.h
+
+/// Mac/iOS Kernel Bad Access Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadAccessKernType {
+    // These are relevant kern_return_t values from mach/kern_return.h
+    KERN_INVALID_ADDRESS = 1,
+    KERN_PROTECTION_FAILURE = 2,
+    KERN_NO_ACCESS = 8,
+    KERN_MEMORY_FAILURE = 9,
+    KERN_MEMORY_ERROR = 10,
+    KERN_CODESIGN_ERROR = 50,
+}
+
+/// Mac/iOS Arm Userland Bad Accesses Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadAccessArmType {
+    EXC_ARM_DA_ALIGN = 0x0101,
+    EXC_ARM_DA_DEBUG = 0x0102,
+}
+
+/// Mac/iOS Ppc Userland Bad Access Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadAccessPpcType {
+    EXC_PPC_VM_PROT_READ = 0x0101,
+    EXC_PPC_BADSPACE = 0x0102,
+    EXC_PPC_UNALIGNED = 0x0103,
+}
+
+/// Mac/iOS x86 Userland Bad Access Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadAccessX86Type {
+    EXC_I386_GPFLT = 13,
+}
+
+/// Mac/iOS Arm Bad Instruction Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadInstructionArmType {
+    EXC_ARM_UNDEFINED = 1,
+}
+
+/// Mac/iOS Ppc Bad Instruction Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadInstructionPpcType {
+    EXC_PPC_INVALID_SYSCALL = 1,
+    EXC_PPC_UNIPL_INST = 2,
+    EXC_PPC_PRIVINST = 3,
+    EXC_PPC_PRIVREG = 4,
+    EXC_PPC_TRACE = 5,
+    EXC_PPC_PERFMON = 6,
+}
+
+/// Mac/iOS x86 Bad Instruction Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBadInstructionX86Type {
+    /// Invalid Operation
+    EXC_I386_INVOP = 1,
+
+    // The rest of these are raw x86 interrupt codes.
+    /// Invalid Task State Segment
+    EXC_I386_INVTSSFLT = 10,
+    /// Segment Not Present
+    EXC_I386_SEGNPFLT = 11,
+    /// Stack Fault
+    EXC_I386_STKFLT = 12,
+    /// General Protection Fault
+    EXC_I386_GPFLT = 13,
+    /// Alignment Fault
+    EXC_I386_ALIGNFLT = 17,
+    // For sake of completeness, here's the interrupt codes that won't show up here (and why):
+
+    // EXC_I386_DIVERR    =  0: mapped to EXC_ARITHMETIC/EXC_I386_DIV
+    // EXC_I386_SGLSTP    =  1: mapped to EXC_BREAKPOINT/EXC_I386_SGL
+    // EXC_I386_NMIFLT    =  2: should not occur in user space
+    // EXC_I386_BPTFLT    =  3: mapped to EXC_BREAKPOINT/EXC_I386_BPT
+    // EXC_I386_INTOFLT   =  4: mapped to EXC_ARITHMETIC/EXC_I386_INTO
+    // EXC_I386_BOUNDFLT  =  5: mapped to EXC_ARITHMETIC/EXC_I386_BOUND
+    // EXC_I386_INVOPFLT  =  6: mapped to EXC_BAD_INSTRUCTION/EXC_I386_INVOP
+    // EXC_I386_NOEXTFLT  =  7: should be handled by the kernel
+    // EXC_I386_DBLFLT    =  8: should be handled (if possible) by the kernel
+    // EXC_I386_EXTOVRFLT =  9: mapped to EXC_BAD_ACCESS/(PROT_READ|PROT_EXEC)
+    // EXC_I386_PGFLT     = 14: should not occur in user space
+    // EXC_I386_EXTERRFLT = 16: mapped to EXC_ARITHMETIC/EXC_I386_EXTERR
+    // EXC_I386_ENOEXTFLT = 32: should be handled by the kernel
+    // EXC_I386_ENDPERR   = 33: should not occur
+}
+
+/// Mac/iOS Ppc Arithmetic Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacArithmeticPpcType {
+    /// Integer ovrflow
+    EXC_PPC_OVERFLOW = 1,
+    /// Integer Divide-By-Zero
+    EXC_PPC_ZERO_DIVIDE = 2,
+    /// Float Inexact
+    EXC_FLT_INEXACT = 3,
+    /// Float Divide-By-Zero
+    EXC_PPC_FLT_ZERO_DIVIDE = 4,
+    /// Float Underflow
+    EXC_PPC_FLT_UNDERFLOW = 5,
+    /// Float Overflow
+    EXC_PPC_FLT_OVERFLOW = 6,
+    /// Float Not A Number
+    EXC_PPC_FLT_NOT_A_NUMBER = 7,
+
+    // NOTE: comments in breakpad suggest these two are actually supposed to be
+    // for ExceptionCodeMac::EXC_EMULATION, but for now let's duplicate breakpad.
+    EXC_PPC_NOEMULATION = 8,
+    EXC_PPC_ALTIVECASSIST = 9,
+}
+
+/// Mac/iOS x86 Arithmetic Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacArithmeticX86Type {
+    EXC_I386_DIV = 1,
+    EXC_I386_INTO = 2,
+    EXC_I386_NOEXT = 3,
+    EXC_I386_EXTOVR = 4,
+    EXC_I386_EXTERR = 5,
+    EXC_I386_EMERR = 6,
+    EXC_I386_BOUND = 7,
+    EXC_I386_SSEEXTERR = 8,
+}
+
+/// Mac/iOS "Software" Exceptions
+#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacSoftwareType {
+    SIGABRT = 0x00010002u32,
+    UNCAUGHT_NS_EXCEPTION = 0xDEADC0DE,
+    EXC_PPC_TRAP = 0x00000001,
+    EXC_PPC_MIGRATE = 0x00010100,
+    // Breakpad also defines these doesn't use them for Software crashes
+    // SIGSYS  = 0x00010000,
+    // SIGPIPE = 0x00010001,
+}
+
+/// Mac/iOS Arm Breakpoint Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBreakpointArmType {
+    EXC_ARM_DA_ALIGN = 0x0101,
+    EXC_ARM_DA_DEBUG = 0x0102,
+    EXC_ARM_BREAKPOINT = 1,
+}
+
+/// Mac/iOS Ppc Breakpoint Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBreakpointPpcType {
+    EXC_PPC_BREAKPOINT = 1,
+}
+
+/// Mac/iOS x86 Breakpoint Exceptions
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacBreakpointX86Type {
+    EXC_I386_SGL = 1,
+    EXC_I386_BPT = 2,
 }
 
 /// Valid bits in a `context_flags` for [`ContextFlagsCpu`]
