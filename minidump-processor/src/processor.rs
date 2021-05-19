@@ -117,13 +117,27 @@ where
     let dump_system_info = dump
         .get_stream::<MinidumpSystemInfo>()
         .or(Err(ProcessError::MissingSystemInfo))?;
+
+    let mut os_version = format!(
+        "{}.{}.{}",
+        dump_system_info.raw.major_version,
+        dump_system_info.raw.minor_version,
+        dump_system_info.raw.build_number
+    );
+    if let Some(csd_version) = dump_system_info.csd_version() {
+        os_version.push(' ');
+        os_version.push_str(&csd_version);
+    }
+
+    let cpu_info = dump_system_info
+        .cpu_info()
+        .map(|string| string.into_owned());
+
     let system_info = SystemInfo {
         os: dump_system_info.os,
-        // TODO
-        os_version: None,
+        os_version: Some(os_version),
         cpu: dump_system_info.cpu,
-        // TODO
-        cpu_info: None,
+        cpu_info,
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
     // Process create time is optional.

@@ -121,6 +121,11 @@ fn test_system_info() {
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
     assert_eq!(system_info.os, Os::Windows);
     assert_eq!(system_info.cpu, Cpu::X86);
+    assert_eq!(
+        system_info.cpu_info().unwrap(),
+        "GenuineIntel family 6 model 13 stepping 8"
+    );
+    assert_eq!(system_info.csd_version(), None);
 }
 
 #[test]
