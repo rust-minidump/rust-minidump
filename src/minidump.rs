@@ -199,6 +199,13 @@ pub struct MinidumpSystemInfo {
     pub os: Os,
     /// The CPU on which the minidump was generated
     pub cpu: Cpu,
+    /// A string that describes the latest Service Pack installed on the system.
+    /// If no Service Pack has been installed, the string is empty.
+    /// This is stored separately in the minidump.
+    csd_version: Option<String>,
+    /// An x86 (not x64!) CPU vendor name that is stored in `raw` but in a way
+    /// that's
+    cpu_info: Option<String>,
 }
 
 /// A region of memory from the process that wrote the minidump.
@@ -1440,12 +1447,158 @@ impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
         _all: &[u8],
         endian: scroll::Endian,
     ) -> Result<MinidumpSystemInfo, Error> {
+        use std::fmt::Write;
+
         let raw: md::MINIDUMP_SYSTEM_INFO = bytes
             .pread_with(0, endian)
             .or(Err(Error::StreamReadFailure))?;
         let os = Os::from_platform_id(raw.platform_id);
         let cpu = Cpu::from_processor_architecture(raw.processor_architecture);
-        Ok(MinidumpSystemInfo { raw, os, cpu })
+
+        let mut csd_offset = raw.csd_version_rva as usize;
+        let csd_version = read_string_utf16(&mut csd_offset, bytes, endian).ok();
+
+        // self.raw.cpu.data is actually a union which we resolve here.
+        let cpu_info = match cpu {
+            Cpu::X86 | Cpu::X86_64 => {
+                let mut cpu_info = String::new();
+
+                if let Cpu::X86 = cpu {
+                    // The vendor's ID is an ascii string but we need to flatten out the u32's into u8's
+                    let x86_info: md::X86CpuInfo = raw
+                        .cpu
+                        .data
+                        .pread_with(0, endian)
+                        .or(Err(Error::StreamReadFailure))?;
+
+                    cpu_info.extend(
+                        x86_info
+                            .vendor_id
+                            .iter()
+                            .flat_map(|i| std::array::IntoIter::new(i.to_le_bytes()))
+                            .map(char::from),
+                    );
+                    cpu_info.push(' ');
+                }
+
+                write!(
+                    &mut cpu_info,
+                    "family {} model {} stepping {}",
+                    raw.processor_level,
+                    (raw.processor_revision >> 8) & 0xff,
+                    raw.processor_revision & 0xff
+                )
+                .unwrap();
+
+                Some(cpu_info)
+            }
+            Cpu::Arm => {
+                let arm_info: md::ARMCpuInfo = raw
+                    .cpu
+                    .data
+                    .pread_with(0, endian)
+                    .or(Err(Error::StreamReadFailure))?;
+
+                // There is no good list of implementer id values, but the following
+                // pages provide some help:
+                //   http://comments.gmane.org/gmane.linux.linaro.devel/6903
+                //   http://forum.xda-developers.com/archive/index.php/t-480226.html
+                let vendors = [
+                    (0x41, "ARM"),
+                    (0x51, "Qualcomm"),
+                    (0x56, "Marvell"),
+                    (0x69, "Intel/Marvell"),
+                ];
+                let parts = [
+                    (0x4100c050, "Cortex-A5"),
+                    (0x4100c080, "Cortex-A8"),
+                    (0x4100c090, "Cortex-A9"),
+                    (0x4100c0f0, "Cortex-A15"),
+                    (0x4100c140, "Cortex-R4"),
+                    (0x4100c150, "Cortex-R5"),
+                    (0x4100b360, "ARM1136"),
+                    (0x4100b560, "ARM1156"),
+                    (0x4100b760, "ARM1176"),
+                    (0x4100b020, "ARM11-MPCore"),
+                    (0x41009260, "ARM926"),
+                    (0x41009460, "ARM946"),
+                    (0x41009660, "ARM966"),
+                    (0x510006f0, "Krait"),
+                    (0x510000f0, "Scorpion"),
+                ];
+                let features = [
+                    (md::ArmElfHwCaps::HWCAP_SWP, "swp"),
+                    (md::ArmElfHwCaps::HWCAP_HALF, "half"),
+                    (md::ArmElfHwCaps::HWCAP_THUMB, "thumb"),
+                    (md::ArmElfHwCaps::HWCAP_26BIT, "26bit"),
+                    (md::ArmElfHwCaps::HWCAP_FAST_MULT, "fastmult"),
+                    (md::ArmElfHwCaps::HWCAP_FPA, "fpa"),
+                    (md::ArmElfHwCaps::HWCAP_VFP, "vfpv2"),
+                    (md::ArmElfHwCaps::HWCAP_EDSP, "edsp"),
+                    (md::ArmElfHwCaps::HWCAP_JAVA, "java"),
+                    (md::ArmElfHwCaps::HWCAP_IWMMXT, "iwmmxt"),
+                    (md::ArmElfHwCaps::HWCAP_CRUNCH, "crunch"),
+                    (md::ArmElfHwCaps::HWCAP_THUMBEE, "thumbee"),
+                    (md::ArmElfHwCaps::HWCAP_NEON, "neon"),
+                    (md::ArmElfHwCaps::HWCAP_VFPv3, "vfpv3"),
+                    (md::ArmElfHwCaps::HWCAP_VFPv3D16, "vfpv3d16"),
+                    (md::ArmElfHwCaps::HWCAP_TLS, "tls"),
+                    (md::ArmElfHwCaps::HWCAP_VFPv4, "vfpv4"),
+                    (md::ArmElfHwCaps::HWCAP_IDIVA, "idiva"),
+                    (md::ArmElfHwCaps::HWCAP_IDIVT, "idivt"),
+                ];
+
+                let mut cpu_info = format!("ARMv{}", raw.processor_level);
+
+                // Try to extract out known vendor/part names from the cpuid,
+                // falling back to just reporting the raw value.
+                let cpuid = arm_info.cpuid;
+                if cpuid != 0 {
+                    let vendor_id = (cpuid >> 24) & 0xff;
+                    let part_id = cpuid & 0xff00fff0;
+
+                    if let Some(&(_, vendor)) = vendors.iter().find(|&&(id, _)| id == vendor_id) {
+                        write!(&mut cpu_info, " {}", vendor).unwrap();
+                    } else {
+                        write!(&mut cpu_info, " vendor(0x{:x})", vendor_id).unwrap();
+                    }
+
+                    if let Some(&(_, part)) = parts.iter().find(|&&(id, _)| id == part_id) {
+                        write!(&mut cpu_info, " {}", part).unwrap();
+                    } else {
+                        write!(&mut cpu_info, " part(0x{:x})", part_id).unwrap();
+                    }
+                }
+
+                // Report all the known hardware features.
+                let elf_hwcaps = md::ArmElfHwCaps::from_bits_truncate(arm_info.elf_hwcaps);
+                if !elf_hwcaps.is_empty() {
+                    cpu_info.push_str(" features: ");
+
+                    // Iterator::intersperse is still unstable, so do it manually
+                    let mut comma = "";
+                    for &(_, feature) in features
+                        .iter()
+                        .filter(|&&(feature, _)| elf_hwcaps.contains(feature))
+                    {
+                        cpu_info.push_str(comma);
+                        cpu_info.push_str(feature);
+                        comma = ",";
+                    }
+                }
+
+                Some(cpu_info)
+            }
+            _ => None,
+        };
+
+        Ok(MinidumpSystemInfo {
+            raw,
+            os,
+            cpu,
+            csd_version,
+            cpu_info,
+        })
     }
 }
 
@@ -1468,6 +1621,8 @@ impl MinidumpSystemInfo {
   platform_id                                = {:#x}
   csd_version_rva                            = {:#x}
   suite_mask                                 = {:#x}
+  (version)                                  = {}{}{} {}
+  (cpu_info)                                 = {}
 
 ",
             self.raw.processor_architecture,
@@ -1480,10 +1635,24 @@ impl MinidumpSystemInfo {
             self.raw.build_number,
             self.raw.platform_id,
             self.raw.csd_version_rva,
-            self.raw.suite_mask
+            self.raw.suite_mask,
+            self.raw.major_version,
+            self.raw.minor_version,
+            self.raw.build_number,
+            self.csd_version().as_deref().unwrap_or(""),
+            self.cpu_info().as_deref().unwrap_or(""),
         )?;
         // TODO: cpu info etc
         Ok(())
+    }
+
+    pub fn csd_version(&self) -> Option<Cow<str>> {
+        self.csd_version.as_deref().map(Cow::Borrowed)
+    }
+
+    /// Returns a string describing the cpu's vendor and model.
+    pub fn cpu_info(&self) -> Option<Cow<str>> {
+        self.cpu_info.as_deref().map(Cow::Borrowed)
     }
 }
 
