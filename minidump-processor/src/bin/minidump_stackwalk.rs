@@ -14,7 +14,7 @@ use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};
 
 use clap::{crate_authors, crate_version, App, Arg};
 use log::error;
-use simplelog::{Config, LevelFilter, TermLogger, TerminalMode};
+use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 
 fn print_minidump_process(
     path: &Path,
@@ -132,7 +132,12 @@ fn main() {
     };
 
     // Init the logger
-    let _ = TermLogger::init(verbosity, Config::default(), TerminalMode::Stderr);
+    let _ = TermLogger::init(
+        verbosity,
+        Config::default(),
+        TerminalMode::Stderr,
+        ColorChoice::Auto,
+    );
 
     // Set a panic hook to redirect to the logger
     panic::set_hook(Box::new(|panic_info| {
