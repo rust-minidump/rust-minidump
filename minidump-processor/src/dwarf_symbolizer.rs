@@ -58,6 +58,7 @@ impl SymbolProvider for DwarfSymbolizer {
                             line,
                             ..
                         }),
+                    ..
                 })) = iter.next()
                 {
                     //TODO: get base address for line
