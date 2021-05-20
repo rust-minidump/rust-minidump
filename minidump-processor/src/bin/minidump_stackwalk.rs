@@ -77,11 +77,6 @@ fn main() {
                 .long("pretty")
         )
         .arg(
-            Arg::with_name("pipe-dump")
-                .help("Produce pipe-delimited output in addition to JSON output")
-                .long("pipe-dump")
-        )
-        .arg(
             Arg::with_name("verbose")
                 .help("Set the level of verbosity (off, error (default), warn, info, debug, trace)")
                 .long("verbose")
@@ -90,7 +85,7 @@ fn main() {
         )
         .arg(
             Arg::with_name("raw-json")
-                .help("An input file with the raw annotations as JSON")
+                .help("An input JSON file with the extra information (not yet implemented)")
                 .long("raw-json")
                 .takes_value(true),
         )
@@ -109,19 +104,19 @@ fn main() {
         )
         .arg(
             Arg::with_name("symbols-tmp")
-                .help("A directory to use as temp space for downloading symbols. Must be on the same filesystem as symbols-cache.")
+                .help("A directory to use as temp space for downloading symbols. Must be on the same filesystem as symbols-cache. (not yet implemented)")
                 .long("symbols-tmp")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("minidump")
-                .help("Path to minidump file")
+                .help("Path to the minidump file")
                 .required(true)
                 .takes_value(true)
         )
         .arg(
             Arg::with_name("symbols-path")
-                .help("Path to symbol file")
+                .help("Path to a symbol file")
                 .multiple(true)
                 .takes_value(true)
         )
@@ -160,7 +155,6 @@ fn main() {
     }));
 
     // All options the original minidump-stackwalk has, stubbed out for when we need them:
-    let _pipe = matches.is_present("pipe-dump");
     let _json_path = matches.value_of_os("raw-json").map(Path::new);
     let symbols_cache = matches
         .value_of_os("symbols-cache")
@@ -182,6 +176,11 @@ fn main() {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_else(Vec::new);
+
+    if pretty && human {
+        eprintln!("Humans must be hideous! (The --pretty and --human flags cannot both be set)");
+        std::process::exit(1);
+    }
 
     if symbols_urls.is_empty() != symbols_cache.is_none() {
         eprintln!("You must specify both --symbols-url and --symbols-cache when using one of these options");
