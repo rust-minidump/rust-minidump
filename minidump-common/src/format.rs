@@ -636,7 +636,7 @@ pub struct MINIDUMP_EXCEPTION {
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeWindows {
-    DBG_CONTROL_C = 0x40010005,
+    DBG_CONTROL_C = 0x40010005u32,
     EXCEPTION_GUARD_PAGE = 0x80000001,
     EXCEPTION_DATATYPE_MISALIGNMENT = 0x80000002,
     EXCEPTION_BREAKPOINT = 0x80000003,
@@ -679,7 +679,7 @@ pub enum ExceptionCodeWindows {
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinux {
     /// Hangup (POSIX)
-    SIGHUP = 0x1,
+    SIGHUP = 0x1u32,
     /// Interrupt (ANSI)
     SIGINT = 0x2,
     /// Quit (POSIX)
