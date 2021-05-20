@@ -1164,7 +1164,7 @@ pub struct CONTEXT_AMD64 {
 }
 
 /// ARM floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM {
     pub fpscr: u64,
     pub regs: [u64; 32],
@@ -1175,7 +1175,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for ARM
 /// in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
     pub iregs: [u32; 16],
@@ -1194,8 +1194,20 @@ pub enum ArmRegisterNumbers {
     ProgramCounter = 15,
 }
 
+impl ArmRegisterNumbers {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::IosFramePointer => "r7",
+            Self::FramePointer => "r11",
+            Self::StackPointer => "r13",
+            Self::LinkRegister => "r14",
+            Self::ProgramCounter => "r15",
+        }
+    }
+}
+
 /// aarch64 floating point state (old)
-#[derive(Debug, Clone, Copy, Pread, SizeWith)]
+#[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64_OLD {
     pub fpsr: u32,
     pub fpcr: u32,
@@ -1205,7 +1217,7 @@ pub struct FLOATING_SAVE_AREA_ARM64_OLD {
 /// An old aarch64 (arm64) CPU context
 ///
 /// This is a Breakpad extension.
-#[derive(Debug, Clone, Copy, Pread, SizeWith)]
+#[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
 #[repr(packed)]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
@@ -1216,7 +1228,7 @@ pub struct CONTEXT_ARM64_OLD {
 }
 
 /// aarch64 floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct FLOATING_SAVE_AREA_ARM64 {
     pub regs: [u128; 32usize],
     pub fpsr: u32,
@@ -1227,7 +1239,7 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for aarch64
 /// in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, SizeWith)]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
     pub cpsr: u32,
@@ -1248,6 +1260,17 @@ pub enum Arm64RegisterNumbers {
     LinkRegister = 30,
     StackPointer = 31,
     ProgramCounter = 32,
+}
+
+impl Arm64RegisterNumbers {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::FramePointer => "x29",
+            Self::LinkRegister => "x30",
+            Self::StackPointer => "sp",
+            Self::ProgramCounter => "pc",
+        }
+    }
 }
 
 /// MIPS floating point state
