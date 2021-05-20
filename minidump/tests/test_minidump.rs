@@ -16,8 +16,11 @@ fn get_test_minidump_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(file!());
     path.pop();
     path.pop();
+    path.pop();
+    path.push("../");
     path.push("testdata");
     path.push(filename);
+    println!("{:?}", path);
     path
 }
 
