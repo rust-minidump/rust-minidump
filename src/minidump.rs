@@ -255,7 +255,43 @@ pub struct MinidumpBreakpadInfo {
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CrashReason {
-    Unknown,
+    /// A Mac/iOS error code with no other interesting details.
+    MacGeneral(md::ExceptionCodeMac, u32),
+    MacBadAccessKern(md::ExceptionCodeMacBadAccessKernType),
+    MacBadAccessArm(md::ExceptionCodeMacBadAccessArmType),
+    MacBadAccessPpc(md::ExceptionCodeMacBadAccessPpcType),
+    MacBadAccessX86(md::ExceptionCodeMacBadAccessX86Type),
+    MacBadInstructionArm(md::ExceptionCodeMacBadInstructionArmType),
+    MacBadInstructionPpc(md::ExceptionCodeMacBadInstructionPpcType),
+    MacBadInstructionX86(md::ExceptionCodeMacBadInstructionX86Type),
+    MacArithmeticPpc(md::ExceptionCodeMacArithmeticPpcType),
+    MacArithmeticX86(md::ExceptionCodeMacArithmeticX86Type),
+    MacSoftware(md::ExceptionCodeMacSoftwareType),
+    MacBreakpointArm(md::ExceptionCodeMacBreakpointArmType),
+    MacBreakpointPpc(md::ExceptionCodeMacBreakpointPpcType),
+    MacBreakpointX86(md::ExceptionCodeMacBreakpointX86Type),
+
+    /// A Linux/Android error code with no other interesting metadata.
+    LinuxGeneral(md::ExceptionCodeLinux, u32),
+    LinuxSigill(md::ExceptionCodeLinuxSigillKind),
+    LinuxSigbus(md::ExceptionCodeLinuxSigbusKind),
+    LinuxSigfpe(md::ExceptionCodeLinuxSigfpeKind),
+    LinuxSigsegv(md::ExceptionCodeLinuxSigsegvKind),
+
+    /// A Windows error code with no other interesting metadata.
+    WindowsGeneral(md::ExceptionCodeWindows),
+    /// ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION but with details on the kind of access.
+    WindowsAccessViolation(md::ExceptionCodeWindowsAccessType),
+    /// ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR but with details on the kind of access.
+    /// Second argument is a windows NTSTATUS value.
+    WindowsInPageError(md::ExceptionCodeWindowsInPageErrorType, u64),
+    /// ExceptionCodeWindows::EXCEPTION_STACK_BUFFER_OVERRUN with an accompanying
+    /// windows FAST_FAIL value.
+    WindowsStackBufferOverrun(u64),
+    /// A Windows error with no known mapping, holds a windows NTSTATUS value.
+    WindowsUnknown(u32),
+
+    Unknown(u32, u32),
 }
 
 /// Information about the exception that caused the minidump to be generated.
@@ -1993,9 +2029,250 @@ impl MinidumpBreakpadInfo {
 
 impl CrashReason {
     /// Get a `CrashReason` from a `MINIDUMP_EXCEPTION_STREAM` for a given `Os`.
-    fn from_exception(_raw: &md::MINIDUMP_EXCEPTION_STREAM, _os: Os) -> CrashReason {
-        // TODO: flesh this out
-        CrashReason::Unknown
+    fn from_exception(raw: &md::MINIDUMP_EXCEPTION_STREAM, os: Os, cpu: Cpu) -> CrashReason {
+        use md::{ExceptionCodeLinux, ExceptionCodeMac, ExceptionCodeWindows};
+
+        let record = &raw.exception_record;
+        let info = &record.exception_information;
+        let exception_code = record.exception_code;
+        let exception_flags = record.exception_flags;
+
+        // The reason value is OS-specific and possibly CPU-specific. Default
+        // to a totally generic unknown code, and try to find a more precise
+        // value.
+        let mut reason = CrashReason::Unknown(exception_code, exception_flags);
+
+        match os {
+            Os::MacOs | Os::Ios => {
+                // Default to just directly reporting this reason.
+                let mac_reason = md::ExceptionCodeMac::from_u32(exception_code);
+                if let Some(mac_reason) = mac_reason {
+                    reason = CrashReason::MacGeneral(mac_reason, exception_flags);
+                }
+                // Refine the output for error codes that have more info
+                match mac_reason {
+                    Some(ExceptionCodeMac::EXC_BAD_ACCESS) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeMacBadAccessKernType::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::MacBadAccessKern(ty);
+                        } else {
+                            match cpu {
+                                Cpu::Arm64 => {
+                                    if let Some(ty) = md::ExceptionCodeMacBadAccessArmType::from_u32(
+                                        exception_flags,
+                                    ) {
+                                        reason = CrashReason::MacBadAccessArm(ty);
+                                    }
+                                }
+                                Cpu::Ppc => {
+                                    if let Some(ty) = md::ExceptionCodeMacBadAccessPpcType::from_u32(
+                                        exception_flags,
+                                    ) {
+                                        reason = CrashReason::MacBadAccessPpc(ty);
+                                    }
+                                }
+                                Cpu::X86 | Cpu::X86_64 => {
+                                    if let Some(ty) = md::ExceptionCodeMacBadAccessX86Type::from_u32(
+                                        exception_flags,
+                                    ) {
+                                        reason = CrashReason::MacBadAccessX86(ty);
+                                    }
+                                }
+                                _ => {
+                                    // Do nothing
+                                }
+                            }
+                        }
+                    }
+                    Some(ExceptionCodeMac::EXC_BAD_INSTRUCTION) => match cpu {
+                        Cpu::Arm64 => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBadInstructionArmType::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBadInstructionArm(ty);
+                            }
+                        }
+                        Cpu::Ppc => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBadInstructionPpcType::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBadInstructionPpc(ty);
+                            }
+                        }
+                        Cpu::X86 | Cpu::X86_64 => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBadInstructionX86Type::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBadInstructionX86(ty);
+                            }
+                        }
+                        _ => {
+                            // Do nothing
+                        }
+                    },
+                    Some(ExceptionCodeMac::EXC_ARITHMETIC) => match cpu {
+                        Cpu::Ppc => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacArithmeticPpcType::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacArithmeticPpc(ty);
+                            }
+                        }
+                        Cpu::X86 | Cpu::X86_64 => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacArithmeticX86Type::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacArithmeticX86(ty);
+                            }
+                        }
+                        _ => {
+                            // Do nothing
+                        }
+                    },
+                    Some(ExceptionCodeMac::EXC_SOFTWARE) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeMacSoftwareType::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::MacSoftware(ty);
+                        }
+                    }
+                    Some(ExceptionCodeMac::EXC_BREAKPOINT) => match cpu {
+                        Cpu::Arm64 => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBreakpointArmType::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBreakpointArm(ty);
+                            }
+                        }
+                        Cpu::Ppc => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBreakpointPpcType::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBreakpointPpc(ty);
+                            }
+                        }
+                        Cpu::X86 | Cpu::X86_64 => {
+                            if let Some(ty) =
+                                md::ExceptionCodeMacBreakpointX86Type::from_u32(exception_flags)
+                            {
+                                reason = CrashReason::MacBreakpointX86(ty);
+                            }
+                        }
+                        _ => {
+                            // Do nothing
+                        }
+                    },
+                    _ => {
+                        // Do nothing
+                    }
+                }
+            }
+            Os::Linux | Os::Android => {
+                // Default to just directly reporting this reason.
+                let linux_reason = ExceptionCodeLinux::from_u32(exception_code);
+                if let Some(linux_reason) = linux_reason {
+                    reason = CrashReason::LinuxGeneral(linux_reason, exception_flags);
+                }
+                // Refine the output for error codes that have more info
+                match linux_reason {
+                    Some(ExceptionCodeLinux::SIGILL) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeLinuxSigillKind::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::LinuxSigill(ty);
+                        }
+                    }
+                    Some(ExceptionCodeLinux::SIGFPE) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeLinuxSigfpeKind::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::LinuxSigfpe(ty);
+                        }
+                    }
+                    Some(ExceptionCodeLinux::SIGSEGV) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeLinuxSigsegvKind::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::LinuxSigsegv(ty);
+                        }
+                    }
+                    Some(ExceptionCodeLinux::SIGBUS) => {
+                        if let Some(ty) =
+                            md::ExceptionCodeLinuxSigbusKind::from_u32(exception_flags)
+                        {
+                            reason = CrashReason::LinuxSigbus(ty);
+                        }
+                    }
+                    _ => {
+                        // Do nothing
+                    }
+                }
+            }
+            Os::Windows => {
+                // Default to just directly reporting this reason.
+                let win_reason = ExceptionCodeWindows::from_u32(exception_code);
+                if let Some(win_reason) = win_reason {
+                    reason = CrashReason::WindowsGeneral(win_reason);
+                }
+                // Refine the output for error codes that have more info
+                match win_reason {
+                    Some(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
+                        // For EXCEPTION_ACCESS_VIOLATION, Windows puts the address that
+                        // caused the fault in exception_information[1].
+                        // exception_information[0] is 0 if the violation was caused by
+                        // an attempt to read data, 1 if it was an attempt to write data,
+                        // and 8 if this was a data execution violation.
+                        // This information is useful in addition to the code address, which
+                        // will be present in the crash thread's instruction field anyway.
+                        if record.number_parameters >= 1 {
+                            // NOTE: address := info[1];
+                            if let Some(ty) = md::ExceptionCodeWindowsAccessType::from_u64(info[0])
+                            {
+                                reason = CrashReason::WindowsAccessViolation(ty);
+                            }
+                        }
+                    }
+                    Some(ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR) => {
+                        // For EXCEPTION_IN_PAGE_ERROR, Windows puts the address that
+                        // caused the fault in exception_information[1].
+                        // exception_information[0] is 0 if the violation was caused by
+                        // an attempt to read data, 1 if it was an attempt to write data,
+                        // and 8 if this was a data execution violation.
+                        // exception_information[2] contains the underlying NTSTATUS code,
+                        // which is the explanation for why this error occured.
+                        // This information is useful in addition to the code address, which
+                        // will be present in the crash thread's instruction field anyway.
+                        if record.number_parameters >= 3 {
+                            // NOTE: address := info[1];
+                            let nt_status = info[2];
+                            if let Some(ty) =
+                                md::ExceptionCodeWindowsInPageErrorType::from_u64(info[0])
+                            {
+                                reason = CrashReason::WindowsInPageError(ty, nt_status);
+                            }
+                        }
+                    }
+                    Some(ExceptionCodeWindows::STATUS_STACK_BUFFER_OVERRUN) => {
+                        if record.number_parameters >= 1 {
+                            let fast_fail = info[0];
+                            reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
+                        }
+                    }
+                    None => {
+                        reason = CrashReason::WindowsUnknown(exception_code);
+                    }
+                    _ => {
+                        // Do nothing interesting
+                    }
+                }
+            }
+            _ => {
+                // Unimplemented
+            }
+        }
+
+        reason
     }
 }
 
@@ -2007,13 +2284,76 @@ impl fmt::Display for CrashReason {
     /// "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV"
     /// (other Unix).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match *self {
-                CrashReason::Unknown => "unknown",
+        use CrashReason::*;
+
+        fn write_nt_status(_f: &mut fmt::Formatter<'_>, _nt_status: u64) -> fmt::Result {
+            // TODO: implement this
+            Ok(())
+        }
+
+        fn write_fast_fail(_f: &mut fmt::Formatter<'_>, _fast_fail: u64) -> fmt::Result {
+            // TODO: implement this
+            Ok(())
+        }
+
+        // OK this is kinda a gross hack but I *really* don't want
+        // to write out all these strings again, so let's just lean on Debug
+        // repeating the name of the enum variant!
+        match *self {
+            // ======================== Mac/iOS ============================
+
+            // These codes get special messages
+            MacGeneral(md::ExceptionCodeMac::SIMULATED, _) => write!(f, "Simulated Exception"),
+
+            // Thse codes just repeat their names
+            MacGeneral(ex, flags) => write!(f, "{:?} / 0x{:08x}", ex, flags),
+            MacBadAccessKern(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
+            MacBadAccessArm(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
+            MacBadAccessPpc(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
+            MacBadAccessX86(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
+            MacBadInstructionArm(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
+            MacBadInstructionPpc(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
+            MacBadInstructionX86(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
+            MacArithmeticPpc(ex) => write!(f, "EXC_ARITHMETIC / {:?}", ex),
+            MacArithmeticX86(ex) => write!(f, "EXC_ARITHMETIC / {:?}", ex),
+            MacSoftware(ex) => write!(f, "EXC_SOFTWARE / {:?}", ex),
+            MacBreakpointArm(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
+            MacBreakpointPpc(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
+            MacBreakpointX86(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
+
+            // ===================== Linux/Android =========================
+
+            // These codes just repeat their names
+            LinuxGeneral(ex, flags) => write!(f, "{:?} / 0x{:08x}", ex, flags),
+            LinuxSigill(ex) => write!(f, "SIGILL / {:?}", ex),
+            LinuxSigbus(ex) => write!(f, "SIGBUS / {:?}", ex),
+            LinuxSigfpe(ex) => write!(f, "SIGFPE / {:?}", ex),
+            LinuxSigsegv(ex) => write!(f, "SIGSEGV / {:?}", ex),
+
+            // ======================== Windows =============================
+
+            // These codes get special messages
+            WindowsGeneral(md::ExceptionCodeWindows::OUT_OF_MEMORY) => write!(f, "Out of Memory"),
+            WindowsGeneral(md::ExceptionCodeWindows::UNHANDLED_CPP_EXCEPTION) => {
+                write!(f, "Unhandled C++ Exception")
             }
-        )
+            WindowsGeneral(md::ExceptionCodeWindows::SIMULATED) => write!(f, "Simulated Exception"),
+            // These codes just repeat their names
+            WindowsGeneral(ex) => write!(f, "{:?}", ex),
+            WindowsAccessViolation(ex) => write!(f, "EXCEPTION_ACCESS_VIOLATION_{:?}", ex),
+            WindowsInPageError(ex, nt_status) => {
+                write!(f, "EXCEPTION_IN_PAGE_ERROR_{:?} / ", ex)?;
+                write_nt_status(f, nt_status)
+            }
+            WindowsStackBufferOverrun(fast_fail) => {
+                write!(f, "EXCEPTION_STACK_BUFFER_OVERRUN / ")?;
+                write_fast_fail(f, fast_fail)
+            }
+            // Fall back to treating the error as an NTSTATUS
+            WindowsUnknown(nt_status) => write_nt_status(f, nt_status as u64),
+
+            Unknown(code, flags) => write!(f, "unknown 0x{:08} / 0x{:08}", code, flags),
+        }
     }
 }
 
@@ -2057,8 +2397,8 @@ impl MinidumpException {
     }
 
     /// Get the crash reason for an exception.
-    pub fn get_crash_reason(&self, os: Os) -> CrashReason {
-        CrashReason::from_exception(&self.raw, os)
+    pub fn get_crash_reason(&self, os: Os, cpu: Cpu) -> CrashReason {
+        CrashReason::from_exception(&self.raw, os, cpu)
     }
 
     pub fn get_crashing_thread_id(&self) -> u32 {

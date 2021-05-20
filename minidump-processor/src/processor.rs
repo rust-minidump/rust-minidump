@@ -162,7 +162,7 @@ where
     let exception_ref = exception_stream.as_ref();
     let (crash_reason, crash_address, crashing_thread_id) = if let Some(exception) = exception_ref {
         (
-            Some(exception.get_crash_reason(system_info.os)),
+            Some(exception.get_crash_reason(system_info.os, system_info.cpu)),
             Some(exception.get_crash_address(system_info.os)),
             Some(exception.get_crashing_thread_id()),
         )

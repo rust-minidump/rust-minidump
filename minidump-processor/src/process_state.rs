@@ -499,7 +499,7 @@ Unloaded modules:
             },
             "crash_info": {
                 // TODO: Issue #22
-                "type": "TODO",
+                "type": self.crash_reason.map(|reason| reason.to_string()),
                 "address": self.crash_address.map(json_hex),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
