@@ -1,12 +1,15 @@
 [package]
 name = "minidump-stackwalk"
+description = "A CLI minidump analyzer"
 version = "0.3.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
-readme = "README.md"
 documentation = "https://docs.rs/minidump-stackwalk"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
+keywords = ["breakpad", "symbols"]
+categories = ["parsing"]
+readme = "README.md"
 edition = "2018"
 
 [badges]
