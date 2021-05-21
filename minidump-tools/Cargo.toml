@@ -1,14 +1,14 @@
 [package]
 name = "minidump-tools"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 edition = "2018"
 
 [dependencies]
-breakpad-symbols = { version = "0.1.1", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.3.0", path = "../breakpad-symbols" }
 failure = "0.1.1"
-minidump = { version = "0.2.0", path = ".." }
-minidump-common = { version = "0.2.0", path = "../minidump-common" }
+minidump = { version = "0.3.0", path = "../minidump" }
+minidump-common = { version = "0.3.0", path = "../minidump-common" }
 structopt = { version = "0.3", default-features = false }
 disasm = { git = "https://github.com/luser/rust-disasm", rev = "274ff86cd5258e8e6534d93ad7a063105b7ecb99" }
 reqwest = { version = "0.10.8", features = ["blocking"] }

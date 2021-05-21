@@ -1,0 +1,28 @@
+[package]
+name = "minidump"
+description = "A parser for the minidump format."
+version = "0.3.0"
+authors = ["Ted Mielczarek <ted@mielczarek.org>"]
+license = "MIT"
+documentation = "https://luser.github.io/rust-project-docs/minidump/minidump/"
+homepage = "https://github.com/luser/rust-minidump"
+repository = "https://github.com/luser/rust-minidump"
+keywords = ["breakpad", "symbols"]
+categories = ["parsing"]
+readme = "../README.md"
+edition = "2018"
+
+[dependencies]
+failure = "0.1.1"
+range-map = "0.1.5"
+libc = "0.2.34"
+minidump-common = { version = "0.3.0", path = "../minidump-common" }
+num-traits = "0.2"
+encoding = "0.2"
+chrono = "0.4.6"
+scroll = "0.10.2"
+memmap = "0.7.0"
+
+[dev-dependencies]
+test-assembler = "0.1.5"
+doc-comment = "0.3.3"
