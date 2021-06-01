@@ -14,17 +14,21 @@ use crate::process_state::{CallStack, CallStackInfo, ProcessState};
 use crate::stackwalker;
 use crate::system_info::SystemInfo;
 
+use async_trait::async_trait;
+
+#[async_trait(?Send)]
 pub trait SymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
+    async fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
+    async fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
 }
 
+#[async_trait(?Send)]
 impl SymbolProvider for Symbolizer {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
-        self.fill_symbol(module, frame);
+    async fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+        self.fill_symbol(module, frame).await
     }
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
-        self.walk_frame(module, walker)
+    async fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+        self.walk_frame(module, walker).await
     }
 }
 
@@ -43,16 +47,17 @@ impl MultiSymbolProvider {
     }
 }
 
+#[async_trait(?Send)]
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    async fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         for p in self.providers.iter() {
-            p.fill_symbol(module, frame);
+            p.fill_symbol(module, frame).await;
         }
     }
 
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+    async fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
         for p in self.providers.iter() {
-            let result = p.walk_frame(module, walker);
+            let result = p.walk_frame(module, walker).await;
             if result.is_some() {
                 return result;
             }
@@ -101,7 +106,7 @@ impl From<minidump::Error> for ProcessError {
 /// # }
 /// # fn main() { foo().unwrap() }
 /// ```
-pub fn process_minidump<'a, T, P>(
+pub async fn process_minidump<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
 ) -> Result<ProcessState, ProcessError>
@@ -217,7 +222,7 @@ where
                 .and_then(|memory| memory.memory_at_address(stack_addr))
         });
 
-        let stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
+        let stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider).await;
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis

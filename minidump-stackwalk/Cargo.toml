@@ -23,4 +23,5 @@ log = "0.4"
 minidump = { version = "0.3.0", path = "../minidump" }
 minidump-processor = { version = "0.3.0", path = "../minidump-processor" }
 simplelog = "0.10.0"
+futures = "0.3"
 

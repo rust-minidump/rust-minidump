@@ -12,12 +12,15 @@ use minidump::Module;
 
 use crate::SymbolProvider;
 
+use async_trait::async_trait;
+
 #[derive(Default)]
 pub struct DwarfSymbolizer {
     /// A mapping of lookups of symbol files, where the key is the path to the binary.
     known_modules: RefCell<HashMap<String, Option<Context<EndianRcSlice<RunTimeEndian>>>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn locate_symbols(path: &str) -> Result<Context<EndianRcSlice<RunTimeEndian>>, Error> {
     let f = File::open(path)?;
     let buf = unsafe { memmap::Mmap::map(&f)? };
@@ -32,14 +35,17 @@ fn locate_symbols(path: &str) -> Result<Context<EndianRcSlice<RunTimeEndian>>, E
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl DwarfSymbolizer {
     pub fn new() -> DwarfSymbolizer {
         Default::default()
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait(?Send)]
 impl SymbolProvider for DwarfSymbolizer {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    async fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let path = module.code_file();
         let k = path.as_ref();
         if !self.known_modules.borrow().contains_key(k) {
@@ -73,7 +79,7 @@ impl SymbolProvider for DwarfSymbolizer {
             }
         }
     }
-    fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
+    async fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
         // unimplemented
         None
     }

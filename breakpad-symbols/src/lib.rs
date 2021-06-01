@@ -31,6 +31,7 @@
 
 use failure::Error;
 use log::{debug, warn};
+#[cfg(not(target_arch = "wasm32"))]
 use reqwest::blocking::Client;
 use reqwest::Url;
 
@@ -46,6 +47,8 @@ use std::path::{Path, PathBuf};
 pub use minidump_common::traits::Module;
 
 pub use crate::sym_file::{CfiRules, SymbolFile};
+
+use async_trait::async_trait;
 
 mod sym_file;
 
@@ -191,12 +194,13 @@ impl fmt::Display for SymbolResult {
 }
 
 /// A trait for things that can locate symbols for a given module.
+#[async_trait(?Send)]
 pub trait SymbolSupplier {
     /// Locate and load a symbol file for `module`.
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult;
+    async fn locate_symbols(&self, module: &dyn Module) -> SymbolResult;
 }
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
@@ -217,8 +221,9 @@ impl SimpleSymbolSupplier {
     }
 }
 
+#[async_trait(?Send)]
 impl SymbolSupplier for SimpleSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+    async fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for ref path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
@@ -239,6 +244,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
 /// See [`relative_symbol_path`] for details on how paths are searched.
 ///
 /// [`relative_symbol_path`]: fn.relative_symbol_path.html
+#[cfg(not(target_arch = "wasm32"))]
 pub struct HttpSymbolSupplier {
     /// HTTP Client to use for fetching symbols.
     client: Client,
@@ -250,6 +256,7 @@ pub struct HttpSymbolSupplier {
     cache: PathBuf,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl HttpSymbolSupplier {
     /// Create a new `HttpSymbolSupplier`.
     ///
@@ -282,6 +289,7 @@ impl HttpSymbolSupplier {
 }
 
 /// Save the data in `contents` to `path`.
+#[cfg(not(target_arch = "wasm32"))]
 fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
     let base = path.parent().ok_or_else(|| {
         io::Error::new(io::ErrorKind::Other, format!("Bad cache path: {:?}", path))
@@ -294,6 +302,7 @@ fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
 
 /// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
 /// save the file contents under `cache` + `rel_path` and also return them.
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_symbol_file(
     client: &Client,
     base_url: &Url,
@@ -313,10 +322,12 @@ fn fetch_symbol_file(
     Ok(buf)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[async_trait(?Send)]
 impl SymbolSupplier for HttpSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+    async fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
         // Check local paths first.
-        match self.local.locate_symbols(module) {
+        match self.local.locate_symbols(module).await {
             res @ SymbolResult::Ok(_) | res @ SymbolResult::LoadError(_) => res,
             SymbolResult::NotFound => {
                 if let Some(rel_path) = relative_symbol_path(module, "sym") {
@@ -471,7 +482,7 @@ impl Symbolizer {
     /// See [the module-level documentation][module] for an example.
     ///
     /// [module]: index.html
-    pub fn get_symbol_at_address(
+    pub async fn get_symbol_at_address(
         &self,
         debug_file: &str,
         debug_id: &str,
@@ -479,7 +490,7 @@ impl Symbolizer {
     ) -> Option<String> {
         let k = (debug_file, debug_id);
         let mut frame = SimpleFrame::with_instruction(address);
-        self.fill_symbol(&k, &mut frame);
+        self.fill_symbol(&k, &mut frame).await;
         frame.function
     }
 
@@ -507,17 +518,17 @@ impl Symbolizer {
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    pub async fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
         let k = key(module);
-        self.ensure_module(module, &k);
+        self.ensure_module(module, &k).await;
         if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
             sym.fill_symbol(module, frame)
         }
     }
 
-    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+    pub async fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
         let k = key(module);
-        self.ensure_module(module, &k);
+        self.ensure_module(module, &k).await;
         if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
             sym.walk_frame(module, walker)
         } else {
@@ -525,9 +536,9 @@ impl Symbolizer {
         }
     }
 
-    fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
+    async fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
         if !self.symbols.borrow().contains_key(&k) {
-            let res = self.supplier.locate_symbols(module);
+            let res = self.supplier.locate_symbols(module).await;
             debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
         }

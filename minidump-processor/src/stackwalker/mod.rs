@@ -74,10 +74,10 @@ where
     }
 }
 
-fn get_caller_frame<P>(
+async fn get_caller_frame<P>(
     callee_frame: &StackFrame,
     grand_callee_frame: Option<&StackFrame>,
-    stack_memory: Option<&MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -100,7 +100,7 @@ where
             grand_callee_frame,
             modules,
             symbol_provider,
-        ),
+        ).await,
         MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(
             &callee_frame.context.valid,
             callee_frame.trust,
@@ -108,12 +108,12 @@ where
             grand_callee_frame,
             modules,
             symbol_provider,
-        ),
+        ).await,
         _ => None,
     }
 }
 
-fn fill_source_line_info<P>(
+async fn fill_source_line_info<P>(
     frame: &mut StackFrame,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -125,13 +125,13 @@ fn fill_source_line_info<P>(
         // FIXME: this shouldn't need to clone, we should be able to use
         // the same lifetime as the module list that's passed in.
         frame.module = Some(module.clone());
-        symbol_provider.fill_symbol(module, frame);
+        symbol_provider.fill_symbol(module, frame).await;
     }
 }
 
-pub fn walk_stack<P>(
+pub async fn walk_stack<P>(
     maybe_context: &Option<&MinidumpContext>,
-    stack_memory: Option<&MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> CallStack
@@ -146,7 +146,7 @@ where
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
-            fill_source_line_info(&mut frame, modules, symbol_provider);
+            fill_source_line_info(&mut frame, modules, symbol_provider).await;
             frames.push(frame);
             let callee_frame = &frames.last().unwrap();
             let grand_callee_frame = frames.len().checked_sub(2).and_then(|idx| frames.get(idx));
@@ -156,7 +156,7 @@ where
                 stack_memory,
                 modules,
                 symbol_provider,
-            );
+            ).await;
         }
     } else {
         info = CallStackInfo::MissingContext;

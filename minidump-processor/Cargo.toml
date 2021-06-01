@@ -21,13 +21,16 @@ clap = "2.33"
 failure = "0.1.1"
 gimli = "0.24"
 log = "0.4"
-memmap = "0.7.0"
 minidump = { version = "0.3.0", path = "../minidump" }
 object = "0.24"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = "0.10.0"
 scroll = "0.10.2"
+async-trait = "0.1.50"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memmap = "0.7.0"
 
 [dev-dependencies]
 test-assembler = "0.1.5"

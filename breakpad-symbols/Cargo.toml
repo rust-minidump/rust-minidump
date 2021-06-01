@@ -20,6 +20,7 @@ nom = "~1.2.2"
 log = "0.4.1"
 reqwest = { version = "0.11.3", features = ["blocking", "gzip"] }
 failure = "0.1.1"
+async-trait = "0.1.50"
 
 [dev-dependencies]
 tempdir = "0.3"

@@ -21,6 +21,8 @@ num-traits = "0.2"
 encoding = "0.2"
 chrono = "0.4.6"
 scroll = "0.10.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap = "0.7.0"
 
 [dev-dependencies]

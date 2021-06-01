@@ -5,6 +5,7 @@ use chrono::prelude::*;
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use failure::Fail;
+#[cfg(not(target_arch = "wasm32"))]
 use memmap::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -2779,6 +2780,7 @@ impl MinidumpCrashpadInfo {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<'a> Minidump<'a, Mmap> {
     /// Read a `Minidump` from a `Path` to a file on disk.
     ///

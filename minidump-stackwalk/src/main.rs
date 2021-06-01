@@ -16,7 +16,10 @@ use clap::{crate_authors, crate_version, App, Arg};
 use log::error;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 
-fn print_minidump_process(
+use futures::executor::block_on;
+
+
+async fn print_minidump_process(
     path: &Path,
     symbol_paths: Vec<PathBuf>,
     symbol_urls: Vec<String>,
@@ -40,7 +43,7 @@ fn print_minidump_process(
         }
         provider.add(Box::new(DwarfSymbolizer::new()));
 
-        match minidump_processor::process_minidump(&dump, &provider) {
+        match minidump_processor::process_minidump(&dump, &provider).await {
             Ok(state) => {
                 let mut stdout = std::io::stdout();
                 if human {
@@ -192,12 +195,12 @@ fn main() {
         std::process::exit(1);
     }
 
-    print_minidump_process(
+    block_on(print_minidump_process(
         minidump_path,
         symbols_paths,
         symbols_urls,
         symbols_cache,
         human,
         pretty,
-    );
+    ));
 }

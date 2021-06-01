@@ -17,6 +17,7 @@ use minidump::{
     MinidumpRawContext,
 };
 use std::collections::HashSet;
+use async_trait::async_trait;
 
 type Pointer = u64;
 const POINTER_WIDTH: Pointer = 8;
@@ -112,11 +113,11 @@ where
     Some(frame)
 }
 
-fn get_caller_by_cfi<P>(
+async fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_AMD64,
     valid: &MinidumpContextValidity,
     _trust: FrameTrust,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -157,7 +158,7 @@ where
         stack_memory,
     };
 
-    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    symbol_provider.walk_frame(module, &mut stack_walker).await?;
     let caller_ip = stack_walker.caller_ctx.rip;
     let caller_sp = stack_walker.caller_ctx.rsp;
 
@@ -369,12 +370,13 @@ fn is_non_canonical(ptr: Pointer) -> bool {
     ptr > 0x7FFFFFFFFFFF && ptr < 0xFFFF800000000000
 }
 
+#[async_trait(?Send)]
 impl Unwind for CONTEXT_AMD64 {
-    fn get_caller_frame<P>(
+    async fn get_caller_frame<P>(
         &self,
         valid: &MinidumpContextValidity,
         trust: FrameTrust,
-        stack_memory: Option<&MinidumpMemory>,
+        stack_memory: Option<&MinidumpMemory<'_>>,
         grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         syms: &P,
@@ -382,27 +384,24 @@ impl Unwind for CONTEXT_AMD64 {
     where
         P: SymbolProvider,
     {
-        stack_memory
-            .as_ref()
-            .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
-                    .or_else(|| {
-                        get_caller_by_frame_pointer(self, valid, trust, stack, modules, syms)
-                    })
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))
+        let stack = stack_memory.as_ref()?;
+        let frame = get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
+            .await
+            .or_else(|| {
+                get_caller_by_frame_pointer(self, valid, trust, stack, modules, syms)
             })
-            .and_then(|frame| {
-                // Treat an instruction address of 0 as end-of-stack.
-                if frame.context.get_instruction_pointer() == 0 {
-                    return None;
-                }
-                // If the new stack pointer is at a lower address than the old,
-                // then that's clearly incorrect. Treat this as end-of-stack to
-                // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.rsp {
-                    return None;
-                }
-                Some(frame)
-            })
+            .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))?;
+
+        // Treat an instruction address of 0 as end-of-stack.
+        if frame.context.get_instruction_pointer() == 0 {
+            return None;
+        }
+        // If the new stack pointer is at a lower address than the old,
+        // then that's clearly incorrect. Treat this as end-of-stack to
+        // enforce progress and avoid infinite loops.
+        if frame.context.get_stack_pointer() <= self.rsp {
+            return None;
+        }
+        Some(frame)
     }
 }
