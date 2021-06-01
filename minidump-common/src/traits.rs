@@ -70,7 +70,7 @@ impl<'a> Module for (&'a str, &'a str) {
 /// The `RangeMap` struct will panic if you attempt to initialize it with overlapping data,
 /// and we deal with many sources of untrusted input data that could run afoul of this.
 /// [Upstream issue](https://github.com/jneem/range-map/issues/1)
-pub trait IntoRangeMapSafe<V>: IntoIterator<Item = (Range<u64>, V)> + Sized
+pub trait IntoRangeMapSafe<V>: IntoIterator<Item = (Option<Range<u64>>, V)> + Sized
 where
     V: Clone + Debug + Eq,
 {
@@ -79,6 +79,12 @@ where
         input.sort_by_key(|x| x.0);
         let mut vec: Vec<(Range<u64>, V)> = Vec::with_capacity(input.len());
         for (range, val) in input.into_iter() {
+            if range.is_none() {
+                warn!("Unable to create valid range for {:?}", val);
+                continue;
+            }
+            let range = range.unwrap();
+
             if let Some(&mut (ref mut last_range, ref last_val)) = vec.last_mut() {
                 if range.start <= last_range.end && &val != last_val {
                     //TODO: add a way for callers to do custom logging here? Perhaps
@@ -104,7 +110,7 @@ where
 
 impl<I, V> IntoRangeMapSafe<V> for I
 where
-    I: IntoIterator<Item = (Range<u64>, V)> + Sized,
+    I: IntoIterator<Item = (Option<Range<u64>>, V)> + Sized,
     V: Clone + Debug + Eq,
 {
 }

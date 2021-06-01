@@ -689,8 +689,14 @@ impl MinidumpModule {
         Ok(())
     }
 
-    fn memory_range(&self) -> Range<u64> {
-        Range::new(self.base_address(), self.base_address() + self.size() - 1)
+    fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size() == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.base_address(),
+            self.base_address().checked_add(self.size())? - 1,
+        ))
     }
 }
 
@@ -831,8 +837,14 @@ impl MinidumpUnloadedModule {
         Ok(())
     }
 
-    fn memory_range(&self) -> Range<u64> {
-        Range::new(self.base_address(), self.base_address() + self.size() - 1)
+    fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size() == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.base_address(),
+            self.base_address().checked_add(self.size())? - 1,
+        ))
     }
 }
 
@@ -1281,8 +1293,14 @@ Memory
         Ok(())
     }
 
-    fn memory_range(&self) -> Range<u64> {
-        Range::new(self.base_address, self.base_address + self.size - 1)
+    fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.base_address,
+            self.base_address.checked_add(self.size)? - 1,
+        ))
     }
 }
 
