@@ -33,6 +33,8 @@ pub struct SynthMinidump {
     unloaded_module_list: Option<ExListStream<UnloadedModule>>,
     /// List of threads in this minidump.
     thread_list: Option<ListStream<Thread>>,
+    /// List of thread names in this minidump.
+    thread_names_list: Option<ListStream<ThreadName>>,
     /// List of memory regions in this minidump.
     memory_list: Option<ListStream<Section>>,
     /// Crashpad extension containing annotations.
@@ -166,6 +168,10 @@ impl SynthMinidump {
                 md::MINIDUMP_STREAM_TYPE::ThreadListStream,
                 endian,
             )),
+            thread_names_list: Some(ListStream::new(
+                md::MINIDUMP_STREAM_TYPE::ThreadNamesStream,
+                endian,
+            )),
             memory_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::MemoryListStream,
                 endian,
@@ -232,6 +238,15 @@ impl SynthMinidump {
         self
     }
 
+    /// Add `thread_name` to `self`, adding it to the thread name stream as well.
+    pub fn add_thread_name(mut self, thread_name: ThreadName) -> SynthMinidump {
+        self.thread_names_list = self
+            .thread_names_list
+            .take()
+            .map(|thread_names_list| thread_names_list.add(thread_name));
+        self
+    }
+
     /// Add crashpad module and annotation extension information.
     pub fn add_crashpad_info(mut self, crashpad_info: CrashpadInfo) -> Self {
         self.crashpad_info = Some(crashpad_info);
@@ -285,6 +300,9 @@ impl SynthMinidump {
         // Add thread list stream if any threads were added.
         let threads = self.thread_list.take();
         self = self.finish_list(threads);
+        // Add thread names stream if any names were added.
+        let thread_names = self.thread_names_list.take();
+        self = self.finish_list(thread_names);
         // Add crashpad info stream if any.
         if let Some(crashpad_info) = self.crashpad_info.take() {
             self = self.add_stream(crashpad_info);
@@ -821,6 +839,32 @@ impl_dumpsection!(Thread);
 
 impl From<Thread> for Section {
     fn from(thread: Thread) -> Self {
+        thread.section
+    }
+}
+
+/// A minidump thread name.
+pub struct ThreadName {
+    section: Section,
+}
+
+impl ThreadName {
+    pub fn new(endian: Endian, id: u32, name: Option<&DumpString>) -> Self {
+        let section = Section::with_endian(endian).D32(id);
+        // Name is optional to test corrupt handles easily
+        let section = if let Some(name) = name {
+            section.D64(name.file_offset())
+        } else {
+            section.D64(0xFFFF_FFFF_FFFF_FFFF)
+        };
+        ThreadName { section }
+    }
+}
+
+impl_dumpsection!(ThreadName);
+
+impl From<ThreadName> for Section {
+    fn from(thread: ThreadName) -> Self {
         thread.section
     }
 }

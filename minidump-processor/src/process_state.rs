@@ -119,6 +119,8 @@ pub struct CallStack {
     pub frames: Vec<StackFrame>,
     /// Information about this `CallStack`.
     pub info: CallStackInfo,
+    /// The name of the thread, if known.
+    pub thread_name: Option<String>,
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -297,6 +299,7 @@ impl CallStack {
         CallStack {
             info,
             frames: vec![],
+            thread_name: None,
         }
     }
 
@@ -410,17 +413,19 @@ Crash address: {:#x}
         writeln!(f)?;
 
         if let Some(requesting_thread) = self.requesting_thread {
+            let stack = &self.threads[requesting_thread];
             writeln!(
                 f,
-                "Thread {} ({})",
+                "Thread {} {} ({})",
                 requesting_thread,
+                stack.thread_name.as_deref().unwrap_or(""),
                 if self.crashed() {
                     "crashed"
                 } else {
                     "requested dump, did not crash"
                 }
             )?;
-            self.threads[requesting_thread].print(f)?;
+            stack.print(f)?;
             writeln!(f)?;
         }
         for (i, stack) in self.threads.iter().enumerate() {
@@ -431,7 +436,12 @@ Crash address: {:#x}
             if stack.info == CallStackInfo::DumpThreadSkipped {
                 continue;
             }
-            writeln!(f, "Thread {}", i)?;
+            writeln!(
+                f,
+                "Thread {} {}",
+                i,
+                stack.thread_name.as_deref().unwrap_or("")
+            )?;
             stack.print(f)?;
         }
         write!(
@@ -564,7 +574,7 @@ Unloaded modules:
                 "last_error_value": null,
                 // TODO: Issue #173
                 // optional
-                "thread_name": null,
+                "thread_name": thread.thread_name,
                 "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
                     "frame": idx,
                     // optional

@@ -113,6 +113,11 @@ where
     let thread_list = dump
         .get_stream::<MinidumpThreadList>()
         .or(Err(ProcessError::MissingThreadList))?;
+    // Try to get thread names, but it's only a nice-to-have.
+    let thread_names = dump
+        .get_stream::<MinidumpThreadNames>()
+        .unwrap_or_else(|_| MinidumpThreadNames::default());
+
     // System info is required for processing.
     let dump_system_info = dump
         .get_stream::<MinidumpSystemInfo>()
@@ -217,7 +222,13 @@ where
                 .and_then(|memory| memory.memory_at_address(stack_addr))
         });
 
-        let stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
+        let mut stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
+
+        let name = thread_names
+            .get_name(thread.raw.thread_id)
+            .map(|cow| cow.into_owned());
+        stack.thread_name = name;
+
         threads.push(stack);
     }
     // if exploitability enabled, run exploitability analysis

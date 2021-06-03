@@ -20,6 +20,7 @@ use smart_default::SmartDefault;
 
 /// An offset from the start of the minidump file.
 pub type RVA = u32;
+pub type RVA64 = u64;
 
 /// The 4-byte magic number at the start of a minidump file.
 ///
@@ -173,11 +174,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     UnloadedModuleListStream = 14,
     /// Miscellaneous process and system information
     ///
-    /// See ['MINIDUMP_MISC_INFO'][struct.MINIDUMP_MISC_INFO.html).
+    /// See ['MINIDUMP_MISC_INFO'](struct.MINIDUMP_MISC_INFO.html).
     MiscInfoStream = 15,
     /// Information about memory regions from the process
     ///
-    /// See ['MINIDUMP_MEMORY_INFO_LIST'][struct.MINIDUMP_MEMORY_INFO_LIST.html).
+    /// See ['MINIDUMP_MEMORY_INFO_LIST'](struct.MINIDUMP_MEMORY_INFO_LIST.html).
     MemoryInfoListStream = 16,
     ThreadInfoListStream = 17,
     HandleOperationListStream = 18,
@@ -186,6 +187,9 @@ pub enum MINIDUMP_STREAM_TYPE {
     SystemMemoryInfoStream = 21,
     ProcessVmCountersStream = 22,
     IptTraceStream = 23,
+    /// Names of threads
+    ///
+    /// See ['MINIDUMP_THREAD_NAME'](struct.MINIDUMP_THREAD_NAME.html)
     ThreadNamesStream = 24,
     ceStreamNull = 25,
     ceStreamSystemInfo = 26,
@@ -204,11 +208,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     /* Breakpad extension types.  0x4767 = "Gg" */
     /// Additional process information (Breakpad extension)
     ///
-    /// See ['MINIDUMP_BREAKPAD_INFO'][struct.MINIDUMP_BREAKPAD_INFO.html).
+    /// See ['MINIDUMP_BREAKPAD_INFO'](struct.MINIDUMP_BREAKPAD_INFO.html).
     BreakpadInfoStream = 0x47670001,
     /// Assertion information (Breakpad extension)
     ///
-    /// See ['MINIDUMP_ASSERTION_INFO'][struct.MINIDUMP_ASSERTION_INFO.html).
+    /// See ['MINIDUMP_ASSERTION_INFO'](struct.MINIDUMP_ASSERTION_INFO.html).
     AssertionInfoStream = 0x47670002,
     /* These are additional minidump stream values which are specific to
      * the linux breakpad implementation. */
@@ -242,6 +246,15 @@ impl From<MINIDUMP_STREAM_TYPE> for u32 {
     fn from(ty: MINIDUMP_STREAM_TYPE) -> Self {
         ty as u32
     }
+}
+
+/// The name of a thread, found in the ThreadNamesStream.
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
+pub struct MINIDUMP_THREAD_NAME {
+    /// The id of the thread.
+    pub thread_id: u32,
+    /// Where the name of the thread is stored (yes, the legendary RVA64 is real!!).
+    pub thread_name_rva: RVA64,
 }
 
 /// Information about a single module (executable or shared library) from a minidump

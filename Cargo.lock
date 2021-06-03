@@ -991,6 +991,7 @@ dependencies = [
  "encoding",
  "failure",
  "libc",
+ "log",
  "memmap 0.7.0",
  "minidump-common",
  "num-traits 0.2.14",

@@ -161,7 +161,11 @@ where
     } else {
         info = CallStackInfo::MissingContext;
     }
-    CallStack { frames, info }
+    CallStack {
+        frames,
+        info,
+        thread_name: None,
+    }
 }
 
 #[cfg(test)]
