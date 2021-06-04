@@ -990,7 +990,6 @@ dependencies = [
  "doc-comment",
  "encoding",
  "failure",
- "libc",
  "log",
  "memmap 0.7.0",
  "minidump-common",
@@ -1006,7 +1005,6 @@ version = "0.3.0"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
- "libc",
  "log",
  "num-traits 0.2.14",
  "range-map",
