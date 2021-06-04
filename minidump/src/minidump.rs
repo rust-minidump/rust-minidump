@@ -5,6 +5,7 @@ use chrono::prelude::*;
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use failure::Fail;
+use log::warn;
 use memmap::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -148,6 +149,12 @@ pub struct MinidumpModuleList {
     modules: Vec<MinidumpModule>,
     /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
     modules_by_addr: RangeMap<u64, usize>,
+}
+
+/// A mapping of thread ids to their names.
+#[derive(Debug, Clone, Default)]
+pub struct MinidumpThreadNames {
+    names: HashMap<u32, String>,
 }
 
 /// An executable or shared library that was once loaded into the process, but was unloaded
@@ -976,6 +983,39 @@ where
         raw_entries.push(raw);
     }
     Ok(raw_entries)
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadNamesStream;
+
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+        let mut offset = 0;
+        let raw_names: Vec<md::MINIDUMP_THREAD_NAME> =
+            read_stream_list(&mut offset, bytes, endian)?;
+        // read out the actual names
+        let mut names = HashMap::with_capacity(raw_names.len());
+        for raw_name in raw_names {
+            let mut offset = raw_name.thread_name_rva as usize;
+            // Better to just drop unreadable names individually than the whole stream.
+            if let Ok(name) = read_string_utf16(&mut offset, all, endian) {
+                names.insert(raw_name.thread_id, name);
+            } else {
+                warn!(
+                    "Couldn't read thread name for thread id {}",
+                    raw_name.thread_id
+                );
+            }
+        }
+        Ok(MinidumpThreadNames { names })
+    }
+}
+
+impl MinidumpThreadNames {
+    pub fn get_name(&self, thread_id: u32) -> Option<Cow<str>> {
+        self.names
+            .get(&thread_id)
+            .map(|name| Cow::Borrowed(&**name))
+    }
 }
 
 impl MinidumpModuleList {
@@ -2962,7 +3002,7 @@ mod test {
         self, AnnotationValue, CrashpadInfo, DumpString, Memory, MiscFieldsBuildString,
         MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields,
         MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, Thread,
-        UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
+        ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
     };
     use md::GUID;
     use std::mem;
@@ -3010,6 +3050,33 @@ mod test {
             dump.get_raw_stream(0xaabbccddu32),
             Err(Error::StreamNotFound)
         );
+    }
+
+    #[test]
+    fn test_thread_names() {
+        let good_thread_id = 17;
+        let corrupt_thread_id = 123;
+
+        let good_name = DumpString::new("MyCoolThread", Endian::Little);
+        // No corrupt name, will dangle
+
+        let good_thread_name_entry =
+            ThreadName::new(Endian::Little, good_thread_id, Some(&good_name));
+        let corrupt_thread_name_entry = ThreadName::new(Endian::Little, corrupt_thread_id, None);
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_thread_name(good_thread_name_entry)
+            .add_thread_name(corrupt_thread_name_entry)
+            .add(good_name);
+
+        let dump = read_synth_dump(dump).unwrap();
+        let thread_names = dump.get_stream::<MinidumpThreadNames>().unwrap();
+        assert_eq!(thread_names.names.len(), 1);
+        assert_eq!(
+            &*thread_names.get_name(good_thread_id).unwrap(),
+            "MyCoolThread"
+        );
+        assert_eq!(thread_names.get_name(corrupt_thread_id), None);
     }
 
     #[test]
