@@ -6,7 +6,7 @@
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
+use breakpad_symbols::{StringSymbolSupplier, Symbolizer};
 use minidump::*;
 use test_assembler::*;
 
@@ -15,7 +15,7 @@ type Context = minidump::format::CONTEXT_ARM64;
 struct TestFixture {
     pub raw: Context,
     pub modules: MinidumpModuleList,
-    pub symbolizer: Symbolizer,
+    pub symbols: StringSymbolSupplier,
 }
 
 impl TestFixture {
@@ -28,7 +28,7 @@ impl TestFixture {
                 MinidumpModule::new(0x40000000, 0x10000, "module1"),
                 MinidumpModule::new(0x50000000, 0x10000, "module2"),
             ]),
-            symbolizer: Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
+            symbols: StringSymbolSupplier::new(),
         }
     }
 
@@ -46,12 +46,72 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
+        let symbolizer = Symbolizer::new(self.symbols.clone());
         walk_stack(
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
-            &self.symbolizer,
+            &symbolizer,
         )
+    }
+
+    pub fn add_symbols(&mut self, name: String, symbols: String) {
+        self.symbols.insert(name, symbols);
+    }
+
+    pub fn init_cfi_state(&mut self) {
+        let symbols = [
+            // The youngest frame's function.
+            "FUNC 4000 1000 10 enchiridion\n",
+            // Initially, nothing has been pushed on the stack,
+            // and the return address is still in the link
+            // register (x30).
+            "STACK CFI INIT 4000 100 .cfa: sp 0 + .ra: x30\n",
+            // Push x19, x20, the frame pointer and the link register.
+            "STACK CFI 4001 .cfa: sp 32 + .ra: .cfa -8 + ^",
+            " x19: .cfa -32 + ^ x20: .cfa -24 + ^ ",
+            " x29: .cfa -16 + ^\n",
+            // Save x19..x22 in x0..x3: verify that we populate
+            // the youngest frame with all the values we have.
+            "STACK CFI 4002 x19: x0 x20: x1 x21: x2 x22: x3\n",
+            // Restore x19..x22. Save the non-callee-saves register x1.
+            "STACK CFI 4003 .cfa: sp 40 + x1: .cfa 40 - ^",
+            " x19: x19 x20: x20 x21: x21 x22: x22\n",
+            // Move the .cfa back eight bytes, to point at the return
+            // address, and restore the sp explicitly.
+            "STACK CFI 4005 .cfa: sp 32 + x1: .cfa 32 - ^",
+            " x29: .cfa 8 - ^ .ra: .cfa ^ sp: .cfa 8 +\n",
+            // Recover the PC explicitly from a new stack slot;
+            // provide garbage for the .ra.
+            "STACK CFI 4006 .cfa: sp 40 + pc: .cfa 40 - ^\n",
+            // The calling function.
+            "FUNC 5000 1000 10 epictetus\n",
+            // Mark it as end of stack.
+            "STACK CFI INIT 5000 1000 .cfa: 0 .ra: 0\n",
+            // A function whose CFI makes the stack pointer
+            // go backwards.
+            "FUNC 6000 1000 20 palinal\n",
+            "STACK CFI INIT 6000 1000 .cfa: sp 8 - .ra: x30\n",
+            // A function with CFI expressions that can't be
+            // evaluated.
+            "FUNC 7000 1000 20 rhetorical\n",
+            "STACK CFI INIT 7000 1000 .cfa: moot .ra: ambiguous\n",
+        ];
+        self.add_symbols(String::from("module1"), symbols.concat());
+
+        self.raw.set_register("pc", 0x0000000040005510);
+        self.raw.set_register("sp", 0x0000000080000000);
+        self.raw.set_register("fp", 0xe11081128112e110);
+        self.raw.set_register("x19", 0x5e68b5d5b5d55e68);
+        self.raw.set_register("x20", 0x34f3ebd1ebd134f3);
+        self.raw.set_register("x21", 0x74bca31ea31e74bc);
+        self.raw.set_register("x22", 0x16b32dcb2dcb16b3);
+        self.raw.set_register("x23", 0x21372ada2ada2137);
+        self.raw.set_register("x24", 0x557dbbbbbbbb557d);
+        self.raw.set_register("x25", 0x8ca748bf48bf8ca7);
+        self.raw.set_register("x26", 0x21f0ab46ab4621f0);
+        self.raw.set_register("x27", 0x146732b732b71467);
+        self.raw.set_register("x28", 0xa673645fa673645f);
     }
 }
 
@@ -323,6 +383,64 @@ fn test_frame_pointer() {
                 frame2_sp.value().unwrap()
             );
             assert_eq!(ctx.get_register("fp", valid).unwrap(), 0);
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+// const CALLEE_SAVE_REGS: [&str; 13] = ["pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"];
+
+#[test]
+fn test_cfi_at_4000() {
+    let mut f = TestFixture::new();
+    f.init_cfi_state();
+    let raw_valid = MinidumpContextValidity::All;
+
+    let expected = f.raw.clone();
+    let expected_regs = ["pc", "sp"];
+    let expected_valid =
+        MinidumpContextValidity::Some(std::array::IntoIter::new(expected_regs).collect());
+
+    let mut stack = Section::new();
+    stack = stack.append_repeated(0, 120);
+    stack
+        .start()
+        .set_const(f.raw.get_register("sp", &raw_valid).unwrap());
+
+    f.raw.set_register("pc", 0x0000000040004000);
+    f.raw.set_register("lr", 0x0000000040005510);
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), expected_regs.len());
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            for reg in &expected_regs {
+                assert_eq!(
+                    ctx.get_register(reg, valid),
+                    expected.get_register(reg, &expected_valid),
+                    "{} registers didn't match!",
+                    reg
+                );
+            }
         } else {
             unreachable!();
         }

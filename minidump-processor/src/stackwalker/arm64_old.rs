@@ -78,6 +78,9 @@ where
         last_fp + POINTER_WIDTH * 2
     };
 
+    // TODO: restore all the other callee-save registers that weren't touched.
+    // unclear: does this mean we need to be aware of ".undef" entries at this point?
+
     // Breakpad's tests don't like it we validate the frame pointer's value,
     // so we don't check that.
 
@@ -201,6 +204,7 @@ where
     };
 
     symbol_provider.walk_frame(module, &mut stack_walker)?;
+
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
@@ -312,7 +316,7 @@ fn stack_seems_valid(
     stack_memory: &MinidumpMemory,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
-    if caller_sp <= callee_sp {
+    if caller_sp < callee_sp {
         return false;
     }
 
@@ -370,7 +374,7 @@ impl Unwind for ArmContext {
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.get_register_always("sp") {
+                if frame.context.get_stack_pointer() < self.get_register_always("sp") {
                     return None;
                 }
                 Some(frame)

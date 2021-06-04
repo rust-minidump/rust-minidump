@@ -233,6 +233,45 @@ impl SymbolSupplier for SimpleSymbolSupplier {
     }
 }
 
+/// A SymbolSupplier that maps module names (code_files) to an in-memory string.
+///
+/// Intended for mocking symbol files in tests.
+#[derive(Default, Debug, Clone)]
+pub struct StringSymbolSupplier {
+    modules: HashMap<String, String>,
+}
+
+impl StringSymbolSupplier {
+    /// Make a new StringSymbolSupplier with no modules.
+    pub fn new() -> Self {
+        Self {
+            modules: HashMap::new(),
+        }
+    }
+
+    /// Add a symbol file.
+    pub fn insert(&mut self, code_file: String, symbols: String) {
+        self.modules.insert(code_file, symbols);
+    }
+
+    /// Remove all symbol files.
+    pub fn clear(&mut self) {
+        self.modules.clear();
+    }
+}
+
+impl SymbolSupplier for StringSymbolSupplier {
+    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+        if let Some(symbols) = self.modules.get(&*module.code_file()) {
+            return SymbolFile::from_bytes(symbols.as_bytes())
+                .map(SymbolResult::Ok)
+                .unwrap_or_else(SymbolResult::LoadError);
+        }
+
+        SymbolResult::NotFound
+    }
+}
+
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from HTTP
 /// URLs.
 ///
