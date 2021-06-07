@@ -10,10 +10,12 @@ mod dwarf_symbolizer;
 mod process_state;
 mod processor;
 mod stackwalker;
+mod symbols;
 mod system_info;
 
 pub use crate::dwarf_symbolizer::DwarfSymbolizer;
 pub use crate::process_state::*;
 pub use crate::processor::*;
 pub use crate::stackwalker::*;
+pub use crate::symbols::*;
 pub use crate::system_info::*;

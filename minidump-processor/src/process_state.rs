@@ -9,7 +9,7 @@ use std::io;
 use std::io::prelude::*;
 
 use crate::system_info::SystemInfo;
-use breakpad_symbols::FrameSymbolizer;
+use crate::FrameSymbolizer;
 use chrono::prelude::*;
 use minidump::system_info::Cpu;
 use minidump::*;

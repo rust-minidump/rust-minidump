@@ -6,8 +6,9 @@
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use breakpad_symbols::{StringSymbolSupplier, Symbolizer};
+use crate::{string_symbol_supplier, Symbolizer};
 use minidump::*;
+use std::collections::HashMap;
 use test_assembler::*;
 
 type Context = minidump::format::CONTEXT_ARM64;
@@ -15,7 +16,7 @@ type Context = minidump::format::CONTEXT_ARM64;
 struct TestFixture {
     pub raw: Context,
     pub modules: MinidumpModuleList,
-    pub symbols: StringSymbolSupplier,
+    pub symbols: HashMap<String, String>,
 }
 
 impl TestFixture {
@@ -28,7 +29,7 @@ impl TestFixture {
                 MinidumpModule::new(0x40000000, 0x10000, "module1"),
                 MinidumpModule::new(0x50000000, 0x10000, "module2"),
             ]),
-            symbols: StringSymbolSupplier::new(),
+            symbols: HashMap::new(),
         }
     }
 
@@ -46,7 +47,7 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
-        let symbolizer = Symbolizer::new(self.symbols.clone());
+        let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
             &Some(&context),
             Some(&stack_memory),

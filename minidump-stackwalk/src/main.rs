@@ -8,9 +8,10 @@ use std::panic;
 use std::path::Path;
 use std::path::PathBuf;
 
-use breakpad_symbols::{HttpSymbolSupplier, SimpleSymbolSupplier, Symbolizer};
 use minidump::*;
-use minidump_processor::{DwarfSymbolizer, MultiSymbolProvider};
+use minidump_processor::{
+    http_symbol_supplier, simple_symbol_supplier, DwarfSymbolizer, MultiSymbolProvider, Symbolizer,
+};
 
 use clap::{crate_authors, crate_version, App, Arg};
 use log::error;
@@ -28,13 +29,13 @@ fn print_minidump_process(
         let mut provider = MultiSymbolProvider::new();
 
         if let Some(symbols_cache) = symbols_cache {
-            provider.add(Box::new(Symbolizer::new(HttpSymbolSupplier::new(
+            provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
+                symbol_paths,
                 symbol_urls,
                 symbols_cache,
-                symbol_paths,
             ))));
         } else if !symbol_paths.is_empty() {
-            provider.add(Box::new(Symbolizer::new(SimpleSymbolSupplier::new(
+            provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
                 symbol_paths,
             ))));
         }

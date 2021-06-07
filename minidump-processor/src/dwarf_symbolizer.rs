@@ -7,10 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 
-use breakpad_symbols::{FrameSymbolizer, FrameWalker};
 use minidump::Module;
 
-use crate::SymbolProvider;
+use crate::{FrameSymbolizer, FrameWalker, SymbolProvider};
 
 #[derive(Default)]
 pub struct DwarfSymbolizer {

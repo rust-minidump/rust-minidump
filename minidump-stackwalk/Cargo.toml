@@ -17,7 +17,6 @@ travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
 addr2line = "0.15.2"
-breakpad-symbols = { version = "0.3.0", path = "../breakpad-symbols" }
 clap = "2.33"
 log = "0.4"
 minidump = { version = "0.3.0", path = "../minidump" }

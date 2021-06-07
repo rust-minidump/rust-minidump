@@ -1038,7 +1038,6 @@ name = "minidump-stackwalk"
 version = "0.3.0"
 dependencies = [
  "addr2line 0.15.2",
- "breakpad-symbols",
  "clap",
  "log",
  "minidump",

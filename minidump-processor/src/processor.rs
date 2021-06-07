@@ -4,62 +4,14 @@
 use chrono::{TimeZone, Utc};
 use failure::Fail;
 
-use std::boxed::Box;
 use std::ops::Deref;
 
-use breakpad_symbols::{FrameSymbolizer, FrameWalker, Symbolizer};
 use minidump::{self, *};
 
 use crate::process_state::{CallStack, CallStackInfo, ProcessState};
 use crate::stackwalker;
+use crate::symbols::*;
 use crate::system_info::SystemInfo;
-
-pub trait SymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
-}
-
-impl SymbolProvider for Symbolizer {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
-        self.fill_symbol(module, frame);
-    }
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
-        self.walk_frame(module, walker)
-    }
-}
-
-#[derive(Default)]
-pub struct MultiSymbolProvider {
-    providers: Vec<Box<dyn SymbolProvider>>,
-}
-
-impl MultiSymbolProvider {
-    pub fn new() -> MultiSymbolProvider {
-        Default::default()
-    }
-
-    pub fn add(&mut self, provider: Box<dyn SymbolProvider>) {
-        self.providers.push(provider);
-    }
-}
-
-impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
-        for p in self.providers.iter() {
-            p.fill_symbol(module, frame);
-        }
-    }
-
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
-        for p in self.providers.iter() {
-            let result = p.walk_frame(module, walker);
-            if result.is_some() {
-                return result;
-            }
-        }
-        None
-    }
-}
 
 /// An error encountered during minidump processing.
 #[derive(Debug, Fail)]

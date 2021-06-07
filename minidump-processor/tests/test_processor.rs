@@ -1,10 +1,9 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
-use minidump_processor::{CallStackInfo, FrameTrust};
+use minidump_processor::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
 fn locate_testdata() -> PathBuf {
@@ -43,7 +42,7 @@ fn test_processor() {
     let dump = read_test_minidump().unwrap();
     let state = minidump_processor::process_minidump(
         &dump,
-        &Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
+        &Symbolizer::new(simple_symbol_supplier(vec![])),
     )
     .unwrap();
     assert_eq!(state.system_info.os, Os::Windows);
@@ -116,7 +115,7 @@ fn test_processor_symbols() {
     println!("symbol path: {:?}", path);
     let state = minidump_processor::process_minidump(
         &dump,
-        &Symbolizer::new(SimpleSymbolSupplier::new(vec![path])),
+        &Symbolizer::new(simple_symbol_supplier(vec![path])),
     )
     .unwrap();
     let f0 = &state.threads[0].frames[0];
