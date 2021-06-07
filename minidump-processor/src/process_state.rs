@@ -168,6 +168,8 @@ pub struct ProcessState {
     // modules_without_symbols
     // modules_with_corrupt_symbols
     // exploitability
+    pub unknown_streams: Vec<MinidumpUnknownStream>,
+    pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
 }
 
 impl FrameTrust {
@@ -489,6 +491,39 @@ Unloaded modules:
                 module.base_address() + module.size() - 1,
                 basename(&module.code_file()),
             )?;
+        }
+        if !self.unimplemented_streams.is_empty() {
+            write!(
+                f,
+                "
+Unimplemented streams encountered:
+"
+            )?;
+            for stream in &self.unimplemented_streams {
+                writeln!(
+                    f,
+                    "Stream 0x{:08x} {:?} ({}) @ 0x{:08x}",
+                    stream.stream_type as u32,
+                    stream.stream_type,
+                    stream.vendor,
+                    stream.location.rva,
+                )?;
+            }
+        }
+        if !self.unknown_streams.is_empty() {
+            write!(
+                f,
+                "
+Unknown streams encountered:
+"
+            )?;
+            for stream in &self.unknown_streams {
+                writeln!(
+                    f,
+                    "Stream 0x{:08x} ({}) @ 0x{:08x}",
+                    stream.stream_type, stream.vendor, stream.location.rva,
+                )?;
+            }
         }
         Ok(())
     }
