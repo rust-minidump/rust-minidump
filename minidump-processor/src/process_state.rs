@@ -159,6 +159,8 @@ pub struct ProcessState {
     // thread_memory_regions
     /// Information about the system on which the minidump was written.
     pub system_info: SystemInfo,
+    /// Linux Standard Base Info
+    pub linux_standard_base: Option<MinidumpLinuxLsbRelease>,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
@@ -388,6 +390,13 @@ impl ProcessState {
                 ""
             }
         )?;
+        if let Some(ref lsb) = self.linux_standard_base {
+            writeln!(
+                f,
+                "Linux {} {} - {} ({})",
+                lsb.id, lsb.release, lsb.codename, lsb.description
+            )?;
+        }
         writeln!(f)?;
 
         if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason, &self.crash_address) {
@@ -515,15 +524,12 @@ Unloaded modules:
                 "crashing_thread": self.requesting_thread,
                 "assertion": self.assertion,
             },
-
-            // optional, Linux Standard Base information
-            // TODO: Issue #172
-            // "lsb_release": {
-            //   "id": <string>,
-            //   "release": <string>,
-            //   "codename": <string>,
-            //   "description": <string>
-            // },
+            "lsb_release": self.linux_standard_base.as_ref().map(|lsb| json!({
+                "id": lsb.id,
+                "release": lsb.release,
+                "codename": lsb.codename,
+                "description": lsb.description,
+            })),
 
             // the first module is always the main one
             "main_module": 0,
@@ -572,7 +578,6 @@ Unloaded modules:
                 // TODO: Issue #156
                 // optional
                 "last_error_value": null,
-                // TODO: Issue #173
                 // optional
                 "thread_name": thread.thread_name,
                 "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({

@@ -259,6 +259,14 @@ pub struct MinidumpBreakpadInfo {
     pub requesting_thread_id: Option<u32>,
 }
 
+#[derive(Default, Debug)]
+pub struct MinidumpLinuxLsbRelease {
+    pub id: String,
+    pub release: String,
+    pub codename: String,
+    pub description: String,
+}
+
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CrashReason {
@@ -873,6 +881,22 @@ impl Module for MinidumpUnloadedModule {
     fn version(&self) -> Option<Cow<'_, str>> {
         None
     }
+}
+
+fn read_linux_list(bytes: &[u8]) -> Result<impl Iterator<Item = (&str, &str)>, Error> {
+    fn strip_quotes(input: &str) -> &str {
+        // Convert `"MyValue"` into `MyValue`
+        input
+            .strip_prefix('"')
+            .and_then(|input| input.strip_suffix('"'))
+            .unwrap_or(input)
+    }
+
+    let string = str::from_utf8(bytes).unwrap();
+    Ok(string.split('\n').filter_map(|line| {
+        line.split_once('=')
+            .map(|(label, val)| (strip_quotes(label), (strip_quotes(val))))
+    }))
 }
 
 fn read_stream_list<'a, T>(
@@ -1893,6 +1917,24 @@ impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
             (md::MINIDUMP_MISC_INFO, MiscInfo),
         );
         Err(Error::StreamReadFailure)
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxLsbRelease;
+
+    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+        let mut lsb = Self::default();
+        for (key, val) in read_linux_list(bytes)? {
+            match key {
+                "DISTRIB_ID" | "ID" => lsb.id = String::from(val),
+                "DISTRIB_RELEASE" | "VERSION_ID" => lsb.release = String::from(val),
+                "DISTRIB_CODENAME" | "VERSION_CODENAME" => lsb.codename = String::from(val),
+                "DISTRIB_DESCRIPTION" | "PRETTY_NAME" => lsb.description = String::from(val),
+                _ => {}
+            }
+        }
+        Ok(lsb)
     }
 }
 

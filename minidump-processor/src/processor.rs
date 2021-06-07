@@ -145,6 +145,7 @@ where
         cpu_info,
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
+    let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
     // Process create time is optional.
     let (process_id, process_create_time) =
         if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
@@ -240,6 +241,7 @@ where
         assertion,
         requesting_thread,
         system_info,
+        linux_standard_base,
         threads,
         modules,
         unloaded_modules,
