@@ -4,6 +4,9 @@
 //! Unwind stack frames for a thread.
 
 mod amd64;
+mod arm;
+mod arm64;
+mod arm64_old;
 mod unwind;
 mod x86;
 
@@ -86,13 +89,35 @@ where
 {
     match callee_frame.context.raw {
         /*
-        MinidumpRawContext::ARM(ctx) => ctx.get_caller_frame(stack_memory),
-        MinidumpRawContext::ARM64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
+        MinidumpRawContext::Arm(ref ctx) => ctx.get_caller_frame(
+            &callee_frame.context.valid,
+            callee_frame.trust,
+            stack_memory,
+            grand_callee_frame,
+            modules,
+            symbol_provider,
+        ),
+        MinidumpRawContext::Arm64(ref ctx) => ctx.get_caller_frame(
+            &callee_frame.context.valid,
+            callee_frame.trust,
+            stack_memory,
+            grand_callee_frame,
+            modules,
+            symbol_provider,
+        ),
+        MinidumpRawContext::OldArm64(ref ctx) => ctx.get_caller_frame(
+            &callee_frame.context.valid,
+            callee_frame.trust,
+            stack_memory,
+            grand_callee_frame,
+            modules,
+            symbol_provider,
+        ),
         MinidumpRawContext::Amd64(ref ctx) => ctx.get_caller_frame(
             &callee_frame.context.valid,
             callee_frame.trust,
@@ -170,5 +195,9 @@ where
 
 #[cfg(test)]
 mod amd64_unittest;
+#[cfg(test)]
+mod arm64_unittest;
+#[cfg(test)]
+mod arm_unittest;
 #[cfg(test)]
 mod x86_unittest;

@@ -187,7 +187,6 @@ where
         // Just give an empty list, simplifies things.
         Err(_) => MinidumpUnloadedModuleList::new(),
     };
-
     let memory_list = dump.get_stream::<MinidumpMemoryList>().ok();
 
     // Get memory list

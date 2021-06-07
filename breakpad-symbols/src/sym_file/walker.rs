@@ -370,7 +370,7 @@ fn parse_cfi_exprs<'a>(input: &'a str, output: &mut HashMap<CfiReg<'a>, &'a str>
     let mut expr_first: Option<&str> = None;
     let mut expr_last: Option<&str> = None;
     for token in input.split_ascii_whitespace() {
-        if token.ends_with(':') {
+        if let Some(token) = token.strip_suffix(':') {
             // This token is a "REG:", indicating the end of the previous EXPR
             // and start of the next. If we already have an active register,
             // then now is the time to commit it to our output.
@@ -390,19 +390,16 @@ fn parse_cfi_exprs<'a>(input: &'a str, output: &mut HashMap<CfiReg<'a>, &'a str>
                 expr_last = None;
             }
 
-            cur_reg = if token == ".cfa:" {
+            cur_reg = if token == ".cfa" {
                 Some(CfiReg::Cfa)
-            } else if token == ".ra:" {
+            } else if token == ".ra" {
                 Some(CfiReg::Ra)
-            } else if token.starts_with('$') {
-                Some(CfiReg::Other(&token[1..token.len() - 1]))
+            } else if let Some(token) = token.strip_prefix('$') {
+                // x86-style $rax register
+                Some(CfiReg::Other(token))
             } else {
-                // Malformed register
-                debug!(
-                    "STACK CFI expression parsing failed - invalid register: {}",
-                    token
-                );
-                return None;
+                // arm-style x11 register
+                Some(CfiReg::Other(token))
             };
         } else {
             // First token *must* be a register!
@@ -515,6 +512,10 @@ fn eval_cfi_expr(expr: &str, walker: &mut dyn FrameWalker, cfa: Option<u64>) -> 
                     // TODO: We do everything in wrapping arithmetic, so it's fine to squash
                     // i64's into u64's?
                     stack.push(value as u64)
+                } else if let Some(reg) = walker.get_callee_register(token) {
+                    // Maybe the register just didn't have a $ prefix?
+                    // (seems to be how ARM syntax works).
+                    stack.push(reg);
                 } else {
                     // Unknown expr
                     debug!(
@@ -808,8 +809,9 @@ mod test {
     use std::collections::HashMap;
 
     // Eugh, need this to memoize register names to static
-    static STATIC_REGS: [&str; 12] = [
-        "cfa", "ra", "esp", "eip", "ebp", "eax", "ebx", "rsp", "rip", "rbp", "rax", "rbx",
+    static STATIC_REGS: [&str; 14] = [
+        "cfa", "ra", "esp", "eip", "ebp", "eax", "ebx", "rsp", "rip", "rbp", "rax", "rbx", "x11",
+        "x12",
     ];
 
     struct TestFrameWalker<Reg> {
@@ -1397,14 +1399,6 @@ mod test {
         let (init, additional) = build_cfi_rules(".cfa: 2000 ^ .ra: 8", &[]);
         assert!(walk_with_stack_cfi(&init, &additional, &mut walker).is_none());
 
-        // Undefined .reg
-        let (init, additional) = build_cfi_rules(".cfa: 8 .ra: 8 .kitties: 16", &[]);
-        assert!(walk_with_stack_cfi(&init, &additional, &mut walker).is_none());
-
-        // Trying to write to .undef
-        let (init, additional) = build_cfi_rules(".cfa: 8 .ra: 8 .undef: 16", &[]);
-        assert!(walk_with_stack_cfi(&init, &additional, &mut walker).is_none());
-
         // Reading fake $reg
         let (init, additional) = build_cfi_rules(".cfa: 8 .ra: $kitties", &[]);
         assert!(walk_with_stack_cfi(&init, &additional, &mut walker).is_none());
@@ -1519,5 +1513,40 @@ mod test {
         assert_eq!(walker.caller_regs.len(), 2);
         assert_eq!(walker.caller_regs["cfa"], 1);
         assert_eq!(walker.caller_regs["ra"], 2);
+
+        // Undefined destination .reg is assumed to be an ARM-style register, is dropped
+        let (init, additional) = build_cfi_rules(".cfa: 8 .ra: 12 .kitties: 16", &[]);
+        walk_with_stack_cfi(&init, &additional, &mut walker).unwrap();
+        assert_eq!(walker.caller_regs.len(), 2);
+        assert_eq!(walker.caller_regs["cfa"], 8);
+        assert_eq!(walker.caller_regs["ra"], 12);
+
+        // Trying to write to .undef is assumed to be an ARM-style register, is dropped
+        let (init, additional) = build_cfi_rules(".cfa: 8 .ra: 12 .undef: 16", &[]);
+        walk_with_stack_cfi(&init, &additional, &mut walker).unwrap();
+        assert_eq!(walker.caller_regs.len(), 2);
+        assert_eq!(walker.caller_regs["cfa"], 8);
+        assert_eq!(walker.caller_regs["ra"], 12);
+    }
+
+    #[test]
+    fn test_stack_cfi_arm() {
+        // ARM doesn't prefix registers with $
+        // Checking various issues that we should bail on
+        let input = vec![("pc", 32u64), ("x11", 1600)].into_iter().collect();
+        let stack = vec![0; 1600];
+
+        let mut walker = TestFrameWalker::new(stack, input);
+
+        // Just a value for each reg (no ops to execute)
+        walker.caller_regs.clear();
+        let (init, additional) = build_cfi_rules(".cfa: 8 .ra: 12 x11: 16 x12: x11 .cfa +", &[]);
+        walk_with_stack_cfi(&init, &additional, &mut walker).unwrap();
+
+        assert_eq!(walker.caller_regs.len(), 4);
+        assert_eq!(walker.caller_regs["cfa"], 8);
+        assert_eq!(walker.caller_regs["ra"], 12);
+        assert_eq!(walker.caller_regs["x11"], 16);
+        assert_eq!(walker.caller_regs["x12"], 1608);
     }
 }

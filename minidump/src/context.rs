@@ -33,18 +33,28 @@ pub trait CpuContext {
     /// The word size of general-purpose registers in the context.
     type Register: fmt::LowerHex;
 
+    /// Gets whether the given register is valid
+    ///
+    /// This is exposed so that the context can map aliases. For instance
+    /// "sp" and "x30" are aliases in ARM64.
+    fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
+        if let MinidumpContextValidity::Some(ref which) = *valid {
+            which.contains(reg)
+        } else {
+            true
+        }
+    }
     /// Get a register value if it is valid.
     ///
     /// Get the value of the register named `reg` from this CPU context
     /// if `valid` indicates that it has a valid value, otherwise return
     /// `None`.
     fn get_register(&self, reg: &str, valid: &MinidumpContextValidity) -> Option<Self::Register> {
-        if let MinidumpContextValidity::Some(ref which) = *valid {
-            if !which.contains(reg) {
-                return None;
-            }
+        if self.register_is_valid(reg, valid) {
+            Some(self.get_register_always(reg))
+        } else {
+            None
         }
-        Some(self.get_register_always(reg))
     }
 
     /// Get a register value regardless of whether it is valid.
@@ -187,8 +197,104 @@ impl CpuContext for md::CONTEXT_AMD64 {
     }
 }
 
+impl CpuContext for md::CONTEXT_ARM {
+    type Register = u32;
+
+    fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            match reg {
+                "r11" | "fp" => which.contains("r11") || which.contains("fp"),
+                "r13" | "sp" => which.contains("r13") || which.contains("sp"),
+                "r14" | "lr" => which.contains("r14") || which.contains("lr"),
+                "r15" | "pc" => which.contains("r15") || which.contains("pc"),
+                _ => which.contains(reg),
+            }
+        } else {
+            true
+        }
+    }
+
+    fn get_register_always(&self, reg: &str) -> u32 {
+        match reg {
+            "r0" => self.iregs[0],
+            "r1" => self.iregs[1],
+            "r2" => self.iregs[2],
+            "r3" => self.iregs[3],
+            "r4" => self.iregs[4],
+            "r5" => self.iregs[5],
+            "r6" => self.iregs[6],
+            "r7" => self.iregs[7],
+            "r8" => self.iregs[8],
+            "r9" => self.iregs[9],
+            "r10" => self.iregs[10],
+            "r11" => self.iregs[11],
+            "r12" => self.iregs[12],
+            "r13" => self.iregs[13],
+            "r14" => self.iregs[14],
+            "r15" => self.iregs[15],
+            "pc" => self.iregs[md::ArmRegisterNumbers::ProgramCounter as usize],
+            "lr" => self.iregs[md::ArmRegisterNumbers::LinkRegister as usize],
+            "fp" => self.iregs[md::ArmRegisterNumbers::FramePointer as usize],
+            "sp" => self.iregs[md::ArmRegisterNumbers::StackPointer as usize],
+            _ => unreachable!("Invalid arm register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "r0" => self.iregs[0] = val,
+            "r1" => self.iregs[1] = val,
+            "r2" => self.iregs[2] = val,
+            "r3" => self.iregs[3] = val,
+            "r4" => self.iregs[4] = val,
+            "r5" => self.iregs[5] = val,
+            "r6" => self.iregs[6] = val,
+            "r7" => self.iregs[7] = val,
+            "r8" => self.iregs[8] = val,
+            "r9" => self.iregs[9] = val,
+            "r10" => self.iregs[10] = val,
+            "r11" => self.iregs[11] = val,
+            "r12" => self.iregs[12] = val,
+            "r13" => self.iregs[13] = val,
+            "r14" => self.iregs[14] = val,
+            "r15" => self.iregs[15] = val,
+            "pc" => self.iregs[md::ArmRegisterNumbers::ProgramCounter as usize] = val,
+            "lr" => self.iregs[md::ArmRegisterNumbers::LinkRegister as usize] = val,
+            "fp" => self.iregs[md::ArmRegisterNumbers::FramePointer as usize] = val,
+            "sp" => self.iregs[md::ArmRegisterNumbers::StackPointer as usize] = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        let idx = ARM_REGS.iter().position(|val| *val == reg)?;
+        Some(ARM_REGS[idx])
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
 impl CpuContext for md::CONTEXT_ARM64_OLD {
     type Register = u64;
+
+    fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            match reg {
+                "x29" | "fp" => which.contains("x29") || which.contains("fp"),
+                "x30" | "lr" => which.contains("x30") || which.contains("lr"),
+                _ => which.contains(reg),
+            }
+        } else {
+            true
+        }
+    }
 
     fn get_register_always(&self, reg: &str) -> u64 {
         match reg {
@@ -223,11 +329,11 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
             "x28" => self.iregs[28],
             "x29" => self.iregs[29],
             "x30" => self.iregs[30],
-            "x31" => self.iregs[31],
             "pc" => self.pc,
+            "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
-            _ => unreachable!("Invalid aarch64 register!"),
+            _ => unreachable!("Invalid aarch64 register! {}", reg),
         }
     }
 
@@ -264,8 +370,8 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
             "x28" => self.iregs[28] = val,
             "x29" => self.iregs[29] = val,
             "x30" => self.iregs[30] = val,
-            "x31" => self.iregs[31] = val,
             "pc" => self.pc = val,
+            "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize] = val,
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
             _ => return None,
@@ -290,6 +396,18 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
 impl CpuContext for md::CONTEXT_ARM64 {
     type Register = u64;
 
+    fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            match reg {
+                "x29" | "fp" => which.contains("x29") || which.contains("fp"),
+                "x30" | "lr" => which.contains("x30") || which.contains("lr"),
+                _ => which.contains(reg),
+            }
+        } else {
+            true
+        }
+    }
+
     fn get_register_always(&self, reg: &str) -> u64 {
         match reg {
             "x0" => self.iregs[0],
@@ -323,11 +441,11 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "x28" => self.iregs[28],
             "x29" => self.iregs[29],
             "x30" => self.iregs[30],
-            "x31" => self.iregs[31],
             "pc" => self.pc,
+            "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
-            _ => unreachable!("Invalid aarch64 register!"),
+            _ => unreachable!("Invalid aarch64 register! {}"),
         }
     }
 
@@ -364,8 +482,8 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "x28" => self.iregs[28] = val,
             "x29" => self.iregs[29] = val,
             "x30" => self.iregs[30] = val,
-            "x31" => self.iregs[31] = val,
             "pc" => self.pc = val,
+            "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize] = val,
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
             _ => return None,
@@ -436,11 +554,17 @@ static X86_64_REGS: [&str; 17] = [
     "r14", "r15", "rip",
 ];
 
+/// General-purpose registers for ARM (32-bit).
+static ARM_REGS: [&str; 20] = [
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14",
+    "r15", "pc", "lr", "fp", "sp",
+];
+
 /// General-purpose registers for aarch64.
-static ARM64_REGS: [&str; 33] = [
+static ARM64_REGS: [&str; 35] = [
     "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14",
     "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
-    "x28", "x29", "x30", "x31", "pc",
+    "x28", "x29", "x30", "pc", "lr", "fp", "sp",
 ];
 //======================================================
 // Implementations
@@ -588,7 +712,7 @@ impl MinidumpContext {
     pub fn format_register(&self, reg: &str) -> String {
         match self.raw {
             MinidumpRawContext::Amd64(ref ctx) => ctx.format_register(reg),
-            MinidumpRawContext::Arm(_) => unimplemented!(),
+            MinidumpRawContext::Arm(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Arm64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::OldArm64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Ppc(_) => unimplemented!(),
@@ -602,7 +726,7 @@ impl MinidumpContext {
     pub fn general_purpose_registers(&self) -> &'static [&'static str] {
         match self.raw {
             MinidumpRawContext::Amd64(_) => &X86_64_REGS[..],
-            MinidumpRawContext::Arm(_) => unimplemented!(),
+            MinidumpRawContext::Arm(_) => &ARM_REGS[..],
             MinidumpRawContext::Arm64(_) => &ARM64_REGS[..],
             MinidumpRawContext::OldArm64(_) => &ARM64_REGS[..],
             MinidumpRawContext::Ppc(_) => unimplemented!(),

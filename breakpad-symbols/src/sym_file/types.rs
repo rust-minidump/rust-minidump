@@ -71,8 +71,14 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn memory_range(&self) -> Range<u64> {
-        Range::new(self.address, self.address + self.size as u64 - 1)
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.address,
+            self.address.checked_add(self.size as u64)? - 1,
+        ))
     }
 }
 
@@ -97,8 +103,14 @@ pub struct StackInfoCfi {
 }
 
 impl StackInfoCfi {
-    pub fn memory_range(&self) -> Range<u64> {
-        Range::new(self.init.address, self.init.address + self.size as u64 - 1)
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.init.address,
+            self.init.address.checked_add(self.size as u64)? - 1,
+        ))
     }
 }
 
@@ -144,8 +156,14 @@ pub struct StackInfoWin {
 }
 
 impl StackInfoWin {
-    pub fn memory_range(&self) -> Range<u64> {
-        Range::new(self.address, self.address + self.size as u64 - 1)
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        if self.size == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.address,
+            self.address.checked_add(self.size as u64)? - 1,
+        ))
     }
 }
 

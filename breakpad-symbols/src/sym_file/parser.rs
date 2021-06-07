@@ -2,6 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use failure::{format_err, Error};
+use log::warn;
 use nom::IResult::*;
 use nom::*;
 use range_map::Range;
@@ -148,13 +149,13 @@ chain!(
             parameter_size,
             name: name.to_string(),
             lines: lines.into_iter()
-                .filter_map(|l| {
+                .map(|l| {
                     // Line data from PDB files often has a zero-size line entry, so just
                     // filter those out.
                     if l.size > 0 {
-                        Some((Range::new(l.address, l.address + l.size as u64 - 1), l))
+                        (Some(Range::new(l.address, l.address + l.size as u64 - 1)), l)
                     } else {
-                        None
+                        (None, l)
                     }
                 })
                 .into_rangemap_safe(),
@@ -303,12 +304,17 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
                 // PDB files contain lots of overlapping unwind info, so we have to filter
                 // some of it out.
                 fn insert_win_stack_info(stack_win: &mut Vec<StackInfoWin>, info: StackInfoWin) {
-                    if let Some(last) = stack_win.last() {
-                        if last.memory_range().intersects(&info.memory_range()) {
-                            return;
+                    if let Some(memory_range) = info.memory_range() {
+                        if let Some(last) = stack_win.last() {
+                            if last.memory_range().unwrap().intersects(&memory_range) {
+                                warn!("STACK WIN entry had invalid range, dropping it");
+                                return;
+                            }
                         }
+                        stack_win.push(info);
+                    } else {
+                        warn!("STACK WIN entry had invalid range, dropping it");
                     }
-                    stack_win.push(info);
                 }
                 match frame_type {
                     WinFrameType::FrameData(s) => {
