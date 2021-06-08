@@ -118,7 +118,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     ReservedStream1 = 2,
     /// The list of threads from the process
     ///
-    /// See [`MINIDUMP_THREAD`](struct.MINIDUMP_THREAD.html).
+    /// See [`MINIDUMP_THREAD`].
     ///
     /// Microsoft declares a [`MINIDUMP_THREAD_LIST`][list] struct which is the actual format
     /// of this stream, but it is a variable-length struct so no matching definition is provided
@@ -128,7 +128,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     ThreadListStream = 3,
     /// The list of executable modules from the process
     ///
-    /// See [`MINIDUMP_MODULE`](struct.MINIDUMP_MODULE.html).
+    /// See [`MINIDUMP_MODULE`].
     ///
     /// Microsoft declares a [`MINIDUMP_MODULE_LIST`][list] struct which is the actual format
     /// of this stream, but it is a variable-length struct so no matching definition is provided
@@ -138,7 +138,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     ModuleListStream = 4,
     /// The list of memory regions from the process contained within this dump
     ///
-    /// See [`MINIDUMP_MEMORY_DESCRIPTOR`](struct.MINIDUMP_MEMORY_DESCRIPTOR.html).
+    /// See [`MINIDUMP_MEMORY_DESCRIPTOR`].
     ///
     /// Microsoft declares a [`MINIDUMP_MEMORY_LIST`][list] struct which is the actual format
     /// of this stream, but it is a variable-length struct so no matching definition is provided
@@ -148,11 +148,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     MemoryListStream = 5,
     /// Information about the exception that caused the process to exit
     ///
-    /// See [`MINIDUMP_EXCEPTION_STREAM`](struct.MINIDUMP_EXCEPTION_STREAM.html).
+    /// See [`MINIDUMP_EXCEPTION_STREAM`].
     ExceptionStream = 6,
     /// System information
     ///
-    /// See [`MINIDUMP_SYSTEM_INFO`](struct.MINIDUMP_SYSTEM_INFO.html).
+    /// See [`MINIDUMP_SYSTEM_INFO`].
     SystemInfoStream = 7,
     ThreadExListStream = 8,
     Memory64ListStream = 9,
@@ -162,7 +162,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     FunctionTable = 13,
     /// The list of executable modules from the process that were unloaded by the time of the crash
     ///
-    /// See [`MINIDUMP_UNLOADED_MODULE`](struct.MINIDUMP_UNLOADED_MODULE.html).
+    /// See [`MINIDUMP_UNLOADED_MODULE`].
     ///
     /// Microsoft declares a [`MINIDUMP_UNLOADED_MODULE_LIST`][list] struct which is the actual
     /// format of this stream, but it is a variable-length struct so no matching definition is
@@ -174,11 +174,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     UnloadedModuleListStream = 14,
     /// Miscellaneous process and system information
     ///
-    /// See ['MINIDUMP_MISC_INFO'](struct.MINIDUMP_MISC_INFO.html).
+    /// See ['MINIDUMP_MISC_INFO'].
     MiscInfoStream = 15,
     /// Information about memory regions from the process
     ///
-    /// See ['MINIDUMP_MEMORY_INFO_LIST'](struct.MINIDUMP_MEMORY_INFO_LIST.html).
+    /// See ['MINIDUMP_MEMORY_INFO_LIST'].
     MemoryInfoListStream = 16,
     ThreadInfoListStream = 17,
     HandleOperationListStream = 18,
@@ -189,7 +189,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     IptTraceStream = 23,
     /// Names of threads
     ///
-    /// See ['MINIDUMP_THREAD_NAME'](struct.MINIDUMP_THREAD_NAME.html)
+    /// See ['MINIDUMP_THREAD_NAME'].
     ThreadNamesStream = 24,
     ceStreamNull = 25,
     ceStreamSystemInfo = 26,
@@ -208,11 +208,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     /* Breakpad extension types.  0x4767 = "Gg" */
     /// Additional process information (Breakpad extension)
     ///
-    /// See ['MINIDUMP_BREAKPAD_INFO'](struct.MINIDUMP_BREAKPAD_INFO.html).
+    /// See ['MINIDUMP_BREAKPAD_INFO'].
     BreakpadInfoStream = 0x47670001,
     /// Assertion information (Breakpad extension)
     ///
-    /// See ['MINIDUMP_ASSERTION_INFO'](struct.MINIDUMP_ASSERTION_INFO.html).
+    /// See ['MINIDUMP_ASSERTION_INFO'].
     AssertionInfoStream = 0x47670002,
     /* These are additional minidump stream values which are specific to
      * the linux breakpad implementation. */
@@ -232,13 +232,12 @@ pub enum MINIDUMP_STREAM_TYPE {
     LinuxMaps = 0x47670009,
     /// Information from the Linux dynamic linker useful for writing core dumps
     ///
-    /// See ['DSO_DEBUG_64'](struct.DSO_DEBUG_64.html) and
-    /// ['DSO_DEBUG_32'](struct.DSO_DEBUG_32.html).
+    /// See ['DSO_DEBUG_64'] and ['DSO_DEBUG_32'].
     LinuxDsoDebug = 0x4767000A,
     // Crashpad extension types. 0x4350 = "CP"
     /// Crashpad-specific information containing annotations.
     ///
-    /// See [`MinidumpCrashpadInfo`](struct.MinidumpCrashpadInfo.html).
+    /// See [`MINIDUMP_CRASHPAD_INFO`].
     CrashpadInfoStream = 0x43500001,
 
     /// Data from the __DATA,__crash_info section of every module which contains
@@ -365,11 +364,11 @@ pub const VS_FFI_STRUCVERSION: u32 = 0x00010000;
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum CvSignature {
-    /// PDB 2.0 CodeView data: 'NB10': [`CV_INFO_PDB20`](struct.CV_INFO_PDB20.html)
+    /// PDB 2.0 CodeView data: 'NB10': [`CV_INFO_PDB20`]
     Pdb20 = 0x3031424e,
-    /// PDB 7.0 CodeView data: 'RSDS': [`CV_INFO_PDB70`](struct.CV_INFO_PDB70.html)
+    /// PDB 7.0 CodeView data: 'RSDS': [`CV_INFO_PDB70`]
     Pdb70 = 0x53445352,
-    /// ELF Build ID, a Breakpad extension: 'BpEL': [`CV_INFO_ELF`](struct.CV_INFO_ELF.html)
+    /// ELF Build ID, a Breakpad extension: 'BpEL': [`CV_INFO_ELF`]
     Elf = 0x4270454c,
     /// CodeView 4.10: 'NB09'
     Cv41 = 0x3930424e,
@@ -382,7 +381,7 @@ pub enum CvSignature {
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
 #[derive(Debug, Clone)]
 pub struct CV_INFO_PDB20 {
-    /// This field will always be [`CvSignature::Pdb20`](enum.CvSignature.html#variant.Pdb20).
+    /// This field will always be [`CvSignature::Pdb20`].
     pub cv_signature: u32,
     pub cv_offset: u32,
     pub signature: u32,
@@ -417,7 +416,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
 /// This struct is defined as variable-length in C with a trailing PDB filename member.
 #[derive(Debug, Clone)]
 pub struct CV_INFO_PDB70 {
-    /// This will always be [`CvSignature::Pdb70`](enum.CvSignature.html#variant.Pdb70)
+    /// This will always be [`CvSignature::Pdb70`]
     pub cv_signature: u32,
     /// A unique identifer for a module created on first build.
     pub signature: GUID,
@@ -529,7 +528,7 @@ impl fmt::Display for GUID {
 /// [binutils]: https://sourceware.org/binutils/docs-2.26/ld/Options.html#index-g_t_002d_002dbuild_002did-292
 #[derive(Debug, Clone)]
 pub struct CV_INFO_ELF {
-    /// This will always be [`CvSignature::Elf`](enum.CvSignature.html#variant.Elf)
+    /// This will always be [`CvSignature::Elf`]
     pub cv_signature: u32,
     /// The build id, a variable number of bytes
     pub build_id: Vec<u8>,
@@ -1507,7 +1506,7 @@ pub struct ARMCpuInfo {
     pub cpuid: u32,
     /// Hardware capabilities
     ///
-    /// See [`ArmElfHwCaps`](struct.ArmElfHwCaps.html) for possible values.
+    /// See [`ArmElfHwCaps`] for possible values.
     pub elf_hwcaps: u32,
 }
 
@@ -1523,7 +1522,7 @@ pub struct OtherCpuInfo {
 bitflags! {
     /// Possible values of [`ARMCpuInfo::elf_hwcaps`]
     ///
-    /// This matches the Linux kernel definitions from [<asm/hwcaps.h>](hwcap).
+    /// This matches the Linux kernel definitions from [<asm/hwcaps.h>][hwcap].
     ///
     /// [hwcap]: https://elixir.bootlin.com/linux/latest/source/arch/arm/include/uapi/asm/hwcap.h
     pub struct ArmElfHwCaps: u32 {
@@ -1562,7 +1561,7 @@ bitflags! {
 pub struct MINIDUMP_SYSTEM_INFO {
     /// The system's processor architecture
     ///
-    /// Known values are defined in [`ProcessorArchitecture`](enum.ProcessorArchitecture.html).
+    /// Known values are defined in [`ProcessorArchitecture`].
     pub processor_architecture: u16,
     /// x86 (5 = 586, 6 = 686 ...) or ARM (6 = ARMv6, 7 = ARMv7 ...) CPU level
     pub processor_level: u16,
@@ -1575,7 +1574,7 @@ pub struct MINIDUMP_SYSTEM_INFO {
     pub build_number: u32,
     /// The operating system platform
     ///
-    /// Known values are defined in [`PlatformId`](enum.PlatformId.html).
+    /// Known values are defined in [`PlatformId`].
     pub platform_id: u32,
     pub csd_version_rva: RVA,
     pub suite_mask: u16,
@@ -1936,22 +1935,22 @@ pub struct MINIDUMP_MEMORY_INFO {
     pub allocation_base: u64,
     /// The memory protection when the region was initially allocated
     ///
-    /// See [`MemoryProtection`](struct.MemoryProtection.html) for valid values.
+    /// See [`MemoryProtection`] for valid values.
     pub allocation_protection: u32,
     pub __alignment1: u32,
     /// The size of the region in which all pages have identical attributes, in bytes
     pub region_size: u64,
     /// The state of the pages in the region
     ///
-    /// See [`MemoryState`](struct.MemoryState.html) for valid values.
+    /// See [`MemoryState`] for valid values.
     pub state: u32,
     /// The access protection of the pages in the region
     ///
-    /// See [`MemoryProtection`](struct.MemoryProtection.html) for valid values.
+    /// See [`MemoryProtection`] for valid values.
     pub protection: u32,
     /// The type of pages in the region
     ///
-    /// See [`MemoryType`](struct.MemoryType.html) for valid values.
+    /// See [`MemoryType`] for valid values.
     pub _type: u32,
     pub __alignment2: u32,
 }
@@ -1968,7 +1967,7 @@ bitflags! {
 bitflags! {
     /// Potential values for [`MINIDUMP_MEMORY_INFO::protection`] and `allocation_protection`
     ///
-    /// See [Microsoft's documentation](msdn) for details.
+    /// See [Microsoft's documentation][msdn] for details.
     ///
     /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/Memory/memory-protection-constants
     pub struct MemoryProtection: u32 {
