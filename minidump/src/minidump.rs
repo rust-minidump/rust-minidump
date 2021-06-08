@@ -2893,6 +2893,23 @@ impl<'a> Minidump<'a, Mmap> {
     }
 }
 
+/// A stream in the minidump that this implementation has no knowledge of.
+#[derive(Debug)]
+pub struct MinidumpUnknownStream {
+    pub stream_type: u32,
+    pub location: md::MINIDUMP_LOCATION_DESCRIPTOR,
+    pub vendor: &'static str,
+}
+
+/// A stream in the minidump that this implementation is aware of but doesn't
+/// yet support.
+#[derive(Debug)]
+pub struct MinidumpUnimplementedStream {
+    pub stream_type: MINIDUMP_STREAM_TYPE,
+    pub location: md::MINIDUMP_LOCATION_DESCRIPTOR,
+    pub vendor: &'static str,
+}
+
 impl<'a, T> Minidump<'a, T>
 where
     T: Deref<Target = [u8]> + 'a,
@@ -2989,6 +3006,79 @@ where
         }
     }
 
+    pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 39] = [
+            // Presumably will never have an implementation:
+            MINIDUMP_STREAM_TYPE::UnusedStream,
+            MINIDUMP_STREAM_TYPE::ReservedStream0,
+            MINIDUMP_STREAM_TYPE::ReservedStream1,
+            MINIDUMP_STREAM_TYPE::LastReservedStream,
+            // Presumably should be implemented:
+            MINIDUMP_STREAM_TYPE::ThreadExListStream,
+            MINIDUMP_STREAM_TYPE::Memory64ListStream,
+            MINIDUMP_STREAM_TYPE::CommentStreamA,
+            MINIDUMP_STREAM_TYPE::CommentStreamW,
+            MINIDUMP_STREAM_TYPE::HandleDataStream,
+            MINIDUMP_STREAM_TYPE::FunctionTable,
+            MINIDUMP_STREAM_TYPE::MemoryInfoListStream,
+            MINIDUMP_STREAM_TYPE::ThreadInfoListStream,
+            MINIDUMP_STREAM_TYPE::HandleOperationListStream,
+            MINIDUMP_STREAM_TYPE::TokenStream,
+            MINIDUMP_STREAM_TYPE::JavaScriptDataStream,
+            MINIDUMP_STREAM_TYPE::SystemMemoryInfoStream,
+            MINIDUMP_STREAM_TYPE::ProcessVmCountersStream,
+            MINIDUMP_STREAM_TYPE::IptTraceStream,
+            // What on earth is all this "ce" stuff?
+            MINIDUMP_STREAM_TYPE::ceStreamNull,
+            MINIDUMP_STREAM_TYPE::ceStreamSystemInfo,
+            MINIDUMP_STREAM_TYPE::ceStreamException,
+            MINIDUMP_STREAM_TYPE::ceStreamModuleList,
+            MINIDUMP_STREAM_TYPE::ceStreamProcessList,
+            MINIDUMP_STREAM_TYPE::ceStreamThreadList,
+            MINIDUMP_STREAM_TYPE::ceStreamThreadContextList,
+            MINIDUMP_STREAM_TYPE::ceStreamThreadCallStackList,
+            MINIDUMP_STREAM_TYPE::ceStreamMemoryVirtualList,
+            MINIDUMP_STREAM_TYPE::ceStreamMemoryPhysicalList,
+            MINIDUMP_STREAM_TYPE::ceStreamBucketParameters,
+            MINIDUMP_STREAM_TYPE::ceStreamProcessModuleMap,
+            MINIDUMP_STREAM_TYPE::ceStreamDiagnosisList,
+            // non-standard streams (should also be implemented):
+            MINIDUMP_STREAM_TYPE::LinuxCpuInfo,
+            MINIDUMP_STREAM_TYPE::LinuxProcStatus,
+            MINIDUMP_STREAM_TYPE::LinuxCmdLine,
+            MINIDUMP_STREAM_TYPE::LinuxEnviron,
+            MINIDUMP_STREAM_TYPE::LinuxAuxv,
+            MINIDUMP_STREAM_TYPE::LinuxMaps,
+            MINIDUMP_STREAM_TYPE::LinuxDsoDebug,
+            MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream,
+        ];
+        self.streams.iter().filter_map(|(_, (_, stream))| {
+            MINIDUMP_STREAM_TYPE::from_u32(stream.stream_type).and_then(|stream_type| {
+                if UNIMPLEMENTED_STREAMS.contains(&stream_type) {
+                    return Some(MinidumpUnimplementedStream {
+                        stream_type,
+                        location: stream.location,
+                        vendor: stream_vendor(stream.stream_type),
+                    });
+                }
+                None
+            })
+        })
+    }
+
+    pub fn unknown_streams(&self) -> impl Iterator<Item = MinidumpUnknownStream> + '_ {
+        self.streams.iter().filter_map(|(_, (_, stream))| {
+            if MINIDUMP_STREAM_TYPE::from_u32(stream.stream_type).is_none() {
+                return Some(MinidumpUnknownStream {
+                    stream_type: stream.stream_type,
+                    location: stream.location,
+                    vendor: stream_vendor(stream.stream_type),
+                });
+            }
+            None
+        })
+    }
+
     /// Write a verbose description of the `Minidump` to `f`.
     pub fn print<W: Write>(&self, f: &mut W) -> io::Result<()> {
         fn get_stream_name(stream_type: u32) -> Cow<'static, str> {
@@ -3052,6 +3142,18 @@ MDRawDirectory
         }
         writeln!(f)?;
         Ok(())
+    }
+}
+
+fn stream_vendor(stream_type: u32) -> &'static str {
+    if stream_type <= MINIDUMP_STREAM_TYPE::LastReservedStream as u32 {
+        "Official"
+    } else {
+        match stream_type & 0xFFFF0000 {
+            0x4767_0000 => "Google Extension",
+            0x4d7a_0000 => "Mozilla Extension",
+            _ => "Unknown Extension",
+        }
     }
 }
 

@@ -231,6 +231,11 @@ where
 
         threads.push(stack);
     }
+
+    // Collect up info on unimplemented/unknown modules
+    let unknown_streams = dump.unknown_streams().collect();
+    let unimplemented_streams = dump.unimplemented_streams().collect();
+
     // if exploitability enabled, run exploitability analysis
     Ok(ProcessState {
         process_id,
@@ -245,5 +250,7 @@ where
         threads,
         modules,
         unloaded_modules,
+        unknown_streams,
+        unimplemented_streams,
     })
 }

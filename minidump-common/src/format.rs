@@ -240,6 +240,10 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// See [`MinidumpCrashpadInfo`](struct.MinidumpCrashpadInfo.html).
     CrashpadInfoStream = 0x43500001,
+
+    /// Data from the __DATA,__crash_info section of every module which contains
+    /// one that has useful data. Only available on macOS. 0x4D7A = "Mz".
+    MozMacosCrashInfoStream = 0x4d7a0001,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
