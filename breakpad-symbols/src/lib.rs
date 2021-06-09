@@ -243,20 +243,8 @@ pub struct StringSymbolSupplier {
 
 impl StringSymbolSupplier {
     /// Make a new StringSymbolSupplier with no modules.
-    pub fn new() -> Self {
-        Self {
-            modules: HashMap::new(),
-        }
-    }
-
-    /// Add a symbol file.
-    pub fn insert(&mut self, code_file: String, symbols: String) {
-        self.modules.insert(code_file, symbols);
-    }
-
-    /// Remove all symbol files.
-    pub fn clear(&mut self) {
-        self.modules.clear();
+    pub fn new(modules: HashMap<String, String>) -> Self {
+        Self { modules }
     }
 }
 

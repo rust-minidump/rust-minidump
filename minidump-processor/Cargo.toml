@@ -13,9 +13,16 @@ edition = "2018"
 [badges]
 travis-ci = { repository = "luser/rust-minidump" }
 
+[features]
+default = ["breakpad-syms"]
+# Use the `breakpad-symbols` crate for symbolizing and cfi evaluation
+breakpad-syms = ["breakpad-symbols"]
+# Use the `symbolic` crate for symbolizing and cfi evaluation (TODO)
+symbolic-syms = []
+
 [dependencies]
 addr2line = "0.15.2"
-breakpad-symbols = { version = "0.3.0", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.3.0", path = "../breakpad-symbols", optional = true }
 chrono = { version = "0.4.6", features = ["serde"] }
 clap = "2.33"
 failure = "0.1.1"

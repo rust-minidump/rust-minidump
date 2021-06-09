@@ -1,20 +1,18 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-// NOTE: we don't bother testing arm64_old, it should have identical code at
-// all times!
-
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer};
+use crate::{string_symbol_supplier, Symbolizer};
 use minidump::format::CONTEXT_ARM;
 use minidump::*;
+use std::collections::HashMap;
 use test_assembler::*;
 
 struct TestFixture {
     pub raw: CONTEXT_ARM,
     pub modules: MinidumpModuleList,
-    pub symbolizer: Symbolizer,
+    pub symbols: HashMap<String, String>,
 }
 
 impl TestFixture {
@@ -27,7 +25,7 @@ impl TestFixture {
                 MinidumpModule::new(0x40000000, 0x10000, "module1"),
                 MinidumpModule::new(0x50000000, 0x10000, "module2"),
             ]),
-            symbolizer: Symbolizer::new(SimpleSymbolSupplier::new(vec![])),
+            symbols: HashMap::new(),
         }
     }
 
@@ -45,13 +43,20 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
+        let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
-            &self.symbolizer,
+            &symbolizer,
         )
     }
+
+    /*
+        pub fn add_symbols(&mut self, name: String, symbols: String) {
+            self.symbols.insert(name, symbols);
+        }
+    */
 }
 
 #[test]

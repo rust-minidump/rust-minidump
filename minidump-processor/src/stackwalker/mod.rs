@@ -11,12 +11,11 @@ mod unwind;
 mod x86;
 
 use crate::process_state::*;
-use crate::SymbolProvider;
+use crate::{FrameWalker, SymbolProvider};
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
 
 use self::unwind::Unwind;
-use breakpad_symbols::FrameWalker;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 
