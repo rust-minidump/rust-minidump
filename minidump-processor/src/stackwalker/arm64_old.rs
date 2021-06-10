@@ -203,7 +203,7 @@ where
         // Default to forwarding all callee-saved regs verbatim.
         // The CFI evaluator may clear or overwrite these values.
         // The stack pointer and instruction pointer are not included.
-        caller_ctx: ctx.clone(),
+        caller_ctx: *ctx,
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
