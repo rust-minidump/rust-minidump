@@ -71,6 +71,12 @@ pub struct MINIDUMP_LOCATION_DESCRIPTOR {
     pub rva: RVA,
 }
 
+impl From<u8> for MINIDUMP_LOCATION_DESCRIPTOR {
+    fn from(_val: u8) -> Self {
+        Self::default()
+    }
+}
+
 /// A range of memory contained within a minidump consisting of a base address and a
 /// location descriptor.
 ///
@@ -242,6 +248,8 @@ pub enum MINIDUMP_STREAM_TYPE {
 
     /// Data from the __DATA,__crash_info section of every module which contains
     /// one that has useful data. Only available on macOS. 0x4D7A = "Mz".
+    ///
+    /// See ['MINIDUMP_MAC_CRASH_INFO'].
     MozMacosCrashInfoStream = 0x4d7a0001,
 }
 
@@ -1519,39 +1527,6 @@ pub struct OtherCpuInfo {
     pub processor_features: [u64; 2],
 }
 
-bitflags! {
-    /// Possible values of [`ARMCpuInfo::elf_hwcaps`]
-    ///
-    /// This matches the Linux kernel definitions from [<asm/hwcaps.h>][hwcap].
-    ///
-    /// [hwcap]: https://elixir.bootlin.com/linux/latest/source/arch/arm/include/uapi/asm/hwcap.h
-    pub struct ArmElfHwCaps: u32 {
-        const HWCAP_SWP       = (1 << 0);
-        const HWCAP_HALF      = (1 << 1);
-        const HWCAP_THUMB     = (1 << 2);
-        const HWCAP_26BIT     = (1 << 3);
-        const HWCAP_FAST_MULT = (1 << 4);
-        const HWCAP_FPA       = (1 << 5);
-        const HWCAP_VFP       = (1 << 6);
-        const HWCAP_EDSP      = (1 << 7);
-        const HWCAP_JAVA      = (1 << 8);
-        const HWCAP_IWMMXT    = (1 << 9);
-        const HWCAP_CRUNCH    = (1 << 10);
-        const HWCAP_THUMBEE   = (1 << 11);
-        const HWCAP_NEON      = (1 << 12);
-        const HWCAP_VFPv3     = (1 << 13);
-        const HWCAP_VFPv3D16  = (1 << 14);
-        const HWCAP_TLS       = (1 << 15);
-        const HWCAP_VFPv4     = (1 << 16);
-        const HWCAP_IDIVA     = (1 << 17);
-        const HWCAP_IDIVT     = (1 << 18);
-        const HWCAP_VFPD32    = (1 << 19);
-        const HWCAP_IDIV      = Self::HWCAP_IDIVA.bits | Self::HWCAP_IDIVT.bits;
-        const HWCAP_LPAE      = (1 << 20);
-        const HWCAP_EVTSTRM   = (1 << 21);
-    }
-}
-
 /// Processor and operating system information
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
@@ -2348,4 +2323,186 @@ pub struct MINIDUMP_CRASHPAD_INFO {
 impl MINIDUMP_CRASHPAD_INFO {
     /// The structure’s currently-defined version number.
     pub const VERSION: u32 = 1;
+}
+
+/// MacOS __DATA,__crash_info data.
+///
+/// This is the format of the [`MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream`]. The individual
+/// [`MINIDUMP_MAC_CRASH_INFO_RECORD`] entries follow this header in the stream.
+#[derive(Debug, Pread, SizeWith)]
+pub struct MINIDUMP_MAC_CRASH_INFO {
+    pub stream_type: u32,
+    /// The number of [`MINIDUMP_MAC_CRASH_INFO_RECORD`]s.
+    pub record_count: u32,
+    /// The size of the "fixed-size" part of MINIDUMP_MAC_CRASH_INFO_RECORD.
+    /// Used to offset to the variable-length portion of the struct, where
+    /// C-strings are stored. This allows us to access all the fields we know
+    /// about, even when newer versions of this format introduce new ones.
+    pub record_start_size: u32,
+    pub records: [MINIDUMP_LOCATION_DESCRIPTOR; 20],
+}
+
+// MozMacosCrashInfoStream is a versioned format where new fields are added to
+// the end of the struct, but there are also variable-length c-string fields
+// that follow the "fixed-size" fields. As such, the versioned strings are separated
+// out into their own separate struct with the same version. So e.g.
+//
+// MINIDUMP_MAC_CRASH_INFO_RECORD_4 should be paired with MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4
+
+multi_structs! {
+    /// Contents of MacOS's `<CrashReporterClient.h>`'s `crashreporter_annotations_t`,
+    /// but with the by-reference C-strings hoisted out to the end of the struct
+    /// and inlined (so this is a variable-length struct).
+    ///
+    /// The variable-length strings are listed in [`MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS`].
+    /// Use [`MINIDUMP_MAC_CRASH_INFO::record_start_size`] to access them.
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD {
+      pub stream_type: u64,
+      // Version of this format, currently at 5.
+      //
+      // Although theoretically this field being here means we can support multiple
+      // versions of this struct in one [`MINIDUMP_MAC_CRASH_INFO`] stream, our reliance on
+      // [`MINIDUMP_MAC_CRASH_INFO::record_start_size`] means we can't actually handle
+      // such a heterogeneous situation. So all records should have the same version value.
+      pub version: u64,
+    }
+    // Includes fields from MINIDUMP_MAC_CRASH_INFO_RECORD
+    /// Contents of MacOS's `<CrashReporterClient.h>`'s `crashreporter_annotations_t`,
+    /// but with the by-reference C-strings hoisted out to the end of the struct
+    /// and inlined (so this is a variable-length struct).
+    ///
+    /// The variable-length strings are listed in [`MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4`].
+    /// Use [`MINIDUMP_MAC_CRASH_INFO::record_start_size`] to access them.
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD_4 {
+        pub thread: u64,
+        pub dialog_mode: u64,
+    }
+    // Includes fields from MINIDUMP_MAC_CRASH_INFO_RECORD and MINIDUMP_MAC_CRASH_INFO_RECORD_4
+    /// Contents of MacOS's `<CrashReporterClient.h>`'s `crashreporter_annotations_t`,
+    /// but with the by-reference C-strings hoisted out to the end of the struct
+    /// and inlined (so this is a variable-length struct).
+    ///
+    /// The variable-length strings are listed in [`MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_5`].
+    /// Use [`MINIDUMP_MAC_CRASH_INFO::record_start_size`] to access them.
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD_5 {
+        pub abort_cause: u64,
+    }
+}
+
+macro_rules! replace_expr {
+    ($_t:tt $sub:expr) => {
+        $sub
+    };
+}
+
+macro_rules! count_tts {
+    ($($tts:tt)*) => {0usize $(+ replace_expr!($tts 1usize))*};
+}
+
+// Like multi_structs but specialized for a struct of strings that can be set by index.
+macro_rules! multi_strings {
+    // With no trailing struct left, terminate.
+    (@next { $($prev:tt)* }) => {};
+    // Declare the next struct, including fields from previous structs.
+    (@next { $($prev:tt)* } $(#[$attr:meta])* pub struct $name:ident { $($cur:tt)* } $($tail:tt)* ) => {
+        // Prepend fields from previous structs to this struct.
+        multi_strings!($(#[$attr])* pub struct $name { $($prev)* $($cur)* } $($tail)*);
+    };
+    // Declare a single struct.
+    ($(#[$attr:meta])* pub struct $name:ident { $( pub $field:ident: $t:tt, )* } $($tail:tt)* ) => {
+        $(#[$attr])*
+        #[derive(Default, Debug, Clone)]
+        pub struct $name {
+            $( pub $field: $t, )*
+        }
+
+        impl $name {
+            pub fn num_strings() -> usize {
+                count_tts!($($t)*)
+            }
+
+            #[allow(unused_variables, unused_mut)]
+            pub fn set_string(&mut self, idx: usize, string: String) {
+                let mut cur_idx = 0;
+                $(if cur_idx == idx {
+                    self.$field = string;
+                    return;
+                }
+                cur_idx += 1;
+                )*
+                panic!("string index out of bounds {} >= {}", idx, cur_idx);
+            }
+        }
+
+        // Persist its fields down to the following structs.
+        multi_strings!(@next { $( pub $field: $t, )* } $($tail)*);
+    };
+}
+
+multi_strings! {
+    /// Variable-length data for [`MINIDUMP_MAC_CRASH_INFO_RECORD`].
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS {
+        // No strings in the base version
+    }
+
+    // Includes fields from [`MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS`]
+    /// Variable-length data for [`MINIDUMP_MAC_CRASH_INFO_RECORD_4`].
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4 {
+        pub module_path: String,
+        pub message: String,
+        pub signature_string: String,
+        pub backtrace: String,
+        pub message2: String,
+    }
+
+    // Includes fields from [`MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4`]
+    /// Variable-length data for [`MINIDUMP_MAC_CRASH_INFO_RECORD_5`].
+    pub struct MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_5 {
+        // No new strings
+    }
+}
+
+/// The maximum supported size of a C-string in [`MINIDUMP_MAC_CRASH_INFO_RECORD`].
+///
+/// Assume the stream is corrupted if a string is longer than this.
+pub const MAC_CRASH_INFO_STRING_MAX_SIZE: usize = 8192;
+
+/// The maximum supported count of [`MINIDUMP_MAC_CRASH_INFO_RECORD`]s.
+///
+/// In principle there should only be one or two non-empty __DATA,__crash_info
+/// sections per process. But the __crash_info section is almost entirely
+/// undocumented, so just in case we set a large maximum.
+pub const MAC_CRASH_INFOS_MAX: usize = 20;
+
+bitflags! {
+    /// Possible values of [`ARMCpuInfo::elf_hwcaps`]
+    ///
+    /// This matches the Linux kernel definitions from [<asm/hwcaps.h>][hwcap].
+    ///
+    /// [hwcap]: https://elixir.bootlin.com/linux/latest/source/arch/arm/include/uapi/asm/hwcap.h
+    pub struct ArmElfHwCaps: u32 {
+        const HWCAP_SWP       = (1 << 0);
+        const HWCAP_HALF      = (1 << 1);
+        const HWCAP_THUMB     = (1 << 2);
+        const HWCAP_26BIT     = (1 << 3);
+        const HWCAP_FAST_MULT = (1 << 4);
+        const HWCAP_FPA       = (1 << 5);
+        const HWCAP_VFP       = (1 << 6);
+        const HWCAP_EDSP      = (1 << 7);
+        const HWCAP_JAVA      = (1 << 8);
+        const HWCAP_IWMMXT    = (1 << 9);
+        const HWCAP_CRUNCH    = (1 << 10);
+        const HWCAP_THUMBEE   = (1 << 11);
+        const HWCAP_NEON      = (1 << 12);
+        const HWCAP_VFPv3     = (1 << 13);
+        const HWCAP_VFPv3D16  = (1 << 14);
+        const HWCAP_TLS       = (1 << 15);
+        const HWCAP_VFPv4     = (1 << 16);
+        const HWCAP_IDIVA     = (1 << 17);
+        const HWCAP_IDIVT     = (1 << 18);
+        const HWCAP_VFPD32    = (1 << 19);
+        const HWCAP_IDIV      = ArmElfHwCaps::HWCAP_IDIVA.bits | Self::HWCAP_IDIVT.bits;
+        const HWCAP_LPAE      = (1 << 20);
+        const HWCAP_EVTSTRM   = (1 << 21);
+    }
 }

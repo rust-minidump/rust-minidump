@@ -161,6 +161,7 @@ pub struct ProcessState {
     pub system_info: SystemInfo,
     /// Linux Standard Base Info
     pub linux_standard_base: Option<MinidumpLinuxLsbRelease>,
+    pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
@@ -415,6 +416,38 @@ Crash address: {:#x}
         if let Some(ref assertion) = self.assertion {
             writeln!(f, "Assertion: {}", assertion)?;
         }
+        if let Some(ref info) = self.mac_crash_info {
+            writeln!(f, "Mac Crash Info:")?;
+            for (idx, record) in info.iter().enumerate() {
+                writeln!(f, "  Record {}", idx)?;
+                if let Some(val) = record.thread() {
+                    writeln!(f, "    thread: 0x{}", val)?;
+                }
+                if let Some(val) = record.dialog_mode() {
+                    writeln!(f, "    dialog mode: 0x{}", val)?;
+                }
+                if let Some(val) = record.abort_cause() {
+                    writeln!(f, "    abort_cause: 0x{}", val)?;
+                }
+
+                if let Some(val) = record.module_path() {
+                    writeln!(f, "    module: {}", val)?;
+                }
+                if let Some(val) = record.message() {
+                    writeln!(f, "    message: {}", val)?;
+                }
+                if let Some(val) = record.signature_string() {
+                    writeln!(f, "    signature string: {}", val)?;
+                }
+                if let Some(val) = record.backtrace() {
+                    writeln!(f, "    backtrace: {}", val)?;
+                }
+                if let Some(val) = record.message2() {
+                    writeln!(f, "    message2: {}", val)?;
+                }
+            }
+            writeln!(f)?;
+        }
         if let Some(ref time) = self.process_create_time {
             let uptime = self.time - *time;
             writeln!(f, "Process uptime: {} seconds", uptime.num_seconds())?;
@@ -559,11 +592,28 @@ Unknown streams encountered:
                 "crashing_thread": self.requesting_thread,
                 "assertion": self.assertion,
             },
+            // optional
             "lsb_release": self.linux_standard_base.as_ref().map(|lsb| json!({
                 "id": lsb.id,
                 "release": lsb.release,
                 "codename": lsb.codename,
                 "description": lsb.description,
+            })),
+            // optional
+            "mac_crash_info": self.mac_crash_info.as_ref().map(|info| json!({
+                "num_records": info.len(),
+                // All of these fields are optional
+                "records": info.iter().map(|record| json!({
+                    "thread": record.thread().copied().map(json_hex),
+                    "dialog_mode": record.dialog_mode().copied().map(json_hex),
+                    "abort_cause": record.abort_cause().copied().map(json_hex),
+
+                    "module": record.module_path(),
+                    "message": record.message(),
+                    "signature_string": record.signature_string(),
+                    "backtrace": record.backtrace(),
+                    "message2": record.message2(),
+                })).collect::<Vec<_>>()
             })),
 
             // the first module is always the main one
