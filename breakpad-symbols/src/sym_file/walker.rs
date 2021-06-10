@@ -348,9 +348,13 @@ pub fn walk_with_stack_cfi(
     for (reg, expr) in exprs {
         if let CfiReg::Other(reg) = reg {
             // If this eval fails, just don't emit this particular register
-            // and keep going on. It's fine to lose some general purpose regs.
-            eval_cfi_expr(expr, walker, Some(cfa))
-                .and_then(|val| walker.set_caller_register(reg, val));
+            // and keep going on. It's fine to lose some general purpose regs,
+            // but make sure to clear it in case it would have been implicitly
+            // forwarded from the callee.
+            match eval_cfi_expr(expr, walker, Some(cfa)) {
+                Some(val) => { walker.set_caller_register(reg, val); }
+                None => { walker.clear_caller_register(reg); }
+            }
         } else {
             // All special registers should already have been removed??
             unreachable!()
@@ -881,6 +885,9 @@ mod test {
                 let memoized_reg = STATIC_REGS[idx];
                 self.caller_regs.insert(memoized_reg, Reg::from_u64(val));
             })
+        }
+        fn clear_caller_register(&mut self, name: &str) {
+            self.caller_regs.remove(name);
         }
         /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
         fn set_cfa(&mut self, val: u64) -> Option<()> {

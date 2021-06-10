@@ -124,6 +124,8 @@ mod symbols_shim {
         fn get_callee_register(&self, name: &str) -> Option<u64>;
         /// Set the value of a register for the caller's frame.
         fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()>;
+        /// Explicitly mark one of the caller's registers as invalid.
+        fn clear_caller_register(&mut self, name: &str);
         /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
         fn set_cfa(&mut self, val: u64) -> Option<()>;
         /// Set whatever registers in the caller should be set based on the return address (e.g. rip).

@@ -389,8 +389,7 @@ fn test_frame_pointer() {
         }
     }
 }
-
-// const CALLEE_SAVE_REGS: [&str; 13] = ["pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"];
+const CALLEE_SAVE_REGS: &[&str] = &["pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"];
 
 #[test]
 fn test_cfi_at_4000() {
@@ -399,9 +398,9 @@ fn test_cfi_at_4000() {
     let raw_valid = MinidumpContextValidity::All;
 
     let expected = f.raw.clone();
-    let expected_regs = ["pc", "sp"];
+    let expected_regs = CALLEE_SAVE_REGS;
     let expected_valid =
-        MinidumpContextValidity::Some(std::array::IntoIter::new(expected_regs).collect());
+        MinidumpContextValidity::Some(expected_regs.iter().copied().collect());
 
     let mut stack = Section::new();
     stack = stack.append_repeated(0, 120);
@@ -434,7 +433,7 @@ fn test_cfi_at_4000() {
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
-            for reg in &expected_regs {
+            for reg in expected_regs {
                 assert_eq!(
                     ctx.get_register(reg, valid),
                     expected.get_register(reg, &expected_valid),
