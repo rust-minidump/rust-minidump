@@ -98,6 +98,10 @@ where
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
     let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
+    let mac_crash_info = dump
+        .get_stream::<MinidumpMacCrashInfo>()
+        .ok()
+        .map(|info| info.raw);
     // Process create time is optional.
     let (process_id, process_create_time) =
         if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
@@ -199,6 +203,7 @@ where
         requesting_thread,
         system_info,
         linux_standard_base,
+        mac_crash_info,
         threads,
         modules,
         unloaded_modules,

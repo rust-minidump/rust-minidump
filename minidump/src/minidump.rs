@@ -230,6 +230,29 @@ pub struct MinidumpMemory<'a> {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
+pub enum RawMacCrashInfo {
+    V1(
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD,
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS,
+    ),
+    V4(
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD_4,
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4,
+    ),
+    V5(
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD_5,
+        md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_5,
+    ),
+}
+
+#[derive(Debug)]
+pub struct MinidumpMacCrashInfo {
+    /// The `MINIDUMP_MAC_CRASH_INFO_RECORD` and `MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS`.
+    pub raw: Vec<RawMacCrashInfo>,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub enum RawMiscInfo {
     MiscInfo(md::MINIDUMP_MISC_INFO),
     MiscInfo2(md::MINIDUMP_MISC_INFO_2),
@@ -474,6 +497,19 @@ fn read_string_utf8<'a>(
         Ok(0u8) => Ok(string),
         _ => Err(()),
     }
+}
+
+fn read_cstring_utf8(offset: &mut usize, bytes: &[u8]) -> Result<String, ()> {
+    let initial_offset = *offset;
+    loop {
+        let byte: u8 = bytes.gread(offset).or(Err(()))?;
+        if byte == 0 {
+            break;
+        }
+    }
+    std::str::from_utf8(&bytes[initial_offset..*offset - 1])
+        .map(String::from)
+        .or(Err(()))
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
@@ -1917,6 +1953,214 @@ impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
             (md::MINIDUMP_MISC_INFO, MiscInfo),
         );
         Err(Error::StreamReadFailure)
+    }
+}
+
+// Generates an accessor for a MAC_CRASH_INFO field with two possible syntaxes:
+//
+// * VERSION_NUMBER: FIELD_NAME -> FIELD_TYPE
+// * VERSION_NUMBER: string FIELD_NAME -> FIELD_TYPE
+//
+// With the following definitions:
+//
+// * VERSION_NUMBER: The MAC_CRASH_INFO version this field was introduced in
+// * FIELD_NAME: The name of the field to read
+// * FIELD_TYPE: The type of the field
+//
+// The "string" mode will retrieve the field from the variant's _RECORD_STRINGS
+// struct, while the other mode will retrieve it from the variant's _RECORD
+// struct.
+//
+// In both cases, None will be yielded if the value is null/empty.
+macro_rules! mac_crash_accessors {
+    () => {};
+    (@deffixed $name:ident $t:ty [$($variant:ident)+]) => {
+        #[allow(unreachable_patterns)]
+        pub fn $name(&self) -> Option<&$t> {
+            match self {
+                $(
+                    RawMacCrashInfo::$variant(ref fixed, _) => {
+                        if fixed.$name == 0 {
+                            None
+                        } else {
+                            Some(&fixed.$name)
+                        }
+                    },
+                )+
+                _ => None,
+            }
+        }
+    };
+    (@defstrings $name:ident $t:ty [$($variant:ident)+]) => {
+        #[allow(unreachable_patterns)]
+        pub fn $name(&self) -> Option<&$t> {
+            match self {
+                $(
+                    RawMacCrashInfo::$variant(_, ref strings) => {
+                        if strings.$name.is_empty() {
+                            None
+                        } else {
+                            Some(&*strings.$name)
+                        }
+                    }
+                )+
+                _ => None,
+            }
+        }
+    };
+    (1: $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@deffixed $name $t [V1 V4 V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+    (1: string $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@defstrings $name $t [V1 V4 V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+    (4: $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@deffixed $name $t [V4 V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+    (4: string $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@defstrings $name $t [V4 V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+    (5: $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@deffixed $name $t [V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+    (5: string $name:ident -> $t:ty, $($rest:tt)*) => {
+        mac_crash_accessors!(@defstrings $name $t [V5]);
+        mac_crash_accessors!($($rest)*);
+    };
+}
+
+impl RawMacCrashInfo {
+    // Fields are grouped by the flag that guards them.
+    mac_crash_accessors!(
+        1: version -> u64,
+
+        4: thread -> u64,
+        4: dialog_mode -> u64,
+
+        4: string module_path -> str,
+        4: string message -> str,
+        4: string signature_string -> str,
+        4: string backtrace -> str,
+        4: string message2 -> str,
+
+        5: abort_cause -> u64,
+    );
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream;
+
+    fn read(
+        bytes: &[u8],
+        all: &[u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpMacCrashInfo, Error> {
+        // Get the main header of the stream
+        let header: md::MINIDUMP_MAC_CRASH_INFO = bytes
+            .pread_with(0, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let strings_offset = header.record_start_size as usize;
+        let mut prev_version = None;
+        let mut infos = Vec::new();
+        for record_location in &header.records[..header.record_count as usize] {
+            // Peek the V1 version to get the `version` field
+            let record_slice = location_slice(all, record_location)?;
+            let base: md::MINIDUMP_MAC_CRASH_INFO_RECORD = record_slice
+                .pread_with(0, endian)
+                .or(Err(Error::StreamReadFailure))?;
+
+            // The V1 version also includes the stream type again, but that's
+            // not really important, so just warn about it and keep going.
+            if base.stream_type != header.stream_type as u64 {
+                warn!(
+                    "MozMacosCrashInfoStream records don't have the right stream type? {}",
+                    base.stream_type
+                );
+            }
+
+            // Make sure every record has the same version, because they have to
+            // share their strings_offset which make heterogeneous records impossible.
+            if let Some(prev_version) = prev_version {
+                if prev_version != base.version {
+                    warn!(
+                        "MozMacosCrashInfoStream had two different versions ({} != {})",
+                        prev_version, base.version
+                    );
+                    return Err(Error::VersionMismatch);
+                }
+            }
+            prev_version = Some(base.version);
+
+            // Now actually read the full record and its strings for the version
+            macro_rules! do_read {
+                ($base_version:expr, $strings_offset:expr, $infos:ident,
+                    $(($version:expr, $fixed:ty, $strings:ty, $variant:ident),)+) => {$(
+                    if $base_version >= $version {
+                        let offset = &mut 0;
+                        let fixed: $fixed = record_slice
+                            .gread_with(offset, endian)
+                            .or(Err(Error::StreamReadFailure))?;
+
+                        // Sanity check that we haven't blown past where the strings start.
+                        if *offset > $strings_offset {
+                            warn!("MozMacosCrashInfoStream's record_start_size was too small! ({})",
+                                $strings_offset);
+                            return Err(Error::StreamReadFailure);
+                        }
+
+                        // We could be handling a newer version of the format than we know
+                        // how to support, so jump to where the strings start, potentially
+                        // skipping over some unknown fields.
+                        *offset = $strings_offset;
+                        let num_strings = <$strings>::num_strings();
+                        let mut strings = <$strings>::default();
+
+                        // Read out all the strings we know about
+                        for i in 0..num_strings {
+                            let string = read_cstring_utf8(offset, record_slice)
+                                .or(Err(Error::StreamReadFailure))?;
+                            strings.set_string(i, string);
+                        }
+                        // If this is a newer version, there may be some extra variable length
+                        // data in this record, but we don't know what it is, so don't try to parse it.
+
+                        infos.push(RawMacCrashInfo::$variant(fixed, strings));
+                        continue;
+                    }
+                )+}
+            }
+
+            do_read!(
+                base.version,
+                strings_offset,
+                infos,
+                (
+                    5,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD_5,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_5,
+                    V5
+                ),
+                (
+                    4,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD_4,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS_4,
+                    V4
+                ),
+                (
+                    1,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD,
+                    md::MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS,
+                    V1
+                ),
+            );
+        }
+        Ok(MinidumpMacCrashInfo { raw: infos })
     }
 }
 
