@@ -352,8 +352,12 @@ pub fn walk_with_stack_cfi(
             // but make sure to clear it in case it would have been implicitly
             // forwarded from the callee.
             match eval_cfi_expr(expr, walker, Some(cfa)) {
-                Some(val) => { walker.set_caller_register(reg, val); }
-                None => { walker.clear_caller_register(reg); }
+                Some(val) => {
+                    walker.set_caller_register(reg, val);
+                }
+                None => {
+                    walker.clear_caller_register(reg);
+                }
             }
         } else {
             // All special registers should already have been removed??

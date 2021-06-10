@@ -24,7 +24,9 @@ const FRAME_POINTER: &str = Registers::FramePointer.name();
 const STACK_POINTER: &str = Registers::StackPointer.name();
 const LINK_REGISTER: &str = Registers::LinkRegister.name();
 const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
-const CALLEE_SAVED_REGS: &[&str] = &["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29"];
+const CALLEE_SAVED_REGS: &[&str] = &[
+    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29",
+];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
@@ -231,12 +233,12 @@ where
 
 fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
     match valid {
-        MinidumpContextValidity::All => {
-            CALLEE_SAVED_REGS.iter().copied().collect()
-        }
-        MinidumpContextValidity::Some(ref which) => {
-            CALLEE_SAVED_REGS.iter().filter(|&reg| which.contains(reg)).copied().collect()
-        }
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
     }
 }
 

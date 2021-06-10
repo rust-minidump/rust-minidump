@@ -167,12 +167,12 @@ where
 
 fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
     match valid {
-        MinidumpContextValidity::All => {
-            CALLEE_SAVED_REGS.iter().copied().collect()
-        }
-        MinidumpContextValidity::Some(ref which) => {
-            CALLEE_SAVED_REGS.iter().filter(|&reg| which.contains(reg)).copied().collect()
-        }
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
     }
 }
 

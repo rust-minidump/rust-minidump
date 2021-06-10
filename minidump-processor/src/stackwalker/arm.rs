@@ -172,12 +172,12 @@ where
 
 fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
     match valid {
-        MinidumpContextValidity::All => {
-            CALLEE_SAVED_REGS.iter().copied().collect()
-        }
-        MinidumpContextValidity::Some(ref which) => {
-            CALLEE_SAVED_REGS.iter().filter(|&reg| which.contains(reg)).copied().collect()
-        }
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
     }
 }
 
@@ -266,7 +266,7 @@ fn stack_seems_valid(
     stack_memory: &MinidumpMemory,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
-    if caller_sp <= callee_sp {
+    if caller_sp < callee_sp {
         return false;
     }
 
@@ -316,7 +316,7 @@ impl Unwind for ArmContext {
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.get_register_always("sp") as u64 {
+                if frame.context.get_stack_pointer() < self.get_register_always("sp") as u64 {
                     return None;
                 }
                 Some(frame)

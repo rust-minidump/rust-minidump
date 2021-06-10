@@ -41,7 +41,7 @@ pub trait CpuContext {
         if let MinidumpContextValidity::Some(ref which) = *valid {
             which.contains(reg)
         } else {
-            true
+            self.memoize_register(reg).is_some()
         }
     }
     /// Get a register value if it is valid.
@@ -210,7 +210,7 @@ impl CpuContext for md::CONTEXT_ARM {
                 _ => which.contains(reg),
             }
         } else {
-            true
+            self.memoize_register(reg).is_some()
         }
     }
 
@@ -292,7 +292,7 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
                 _ => which.contains(reg),
             }
         } else {
-            true
+            self.memoize_register(reg).is_some()
         }
     }
 
@@ -404,7 +404,7 @@ impl CpuContext for md::CONTEXT_ARM64 {
                 _ => which.contains(reg),
             }
         } else {
-            true
+            self.memoize_register(reg).is_some()
         }
     }
 

@@ -24,7 +24,7 @@ const INSTRUCTION_REGISTER: &str = "rip";
 const STACK_POINTER_REGISTER: &str = "rsp";
 const FRAME_POINTER_REGISTER: &str = "rbp";
 // FIXME: rdi and rsi are also preserved on windows (but not in sysv) -- we should handle that?
-const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "rsp", "r12", "r13", "r14", "r15"];
+const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "r12", "r13", "r14", "r15"];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
@@ -186,12 +186,12 @@ where
 
 fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
     match valid {
-        MinidumpContextValidity::All => {
-            CALLEE_SAVED_REGS.iter().copied().collect()
-        }
-        MinidumpContextValidity::Some(ref which) => {
-            CALLEE_SAVED_REGS.iter().filter(|&reg| which.contains(reg)).copied().collect()
-        }
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
     }
 }
 

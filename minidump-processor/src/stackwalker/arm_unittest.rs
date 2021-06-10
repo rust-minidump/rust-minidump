@@ -52,11 +52,9 @@ impl TestFixture {
         )
     }
 
-    /*
-        pub fn add_symbols(&mut self, name: String, symbols: String) {
-            self.symbols.insert(name, symbols);
-        }
-    */
+    pub fn add_symbols(&mut self, name: String, symbols: String) {
+        self.symbols.insert(name, symbols);
+    }
 }
 
 #[test]
@@ -334,4 +332,318 @@ fn test_frame_pointer() {
             unreachable!();
         }
     }
+}
+
+const CALLEE_SAVE_REGS: &[&str] = &["pc", "sp", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"];
+
+fn init_cfi_state() -> (TestFixture, Section, CONTEXT_ARM, MinidumpContextValidity) {
+    let mut f = TestFixture::new();
+    let symbols = [
+        // The youngest frame's function.
+        "FUNC 4000 1000 10 enchiridion\n",
+        // Initially, nothing has been pushed on the stack,
+        // and the return address is still in the link register.
+        "STACK CFI INIT 4000 100 .cfa: sp .ra: lr\n",
+        // Push r4, the frame pointer, and the link register.
+        "STACK CFI 4001 .cfa: sp 12 + r4: .cfa 12 - ^",
+        " r11: .cfa 8 - ^ .ra: .cfa 4 - ^\n",
+        // Save r4..r7 in r0..r3: verify that we populate
+        // the youngest frame with all the values we have.
+        "STACK CFI 4002 r4: r0 r5: r1 r6: r2 r7: r3\n",
+        // Restore r4..r7. Save the non-callee-saves register r1.
+        "STACK CFI 4003 .cfa: sp 16 + r1: .cfa 16 - ^",
+        " r4: r4 r5: r5 r6: r6 r7: r7\n",
+        // Move the .cfa back four bytes, to point at the return
+        // address, and restore the sp explicitly.
+        "STACK CFI 4005 .cfa: sp 12 + r1: .cfa 12 - ^",
+        " r11: .cfa 4 - ^ .ra: .cfa ^ sp: .cfa 4 +\n",
+        // Recover the PC explicitly from a new stack slot;
+        // provide garbage for the .ra.
+        "STACK CFI 4006 .cfa: sp 16 + pc: .cfa 16 - ^\n",
+        // The calling function.
+        "FUNC 5000 1000 10 epictetus\n",
+        // Mark it as end of stack.
+        "STACK CFI INIT 5000 1000 .cfa: 0 .ra: 0\n",
+        // A function whose CFI makes the stack pointer
+        // go backwards.
+        "FUNC 6000 1000 20 palinal\n",
+        "STACK CFI INIT 6000 1000 .cfa: sp 4 - .ra: lr\n",
+        // A function with CFI expressions that can't be
+        // evaluated.
+        "FUNC 7000 1000 20 rhetorical\n",
+        "STACK CFI INIT 7000 1000 .cfa: moot .ra: ambiguous\n",
+    ];
+    f.add_symbols(String::from("module1"), symbols.concat());
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("sp", 0x80000000);
+    f.raw.set_register("fp", 0x8112e110);
+    f.raw.iregs[4] = 0xb5d55e68;
+    f.raw.iregs[5] = 0xebd134f3;
+    f.raw.iregs[6] = 0xa31e74bc;
+    f.raw.iregs[7] = 0x2dcb16b3;
+    f.raw.iregs[8] = 0x2ada2137;
+    f.raw.iregs[9] = 0xbbbb557d;
+    f.raw.iregs[10] = 0x48bf8ca7;
+
+    let raw_valid = MinidumpContextValidity::All;
+
+    let expected = f.raw.clone();
+    let expected_regs = CALLEE_SAVE_REGS;
+    let expected_valid = MinidumpContextValidity::Some(expected_regs.iter().copied().collect());
+
+    let stack = Section::new();
+    stack
+        .start()
+        .set_const(f.raw.get_register("sp", &raw_valid).unwrap() as u64);
+
+    (f, stack, expected, expected_valid)
+}
+
+fn check_cfi(
+    f: TestFixture,
+    stack: Section,
+    expected: CONTEXT_ARM,
+    expected_valid: MinidumpContextValidity,
+) {
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        if let MinidumpContextValidity::Some(ref expected_regs) = expected_valid {
+            let frame = &s.frames[1];
+            let valid = &frame.context.valid;
+            assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+            if let MinidumpContextValidity::Some(ref which) = valid {
+                assert_eq!(which.len(), expected_regs.len());
+            } else {
+                unreachable!();
+            }
+
+            if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+                for reg in expected_regs {
+                    assert_eq!(
+                        ctx.get_register(reg, valid),
+                        expected.get_register(reg, &expected_valid),
+                        "{} registers didn't match!",
+                        reg
+                    );
+                }
+                return;
+            }
+        }
+    }
+    unreachable!();
+}
+
+#[test]
+fn test_cfi_at_4000() {
+    let (mut f, mut stack, expected, expected_valid) = init_cfi_state();
+
+    stack = stack.append_repeated(0, 120);
+
+    f.raw.set_register("pc", 0x40004000);
+    f.raw.set_register("lr", 0x40005510);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4001() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0xb5d55e68) // saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0x40005510) // return address
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    f.raw.set_register("pc", 0x40004001);
+    f.raw.iregs[4] = 0x635adc9f;
+    f.raw.set_register("fp", 0xbe145fc4);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4002() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0xfb81ff3d) // no longer saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0x40005510) // return address
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    f.raw.set_register("pc", 0x40004002);
+    f.raw.iregs[0] = 0xb5d55e68; // saved r4
+    f.raw.iregs[1] = 0xebd134f3; // saved r5
+    f.raw.iregs[2] = 0xa31e74bc; // saved r6
+    f.raw.iregs[3] = 0x2dcb16b3; // saved r7
+    f.raw.iregs[4] = 0xfdd35466; // distinct callee r4
+    f.raw.iregs[5] = 0xf18c946c; // distinct callee r5
+    f.raw.iregs[6] = 0xac2079e8; // distinct callee r6
+    f.raw.iregs[7] = 0xa449829f; // distinct callee r7
+    f.raw.set_register("fp", 0xbe145fc4);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4003() {
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0x48c8dd5a) // saved r1 (even though it's not callee-saves)
+        .D32(0xcb78040e) // no longer saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0x40005510) // return address
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    expected.iregs[1] = 0x48c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("r1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x40004003);
+    f.raw.iregs[1] = 0xfb756319;
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4004() {
+    // Should be the same as 4003
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0x48c8dd5a) // saved r1 (even though it's not callee-saves)
+        .D32(0xcb78040e) // no longer saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0x40005510) // return address
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    expected.iregs[1] = 0x48c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("r1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x40004004);
+    f.raw.iregs[1] = 0xfb756319;
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4005() {
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0x48c8dd5a) // saved r1 (even though it's not callee-saves)
+        .D32(0xf013f841) // no longer saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0x40005510) // return address
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    expected.iregs[1] = 0x48c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("r1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x40004005);
+    f.raw.iregs[1] = 0xfb756319;
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4006() {
+    // Here we provide an explicit rule for the PC, and have the saved .ra be
+    // bogus.
+
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D32(0x40005510) // saved pc
+        .D32(0x48c8dd5a) // saved r1 (even though it's not callee-saves)
+        .D32(0xf013f841) // no longer saved r4
+        .D32(0x8112e110) // saved fp
+        .D32(0xf8d15783) // .ra rule recovers this, which is garbage
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap() as u32);
+    expected.iregs[1] = 0x48c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("r1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x40004006);
+    f.raw.iregs[1] = 0xfb756319;
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_reject_backwards() {
+    // Check that we reject rules that would cause the stack pointer to
+    // move in the wrong direction.
+
+    let (mut f, mut stack, _expected, _expected_valid) = init_cfi_state();
+
+    stack = stack.append_repeated(0, 120);
+
+    f.raw.set_register("pc", 0x40006000);
+    f.raw.set_register("sp", 0x80000000);
+    f.raw.set_register("lr", 0x40005510);
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 1);
+}
+
+#[test]
+fn test_cfi_reject_bad_exprs() {
+    // Check that we reject rules whose expressions' evaluation fails.
+
+    let (mut f, mut stack, _expected, _expected_valid) = init_cfi_state();
+
+    stack = stack.append_repeated(0, 120);
+
+    f.raw.set_register("pc", 0x40007000);
+    f.raw.set_register("sp", 0x80000000);
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 1);
 }
