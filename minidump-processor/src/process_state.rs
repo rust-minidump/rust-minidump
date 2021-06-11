@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
 
+use crate::exploitability::Exploitability;
 use crate::system_info::SystemInfo;
 use crate::{FrameSymbolizer, SymbolStats};
 use chrono::prelude::*;
@@ -145,6 +146,8 @@ pub struct ProcessState {
     pub cert_info: HashMap<String, String>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
     pub crash_reason: Option<CrashReason>,
+    /// If the process crashed, the raw exception code.
+    pub exception_code: Option<u32>,
     /// The memory address implicated in the crash.
     ///
     /// If the process crashed, and if the crash reason implicates memory,
@@ -180,7 +183,7 @@ pub struct ProcessState {
     pub unloaded_modules: MinidumpUnloadedModuleList,
     // modules_without_symbols
     // modules_with_corrupt_symbols
-    // exploitability
+    pub exploitability: Option<Exploitability>,
     pub unknown_streams: Vec<MinidumpUnknownStream>,
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
     pub symbol_stats: HashMap<String, SymbolStats>,
@@ -462,6 +465,9 @@ Crash address: {:#x}
             }
             writeln!(f)?;
         }
+        if let Some(ref exploitability) = self.exploitability {
+            writeln!(f, "Estimated exploitability: {}", exploitability.to_str())?;
+        }
         if let Some(ref time) = self.process_create_time {
             let uptime = self.time - *time;
             writeln!(f, "Process uptime: {} seconds", uptime.num_seconds())?;
@@ -731,7 +737,7 @@ Unknown streams encountered:
             "sensitive": {
                 // TODO: Issue #25
                 // low | medium | high | interesting | none | ERROR: *
-                "exploitability": null,
+                "exploitability": self.exploitability.as_ref().map(|e| e.to_str()),
             }
         });
 

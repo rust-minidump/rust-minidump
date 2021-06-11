@@ -10,6 +10,7 @@ use std::path::Path;
 use minidump::{self, *};
 
 use crate::evil;
+use crate::exploitability;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
@@ -19,6 +20,8 @@ use crate::system_info::SystemInfo;
 #[derive(Default, Debug, Clone)]
 #[non_exhaustive]
 pub struct ProcessorOptions<'a> {
+    /// Whether to guess how exploitable whatever caused the crash was.
+    pub guess_exploitability: bool,
     /// The evil "raw json" mozilla's legacy infrastructure relies on (to be phased out).
     pub evil_json: Option<&'a Path>,
 }
@@ -192,15 +195,17 @@ where
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
-    let (crash_reason, crash_address, crashing_thread_id) = if let Some(exception) = exception_ref {
-        (
-            Some(exception.get_crash_reason(system_info.os, system_info.cpu)),
-            Some(exception.get_crash_address(system_info.os)),
-            Some(exception.get_crashing_thread_id()),
-        )
-    } else {
-        (None, None, None)
-    };
+    let (crash_reason, crash_address, crashing_thread_id, exception_code) =
+        if let Some(exception) = exception_ref {
+            (
+                Some(exception.get_crash_reason(system_info.os, system_info.cpu)),
+                Some(exception.get_crash_address(system_info.os)),
+                Some(exception.get_crashing_thread_id()),
+                Some(exception.raw.exception_record.exception_code),
+            )
+        } else {
+            (None, None, None, None)
+        };
     let exception_context = exception_ref.and_then(|e| e.context.as_ref());
     // Get assertion
     let assertion = None;
@@ -274,12 +279,13 @@ where
     // Get symbol stats from the symbolizer
     let symbol_stats = symbol_provider.stats();
 
-    Ok(ProcessState {
+    let mut process_state = ProcessState {
         process_id,
         time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time,
         cert_info: evil.certs,
         crash_reason,
+        exception_code,
         crash_address,
         assertion,
         requesting_thread,
@@ -292,5 +298,13 @@ where
         unknown_streams,
         unimplemented_streams,
         symbol_stats,
-    })
+        exploitability: None,
+    };
+
+    // Run exploitability analysis now that we've figured out everything else.
+    if options.guess_exploitability {
+        exploitability::analyze(&mut process_state, &memory_list);
+    }
+
+    Ok(process_state)
 }

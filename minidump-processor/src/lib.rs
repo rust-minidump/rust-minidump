@@ -8,6 +8,7 @@
 
 mod dwarf_symbolizer;
 mod evil;
+mod exploitability;
 mod process_state;
 mod processor;
 mod stackwalker;

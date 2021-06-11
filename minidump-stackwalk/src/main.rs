@@ -64,6 +64,13 @@ minidump itself.\n\n\n")
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("guess-exploitability")
+                .long("guess-exploitability")
+                .takes_value(true)
+                .default_value("false")
+                .help("Whether to heuristically guess how exploitable the crash was.")
+        )
+        .arg(
             Arg::with_name("symbols-url")
                 .long_help("base URL from which URLs to symbol files can be constructed.
 
@@ -242,6 +249,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
     let mut options = ProcessorOptions::default();
 
     options.evil_json = matches.value_of_os("raw-json").map(Path::new);
+    options.guess_exploitability = matches.value_of("guess-exploitability").unwrap() == "true";
 
     let temp_dir = std::env::temp_dir();
 
