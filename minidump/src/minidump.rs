@@ -318,6 +318,10 @@ pub enum CrashReason {
 
     /// A Windows error code with no other interesting metadata.
     WindowsGeneral(md::ExceptionCodeWindows),
+    /// A Windows error from winerror.h.
+    WindowsWinError(md::WinErrorWindows),
+    /// A Windows error from ntstatus.h
+    WindowsNtStatus(md::NtStatusWindows),
     /// ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION but with details on the kind of access.
     WindowsAccessViolation(md::ExceptionCodeWindowsAccessType),
     /// ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR but with details on the kind of access.
@@ -326,7 +330,7 @@ pub enum CrashReason {
     /// ExceptionCodeWindows::EXCEPTION_STACK_BUFFER_OVERRUN with an accompanying
     /// windows FAST_FAIL value.
     WindowsStackBufferOverrun(u64),
-    /// A Windows error with no known mapping, holds a windows NTSTATUS value.
+    /// A Windows error with no known mapping.
     WindowsUnknown(u32),
 
     Unknown(u32, u32),
@@ -2597,14 +2601,25 @@ impl CrashReason {
                             }
                         }
                     }
-                    Some(ExceptionCodeWindows::STATUS_STACK_BUFFER_OVERRUN) => {
-                        if record.number_parameters >= 1 {
-                            let fast_fail = info[0];
-                            reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
-                        }
-                    }
                     None => {
-                        reason = CrashReason::WindowsUnknown(exception_code);
+                        let winerror = md::WinErrorWindows::from_u32(exception_code);
+                        if let Some(winerror) = winerror {
+                            reason = CrashReason::WindowsWinError(winerror);
+                        } else {
+                            let nt_status = md::NtStatusWindows::from_u32(exception_code);
+                            if let Some(nt_status) = nt_status {
+                                if (nt_status == md::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN)
+                                    && (record.number_parameters >= 1)
+                                {
+                                    let fast_fail = info[0];
+                                    reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
+                                } else {
+                                    reason = CrashReason::WindowsNtStatus(nt_status);
+                                }
+                            } else {
+                                reason = CrashReason::WindowsUnknown(exception_code);
+                            }
+                        }
                     }
                     _ => {
                         // Do nothing interesting
@@ -2630,14 +2645,22 @@ impl fmt::Display for CrashReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use CrashReason::*;
 
-        fn write_nt_status(_f: &mut fmt::Formatter<'_>, _nt_status: u64) -> fmt::Result {
-            // TODO: implement this
-            Ok(())
+        fn write_nt_status(f: &mut fmt::Formatter<'_>, raw_nt_status: u64) -> fmt::Result {
+            let nt_status = md::NtStatusWindows::from_u64(raw_nt_status);
+            if let Some(nt_status) = nt_status {
+                write!(f, "{:?}", nt_status)
+            } else {
+                write!(f, "0x{:08}", raw_nt_status)
+            }
         }
 
-        fn write_fast_fail(_f: &mut fmt::Formatter<'_>, _fast_fail: u64) -> fmt::Result {
-            // TODO: implement this
-            Ok(())
+        fn write_fast_fail(f: &mut fmt::Formatter<'_>, raw_fast_fail: u64) -> fmt::Result {
+            let fast_fail = md::FastFailCode::from_u64(raw_fast_fail);
+            if let Some(fast_fail) = fast_fail {
+                write!(f, "{:?}", fast_fail)
+            } else {
+                write!(f, "0x{:08}", raw_fast_fail)
+            }
         }
 
         // OK this is kinda a gross hack but I *really* don't want
@@ -2684,6 +2707,8 @@ impl fmt::Display for CrashReason {
             WindowsGeneral(md::ExceptionCodeWindows::SIMULATED) => write!(f, "Simulated Exception"),
             // These codes just repeat their names
             WindowsGeneral(ex) => write!(f, "{:?}", ex),
+            WindowsWinError(winerror) => write!(f, "{:?}", winerror),
+            WindowsNtStatus(nt_status) => write_nt_status(f, nt_status as _),
             WindowsAccessViolation(ex) => write!(f, "EXCEPTION_ACCESS_VIOLATION_{:?}", ex),
             WindowsInPageError(ex, nt_status) => {
                 write!(f, "EXCEPTION_IN_PAGE_ERROR_{:?} / ", ex)?;
@@ -2693,8 +2718,7 @@ impl fmt::Display for CrashReason {
                 write!(f, "EXCEPTION_STACK_BUFFER_OVERRUN / ")?;
                 write_fast_fail(f, fast_fail)
             }
-            // Fall back to treating the error as an NTSTATUS
-            WindowsUnknown(nt_status) => write_nt_status(f, nt_status as u64),
+            WindowsUnknown(code) => write!(f, "unknown 0x{:08}", code),
 
             Unknown(code, flags) => write!(f, "unknown 0x{:08} / 0x{:08}", code, flags),
         }
