@@ -52,11 +52,9 @@ impl TestFixture {
         )
     }
 
-    /*
-        pub fn add_symbols(&mut self, name: String, symbols: String) {
-            self.symbols.insert(name, symbols);
-        }
-    */
+    pub fn add_symbols(&mut self, name: String, symbols: String) {
+        self.symbols.insert(name, symbols);
+    }
 }
 
 #[test]
@@ -259,4 +257,245 @@ fn test_traditional_scan_long_way() {
             unreachable!();
         }
     }
+}
+
+const CALLEE_SAVE_REGS: &[&str] = &["eip", "esp", "ebp", "ebx", "edi", "esi"];
+
+fn init_cfi_state() -> (TestFixture, Section, CONTEXT_X86, MinidumpContextValidity) {
+    let mut f = TestFixture::new();
+    let symbols = [
+        // The youngest frame's function.
+        "FUNC 4000 1000 10 enchiridion\n",
+        // Initially, just a return address.
+        "STACK CFI INIT 4000 100 .cfa: $esp 4 + .ra: .cfa 4 - ^\n",
+        // Push %ebx.
+        "STACK CFI 4001 .cfa: $esp 8 + $ebx: .cfa 8 - ^\n",
+        // Move %esi into %ebx.  Weird, but permitted.
+        "STACK CFI 4002 $esi: $ebx\n",
+        // Allocate frame space, and save %edi.
+        "STACK CFI 4003 .cfa: $esp 20 + $edi: .cfa 16 - ^\n",
+        // Put the return address in %edi.
+        "STACK CFI 4005 .ra: $edi\n",
+        // Save %ebp, and use it as a frame pointer.
+        "STACK CFI 4006 .cfa: $ebp 8 + $ebp: .cfa 12 - ^\n",
+        // The calling function.
+        "FUNC 5000 1000 10 epictetus\n",
+        // Mark it as end of stack.
+        "STACK CFI INIT 5000 1000 .cfa: $esp .ra 0\n",
+    ];
+    f.add_symbols(String::from("module1"), symbols.concat());
+
+    f.raw.set_register("esp", 0x80000000);
+    f.raw.set_register("eip", 0x40005510);
+    f.raw.set_register("ebp", 0xc0d4aab9);
+    f.raw.set_register("ebx", 0x60f20ce6);
+    f.raw.set_register("esi", 0x53d1379d);
+    f.raw.set_register("edi", 0xafbae234);
+
+    let raw_valid = MinidumpContextValidity::All;
+
+    let expected = f.raw.clone();
+    let expected_regs = CALLEE_SAVE_REGS;
+    let expected_valid = MinidumpContextValidity::Some(expected_regs.iter().copied().collect());
+
+    let stack = Section::new();
+    stack
+        .start()
+        .set_const(f.raw.get_register("esp", &raw_valid).unwrap() as u64);
+
+    (f, stack, expected, expected_valid)
+}
+
+fn check_cfi(
+    f: TestFixture,
+    stack: Section,
+    expected: CONTEXT_X86,
+    expected_valid: MinidumpContextValidity,
+) {
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        if let MinidumpContextValidity::Some(ref expected_regs) = expected_valid {
+            let frame = &s.frames[1];
+            let valid = &frame.context.valid;
+            assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+            if let MinidumpContextValidity::Some(ref which) = valid {
+                assert_eq!(which.len(), expected_regs.len());
+            } else {
+                unreachable!();
+            }
+
+            if let MinidumpRawContext::X86(ctx) = &frame.context.raw {
+                for reg in expected_regs {
+                    assert_eq!(
+                        ctx.get_register(reg, valid),
+                        expected.get_register(reg, &expected_valid),
+                        "{} registers didn't match!",
+                        reg
+                    );
+                }
+                return;
+            }
+        }
+    }
+    unreachable!();
+}
+
+#[test]
+fn test_cfi_at_4000() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0x40005510) // return address
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004000);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4001() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x40005510) // return address
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004001);
+    f.raw.set_register("ebx", 0x91aa9a8b);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4002() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x40005510) // return address
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004002);
+    f.raw.set_register("ebx", 0x53d1379d);
+    f.raw.set_register("esi", 0xa5c790ed);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4003() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0x56ec3db7) // garbage
+        .D32(0xafbae234) // saved %edi
+        .D32(0x53d67131) // garbage
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x40005510) // return address
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004003);
+    f.raw.set_register("ebx", 0x53d1379d);
+    f.raw.set_register("esi", 0xa97f229d);
+    f.raw.set_register("edi", 0xb05cc997);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4004() {
+    // Should be the same as 4003
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0x56ec3db7) // garbage
+        .D32(0xafbae234) // saved %edi
+        .D32(0x53d67131) // garbage
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x40005510) // return address
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004004);
+    f.raw.set_register("ebx", 0x53d1379d);
+    f.raw.set_register("esi", 0xa97f229d);
+    f.raw.set_register("edi", 0xb05cc997);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4005() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0xe29782c2) // garbage
+        .D32(0xafbae234) // saved %edi
+        .D32(0x5ba29ce9) // garbage
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x8036cc02) // garbage
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004005);
+    f.raw.set_register("ebx", 0x53d1379d);
+    f.raw.set_register("esi", 0x0fb7dc4e);
+    f.raw.set_register("edi", 0x40005510);
+
+    check_cfi(f, stack, expected, expected_valid);
+}
+
+#[test]
+fn test_cfi_at_4006() {
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let frame0_ebp = Label::new();
+    let frame1_rsp = Label::new();
+    stack = stack
+        .D32(0xdcdd25cd) // garbage
+        .D32(0xafbae234) // saved %edi
+        .D32(0xc0d4aab9) // saved %ebp
+        .mark(&frame0_ebp) // frame pointer points here
+        .D32(0x60f20ce6) // saved %ebx
+        .D32(0x8036cc02) // garbage
+        .mark(&frame1_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
+    f.raw
+        .set_register("ebp", frame0_ebp.value().unwrap() as u32);
+    f.raw.set_register("eip", 0x40004006);
+    f.raw.set_register("ebx", 0x53d1379d);
+    f.raw.set_register("esi", 0x743833c9);
+    f.raw.set_register("edi", 0x40005510);
+
+    check_cfi(f, stack, expected, expected_valid);
 }

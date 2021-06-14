@@ -60,6 +60,9 @@ where
         self.caller_validity.insert(memoized);
         self.caller_ctx.set_register(name, val)
     }
+    fn clear_caller_register(&mut self, name: &str) {
+        self.caller_validity.remove(name);
+    }
     fn set_cfa(&mut self, val: u64) -> Option<()> {
         // TODO: some things have alluded to architectures where this isn't
         // how the CFA should be handled, but I don't know what they are.

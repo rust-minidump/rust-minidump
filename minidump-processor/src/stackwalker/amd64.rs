@@ -23,6 +23,8 @@ const POINTER_WIDTH: Pointer = 8;
 const INSTRUCTION_REGISTER: &str = "rip";
 const STACK_POINTER_REGISTER: &str = "rsp";
 const FRAME_POINTER_REGISTER: &str = "rbp";
+// FIXME: rdi and rsi are also preserved on windows (but not in sysv) -- we should handle that?
+const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "r12", "r13", "r14", "r15"];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
@@ -151,8 +153,11 @@ where
         callee_ctx: ctx,
         callee_validity: valid,
 
-        caller_ctx: CONTEXT_AMD64::default(),
-        caller_validity: HashSet::new(),
+        // Default to forwarding all callee-saved regs verbatim.
+        // The CFI evaluator may clear or overwrite these values.
+        // The stack pointer and instruction pointer are not included.
+        caller_ctx: ctx.clone(),
+        caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
     };
@@ -177,6 +182,17 @@ where
     let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
     adjust_instruction(&mut frame, caller_ip);
     Some(frame)
+}
+
+fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
+    match valid {
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
+    }
 }
 
 fn get_caller_by_scan<P>(

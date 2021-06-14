@@ -24,6 +24,7 @@ const FRAME_POINTER: &str = Registers::FramePointer.name();
 const STACK_POINTER: &str = Registers::StackPointer.name();
 const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
 const LINK_REGISTER: &str = Registers::LinkRegister.name();
+const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
@@ -138,8 +139,11 @@ where
         callee_ctx: ctx,
         callee_validity: valid,
 
-        caller_ctx: ArmContext::default(),
-        caller_validity: HashSet::new(),
+        // Default to forwarding all callee-saved regs verbatim.
+        // The CFI evaluator may clear or overwrite these values.
+        // The stack pointer and instruction pointer are not included.
+        caller_ctx: ctx.clone(),
+        caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
     };
@@ -164,6 +168,17 @@ where
     let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
     adjust_instruction(&mut frame, caller_pc);
     Some(frame)
+}
+
+fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
+    match valid {
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
+    }
 }
 
 fn get_caller_by_scan<P>(
@@ -251,7 +266,7 @@ fn stack_seems_valid(
     stack_memory: &MinidumpMemory,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
-    if caller_sp <= callee_sp {
+    if caller_sp < callee_sp {
         return false;
     }
 
@@ -301,7 +316,7 @@ impl Unwind for ArmContext {
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.get_register_always("sp") as u64 {
+                if frame.context.get_stack_pointer() < self.get_register_always("sp") as u64 {
                     return None;
                 }
                 Some(frame)
