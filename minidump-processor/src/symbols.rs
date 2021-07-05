@@ -97,7 +97,7 @@ mod symbols_shim {
         ///
         /// Implementations may use any strategy for locating and loading
         /// symbols.
-        fn locate_symbols(&self, module: &dyn Module) -> SymbolResult;
+        fn locate_symbols(&mut self, module: &dyn Module) -> SymbolResult;
     }
 
     /// A trait for setting symbol information on something like a stack frame.
