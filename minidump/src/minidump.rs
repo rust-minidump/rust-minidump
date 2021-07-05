@@ -1092,6 +1092,31 @@ impl MinidumpThreadNames {
             .get(&thread_id)
             .map(|name| Cow::Borrowed(&**name))
     }
+
+    /// Write a human-readable description of this `MinidumpThreadNames` to `f`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpThreadNames
+  thread_count = {}
+
+",
+            self.names.len()
+        )?;
+        for (i, (thread_id, name)) in self.names.iter().enumerate() {
+            writeln!(
+                f,
+                "thread_name[{}]
+MINIDUMP_THREAD_NAME
+  thread_id = {:#x}
+  name      = \"{}\"
+",
+                i, thread_id, name
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 impl MinidumpModuleList {
