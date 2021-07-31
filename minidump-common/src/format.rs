@@ -6291,6 +6291,7 @@ pub enum ExceptionCodeLinux {
 // These values come from asm-generic/siginfo.h
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigillKind {
+    SI_USER = 0,
     ILL_ILLOPC = 1,
     ILL_ILLOPN = 2,
     ILL_ILLADR = 3,
@@ -6299,10 +6300,12 @@ pub enum ExceptionCodeLinuxSigillKind {
     ILL_PRVREG = 6,
     ILL_COPROC = 7,
     ILL_BADSTK = 8,
+    SI_KERNEL = 0x80,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigfpeKind {
+    SI_USER = 0,
     FPE_INTDIV = 1,
     FPE_INTOVF = 2,
     FPE_FLTDIV = 3,
@@ -6311,23 +6314,28 @@ pub enum ExceptionCodeLinuxSigfpeKind {
     FPE_FLTRES = 6,
     FPE_FLTINV = 7,
     FPE_FLTSUB = 8,
+    SI_KERNEL = 0x80,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigsegvKind {
+    SI_USER = 0,
     SEGV_MAPERR = 1,
     SEGV_ACCERR = 2,
     SEGV_BNDERR = 3,
     SEGV_PKUERR = 4,
+    SI_KERNEL = 0x80,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigbusKind {
+    SI_USER = 0,
     BUS_ADRALN = 1,
     BUS_ADRERR = 2,
     BUS_OBJERR = 3,
     BUS_MCEERR_AR = 4,
     BUS_MCEERR_AO = 5,
+    SI_KERNEL = 0x80,
 }
 
 /// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on macOS
