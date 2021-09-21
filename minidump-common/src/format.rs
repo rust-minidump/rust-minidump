@@ -6359,6 +6359,7 @@ pub enum ExceptionCodeMac {
     EXC_SYSCALL = 7,
     EXC_MACH_SYSCALL = 8,
     EXC_RPC_ALERT = 9,
+    EXC_RESOURCE = 11,
     /// Fake exception code used by Crashpad's SimulateCrash ('CPsx')
     SIMULATED = 0x43507378,
 }
@@ -6521,6 +6522,48 @@ pub enum ExceptionCodeMacBreakpointPpcType {
 pub enum ExceptionCodeMacBreakpointX86Type {
     EXC_I386_SGL = 1,
     EXC_I386_BPT = 2,
+}
+
+/// Mac/iOS Resource exception types
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceType {
+    RESOURCE_TYPE_CPU = 1,
+    RESOURCE_TYPE_WAKEUPS = 2,
+    RESOURCE_TYPE_MEMORY = 3,
+    RESOURCE_TYPE_IO = 4,
+    RESOURCE_TYPE_THREADS = 5,
+}
+
+/// Mac/iOS CPU resource exception flavors
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceCpuFlavor {
+    FLAVOR_CPU_MONITOR = 1,
+    FLAVOR_CPU_MONITOR_FATAL = 2,
+}
+
+/// Mac/iOS wakeups resource exception flavors
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceWakeupsFlavor {
+    FLAVOR_WAKEUPS_MONITOR = 1,
+}
+
+/// Mac/iOS memory resource exception flavors
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceMemoryFlavor {
+    FLAVOR_HIGH_WATERMARK = 1,
+}
+
+/// Mac/iOS I/O resource exception flavors
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceIOFlavor {
+    FLAVOR_IO_PHYSICAL_WRITES = 1,
+    FLAVOR_IO_LOGICAL_WRITES = 2,
+}
+
+/// Mac/iOS threads resource exception flavors
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeMacResourceThreadsFlavor {
+    FLAVOR_THREADS_HIGH_WATERMARK = 1,
 }
 
 /// Valid bits in a `context_flags` for [`ContextFlagsCpu`]

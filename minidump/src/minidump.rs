@@ -308,6 +308,7 @@ pub enum CrashReason {
     MacBreakpointArm(md::ExceptionCodeMacBreakpointArmType),
     MacBreakpointPpc(md::ExceptionCodeMacBreakpointPpcType),
     MacBreakpointX86(md::ExceptionCodeMacBreakpointX86Type),
+    MacResource(md::ExceptionCodeMacResourceType, u64, u64),
 
     /// A Linux/Android error code with no other interesting metadata.
     LinuxGeneral(md::ExceptionCodeLinux, u32),
@@ -2536,6 +2537,13 @@ impl CrashReason {
                             // Do nothing
                         }
                     },
+                    Some(ExceptionCodeMac::EXC_RESOURCE) => {
+                        if let Some(ty) = md::ExceptionCodeMacResourceType::from_u32(
+                            (exception_flags >> 29) & 0x7,
+                        ) {
+                            reason = CrashReason::MacResource(ty, info[1], info[2]);
+                        }
+                    }
                     _ => {
                         // Do nothing
                     }
@@ -2688,6 +2696,93 @@ impl fmt::Display for CrashReason {
             }
         }
 
+        fn write_exc_resource(
+            f: &mut fmt::Formatter<'_>,
+            ex: md::ExceptionCodeMacResourceType,
+            code: u64,
+            subcode: u64,
+        ) -> fmt::Result {
+            let flavor = (code >> 58) & 0x7;
+            write!(f, "EXC_RESOURCE / {:?} / ", ex)?;
+            match ex {
+                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_CPU => {
+                    if let Some(cpu_flavor) =
+                        md::ExceptionCodeMacResourceCpuFlavor::from_u64(flavor)
+                    {
+                        let interval = (code >> 7) & 0x1ffffff;
+                        let cpu_limit = code & 0x7;
+                        let cpu_consumed = subcode & 0x7;
+                        write!(
+                            f,
+                            "{:?} interval: {}s CPU limit: {}% CPU consumed: {}%",
+                            cpu_flavor, interval, cpu_limit, cpu_consumed
+                        )
+                    } else {
+                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_WAKEUPS => {
+                    if let Some(wakeups_flavor) =
+                        md::ExceptionCodeMacResourceWakeupsFlavor::from_u64(flavor)
+                    {
+                        let interval = (code >> 20) & 0xfffff;
+                        let wakeups_permitted = code & 0xfff;
+                        let wakeups_observed = subcode & 0xfff;
+                        write!(
+                            f,
+                            "{:?} interval: {}s wakeups permitted: {} wakeups observed: {}",
+                            wakeups_flavor, interval, wakeups_permitted, wakeups_observed
+                        )
+                    } else {
+                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_MEMORY => {
+                    if let Some(memory_flavor) =
+                        md::ExceptionCodeMacResourceMemoryFlavor::from_u64(flavor)
+                    {
+                        let hwm_limit = code & 0x1fff;
+                        write!(
+                            f,
+                            "{:?} high watermark limit: {}MiB",
+                            memory_flavor, hwm_limit
+                        )
+                    } else {
+                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_IO => {
+                    if let Some(io_flavor) = md::ExceptionCodeMacResourceIOFlavor::from_u64(flavor)
+                    {
+                        let interval = (code >> 15) & 0x1ffff;
+                        let io_limit = code & 0x7fff;
+                        let io_observed = subcode & 0x7fff;
+                        write!(
+                            f,
+                            "{:?} interval: {}s I/O limit: {}% I/O observed: {}%",
+                            io_flavor, interval, io_limit, io_observed
+                        )
+                    } else {
+                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_THREADS => {
+                    if let Some(threads_flavor) =
+                        md::ExceptionCodeMacResourceThreadsFlavor::from_u64(flavor)
+                    {
+                        let hwm_limit = code & 0x7fff;
+                        write!(
+                            f,
+                            "{:?} high watermark limit: {}",
+                            threads_flavor, hwm_limit
+                        )
+                    } else {
+                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+            }
+        }
+
         // OK this is kinda a gross hack but I *really* don't want
         // to write out all these strings again, so let's just lean on Debug
         // repeating the name of the enum variant!
@@ -2712,6 +2807,7 @@ impl fmt::Display for CrashReason {
             MacBreakpointArm(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
             MacBreakpointPpc(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
             MacBreakpointX86(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
+            MacResource(ex, code, subcode) => write_exc_resource(f, ex, code, subcode),
 
             // ===================== Linux/Android =========================
 
