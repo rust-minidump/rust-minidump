@@ -21,5 +21,5 @@ clap = "2.33"
 log = "0.4"
 minidump = { version = "0.3.0", path = "../minidump" }
 minidump-processor = { version = "0.3.0", path = "../minidump-processor" }
-simplelog = "0.10.0"
+simplelog = "0.10.1"
 
