@@ -220,7 +220,7 @@ impl SimpleSymbolSupplier {
 impl SymbolSupplier for SimpleSymbolSupplier {
     fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
-            for ref path in self.paths.iter() {
+            for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
                     return SymbolFile::from_file(&test_path)
@@ -327,7 +327,7 @@ fn fetch_symbol_file(
     rel_path: &str,
     cache: &Path,
 ) -> Result<Vec<u8>, Error> {
-    let url = base_url.join(&rel_path)?;
+    let url = base_url.join(rel_path)?;
     debug!("Trying {}", url);
     let mut res = client.get(url).send()?.error_for_status()?;
     let mut buf = vec![];
@@ -347,7 +347,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
             res @ SymbolResult::Ok(_) | res @ SymbolResult::LoadError(_) => res,
             SymbolResult::NotFound => {
                 if let Some(rel_path) = relative_symbol_path(module, "sym") {
-                    for ref url in self.urls.iter() {
+                    for url in self.urls.iter() {
                         if let Ok(buf) =
                             fetch_symbol_file(&self.client, url, &rel_path, &self.cache)
                         {
@@ -555,7 +555,7 @@ impl Symbolizer {
     }
 
     fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
-        if !self.symbols.borrow().contains_key(&k) {
+        if !self.symbols.borrow().contains_key(k) {
             let res = self.supplier.locate_symbols(module);
             debug!("locate_symbols for {}: {}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);

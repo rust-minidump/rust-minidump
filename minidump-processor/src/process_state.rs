@@ -337,7 +337,7 @@ impl CallStack {
                         write!(
                             f,
                             " [{} : {} + {:#x}]",
-                            basename(&source_file),
+                            basename(source_file),
                             source_line,
                             addr - source_line_base
                         )?;

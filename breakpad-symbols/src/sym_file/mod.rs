@@ -32,19 +32,19 @@ impl SymbolFile {
             return;
         }
         let addr = frame.get_instruction() - module.base_address();
-        if let Some(ref func) = self.functions.get(addr) {
+        if let Some(func) = self.functions.get(addr) {
             frame.set_function(
                 &func.name,
                 func.address + module.base_address(),
                 func.parameter_size,
             );
             // See if there's source line info as well.
-            func.lines.get(addr).map(|ref line| {
-                self.files.get(&line.file).map(|ref file| {
+            func.lines.get(addr).map(|line| {
+                self.files.get(&line.file).map(|file| {
                     frame.set_source_file(file, line.line, line.address + module.base_address());
                 })
             });
-        } else if let Some(ref public) = self.find_nearest_public(addr) {
+        } else if let Some(public) = self.find_nearest_public(addr) {
             // Settle for a PUBLIC.
             frame.set_function(
                 &public.name,
