@@ -560,12 +560,6 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
     let grand_callee_param_size = walker.get_grand_callee_parameter_size();
     let frame_size = win_frame_size(info, grand_callee_param_size);
 
-    trace!(
-        "  ...got callee registers (frame_size: {}, raSearch: {})",
-        frame_size,
-        callee_esp + frame_size
-    );
-
     // First setup the initial variables
     vars.insert("$esp", callee_esp);
     vars.insert("$ebp", callee_ebp);
@@ -574,6 +568,14 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
     }
 
     let search_start = callee_esp + frame_size;
+
+    trace!(
+        "    raSearchStart: 0x{:08x} (0x{:08x}, 0x{:08x}, 0x{:08x})",
+        search_start,
+        grand_callee_param_size,
+        info.local_size,
+        info.saved_register_size
+    );
 
     // Magic names from breakpad
     vars.insert(".cbParams", info.parameter_size);
@@ -741,14 +743,10 @@ impl<'a> WinVal<'a> {
     }
 }
 
-#[allow(unused_variables, unreachable_code)]
 pub fn walk_with_stack_win_framedata(
     info: &StackInfoWin,
     walker: &mut dyn FrameWalker,
 ) -> Option<()> {
-    // Temporarily disabled while I iterate on this
-    return None;
-
     if let WinStackThing::ProgramString(ref expr) = info.program_string_or_base_pointer {
         trace!("   ...using stack win framedata: {}", expr);
         eval_win_expr(expr, info, walker)
@@ -757,11 +755,7 @@ pub fn walk_with_stack_win_framedata(
     }
 }
 
-#[allow(unused_variables, unreachable_code)]
 pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
-    // Temporarily disabled while I iterate on this
-    return None;
-
     if let WinStackThing::AllocatesBasePointer(allocates_base_pointer) =
         info.program_string_or_base_pointer
     {
@@ -802,7 +796,6 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
         walker.set_caller_register("ebp", caller_ebp)?;
 
         trace!("  ...success!");
-
         Some(())
     } else {
         unreachable!()

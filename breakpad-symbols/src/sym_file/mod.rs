@@ -33,10 +33,26 @@ impl SymbolFile {
         }
         let addr = frame.get_instruction() - module.base_address();
         if let Some(func) = self.functions.get(addr) {
+            // TODO: although FUNC records have a parameter size, it appears that
+            // they aren't to be trusted? The STACK WIN records are more reliable
+            // when available. This is important precisely because these values
+            // are used to unwind subsequent STACK WIN frames (because certain
+            // calling conventions have the caller push the callee's arguments,
+            // which affects the the stack's size!).
+            //
+            // Need to spend more time thinking about if this is the right approach
+            let parameter_size = if let Some(info) = self.win_stack_framedata_info.get(addr) {
+                info.parameter_size
+            } else if let Some(info) = self.win_stack_fpo_info.get(addr) {
+                info.parameter_size
+            } else {
+                func.parameter_size
+            };
+
             frame.set_function(
                 &func.name,
                 func.address + module.base_address(),
-                func.parameter_size,
+                parameter_size,
             );
             // See if there's source line info as well.
             func.lines.get(addr).map(|line| {
@@ -132,8 +148,9 @@ mod test {
         assert_eq!(sym.functions.get(0x1012).unwrap().name, "vswprintf");
         assert!(sym.functions.get(0x1013).is_none());
         // There are 1556 `STACK WIN 4` lines in the symbol file, but only 856
-        // that don't overlap.
-        assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 856);
+        // that don't overlap. However they all overlap in ways that we have
+        // to handle in the wild.
+        assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1556);
         assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 259);
         assert_eq!(
             sym.win_stack_framedata_info.get(0x41b0).unwrap().address,

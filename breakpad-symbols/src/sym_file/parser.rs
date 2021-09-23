@@ -305,15 +305,37 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
                 // some of it out.
                 fn insert_win_stack_info(stack_win: &mut Vec<StackInfoWin>, info: StackInfoWin) {
                     if let Some(memory_range) = info.memory_range() {
-                        if let Some(last) = stack_win.last() {
+                        if let Some(last) = stack_win.last_mut() {
                             if last.memory_range().unwrap().intersects(&memory_range) {
-                                warn!("STACK WIN entry had invalid range, dropping it");
-                                return;
+                                if info.address > last.address {
+                                    // Sometimes we get STACK WIN directives where each line
+                                    // has an accurate starting point, but the length just
+                                    // covers the entire function, like so:
+                                    //
+                                    // addr: 0, len: 10
+                                    // addr: 1, len: 9
+                                    // addr: 4, len: 6
+                                    //
+                                    // In this case, the next instruction is the one that
+                                    // really defines the length of the previous one. So
+                                    // we need to fixup the lengths like so:
+                                    //
+                                    // addr: 0, len: 1
+                                    // addr: 1, len: 2
+                                    // addr: 4, len: 6
+                                    last.size = (info.address - last.address) as u32;
+                                } else {
+                                    warn!(
+                                        "STACK WIN entry had bad intersections, dropping it {:?}",
+                                        info
+                                    );
+                                    return;
+                                }
                             }
                         }
                         stack_win.push(info);
                     } else {
-                        warn!("STACK WIN entry had invalid range, dropping it");
+                        warn!("STACK WIN entry had invalid range, dropping it {:?}", info);
                     }
                 }
                 match frame_type {

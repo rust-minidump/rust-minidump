@@ -98,7 +98,7 @@ where
 fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_X86,
     valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    trust: FrameTrust,
     stack_memory: &MinidumpMemory,
     grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
@@ -127,8 +127,19 @@ where
         .and_then(|f| f.parameter_size)
         .unwrap_or(0);
 
+    let instruction = if trust == FrameTrust::Context {
+        last_ip as u64
+    } else {
+        last_ip as u64 - 1
+    };
+
     let mut stack_walker = CfiStackWalker {
-        instruction: last_ip as u64,
+        // TODO: I've noticed that sometimes you get queries that are just after
+        // where the relevant STACK WIN entry ends. I know we adjust the instruction
+        // by 1 for displaying purposes, but maybe we need it for actual resolving?
+        // I don't do this for x64 or anything else though, which is concerning.
+        // At least for now this seems to get better results.
+        instruction,
         grand_callee_parameter_size,
 
         callee_ctx: ctx,
@@ -146,6 +157,12 @@ where
     symbol_provider.walk_frame(module, &mut stack_walker)?;
     let caller_ip = stack_walker.caller_ctx.eip;
     let caller_sp = stack_walker.caller_ctx.esp;
+
+    trace!(
+        "caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        caller_ip,
+        caller_sp
+    );
 
     // Don't accept obviously wrong instruction pointers.
     if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
@@ -300,14 +317,40 @@ where
 fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
-    _symbol_provider: &P,
+    symbol_provider: &P,
 ) -> bool
 where
     P: SymbolProvider,
 {
+    use breakpad_symbols::FrameSymbolizer;
+
+    struct DummyFrame {
+        instruction: u64,
+        has_name: bool,
+    }
+    impl FrameSymbolizer for DummyFrame {
+        fn get_instruction(&self) -> u64 {
+            self.instruction
+        }
+        fn set_function(&mut self, _name: &str, _base: u64, _parameter_size: u32) {
+            self.has_name = true;
+        }
+        fn set_source_file(&mut self, _file: &str, _line: u32, _base: u64) {
+            // Do nothing
+        }
+    }
+
     // NOTE: x86 has no notion of pointer canonicity (divergence from AMD64)
-    if let Some(_module) = modules.module_at_address(instruction as u64) {
+    if let Some(module) = modules.module_at_address(instruction as u64) {
         // TODO: if mapped, check if this instruction actually maps to a function line
+        let mut frame = DummyFrame {
+            instruction: instruction as u64,
+            has_name: false,
+        };
+        symbol_provider.fill_symbol(module, &mut frame);
+
+        // TODO: temporarily disabled
+        // frame.has_name
         true
     } else {
         false
