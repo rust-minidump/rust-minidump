@@ -53,11 +53,11 @@ impl<'a> Module for (&'a str, &'a str) {
         Cow::Borrowed("")
     }
     fn debug_file(&self) -> Option<Cow<str>> {
-        let &(ref file, ref _id) = self;
+        let &(file, _id) = self;
         Some(Cow::Borrowed(file))
     }
     fn debug_identifier(&self) -> Option<Cow<str>> {
-        let &(ref _file, ref id) = self;
+        let &(_file, id) = self;
         Some(Cow::Borrowed(id))
     }
     fn version(&self) -> Option<Cow<str>> {

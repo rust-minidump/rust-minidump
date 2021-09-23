@@ -365,7 +365,7 @@ named!(symbol_file<&[u8], SymbolFile>,
 
 /// Parse a `SymbolFile` from `bytes`.
 pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
-    match symbol_file(&bytes) {
+    match symbol_file(bytes) {
         Done(rest, symfile) => {
             if rest == b"" {
                 Ok(symfile)

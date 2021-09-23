@@ -61,7 +61,7 @@ impl SymbolProvider for DwarfSymbolizer {
                 })) = iter.next()
                 {
                     //TODO: get base address for line
-                    frame.set_source_file(&source_file, line.unwrap_or(0) as u32, 0);
+                    frame.set_source_file(source_file, line.unwrap_or(0) as u32, 0);
                     //TODO: get base address for function
                     //TODO: get parameter size for function?
                     if let Ok(name) = func.demangle() {
