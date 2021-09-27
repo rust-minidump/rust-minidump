@@ -35,6 +35,7 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider,
 {
+    trace!("unwind: trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
@@ -75,6 +76,12 @@ where
     // Since breakpad also doesn't output those frames, let's assume that's
     // desirable.
 
+    trace!(
+        "unwind: frame pointer seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        caller_ip,
+        caller_sp,
+    );
+
     let caller_ctx = CONTEXT_X86 {
         eip: caller_ip,
         esp: caller_sp,
@@ -105,30 +112,20 @@ fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider,
 {
-    trace!("trying to get frame by cfi");
+    trace!("unwind: trying cfi");
     let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
-        if !which.contains(INSTRUCTION_REGISTER) {
-            return None;
-        }
         if !which.contains(STACK_POINTER_REGISTER) {
             return None;
         }
     }
-    trace!("  ...context was good");
 
     let last_sp = ctx.esp;
     let module = modules.module_at_address(callee.instruction)?;
-    trace!("  ...found module");
 
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
-        // TODO: I've noticed that sometimes you get queries that are just after
-        // where the relevant STACK WIN entry ends. I know we adjust the instruction
-        // by 1 for displaying purposes, but maybe we need it for actual resolving?
-        // I don't do this for x64 or anything else though, which is concerning.
-        // At least for now this seems to get better results.
         instruction: callee.instruction,
         grand_callee_parameter_size,
 
@@ -149,19 +146,23 @@ where
     let caller_sp = stack_walker.caller_ctx.esp;
 
     trace!(
-        "caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        "unwind: cfi evaluation was successful -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
         caller_ip,
-        caller_sp
+        caller_sp,
     );
 
     // Don't accept obviously wrong instruction pointers.
     if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
+        trace!("unwind: rejecting cfi result for unreasonable instruction pointer");
         return None;
     }
     // Don't accept obviously wrong stack pointers.
     if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
+        trace!("unwind: rejecting cfi result for unreasonable stack pointer");
         return None;
     }
+
+    trace!("unwind: cfi result seems valid");
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
@@ -193,6 +194,7 @@ fn get_caller_by_scan<P>(
 where
     P: SymbolProvider,
 {
+    trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -203,6 +205,7 @@ where
         MinidumpContextValidity::All => Some(ctx.ebp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
+                trace!("unwind: cannot scan without stack pointer");
                 return None;
             }
             if which.contains(FRAME_POINTER_REGISTER) {
@@ -276,6 +279,12 @@ where
                     }
                 }
             }
+
+            trace!(
+                "unwind: scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+                caller_ip,
+                caller_sp,
+            );
 
             let caller_ctx = CONTEXT_X86 {
                 eip: caller_ip,
@@ -394,12 +403,14 @@ impl Unwind for CONTEXT_X86 {
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.
                 if frame.context.get_instruction_pointer() == 0 {
+                    trace!("unwind: instruction pointer was null, assuming unwind complete");
                     return None;
                 }
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
                 if frame.context.get_stack_pointer() as u32 <= self.esp {
+                    trace!("unwind: stack pointer went backwards, assuming unwind complete");
                     return None;
                 }
                 Some(frame)

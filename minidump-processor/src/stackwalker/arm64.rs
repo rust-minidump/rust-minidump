@@ -39,6 +39,7 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider,
 {
+    trace!("unwind: trying frame pointer");
     // Assume that the standard %fp-using ARM64 calling convention is in use.
     // The main quirk of this ABI is that the return address doesn't need to
     // be restored from the stack -- it's already in the link register (lr).
@@ -88,13 +89,21 @@ where
 
     // Don't accept obviously wrong instruction pointers.
     if !instruction_seems_valid(caller_pc, modules, symbol_provider) {
+        trace!("unwind: rejecting frame pointer result for unreasonable instruction pointer");
         return None;
     }
 
     // Don't accept obviously wrong stack pointers.
     if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
+        trace!("unwind: rejecting frame pointer result for unreasonable stack pointer");
         return None;
     }
+
+    trace!(
+        "unwind: frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        caller_pc,
+        caller_sp,
+    );
 
     let mut caller_ctx = ArmContext::default();
     caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
@@ -176,16 +185,11 @@ fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider,
 {
-    trace!("trying to get frame by cfi");
+    trace!("unwind: trying cfi");
 
     let valid = &callee.context.valid;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
-
-    trace!("  ...context was good");
-
     let module = modules.module_at_address(callee.instruction)?;
-    trace!("  ...found module");
-
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
@@ -209,12 +213,20 @@ where
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
+    trace!(
+        "unwind: cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        caller_pc,
+        caller_sp,
+    );
+
     // Don't accept obviously wrong instruction pointers.
     if !instruction_seems_valid(caller_pc, modules, symbol_provider) {
+        trace!("unwind: rejecting cfi result for unreasonable instruction pointer");
         return None;
     }
     // Don't accept obviously wrong stack pointers.
     if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
+        trace!("unwind: rejecting cfi result for unreasonable stack pointer");
         return None;
     }
 
@@ -248,6 +260,7 @@ fn get_caller_by_scan<P>(
 where
     P: SymbolProvider,
 {
+    trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -278,6 +291,12 @@ where
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)
+
+            trace!(
+                "unwind: scan seems valid -- caller_pc: 0x{:08x}, caller_sp: 0x{:08x}",
+                caller_pc,
+                caller_sp,
+            );
 
             let mut caller_ctx = ArmContext::default();
             caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
@@ -379,12 +398,14 @@ impl Unwind for ArmContext {
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.
                 if frame.context.get_instruction_pointer() == 0 {
+                    trace!("unwind: instruction pointer was null, assuming unwind complete");
                     return None;
                 }
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
                 if frame.context.get_stack_pointer() < self.get_register_always("sp") {
+                    trace!("unwind: stack pointer went backwards, assuming unwind complete");
                     return None;
                 }
                 Some(frame)

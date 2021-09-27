@@ -548,10 +548,10 @@ impl Symbolizer {
         let k = key(module);
         self.ensure_module(module, &k);
         if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
-            trace!("   ...found symbols");
+            trace!("unwind: found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
-            trace!("couldn't find symbols!");
+            trace!("unwind: couldn't find symbols for address, cannot use cfi");
             None
         }
     }
