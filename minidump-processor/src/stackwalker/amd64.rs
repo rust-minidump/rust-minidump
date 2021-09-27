@@ -28,8 +28,7 @@ const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "r12", "r13", "r14", "r15"];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
     stack_memory: &MinidumpMemory,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -37,7 +36,7 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider,
 {
-    if let MinidumpContextValidity::Some(ref which) = valid {
+    if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
         }
@@ -64,12 +63,12 @@ where
     // calling procedure's stack pointer (%sp) is 2 pointers higher than the
     // value of the called procedure's frame pointer at the time the calling
     // procedure made the CALL: 1 pointer for the return address pushed by the
-    // CALL itself, and 1 pointer for the callee's PUSH of the caller's frame
+    // CALL itself, and 1 pointer for the callee's` PUSH of the caller's frame
     // pointer.
     //
     // %ip_new = *(%bp_old + ptr)
-    // %sp_new = %bp_old + ptr
     // %bp_new = *(%bp_old)
+    // %sp_new = %bp_old + ptr*2
 
     let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
@@ -116,10 +115,9 @@ where
 
 fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_AMD64,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory,
-    grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -127,6 +125,7 @@ where
     P: SymbolProvider,
 {
     trace!("trying to get frame by cfi");
+    let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
         if !which.contains(INSTRUCTION_REGISTER) {
             return None;
@@ -138,16 +137,13 @@ where
     trace!("  ...context was good");
 
     let last_sp = ctx.rsp;
-    let last_ip = ctx.rip;
-    let module = modules.module_at_address(last_ip as u64)?;
+    let module = modules.module_at_address(callee.instruction)?;
     trace!("  ...found module");
 
-    let grand_callee_parameter_size = grand_callee_frame
-        .and_then(|f| f.parameter_size)
-        .unwrap_or(0);
+    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
-        instruction: last_ip as u64,
+        instruction: callee.instruction,
         grand_callee_parameter_size,
 
         callee_ctx: ctx,
@@ -197,8 +193,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 fn get_caller_by_scan<P>(
     ctx: &CONTEXT_AMD64,
-    valid: &MinidumpContextValidity,
-    trust: FrameTrust,
+    callee: &StackFrame,
     stack_memory: &MinidumpMemory,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -212,7 +207,7 @@ where
     // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
-    let last_bp = match valid {
+    let last_bp = match callee.context.valid {
         MinidumpContextValidity::All => Some(ctx.rbp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
@@ -234,7 +229,7 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = trust {
+    let scan_range = if let FrameTrust::Context = callee.trust {
         extended_scan_range
     } else {
         default_scan_range
@@ -388,10 +383,9 @@ fn is_non_canonical(ptr: Pointer) -> bool {
 impl Unwind for CONTEXT_AMD64 {
     fn get_caller_frame<P>(
         &self,
-        valid: &MinidumpContextValidity,
-        trust: FrameTrust,
+        callee: &StackFrame,
+        grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory>,
-        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         syms: &P,
     ) -> Option<StackFrame>
@@ -401,11 +395,9 @@ impl Unwind for CONTEXT_AMD64 {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
-                    .or_else(|| {
-                        get_caller_by_frame_pointer(self, valid, trust, stack, modules, syms)
-                    })
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))
+                get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms)
+                    .or_else(|| get_caller_by_frame_pointer(self, callee, stack, modules, syms))
+                    .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
             })
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.

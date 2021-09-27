@@ -30,10 +30,9 @@ const CALLEE_SAVED_REGS: &[&str] = &[
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory,
-    grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -58,14 +57,14 @@ where
     // sp := fp + ptr*2
     // lr := *(fp + ptr)
     // fp := *fp
-
+    let valid = &callee.context.valid;
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let last_lr = match ctx.get_register(LINK_REGISTER, valid) {
         Some(lr) => lr,
         None => {
             // TODO: it would be good to write this back to the callee's ctx/validity
-            get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee_frame)?
+            get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee)?
         }
     };
 
@@ -123,7 +122,7 @@ fn get_link_register_by_frame_pointer(
     ctx: &ArmContext,
     valid: &MinidumpContextValidity,
     stack_memory: &MinidumpMemory,
-    grand_callee_frame: Option<&StackFrame>,
+    grand_callee: Option<&StackFrame>,
 ) -> Option<Pointer> {
     // It may happen that whatever unwinding strategy we're using managed to
     // restore %fp but didn't restore %lr. Frame-pointer-based unwinding requires
@@ -133,11 +132,10 @@ fn get_link_register_by_frame_pointer(
     // so if the grand-callee appears to have been called with that convention
     // then we can recover %lr using its %fp.
 
-    // We need the grand_callee_frame's frame pointer
-    let grand_callee_frame = grand_callee_frame?;
-    let last_last_fp = if let MinidumpRawContext::OldArm64(ref ctx) = grand_callee_frame.context.raw
-    {
-        ctx.get_register(FRAME_POINTER, &grand_callee_frame.context.valid)?
+    // We need the grand_callee's frame pointer
+    let grand_callee = grand_callee?;
+    let last_last_fp = if let MinidumpRawContext::Arm64(ref ctx) = grand_callee.context.raw {
+        ctx.get_register(FRAME_POINTER, &grand_callee.context.valid)?
     } else {
         return None;
     };
@@ -169,10 +167,9 @@ fn ptr_auth_strip(ptr: Pointer) -> Pointer {
 
 fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory,
-    grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -181,20 +178,18 @@ where
 {
     trace!("trying to get frame by cfi");
 
+    let valid = &callee.context.valid;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let last_pc = ctx.get_register(PROGRAM_COUNTER, valid)?;
 
     trace!("  ...context was good");
 
-    let module = modules.module_at_address(last_pc as u64)?;
+    let module = modules.module_at_address(callee.instruction)?;
     trace!("  ...found module");
 
-    let grand_callee_parameter_size = grand_callee_frame
-        .and_then(|f| f.parameter_size)
-        .unwrap_or(0);
+    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
-        instruction: last_pc as u64,
+        instruction: callee.instruction,
         grand_callee_parameter_size,
 
         callee_ctx: ctx,
@@ -245,8 +240,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 fn get_caller_by_scan<P>(
     ctx: &ArmContext,
-    valid: &MinidumpContextValidity,
-    trust: FrameTrust,
+    callee: &StackFrame,
     stack_memory: &MinidumpMemory,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -260,6 +254,7 @@ where
     // we assume it's an pc value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // pc value.
+    let valid = &callee.context.valid;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     // Number of pointer-sized values to scan through in our search.
@@ -268,7 +263,7 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = trust {
+    let scan_range = if let FrameTrust::Context = callee.trust {
         extended_scan_range
     } else {
         default_scan_range
@@ -356,10 +351,9 @@ fn adjust_instruction(frame: &mut StackFrame, caller_pc: Pointer) {
 impl Unwind for ArmContext {
     fn get_caller_frame<P>(
         &self,
-        valid: &MinidumpContextValidity,
-        trust: FrameTrust,
+        callee: &StackFrame,
+        grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory>,
-        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         syms: &P,
     ) -> Option<StackFrame>
@@ -369,19 +363,18 @@ impl Unwind for ArmContext {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
+                get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms)
                     .or_else(|| {
                         get_caller_by_frame_pointer(
                             self,
-                            valid,
-                            trust,
+                            callee,
+                            grand_callee,
                             stack,
-                            grand_callee_frame,
                             modules,
                             syms,
                         )
                     })
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))
+                    .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
             })
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.
