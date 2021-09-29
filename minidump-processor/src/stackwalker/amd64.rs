@@ -237,7 +237,6 @@ where
             }
         }
     };
-    // TODO: pointer-align this..? Does CALL push aligned ip values? Is sp aligned?
     let last_sp = ctx.rsp;
 
     // Number of pointer-sized values to scan through in our search.

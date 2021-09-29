@@ -65,8 +65,8 @@ where
         self.caller_validity.remove(name);
     }
     fn set_cfa(&mut self, val: u64) -> Option<()> {
-        // TODO: some things have alluded to architectures where this isn't
-        // how the CFA should be handled, but I don't know what they are.
+        // NOTE: some things have alluded to architectures where this isn't
+        // how the CFA should be handled, but we apparently don't support them yet?
         let stack_pointer_reg = self.caller_ctx.stack_pointer_register_name();
         let val = C::Register::try_from(val).ok()?;
         self.caller_validity.insert(stack_pointer_reg);

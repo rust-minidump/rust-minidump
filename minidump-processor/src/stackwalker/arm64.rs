@@ -64,7 +64,7 @@ where
     let last_lr = match ctx.get_register(LINK_REGISTER, valid) {
         Some(lr) => lr,
         None => {
-            // TODO: it would be good to write this back to the callee's ctx/validity
+            // FIXME: it would be good to write this back to the callee's ctx/validity
             get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee)?
         }
     };
