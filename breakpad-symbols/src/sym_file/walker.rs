@@ -654,7 +654,17 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         vars.insert("$ebx", callee_ebx as u32);
     }
 
-    let search_start = callee_esp + frame_size;
+    let search_start = if expr.contains('@') {
+        // The frame has been aligned, so don't trust $esp. Assume $ebp
+        // is valid and that the standard calling convention is used
+        // (so the caller's $ebp was pushed right after the return address,
+        // and now $ebp points to that.)
+        trace!("unwind: program used @ operator, using $ebp instead of $esp for return addr");
+        callee_ebp + 4
+    } else {
+        // $esp should be reasonable, get the return address from that
+        callee_esp + frame_size
+    };
 
     trace!(
         "unwind: raSearchStart = 0x{:08x} (0x{:08x}, 0x{:08x}, 0x{:08x})",
