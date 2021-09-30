@@ -30,7 +30,7 @@
 //! ```
 
 use failure::Error;
-use log::{debug, warn};
+use log::{debug, trace, warn};
 use reqwest::blocking::Client;
 use reqwest::Url;
 
@@ -548,8 +548,10 @@ impl Symbolizer {
         let k = key(module);
         self.ensure_module(module, &k);
         if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+            trace!("unwind: found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
+            trace!("unwind: couldn't find symbols for address, cannot use cfi");
             None
         }
     }

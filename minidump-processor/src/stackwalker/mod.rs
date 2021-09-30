@@ -12,6 +12,7 @@ mod x86;
 
 use crate::process_state::*;
 use crate::{FrameWalker, SymbolProvider};
+use log::trace;
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
 
@@ -64,8 +65,8 @@ where
         self.caller_validity.remove(name);
     }
     fn set_cfa(&mut self, val: u64) -> Option<()> {
-        // TODO: some things have alluded to architectures where this isn't
-        // how the CFA should be handled, but I don't know what they are.
+        // NOTE: some things have alluded to architectures where this isn't
+        // how the CFA should be handled, but we apparently don't support them yet?
         let stack_pointer_reg = self.caller_ctx.stack_pointer_register_name();
         let val = C::Register::try_from(val).ok()?;
         self.caller_validity.insert(stack_pointer_reg);
@@ -97,42 +98,37 @@ where
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
         MinidumpRawContext::Arm(ref ctx) => ctx.get_caller_frame(
-            &callee_frame.context.valid,
-            callee_frame.trust,
-            stack_memory,
+            callee_frame,
             grand_callee_frame,
+            stack_memory,
             modules,
             symbol_provider,
         ),
         MinidumpRawContext::Arm64(ref ctx) => ctx.get_caller_frame(
-            &callee_frame.context.valid,
-            callee_frame.trust,
-            stack_memory,
+            callee_frame,
             grand_callee_frame,
+            stack_memory,
             modules,
             symbol_provider,
         ),
         MinidumpRawContext::OldArm64(ref ctx) => ctx.get_caller_frame(
-            &callee_frame.context.valid,
-            callee_frame.trust,
-            stack_memory,
+            callee_frame,
             grand_callee_frame,
+            stack_memory,
             modules,
             symbol_provider,
         ),
         MinidumpRawContext::Amd64(ref ctx) => ctx.get_caller_frame(
-            &callee_frame.context.valid,
-            callee_frame.trust,
-            stack_memory,
+            callee_frame,
             grand_callee_frame,
+            stack_memory,
             modules,
             symbol_provider,
         ),
         MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(
-            &callee_frame.context.valid,
-            callee_frame.trust,
-            stack_memory,
+            callee_frame,
             grand_callee_frame,
+            stack_memory,
             modules,
             symbol_provider,
         ),
@@ -170,10 +166,18 @@ where
     let mut frames = vec![];
     let mut info = CallStackInfo::Ok;
     if let Some(context) = *maybe_context {
+        trace!("unwind: starting stack unwind");
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
             fill_source_line_info(&mut frame, modules, symbol_provider);
+            trace!(
+                "unwind: unwinding {}",
+                frame
+                    .function_name
+                    .clone()
+                    .unwrap_or_else(|| frame.instruction.to_string())
+            );
             frames.push(frame);
             let callee_frame = &frames.last().unwrap();
             let grand_callee_frame = frames.len().checked_sub(2).and_then(|idx| frames.get(idx));
@@ -185,6 +189,7 @@ where
                 symbol_provider,
             );
         }
+        trace!("unwind: finished stack unwind");
     } else {
         info = CallStackInfo::MissingContext;
     }

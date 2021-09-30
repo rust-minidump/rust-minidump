@@ -172,35 +172,108 @@
 // # STACK WIN
 //
 // STACK WIN lines try to encode the more complex unwinding rules produced by
-// x86 Windows toolchains.
+// x86 Windows toolchains. On any other target (x64 windows, x86 linux, etc),
+// only STACK CFI should be used. This is a good thing, because STACK WIN is
+// a bit of a hacky mess, as you'll see.
 //
-// TODO: flesh this out
 //
 // ```text
-// STACK WIN type rva code_size prologue_size epilogue_size parameter_size
+// STACK WIN type instruction_address num_bytes prologue_size epilogue_size parameter_size
 //           saved_register_size local_size max_stack_size has_program_string
 //           program_string_OR_allocates_base_pointer
 // ```
 //
+//
+// Examples:
+//
+// ```text
+// STACK WIN 4 a1080 fa 9 0 c 0 0 0 1 $T0 .raSearch = $eip $T0 ^ = $esp $T0 4 + =`
+//
+// STACK WIN 0 1cab960 68 0 0 10 0 8 0 0 0
 // ```
-// grand_callee_parameter_size = frame.callee.parameter_size
+//
+//
+// Arguments:
+//   * type is either 4 ("framedata") or 0 ("fpo"), see their sections below
+//   * instruction_address (hex u64) is the first address in the module this line applies to
+//   * num_bytes (hex u64) is the number of bytes it covers
+//   * has_program_string (0 or 1) indicates the meaning of the next argument (implied by type?)
+//   * program_string_OR_allocates_base_pointer is one of:
+//      * program_string (string) is the expression to evaluate for "framedata" (see that section)
+//      * allocates_base_pointer (0 or 1) whether ebp is pushed for "fpo" (see that section)
+//
+// The rest of the arguments are just values you may need to use in the STACK WIN
+// evaluation algorithms:
+//
+//   * prologue_size
+//   * epilogue_size
+//   * parameter_size
+//   * saved_register_size
+//   * local_size
+//   * max_stack_size
+//
+// Two useful values derived from these values are:
+//
+// ```
+// grand_callee_parameter_size = callee.parameter_size
 // frame_size = local_size + saved_register_size + grand_callee_parameter_size
 // ```
+//
+// Having frame_size allows you to find the offset from $esp to the return
+// address (and other saved registers). This requires grand_callee_parameter_size
+// because certain windows calling conventions makes the caller responsible for
+// destroying the callee's arguments, which means they are part of the caller's
+// frame, and therefore change the offset to the return address. (During unwinding
+// we generally refer to the current frame as the "callee" and the next frame as
+// the "caller", but here we're concerned with callee's callee, hence grand_callee.)
+//
+// Note that grand_callee_paramter_size is using the STACK WIN entry of the
+// *previous* frame. Although breakpad symbol files have FUNC entries which claim
+// to provide parameter_size as well, those values are not to be trusted (or
+// at least, the grand-callee's STACK WIN entry is to be preferred). The two
+// values are frequently different, and the STACK WIN ones are more accurate.
+//
+// If there is no grand_callee (i.e. you are unwinding the first frame of the
+// stack), grand_callee_parameter_size can be defaulted to 0.
+//
 //
 //
 //
 // # STACK WIN frame pointer mode ("fpo")
 //
-// TODO: fill this in
+// This is an older mode that just gives you minimal information to unwind:
+// the size of the stack frame (`frame_size`). All you can do is find the
+// return address, update `$esp`, and optionally restore `$ebp` (if allocates_base_pointer).
 //
-// This is an older mode that just assumes a standard calling convention
-// and a known frame size. Restore eip from the stack, restore ebp from
-// the stack if necessary (allocates_base_pointer), add the frame size to
-// get the new esp.
+// This is best described by pseudocode:
+//
+// ```text
+//   $eip := *($esp + frame_size)
+//
+//   if allocates_base_pointer:
+//     // $ebp was being used as a general purpose register, old value saved here
+//     $ebp := *($esp + grand_callee_parameter_size + saved_register_size - 8)
+//   else:
+//     // Assume both ebp and ebx are preserved (if they were previously valid)
+//     $ebp := $ebp
+//     $ebx := $ebx
+//
+//   $esp := $esp + frame_size + 4
+// ```
+//
+// I don't have an interesting explanation for why that position is specifically
+// where $ebp is saved, it just is. The algorithm tries to forward $ebx when $ebp
+// wasn't messed with as a bit of a hacky way to encourage certain Windows system
+// functions to unwind better. Evidently some of them have framedata expressions
+// that depend on $ebx, so preserving it whenever it's plausible is desirable?
+//
 //
 //
 //
 // # STACK WIN expression mode ("framedata")
+//
+// This is the general purpose mode that has you execute a tiny language to compute
+// arbitrary registers.
 //
 // STACK WIN expressions use many of the same concepts as STACK CFI, but rather
 // than using `REG: EXPR` pairs to specify outputs, it maintains a map of variables
@@ -222,42 +295,46 @@
 //
 // "values" then become:
 //
-// * .<anything>: a variable containing some initial constants (see below)
-// * $<anything>: a variable representing a general purpose register or temporary
-// * .undef: delete the variable if this is assigned to it (like Option::None) (TODO: ?)
-// * <a signed decimal integer>: read this integer constant (limited to i64 precision)
+// * `.<anything>`: a variable containing some initial constants (see below)
+// * `$<anything>`: a variable representing a general purpose register or temporary
+// * `.undef`: delete the variable if this is assigned to it (like Option::None)
+// * `<a signed decimal integer>`: read this integer constant (limited to i64 precision)
 //
 //
 // Before evaluating a STACK WIN expression:
 //
 // * The variables `$ebp` and `$esp` should be initialized from the callee's
-//   values for those registers (error out if those are unknown). Breakpad
-//   also initializes `$ebx` if it's available, since some things want it.
+//   values for those registers (error out if those are unknown). `$ebx` should
+//   similarly be initialized if it's available, since some things use it, but
+//   it's optional.
 //
 // * The following constant variables should be set accordingly:
 //   * `.cbParams = parameter_size`
-//   * `.cbCalleeParams = grand_callee_parameter_size` (only for breakpad-generated exprs)
+//   * `.cbCalleeParams = grand_callee_parameter_size` (only for breakpad-generated exprs?)
 //   * `.cbSavedRegs = saved_register_size`
 //   * `.cbLocals = local_size`
+//   * `.raSearch = $esp + frame_size`
+//   * `.raSearchStart = .raSearch` (synonym that sometimes shows up?)
 //
-// * The variables `.raSearch` and `.raSearchStart` should be set to the address
-//   on the stack to begin scanning for a return address. This roughly corresponds
-//   to the STACK CFI's `.cfa`. Breakpad computes this with a ton of messy heuristics,
-//   but as a starting point `$esp + frame_size` is a good value.
+// Note that .raSearch(Start) roughly corresponds to STACK CFI's `.cfa`, in that
+// it generally points to where the return address is. However breakpad seems to
+// believe there are many circumstances where this value can be slightly wrong
+// (due to the frame pointer having mysterious extra alignment?). As such,
+// breakpad has several messy heuristics to "refine" `.raSearchStart`, such as
+// scanning the stack. This implementation does not (yet?) implement those
+// heuristics. As of this writing I have not encountered an instance of this
+// problem in the wild (but I haven't done much testing!).
 //
 //
 // After evaluating a STACK WIN expression:
 //
 // The caller's registers are stored in `$eip`, `$esp`, `$ebp`, `$ebx`, `$esi`,
 // and `$edi`. If those variables are undefined, then their values in the caller
-// are unknown.
+// are unknown. Do not implicitly forward registers that weren't explicitly set.
 //
-// TODO: do we need to track if ebp/esp/ebx were re-written, or is it fine to
-// consider them defined if they weren't explicitly set to .undef?
-//
-// TODO: should it be an error if the stack isn't empty at the end? It's
+// (Should it be an error if the stack isn't empty at the end? It's
 // arguably malformed input but also it doesn't matter since the output is
-// in the variables.
+// in the variables? *shrug*)
 //
 //
 //
@@ -315,10 +392,10 @@ pub fn walk_with_stack_cfi(
     additional: &[CfiRules],
     walker: &mut dyn FrameWalker,
 ) -> Option<()> {
-    trace!("  ...got cfi");
-    trace!("    {}", init.rules);
+    trace!("unwind: trying STACK CFI exprs");
+    trace!("unwind:   {}", init.rules);
     for line in additional {
-        trace!("    {}", line.rules);
+        trace!("unwind:   {}", line.rules);
     }
 
     // First we must collect up all the `REG: EXPR` pairs in these lines.
@@ -329,18 +406,18 @@ pub fn walk_with_stack_cfi(
     for line in additional {
         parse_cfi_exprs(&line.rules, &mut exprs)?;
     }
-    trace!("  ...parsed exprs");
-    trace!("    {:?}", exprs);
+    trace!("unwind: STACK CFI parse successful");
 
     // These two are special and *must* always be present
     let cfa_expr = exprs.remove(&CfiReg::Cfa)?;
     let ra_expr = exprs.remove(&CfiReg::Ra)?;
-    trace!("  ...had cfa and ra");
+    trace!("unwind: STACK CFI seems reasonable, evaluating");
 
     // Evaluating the CFA cannot itself use the CFA
     let cfa = eval_cfi_expr(cfa_expr, walker, None)?;
+    trace!("unwind: successfully evaluated .cfa (frame address)");
     let ra = eval_cfi_expr(ra_expr, walker, Some(cfa))?;
-    trace!("  ...eval'd cfa and ra");
+    trace!("unwind: successfully evaluated .ra (return address)");
 
     walker.set_cfa(cfa)?;
     walker.set_ra(ra)?;
@@ -354,9 +431,14 @@ pub fn walk_with_stack_cfi(
             match eval_cfi_expr(expr, walker, Some(cfa)) {
                 Some(val) => {
                     walker.set_caller_register(reg, val);
+                    trace!("unwind: successfully evaluated {}", reg);
                 }
                 None => {
                     walker.clear_caller_register(reg);
+                    trace!(
+                        "unwind: optional register {} failed to evaluate, dropping it",
+                        reg
+                    );
                 }
             }
         } else {
@@ -364,8 +446,6 @@ pub fn walk_with_stack_cfi(
             unreachable!()
         }
     }
-    trace!("  ...eval'd all regs");
-    trace!("  ...success!");
 
     Some(())
 }
@@ -432,11 +512,13 @@ fn parse_cfi_exprs<'a>(input: &'a str, output: &mut HashMap<CfiReg<'a>, &'a str>
 }
 
 fn eval_cfi_expr(expr: &str, walker: &mut dyn FrameWalker, cfa: Option<u64>) -> Option<u64> {
-    // TODO: this should be an ArrayVec or something, most exprs are simple.
+    // FIXME: this should be an ArrayVec or something, most exprs are simple.
     let mut stack: Vec<u64> = Vec::new();
     for token in expr.split_ascii_whitespace() {
         match token {
-            // TODO: not sure what overflow/sign semantics are
+            // FIXME?: not sure what overflow/sign semantics are, but haven't run into
+            // something where it actually matters (I wouldn't expect it to come up
+            // normally?).
             "+" => {
                 // Add
                 let rhs = stack.pop()?;
@@ -517,8 +599,10 @@ fn eval_cfi_expr(expr: &str, walker: &mut dyn FrameWalker, cfa: Option<u64>) -> 
                     stack.push(walker.get_callee_register(reg)?);
                 } else if let Ok(value) = i64::from_str(token) {
                     // Push a constant
-                    // TODO: We do everything in wrapping arithmetic, so it's fine to squash
-                    // i64's into u64's?
+                    // FIXME?: We do everything in wrapping arithmetic, so it's
+                    // probably fine to squash i64's into u64's, but it seems sketchy?
+                    // Division/remainder in particular seem concerning, but also
+                    // it would be surprising to see negatives for those..?
                     stack.push(value as u64)
                 } else if let Some(reg) = walker.get_callee_register(token) {
                     // Maybe the register just didn't have a $ prefix?
@@ -551,7 +635,10 @@ enum CfiReg<'a> {
 }
 
 fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
-    // TODO: do a bunch of heuristics to make this more robust.
+    // TODO?: do a bunch of heuristics to make this more robust.
+    // So far I haven't encountered an in-the-wild example that needs the
+    // extra heuristics that breakpad uses, so leaving them out until they
+    // become a problem.
 
     let mut vars = HashMap::new();
 
@@ -560,12 +647,6 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
     let grand_callee_param_size = walker.get_grand_callee_parameter_size();
     let frame_size = win_frame_size(info, grand_callee_param_size);
 
-    trace!(
-        "  ...got callee registers (frame_size: {}, raSearch: {})",
-        frame_size,
-        callee_esp + frame_size
-    );
-
     // First setup the initial variables
     vars.insert("$esp", callee_esp);
     vars.insert("$ebp", callee_ebp);
@@ -573,7 +654,25 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         vars.insert("$ebx", callee_ebx as u32);
     }
 
-    let search_start = callee_esp + frame_size;
+    let search_start = if expr.contains('@') {
+        // The frame has been aligned, so don't trust $esp. Assume $ebp
+        // is valid and that the standard calling convention is used
+        // (so the caller's $ebp was pushed right after the return address,
+        // and now $ebp points to that.)
+        trace!("unwind: program used @ operator, using $ebp instead of $esp for return addr");
+        callee_ebp + 4
+    } else {
+        // $esp should be reasonable, get the return address from that
+        callee_esp + frame_size
+    };
+
+    trace!(
+        "unwind: raSearchStart = 0x{:08x} (0x{:08x}, 0x{:08x}, 0x{:08x})",
+        search_start,
+        grand_callee_param_size,
+        info.local_size,
+        info.saved_register_size
+    );
 
     // Magic names from breakpad
     vars.insert(".cbParams", info.parameter_size);
@@ -583,17 +682,16 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
     vars.insert(".raSearch", search_start);
     vars.insert(".raSearchStart", search_start);
 
-    // TODO: this should be an ArrayVec or something..?
+    // FIXME: this should be an ArrayVec or something..?
     let mut stack: Vec<WinVal> = Vec::new();
 
-    // TODO: handle the bug where "= NEXT_TOKEN" is sometimes "=NEXT_TOKEN"
-    // for some windows toolchains.
+    // FIXME: handle the bug where "= NEXT_TOKEN" is sometimes "=NEXT_TOKEN"
+    // for some windows toolchains. Haven't seen it in the wild yet though!
 
     // Evaluate the expressions
     for token in expr.split_ascii_whitespace() {
-        trace!("    ...token: {}", token);
         match token {
-            // TODO: not sure what overflow/sign semantics are
+            // FIXME: not sure what overflow/sign semantics are
             "+" => {
                 // Add
                 let rhs = stack.pop()?.into_int(&vars)?;
@@ -684,13 +782,13 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
                     stack.push(WinVal::Var(token));
                 } else if let Ok(value) = i32::from_str(token) {
                     // Push a constant
-                    // TODO: We do everything in wrapping arithmetic, so it's fine to squash
+                    // FIXME: We do everything in wrapping arithmetic, so it's fine to squash
                     // i32's into u32's?
                     stack.push(WinVal::Int(value as u32));
                 } else {
                     // Unknown expr
-                    debug!(
-                        "STACK CFI expression eval failed - unknown token: {}",
+                    trace!(
+                        "unwind: STACK WIN expression eval failed - unknown token: {}",
                         token
                     );
                     return None;
@@ -699,9 +797,6 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         }
     }
 
-    trace!("  ...eval'd expr");
-    // panic!();
-
     let output_regs = ["$eip", "$esp", "$ebp", "$ebx", "$esi", "$edi"];
     for reg in &output_regs {
         if let Some(&val) = vars.get(reg) {
@@ -709,7 +804,7 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         }
     }
 
-    trace!("  ...success!");
+    trace!("unwind: STACK WIN expression eval succeeded!");
 
     Some(())
 }
@@ -741,44 +836,37 @@ impl<'a> WinVal<'a> {
     }
 }
 
-#[allow(unused_variables, unreachable_code)]
 pub fn walk_with_stack_win_framedata(
     info: &StackInfoWin,
     walker: &mut dyn FrameWalker,
 ) -> Option<()> {
-    // Temporarily disabled while I iterate on this
-    return None;
-
     if let WinStackThing::ProgramString(ref expr) = info.program_string_or_base_pointer {
-        trace!("   ...using stack win framedata: {}", expr);
+        trace!("unwind: trying STACK WIN framedata -- {}", expr);
+        clear_stack_win_caller_registers(walker);
         eval_win_expr(expr, info, walker)
     } else {
         unreachable!()
     }
 }
 
-#[allow(unused_variables, unreachable_code)]
 pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
-    // Temporarily disabled while I iterate on this
-    return None;
-
     if let WinStackThing::AllocatesBasePointer(allocates_base_pointer) =
         info.program_string_or_base_pointer
     {
-        // TODO: do a bunch of heuristics to make this more robust.
+        // FIXME: do a bunch of heuristics to make this more robust.
+        // Haven't needed the heuristics breakpad uses yet.
+        trace!("unwind: trying STACK WIN fpo");
+        clear_stack_win_caller_registers(walker);
 
-        trace!("  ...using stack win fpo");
         let grand_callee_param_size = walker.get_grand_callee_parameter_size();
         let frame_size = win_frame_size(info, grand_callee_param_size) as u64;
 
         let callee_esp = walker.get_callee_register("esp")?;
-        trace!("  ...got callee esp");
-
         let eip_address = callee_esp + frame_size;
         let caller_eip = walker.get_register_at_address(eip_address)?;
         let caller_esp = callee_esp + frame_size + 4;
 
-        trace!("  ...computed caller eip/esp");
+        trace!("unwind: found caller $eip and $esp");
 
         let caller_ebp = if allocates_base_pointer {
             let ebp_address =
@@ -795,17 +883,24 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
 
             walker.get_callee_register("ebp")?
         };
-        trace!("  ...computed caller ebp");
+        trace!("unwind: found caller $ebp");
 
         walker.set_caller_register("eip", caller_eip)?;
         walker.set_caller_register("esp", caller_esp)?;
         walker.set_caller_register("ebp", caller_ebp)?;
 
-        trace!("  ...success!");
-
+        trace!("unwind: STACK WIN fpo eval succeeded!");
         Some(())
     } else {
         unreachable!()
+    }
+}
+
+/// STACK WIN doesn't want implicit register forwarding
+fn clear_stack_win_caller_registers(walker: &mut dyn FrameWalker) {
+    let output_regs = ["$eip", "$esp", "$ebp", "$ebx", "$esi", "$edi"];
+    for reg in output_regs {
+        walker.clear_caller_register(reg);
     }
 }
 
@@ -1014,7 +1109,8 @@ mod test {
 
         assert_eq!(walker.caller_regs.len(), 2);
         assert_eq!(walker.caller_regs["esp"], 1);
-        // TODO: oh no this fails, u64/u32 mismatches ARE a problem...
+        // TODO: oh no this fails, u64/u32 mismatches ARE a problem... at least
+        // for this synthetic example!
         // assert_eq!(walker.caller_regs["ebp"], -2i32 as u32);
 
         // Modulo!

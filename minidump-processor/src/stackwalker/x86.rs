@@ -27,8 +27,7 @@ const CALLEE_SAVED_REGS: &[&str] = &["ebp", "ebx", "edi", "esi"];
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_X86,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
     stack_memory: &MinidumpMemory,
     _modules: &MinidumpModuleList,
     _symbol_provider: &P,
@@ -36,7 +35,8 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider,
 {
-    if let MinidumpContextValidity::Some(ref which) = valid {
+    trace!("unwind: trying frame pointer");
+    if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
         }
@@ -63,8 +63,8 @@ where
     // pointer.
     //
     // %ip_new = *(%bp_old + ptr)
-    // %sp_new = %bp_old + ptr
     // %bp_new = *(%bp_old)
+    // %sp_new = %bp_old + ptr*2
 
     let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
@@ -75,6 +75,12 @@ where
     // to kick in and start outputting extra frames for `/testdata/test.dmp`.
     // Since breakpad also doesn't output those frames, let's assume that's
     // desirable.
+
+    trace!(
+        "unwind: frame pointer seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        caller_ip,
+        caller_sp,
+    );
 
     let caller_ctx = CONTEXT_X86 {
         eip: caller_ip,
@@ -97,38 +103,30 @@ where
 
 fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_X86,
-    valid: &MinidumpContextValidity,
-    _trust: FrameTrust,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory,
-    grand_callee_frame: Option<&StackFrame>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider,
 {
-    trace!("trying to get frame by cfi");
+    trace!("unwind: trying cfi");
+    let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
-        if !which.contains(INSTRUCTION_REGISTER) {
-            return None;
-        }
         if !which.contains(STACK_POINTER_REGISTER) {
             return None;
         }
     }
-    trace!("  ...context was good");
 
     let last_sp = ctx.esp;
-    let last_ip = ctx.eip;
-    let module = modules.module_at_address(last_ip as u64)?;
-    trace!("  ...found module");
+    let module = modules.module_at_address(callee.instruction)?;
 
-    let grand_callee_parameter_size = grand_callee_frame
-        .and_then(|f| f.parameter_size)
-        .unwrap_or(0);
+    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
 
     let mut stack_walker = CfiStackWalker {
-        instruction: last_ip as u64,
+        instruction: callee.instruction,
         grand_callee_parameter_size,
 
         callee_ctx: ctx,
@@ -147,14 +145,24 @@ where
     let caller_ip = stack_walker.caller_ctx.eip;
     let caller_sp = stack_walker.caller_ctx.esp;
 
+    trace!(
+        "unwind: cfi evaluation was successful -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        caller_ip,
+        caller_sp,
+    );
+
     // Don't accept obviously wrong instruction pointers.
     if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
+        trace!("unwind: rejecting cfi result for unreasonable instruction pointer");
         return None;
     }
     // Don't accept obviously wrong stack pointers.
     if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
+        trace!("unwind: rejecting cfi result for unreasonable stack pointer");
         return None;
     }
+
+    trace!("unwind: cfi result seems valid");
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
@@ -178,8 +186,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 fn get_caller_by_scan<P>(
     ctx: &CONTEXT_X86,
-    valid: &MinidumpContextValidity,
-    trust: FrameTrust,
+    callee: &StackFrame,
     stack_memory: &MinidumpMemory,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
@@ -187,16 +194,18 @@ fn get_caller_by_scan<P>(
 where
     P: SymbolProvider,
 {
+    trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
     // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
-    let last_bp = match valid {
+    let last_bp = match callee.context.valid {
         MinidumpContextValidity::All => Some(ctx.ebp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
+                trace!("unwind: cannot scan without stack pointer");
                 return None;
             }
             if which.contains(FRAME_POINTER_REGISTER) {
@@ -206,7 +215,6 @@ where
             }
         }
     };
-    // TODO: pointer-align this..? Does CALL push aligned ip values? Is sp aligned?
     let last_sp = ctx.esp;
 
     // Number of pointer-sized values to scan through in our search.
@@ -215,7 +223,7 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = trust {
+    let scan_range = if let FrameTrust::Context = callee.trust {
         extended_scan_range
     } else {
         default_scan_range
@@ -271,6 +279,12 @@ where
                 }
             }
 
+            trace!(
+                "unwind: scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+                caller_ip,
+                caller_sp,
+            );
+
             let caller_ctx = CONTEXT_X86 {
                 eip: caller_ip,
                 esp: caller_sp,
@@ -307,7 +321,33 @@ where
 {
     // NOTE: x86 has no notion of pointer canonicity (divergence from AMD64)
     if let Some(_module) = modules.module_at_address(instruction as u64) {
-        // TODO: if mapped, check if this instruction actually maps to a function line
+        /* TODO: temporarily disabled, was hacked together for testing
+        use breakpad_symbols::FrameSymbolizer;
+
+        struct DummyFrame {
+            instruction: u64,
+            has_name: bool,
+        }
+        impl FrameSymbolizer for DummyFrame {
+            fn get_instruction(&self) -> u64 {
+                self.instruction
+            }
+            fn set_function(&mut self, _name: &str, _base: u64, _parameter_size: u32) {
+                self.has_name = true;
+            }
+            fn set_source_file(&mut self, _file: &str, _line: u32, _base: u64) {
+                // Do nothing
+            }
+        }
+
+        let mut frame = DummyFrame {
+            instruction: instruction as u64,
+            has_name: false,
+        };
+        symbol_provider.fill_symbol(module, &mut frame);
+
+        frame.has_name
+        */
         true
     } else {
         false
@@ -343,10 +383,9 @@ fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
 impl Unwind for CONTEXT_X86 {
     fn get_caller_frame<P>(
         &self,
-        valid: &MinidumpContextValidity,
-        trust: FrameTrust,
+        callee: &StackFrame,
+        grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory>,
-        grand_callee_frame: Option<&StackFrame>,
         modules: &MinidumpModuleList,
         syms: &P,
     ) -> Option<StackFrame>
@@ -356,21 +395,21 @@ impl Unwind for CONTEXT_X86 {
         stack_memory
             .as_ref()
             .and_then(|stack| {
-                get_caller_by_cfi(self, valid, trust, stack, grand_callee_frame, modules, syms)
-                    .or_else(|| {
-                        get_caller_by_frame_pointer(self, valid, trust, stack, modules, syms)
-                    })
-                    .or_else(|| get_caller_by_scan(self, valid, trust, stack, modules, syms))
+                get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms)
+                    .or_else(|| get_caller_by_frame_pointer(self, callee, stack, modules, syms))
+                    .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
             })
             .and_then(|frame| {
                 // Treat an instruction address of 0 as end-of-stack.
                 if frame.context.get_instruction_pointer() == 0 {
+                    trace!("unwind: instruction pointer was null, assuming unwind complete");
                     return None;
                 }
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
                 if frame.context.get_stack_pointer() as u32 <= self.esp {
+                    trace!("unwind: stack pointer went backwards, assuming unwind complete");
                     return None;
                 }
                 Some(frame)
