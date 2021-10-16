@@ -259,17 +259,12 @@ where
 fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
-    _symbol_provider: &P,
+    symbol_provider: &P,
 ) -> bool
 where
     P: SymbolProvider,
 {
-    if let Some(_module) = modules.module_at_address(instruction as u64) {
-        // TODO: if mapped, check if this instruction actually maps to a function line
-        true
-    } else {
-        false
-    }
+    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider)
 }
 
 /*

@@ -351,11 +351,10 @@ where
 /// If we applied this more rigorous validation to cfi/fp methods, we
 /// would just discard the correct register values from the known frame
 /// and immediately start doing unreliable scans.
-#[allow(clippy::match_like_matches_macro)]
 fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
-    _symbol_provider: &P,
+    symbol_provider: &P,
 ) -> bool
 where
     P: SymbolProvider,
@@ -364,13 +363,7 @@ where
         return false;
     }
 
-    // Only accept this pointer if we can map it to some code we know about
-    if let Some(_module) = modules.module_at_address(instruction as u64 - 1) {
-        // TODO: if mapped, check if this instruction actually maps to a function line
-        true
-    } else {
-        false
-    }
+    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider)
 }
 
 fn stack_seems_valid(

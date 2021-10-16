@@ -38,7 +38,7 @@ impl DwarfSymbolizer {
 }
 
 impl SymbolProvider for DwarfSymbolizer {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) -> Result<(), ()> {
         let path = module.code_file();
         let k = path.as_ref();
         if !self.known_modules.borrow().contains_key(k) {
@@ -70,6 +70,9 @@ impl SymbolProvider for DwarfSymbolizer {
                     }
                 }
             }
+            Ok(())
+        } else {
+            Err(())
         }
     }
     fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {

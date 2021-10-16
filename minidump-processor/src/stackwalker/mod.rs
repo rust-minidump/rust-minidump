@@ -148,7 +148,9 @@ fn fill_source_line_info<P>(
         // FIXME: this shouldn't need to clone, we should be able to use
         // the same lifetime as the module list that's passed in.
         frame.module = Some(module.clone());
-        symbol_provider.fill_symbol(module, frame);
+
+        // This is best effort, so ignore any errors.
+        let _ = symbol_provider.fill_symbol(module, frame);
     }
 }
 
@@ -197,6 +199,66 @@ where
         frames,
         info,
         thread_name: None,
+    }
+}
+
+/// Checks if we can dismiss the validity of an instruction based on our symbols,
+/// to refine the quality of each unwinder's instruction_seems_valid implementation.
+fn instruction_seems_valid_by_symbols<P>(
+    instruction: u64,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> bool
+where
+    P: SymbolProvider,
+{
+    if let Some(module) = modules.module_at_address(instruction as u64) {
+        // Create a dummy frame symbolizing implementation to feed into
+        // our symbol provider with the address we're interested in. If
+        // it tries to set a non-empty function name, then we can reasonably
+        // assume the instruction address is valid.
+        use breakpad_symbols::FrameSymbolizer;
+
+        struct DummyFrame {
+            instruction: u64,
+            has_name: bool,
+        }
+        impl FrameSymbolizer for DummyFrame {
+            fn get_instruction(&self) -> u64 {
+                self.instruction
+            }
+            fn set_function(&mut self, name: &str, _base: u64, _parameter_size: u32) {
+                self.has_name = !name.is_empty();
+            }
+            fn set_source_file(&mut self, _file: &str, _line: u32, _base: u64) {
+                // Do nothing
+            }
+        }
+
+        let mut frame = DummyFrame {
+            instruction: instruction as u64,
+            has_name: false,
+        };
+
+        if symbol_provider.fill_symbol(module, &mut frame).is_ok() {
+            frame.has_name
+        } else {
+            // If the symbol provider returns an Error, this means that we
+            // didn't have any symbols for the *module*. Just assume the
+            // instruction is valid in this case so that scanning works
+            // when we have no symbols.
+            true
+        }
+    } else {
+        // We couldn't even map this address to a module. Reject the pointer
+        // so that we have *some* way to distinguish "normal" pointers
+        // from instruction address.
+        //
+        // FIXME: this will reject any pointer into JITed code which otherwise
+        // isn't part of a normal well-defined module. We can potentially use
+        // MemoryInfoListStream (windows) and /proc/self/maps (linux) to refine
+        // this analysis and allow scans to walk through JITed code.
+        false
     }
 }
 

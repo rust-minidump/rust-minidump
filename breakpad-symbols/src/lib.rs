@@ -508,7 +508,7 @@ impl Symbolizer {
     ) -> Option<String> {
         let k = (debug_file, debug_id);
         let mut frame = SimpleFrame::with_instruction(address);
-        self.fill_symbol(&k, &mut frame);
+        self.fill_symbol(&k, &mut frame).ok()?;
         frame.function
     }
 
@@ -516,6 +516,9 @@ impl Symbolizer {
     /// from `frame`, and the module information from `module`. If you're not
     /// using a minidump module, you can use [`SimpleModule`][simplemodule] and
     /// [`SimpleFrame`][simpleframe].
+    ///
+    /// An Error indicates that no symbols could be found for the relevant
+    /// module.
     ///
     /// # Examples
     ///
@@ -528,7 +531,7 @@ impl Symbolizer {
     /// let symbolizer = Symbolizer::new(supplier);
     /// let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
     /// let mut f = SimpleFrame::with_instruction(0x1010);
-    /// symbolizer.fill_symbol(&m, &mut f);
+    /// let _ = symbolizer.fill_symbol(&m, &mut f);
     /// assert_eq!(f.function.unwrap(), "vswprintf");
     /// assert_eq!(f.source_file.unwrap(), r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
     /// assert_eq!(f.source_line.unwrap(), 51);
@@ -536,11 +539,21 @@ impl Symbolizer {
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    #[allow(clippy::result_unit_err)]
+    pub fn fill_symbol(
+        &self,
+        module: &dyn Module,
+        frame: &mut dyn FrameSymbolizer,
+    ) -> Result<(), ()> {
         let k = key(module);
         self.ensure_module(module, &k);
         if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
-            sym.fill_symbol(module, frame)
+            sym.fill_symbol(module, frame);
+            Ok(())
+        } else {
+            // Treat it as an error if we can't find a symbol file (this allows us to distinguish
+            // between "we had no symbols" and "we had symbols and this frame just had no matches").
+            Err(())
         }
     }
 
@@ -759,7 +772,7 @@ FUNC 1000 30 10 some func
 ",
         );
         let mut f1 = SimpleFrame::with_instruction(0x1010);
-        symbolizer.fill_symbol(&m1, &mut f1);
+        symbolizer.fill_symbol(&m1, &mut f1).unwrap();
         assert_eq!(f1.function.unwrap(), "some func");
         assert_eq!(f1.function_base.unwrap(), 0x1000);
         assert_eq!(f1.source_file.unwrap(), "foo.c");
@@ -776,7 +789,7 @@ FUNC 1000 30 10 some func
         let m2 = SimpleModule::new("bar.pdb", "ffff0000");
         let mut f2 = SimpleFrame::with_instruction(0x1010);
         // No symbols present, should not find anything.
-        symbolizer.fill_symbol(&m2, &mut f2);
+        assert!(symbolizer.fill_symbol(&m2, &mut f2).is_err());
         assert!(f2.function.is_none());
         assert!(f2.function_base.is_none());
         assert!(f2.source_file.is_none());
@@ -790,7 +803,7 @@ FUNC 1000 30 10 another func
 1000 30 7 53
 ",
         );
-        symbolizer.fill_symbol(&m2, &mut f2);
+        assert!(symbolizer.fill_symbol(&m2, &mut f2).is_err());
         assert!(f2.function.is_none());
         assert!(f2.function_base.is_none());
         assert!(f2.source_file.is_none());

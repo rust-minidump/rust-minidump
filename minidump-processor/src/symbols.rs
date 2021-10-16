@@ -2,7 +2,8 @@ use minidump::Module;
 pub use symbols_shim::*;
 
 pub trait SymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer);
+    #[allow(clippy::result_unit_err)]
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) -> Result<(), ()>;
     fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
 }
 
@@ -22,10 +23,16 @@ impl MultiSymbolProvider {
 }
 
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) -> Result<(), ()> {
+        // Return Ok if *any* symbol provider came back with Ok, so that the user can
+        // distinguish between having no symbols at all and just not being able to
+        // symbolize this particular frame.
+        let mut best_result = Err(());
         for p in self.providers.iter() {
-            p.fill_symbol(module, frame);
+            let new_result = p.fill_symbol(module, frame);
+            best_result = best_result.or(new_result);
         }
+        best_result
     }
 
     fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
@@ -49,8 +56,12 @@ mod symbols_shim {
     pub use breakpad_symbols::{FrameSymbolizer, FrameWalker, SymbolSupplier, Symbolizer};
 
     impl SymbolProvider for Symbolizer {
-        fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
-            self.fill_symbol(module, frame);
+        fn fill_symbol(
+            &self,
+            module: &dyn Module,
+            frame: &mut dyn FrameSymbolizer,
+        ) -> Result<(), ()> {
+            self.fill_symbol(module, frame)
         }
         fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
             self.walk_frame(module, walker)
