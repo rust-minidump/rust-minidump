@@ -11,7 +11,7 @@ use crate::SymbolProvider;
 use log::trace;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
-    MinidumpRawContext,
+    MinidumpRawContext, Module,
 };
 use std::collections::HashSet;
 
@@ -105,7 +105,7 @@ fn get_caller_by_frame_pointer<P>(
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory,
-    _modules: &MinidumpModuleList,
+    modules: &MinidumpModuleList,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
@@ -134,16 +134,16 @@ where
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let last_lr = match ctx.get_register(LINK_REGISTER, valid) {
-        Some(lr) => lr,
+        Some(lr) => ptr_auth_strip(modules, lr),
         None => {
             // FIXME: it would be good to write this back to the callee's ctx/validity
-            get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee)?
+            get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee, modules)?
         }
     };
 
     let caller_fp = stack_memory.get_memory_at_address(last_fp as u64)?;
     let caller_lr = stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?;
-    let caller_lr = ptr_auth_strip(caller_lr);
+    let caller_lr = ptr_auth_strip(modules, caller_lr);
     let caller_pc = last_lr;
 
     // TODO: why does breakpad do this? How could we get this far with a null fp?
@@ -160,7 +160,7 @@ where
     // so we don't check that.
 
     // Don't accept obviously wrong instruction pointers.
-    if !is_non_canonical(caller_pc) {
+    if is_non_canonical(caller_pc) {
         trace!("unwind: rejecting frame pointer result for unreasonable instruction pointer");
         return None;
     }
@@ -198,6 +198,7 @@ fn get_link_register_by_frame_pointer(
     valid: &MinidumpContextValidity,
     stack_memory: &MinidumpMemory,
     grand_callee: Option<&StackFrame>,
+    modules: &MinidumpModuleList,
 ) -> Option<Pointer> {
     // It may happen that whatever unwinding strategy we're using managed to
     // restore %fp but didn't restore %lr. Frame-pointer-based unwinding requires
@@ -232,11 +233,46 @@ fn get_link_register_by_frame_pointer(
     // the callee's %lr, which should be right next to where its %fp is saved.
     let last_lr = stack_memory.get_memory_at_address(last_last_fp + POINTER_WIDTH)?;
 
-    Some(ptr_auth_strip(last_lr))
+    Some(ptr_auth_strip(modules, last_lr))
 }
 
-fn ptr_auth_strip(ptr: Pointer) -> Pointer {
-    // TODO: attempt to remove ARM pointer authentication obfuscation
+fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
+    // ARMv8.3 introduced a code hardening system called "Pointer Authentication"
+    // which is used on Apple platforms. It adds some extra high bits to the
+    // several pointers when they get pushed to memory. Interestingly
+    // this doesn't seem to affect return addresses pushed by a function call,
+    // but it does affect lr/fp registers that get pushed to the stack.
+    //
+    // Rather than actually thinking about how to recover the key and properly
+    // decode this, let's apply a simple heuristic. We get the maximum address
+    // that's contained in a module we know about, which will have some highest
+    // bit that is set. We can then safely mask out any bit that's higher than
+    // that one, which will hopefully mask out all the weird security stuff
+    // in the high bits.
+    if let Some(last_module) = modules.by_addr().next_back() {
+        // Get the highest mappable address
+        let mut mask = last_module.base_address() + last_module.size();
+        // Repeatedly OR this value with its shifted self to "smear" its
+        // highest set bit down to all lower bits. This will get us a
+        // mask we can use to AND out any bits that are higher.
+        mask |= mask >> 1;
+        mask |= mask >> 1;
+        mask |= mask >> 2;
+        mask |= mask >> 4;
+        mask |= mask >> 8;
+        mask |= mask >> 16;
+        mask |= mask >> 32;
+        let stripped = ptr & mask;
+
+        // Only actually use this stripped value if it ended up pointing in
+        // a module so we don't start corrupting normal pointers that are just
+        // in modules we don't know about.
+        if modules.module_at_address(stripped).is_some() {
+            trace!("unwind: stripped pointer {} -> {}", ptr, stripped);
+            return stripped;
+        }
+    }
+
     ptr
 }
 
@@ -339,7 +375,7 @@ fn instruction_seems_valid<P>(
 where
     P: SymbolProvider,
 {
-    if is_non_canonical(instruction) {
+    if is_non_canonical(instruction) || instruction == 0 {
         return false;
     }
 
@@ -418,7 +454,11 @@ impl Unwind for ArmContext {
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.get_register_always("sp") {
+                //
+                // NOTE: this check allows for equality because arm leaf functions
+                // may not actually touch the stack (thanks to the link register
+                // allowing you to "push" the return address to a register).
+                if frame.context.get_stack_pointer() < self.get_register_always("sp") {
                     trace!("unwind: stack pointer went backwards, assuming unwind complete");
                     return None;
                 }
