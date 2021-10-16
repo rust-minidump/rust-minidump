@@ -24,10 +24,6 @@ impl TestFixture {
             modules: MinidumpModuleList::from_modules(vec![
                 MinidumpModule::new(0x40000000, 0x10000, "module1"),
                 MinidumpModule::new(0x50000000, 0x10000, "module2"),
-                // breakpad tests don't have this, but the STACK WIN tests
-                // want us to return something in this region, which shouldn't
-                // be allowed without this???
-                MinidumpModule::new(0x2a170000, 0x20000, "module_dummy"),
             ]),
             symbols: HashMap::new(),
         }

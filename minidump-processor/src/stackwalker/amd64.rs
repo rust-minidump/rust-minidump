@@ -26,12 +26,87 @@ const FRAME_POINTER_REGISTER: &str = "rbp";
 // FIXME: rdi and rsi are also preserved on windows (but not in sysv) -- we should handle that?
 const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "r12", "r13", "r14", "r15"];
 
+fn get_caller_by_cfi<P>(
+    ctx: &CONTEXT_AMD64,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
+    stack_memory: &MinidumpMemory,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider,
+{
+    trace!("unwind: trying cfi");
+
+    let valid = &callee.context.valid;
+    if let MinidumpContextValidity::Some(ref which) = valid {
+        if !which.contains(STACK_POINTER_REGISTER) {
+            return None;
+        }
+    }
+
+    let module = modules.module_at_address(callee.instruction)?;
+
+    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
+
+    let mut stack_walker = CfiStackWalker {
+        instruction: callee.instruction,
+        grand_callee_parameter_size,
+
+        callee_ctx: ctx,
+        callee_validity: valid,
+
+        // Default to forwarding all callee-saved regs verbatim.
+        // The CFI evaluator may clear or overwrite these values.
+        // The stack pointer and instruction pointer are not included.
+        caller_ctx: ctx.clone(),
+        caller_validity: callee_forwarded_regs(valid),
+
+        stack_memory,
+    };
+
+    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    let caller_ip = stack_walker.caller_ctx.rip;
+    let caller_sp = stack_walker.caller_ctx.rsp;
+
+    trace!(
+        "unwind: cfi evaluation was successful -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
+        caller_ip,
+        caller_sp,
+    );
+
+    // Do absolutely NO validation! Yep! As long as CFI evaluation succeeds
+    // (which does include ip and sp resolving), just blindly assume the
+    // values are correct. I Don't Like This, but it's what breakpad does and
+    // we should start with a baseline of parity.
+
+    trace!("unwind: cfi result seems valid");
+
+    let context = MinidumpContext {
+        raw: MinidumpRawContext::Amd64(stack_walker.caller_ctx),
+        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
+    };
+    Some(StackFrame::from_context(context, FrameTrust::CallFrameInfo))
+}
+
+fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
+    match valid {
+        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
+        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
+            .iter()
+            .filter(|&reg| which.contains(reg))
+            .copied()
+            .collect(),
+    }
+}
+
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
     callee: &StackFrame,
     stack_memory: &MinidumpMemory,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    _modules: &MinidumpModuleList,
+    _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider,
@@ -88,7 +163,7 @@ where
     // frame pointer is still inside stack memory.
     let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp as u64)?;
     // Don't accept obviously wrong instruction pointers.
-    if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
+    if is_non_canonical(caller_ip) {
         trace!("unwind: rejecting frame pointer result for unreasonable instruction pointer");
         return None;
     }
@@ -118,92 +193,7 @@ where
         raw: MinidumpRawContext::Amd64(caller_ctx),
         valid: MinidumpContextValidity::Some(valid),
     };
-    let mut frame = StackFrame::from_context(context, FrameTrust::FramePointer);
-    adjust_instruction(&mut frame, caller_ip);
-    Some(frame)
-}
-
-fn get_caller_by_cfi<P>(
-    ctx: &CONTEXT_AMD64,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
-) -> Option<StackFrame>
-where
-    P: SymbolProvider,
-{
-    trace!("unwind: trying cfi");
-    let valid = &callee.context.valid;
-    if let MinidumpContextValidity::Some(ref which) = valid {
-        if !which.contains(STACK_POINTER_REGISTER) {
-            return None;
-        }
-    }
-
-    let last_sp = ctx.rsp;
-    let module = modules.module_at_address(callee.instruction)?;
-
-    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
-
-    let mut stack_walker = CfiStackWalker {
-        instruction: callee.instruction,
-        grand_callee_parameter_size,
-
-        callee_ctx: ctx,
-        callee_validity: valid,
-
-        // Default to forwarding all callee-saved regs verbatim.
-        // The CFI evaluator may clear or overwrite these values.
-        // The stack pointer and instruction pointer are not included.
-        caller_ctx: ctx.clone(),
-        caller_validity: callee_forwarded_regs(valid),
-
-        stack_memory,
-    };
-
-    symbol_provider.walk_frame(module, &mut stack_walker)?;
-    let caller_ip = stack_walker.caller_ctx.rip;
-    let caller_sp = stack_walker.caller_ctx.rsp;
-
-    trace!(
-        "unwind: cfi evaluation was successful -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
-        caller_ip,
-        caller_sp,
-    );
-
-    // Don't accept obviously wrong instruction pointers.
-    if !instruction_seems_valid(caller_ip, modules, symbol_provider) {
-        trace!("unwind: rejecting cfi result for unreasonable instruction pointer");
-        return None;
-    }
-    // Don't accept obviously wrong stack pointers.
-    if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
-        trace!("unwind: rejecting cfi result for unreasonable stack pointer");
-        return None;
-    }
-
-    trace!("unwind: cfi result seems valid");
-
-    let context = MinidumpContext {
-        raw: MinidumpRawContext::Amd64(stack_walker.caller_ctx),
-        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
-    };
-    let mut frame = StackFrame::from_context(context, FrameTrust::CallFrameInfo);
-    adjust_instruction(&mut frame, caller_ip);
-    Some(frame)
-}
-
-fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static str> {
-    match valid {
-        MinidumpContextValidity::All => CALLEE_SAVED_REGS.iter().copied().collect(),
-        MinidumpContextValidity::Some(ref which) => CALLEE_SAVED_REGS
-            .iter()
-            .filter(|&reg| which.contains(reg))
-            .copied()
-            .collect(),
-    }
+    Some(StackFrame::from_context(context, FrameTrust::FramePointer))
 }
 
 fn get_caller_by_scan<P>(
@@ -278,7 +268,7 @@ where
             const MAX_REASONABLE_GAP_BETWEEN_FRAMES: Pointer = 128 * 1024;
 
             // NOTE: minor divergence from the x86 impl here: for whatever
-            // reason the x64 breakpad tests only work if gate option (1) on
+            // reason the x64 breakpad tests only work if we gate option (1) on
             // having a valid `bp` that points next to address_of_ip already.
             // It's unclear why, perhaps the test is buggy, but for now we
             // preserve that behaviour.
@@ -331,15 +321,36 @@ where
                 raw: MinidumpRawContext::Amd64(caller_ctx),
                 valid: MinidumpContextValidity::Some(valid),
             };
-            let mut frame = StackFrame::from_context(context, FrameTrust::Scan);
-            adjust_instruction(&mut frame, caller_ip);
-            return Some(frame);
+            return Some(StackFrame::from_context(context, FrameTrust::Scan));
         }
     }
 
     None
 }
 
+/// The most strict validation we have for instruction pointers.
+///
+/// This is only used for stack-scanning, because it's explicitly
+/// trying to distinguish between total garbage and correct values.
+/// cfi and frame_pointer approaches do not use this validation
+/// because by default they're working with plausible/trustworthy
+/// data.
+///
+/// Specifically, not using this validation allows cfi/fp methods
+/// to unwind through frames we don't have mapped modules for (such as
+/// OS APIs). This may seem confusing since we obviously don't have cfi
+/// for unmapped modules!
+///
+/// The way this works is that we will use cfi to unwind some frame we
+/// know about and *end up* in a function we know nothing about, but with
+/// all the right register values. At this point, frame pointers will
+/// often do the correct thing even though we don't know what code we're
+/// in -- until we get back into code we do know about and cfi kicks back in.
+/// At worst, this sets scanning up in a better position for success!
+///
+/// If we applied this more rigorous validation to cfi/fp methods, we
+/// would just discard the correct register values from the known frame
+/// and immediately start doing unreliable scans.
 #[allow(clippy::match_like_matches_macro)]
 fn instruction_seems_valid<P>(
     instruction: Pointer,
@@ -349,10 +360,12 @@ fn instruction_seems_valid<P>(
 where
     P: SymbolProvider,
 {
-    if is_non_canonical(instruction) {
+    if is_non_canonical(instruction) || instruction == 0 {
         return false;
     }
-    if let Some(_module) = modules.module_at_address(instruction as u64) {
+
+    // Only accept this pointer if we can map it to some code we know about
+    if let Some(_module) = modules.module_at_address(instruction as u64 - 1) {
         // TODO: if mapped, check if this instruction actually maps to a function line
         true
     } else {
@@ -374,16 +387,6 @@ fn stack_seems_valid(
     stack_memory
         .get_memory_at_address::<Pointer>(caller_sp as u64)
         .is_some()
-}
-
-fn adjust_instruction(frame: &mut StackFrame, caller_ip: Pointer) {
-    // A caller's ip is the return address, which is the instruction
-    // after the CALL that caused us to arrive at the callee. Set
-    // the value to one less than that, so it points within the
-    // CALL instruction.
-    if caller_ip > 0 {
-        frame.instruction = caller_ip as u64 - 1;
-    }
 }
 
 fn is_non_canonical(ptr: Pointer) -> bool {
@@ -421,10 +424,15 @@ impl Unwind for CONTEXT_AMD64 {
                     .or_else(|| get_caller_by_frame_pointer(self, callee, stack, modules, syms))
                     .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
             })
-            .and_then(|frame| {
-                // Treat an instruction address of 0 as end-of-stack.
-                if frame.context.get_instruction_pointer() == 0 {
-                    trace!("unwind: instruction pointer was null, assuming unwind complete");
+            .and_then(|mut frame| {
+                // We now check the frame to see if it looks like unwinding is complete,
+                // based on the frame we computed having a nonsense value. Returning
+                // None signals to the unwinder to stop unwinding.
+
+                // if the instruction is within the first ~page of memory, it's basically
+                // null, and we can assume unwinding is complete.
+                if frame.context.get_instruction_pointer() < 4096 {
+                    trace!("unwind: instruction pointer was nullish, assuming unwind complete");
                     return None;
                 }
                 // If the new stack pointer is at a lower address than the old,
@@ -434,6 +442,17 @@ impl Unwind for CONTEXT_AMD64 {
                     trace!("unwind: stack pointer went backwards, assuming unwind complete");
                     return None;
                 }
+
+                // Ok, the frame now seems well and truly valid, do final cleanup.
+
+                // A caller's ip is the return address, which is the instruction
+                // *after* the CALL that caused us to arrive at the callee. Set
+                // the value to one less than that, so it points within the
+                // CALL instruction. This is important because we use this value
+                // to lookup the CFI we need to unwind the next frame.
+                let ip = frame.context.get_instruction_pointer() as u64;
+                frame.instruction = ip - 1;
+
                 Some(frame)
             })
     }
