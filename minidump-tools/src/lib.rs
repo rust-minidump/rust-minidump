@@ -165,7 +165,7 @@ impl SourceLookup for SymLookup {
     fn lookup(&mut self, address: u64) -> Option<SourceLocation> {
         self.modules.module_at_address(address).and_then(|module| {
             let mut frame = SimpleFrame::with_instruction(address);
-            self.symbolizer.fill_symbol(module, &mut frame);
+            let _ = self.symbolizer.fill_symbol(module, &mut frame);
             let SimpleFrame {
                 source_file,
                 source_line,
@@ -348,7 +348,7 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
         if let Some(instruction) = instruction {
             if let Some(module) = modules.module_at_address(instruction) {
                 let mut frame = SimpleFrame::with_instruction(instruction);
-                symbolizer.fill_symbol(module, &mut frame);
+                let _ = symbolizer.fill_symbol(module, &mut frame);
                 if frame.function.is_some() || all {
                     print!("{:#0width$x} ", addr, width = wordsize * 2);
                     print_frame(module, frame);

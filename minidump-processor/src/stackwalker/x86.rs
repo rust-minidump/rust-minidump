@@ -334,11 +334,10 @@ where
 /// If we applied this more rigorous validation to cfi/fp methods, we
 /// would just discard the correct register values from the known frame
 /// and immediately start doing unreliable scans.
-#[allow(clippy::match_like_matches_macro)]
 fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
-    _symbol_provider: &P,
+    symbol_provider: &P,
 ) -> bool
 where
     P: SymbolProvider,
@@ -347,39 +346,7 @@ where
         return false;
     }
 
-    // NOTE: x86 has no notion of pointer canonicity (divergence from AMD64)
-    if let Some(_module) = modules.module_at_address(instruction as u64) {
-        /* TODO: temporarily disabled, was hacked together for testing
-        use breakpad_symbols::FrameSymbolizer;
-
-        struct DummyFrame {
-            instruction: u64,
-            has_name: bool,
-        }
-        impl FrameSymbolizer for DummyFrame {
-            fn get_instruction(&self) -> u64 {
-                self.instruction
-            }
-            fn set_function(&mut self, _name: &str, _base: u64, _parameter_size: u32) {
-                self.has_name = true;
-            }
-            fn set_source_file(&mut self, _file: &str, _line: u32, _base: u64) {
-                // Do nothing
-            }
-        }
-
-        let mut frame = DummyFrame {
-            instruction: instruction as u64,
-            has_name: false,
-        };
-        symbol_provider.fill_symbol(module, &mut frame);
-
-        frame.has_name
-        */
-        true
-    } else {
-        false
-    }
+    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider)
 }
 
 /*

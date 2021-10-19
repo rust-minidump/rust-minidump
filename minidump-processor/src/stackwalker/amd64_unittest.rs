@@ -241,6 +241,85 @@ fn test_scan_without_symbols() {
     }
 }
 
+#[test]
+fn test_scan_with_symbols() {
+    // Test that we can refine our scanning using symbols. Specifically we
+    // should be able to reject pointers that are in modules but don't map to
+    // any FUNC/PUBLIC record.
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start = 0x8000000080000000u64;
+    stack.start().set_const(stack_start);
+
+    let return_address = 0x00007500b0000110u64;
+
+    let frame1_rsp = Label::new();
+    let frame1_rbp = Label::new();
+    stack = stack
+        // frame 0
+        .append_repeated(0, 16) // space
+        .D64(0x00007400b0000000u64) // junk that's not
+        .D64(0x00007500b0000000u64) // a return address
+        .D64(0x00007400c0001000u64) // a couple of plausible addresses
+        .D64(0x00007500b000aaaau64) // that are not within functions
+        .D64(return_address) // actual return address
+        // frame 1
+        .mark(&frame1_rsp)
+        .append_repeated(0, 32)
+        .mark(&frame1_rbp); // end of stack
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = frame1_rbp.value().unwrap();
+    f.raw.rsp = stack.start().value().unwrap();
+
+    f.add_symbols(
+        String::from("module1"),
+        // The youngest frame's function.
+        String::from("FUNC 100 400 10 monotreme\n"),
+    );
+    f.add_symbols(
+        String::from("module2"),
+        // The calling frame's function.
+        String::from("FUNC 100 400 10 marsupial\n"),
+    );
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 3);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Amd64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("rip", valid).unwrap(), return_address);
+            assert_eq!(
+                ctx.get_register("rsp", valid).unwrap(),
+                frame1_rsp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("rbp", valid).unwrap(),
+                frame1_rbp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
 const CALLEE_SAVE_REGS: &[&str] = &["rip", "rbx", "rbp", "rsp", "r12", "r13", "r14", "r15"];
 
 fn init_cfi_state() -> (TestFixture, Section, CONTEXT_AMD64, MinidumpContextValidity) {

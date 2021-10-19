@@ -590,6 +590,109 @@ fn test_stack_win_frame_data_basic() {
     }
 }
 
+// Totally basic STACK WIN frame data, no weird stuff.
+#[test]
+fn test_stack_win_frame_data_overlapping() {
+    // Same as frame_data_basic but there are extra entries which technically overlap
+    // with this one, but in a way that is easily disambiguated by preferring the
+    // one with the higher base address. This happens frequently in real symbol files.
+    let mut f = TestFixture::new();
+    let symbols = [
+        // Entry that covers the "whole" function (junk!)
+        "STACK WIN 4 aa80 181 0 0 4 10 4 0 1",
+        " $eip .raSearchStart =\n",
+        // More precise (still junk!)
+        "STACK WIN 4 aa84 177 0 0 4 10 4 0 1",
+        " $eip .raSearchStart =\n",
+        // This is the one we want!!!
+        "STACK WIN 4 aa85 176 0 0 4 10 4 0 1",
+        " $T2 $esp .cbSavedRegs + =",
+        " $T0 .raSearchStart =",
+        " $eip $T0 ^ =",
+        " $esp $T0 4 + =",
+        " $ebx $T2 4  - ^ =",
+        " $edi $T2 8  - ^ =",
+        " $esi $T2 12 - ^ =",
+        " $ebp $T2 16 - ^ =\n",
+        // An even more precise one but past the address we care about (junk!)
+        "STACK WIN 4 aa86 175 0 0 4 10 4 0 1",
+        " $eip .raSearchStart =\n",
+    ];
+    f.add_symbols(String::from("module1"), symbols.concat());
+
+    let frame1_esp = Label::new();
+    let frame1_ebp = Label::new();
+
+    let mut stack = Section::new();
+    let stack_start = 0x80000000;
+    stack.start().set_const(stack_start);
+
+    stack = stack
+        // frame 0
+        .D32(&frame1_ebp) // saved regs: %ebp
+        .D32(0xa7120d1a) //             %esi
+        .D32(0x630891be) //             %edi
+        .D32(0x9068a878) //             %ebx
+        .D32(0xa08ea45f) // locals: unused
+        .D32(0x40001350) // return address
+        // frame 1
+        .mark(&frame1_esp)
+        .append_repeated(0, 12) // empty space
+        .mark(&frame1_ebp)
+        .D32(0) // saved %ebp (stack end)
+        .D32(0); // saved %eip (stack end)
+
+    f.raw.set_register("eip", 0x4000aa85);
+    f.raw
+        .set_register("esp", stack.start().value().unwrap() as u32);
+    f.raw.set_register("ebp", 0xf052c1de);
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+        assert_eq!(f0.instruction, 0x4000aa85);
+
+        if let MinidumpRawContext::X86(ctx) = &f0.context.raw {
+            assert_eq!(ctx.eip, 0x4000aa85);
+            assert_eq!(ctx.esp, stack_start as u32);
+            assert_eq!(ctx.ebp, 0xf052c1de);
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::CallFrameInfo);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("eip"));
+            assert!(which.contains("esp"));
+            assert!(which.contains("ebp"));
+            assert!(which.contains("ebx"));
+            assert!(which.contains("esi"));
+            assert!(which.contains("edi"));
+        } else {
+            unreachable!();
+        }
+        assert_eq!(f1.instruction + 1, 0x40001350);
+
+        if let MinidumpRawContext::X86(ctx) = &f1.context.raw {
+            assert_eq!(ctx.eip, 0x40001350);
+            assert_eq!(ctx.esp, frame1_esp.value().unwrap() as u32);
+            assert_eq!(ctx.ebp, frame1_ebp.value().unwrap() as u32);
+            assert_eq!(ctx.ebx, 0x9068a878);
+            assert_eq!(ctx.esi, 0xa7120d1a);
+            assert_eq!(ctx.edi, 0x630891be);
+        } else {
+            unreachable!();
+        }
+    }
+}
+
 // Testing that grand_callee_parameter_size is properly computed.
 #[test]
 fn test_stack_win_frame_data_parameter_size() {

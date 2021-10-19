@@ -61,6 +61,53 @@ impl SymbolFile {
                 })
             });
         } else if let Some(public) = self.find_nearest_public(addr) {
+            // We couldn't find a valid FUNC record, but we could find a PUBLIC record.
+            // Unfortauntely, PUBLIC records don't have end-points, so this could be
+            // a random PUBLIC record from the start of the module that isn't at all
+            // applicable. To try limit this problem, we can use the nearest FUNC
+            // record that comes *before* the address we're trying to find a symbol for.
+            //
+            // It is reasonable to assume a PUBLIC record cannot extend *past* a FUNC,
+            // so if the PUBLIC has a smaller base address than the nearest previous FUNC
+            // to our target address, the PUBLIC must actually end before that FUNC and
+            // therefore not actually apply to the target address.
+            //
+            // We get the nearest previous FUNC by getting the raw slice of ranges
+            // and binary searching for our base address. Rust's builtin binary search
+            // will fail to find the value since it uses strict equality *but* the Err
+            // will helpfully contain the index in the slice where our value "should"
+            // be inserted to preserve the sort. The element before this index is
+            // therefore the nearest previous value!
+            //
+            // Case analysis for this -1 because binary search is an off-by-one minefield:
+            //
+            // * if the address we were looking for came *before* every FUNC, binary_search
+            //   would yield "0" because that's where it should go to preserve the sort.
+            //   The checked_sub will then fail and make us just assume the PUBLIC is reasonable,
+            //   which is correct.
+            //
+            // * if we get 1, this saying we actually want element 0, so again -1 is
+            //   correct. (This generalizes to all other "reasonable" values, but 1 is easiest
+            //   to think about given the previous case's analysis.)
+            //
+            // * if the address we were looking for came *after* every FUNC, binary search
+            //   would yield "slice.len()", and the nearest FUNC is indeed at `len-1`, so
+            //   again correct.
+            let funcs_slice = self.functions.ranges_values().as_slice();
+            let prev_func = funcs_slice
+                .binary_search_by_key(&addr, |(range, _)| range.start)
+                .err()
+                .and_then(|idx| idx.checked_sub(1))
+                .and_then(|idx| funcs_slice.get(idx));
+
+            if let Some(prev_func) = prev_func {
+                if public.address <= prev_func.1.address {
+                    // This PUBLIC is truncated by a FUNC before it gets to `addr`,
+                    // so we shouldn't use it.
+                    return;
+                }
+            }
+
             // Settle for a PUBLIC.
             frame.set_function(
                 &public.name,
@@ -119,10 +166,8 @@ impl SymbolFile {
 mod test {
     use super::*;
     use std::ffi::OsStr;
-    use std::path::PathBuf;
-
     fn test_symbolfile_from_file(rel_path: &str) {
-        let mut path = PathBuf::from(env!("PWD"));
+        let mut path = std::env::current_dir().unwrap();
         if path.file_name() == Some(OsStr::new("rust-minidump")) {
             path.push("breakpad-symbols");
         }

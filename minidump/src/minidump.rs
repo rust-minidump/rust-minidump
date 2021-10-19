@@ -1165,7 +1165,7 @@ impl MinidumpModuleList {
     }
 
     /// Iterate over the modules in order by memory address.
-    pub fn by_addr(&self) -> impl Iterator<Item = &MinidumpModule> {
+    pub fn by_addr(&self) -> impl DoubleEndedIterator<Item = &MinidumpModule> {
         self.modules_by_addr
             .ranges_values()
             .map(move |&(_, index)| &self.modules[index])
