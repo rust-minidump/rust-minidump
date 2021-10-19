@@ -143,7 +143,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "failure",
  "log",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "doc-comment",
@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "bitflags",
  "enum-primitive-derive",
@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "addr2line 0.15.2",
  "breakpad-symbols",
@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-stackwalk"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "addr2line 0.15.2",
  "clap",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-tools"
-version = "0.3.0"
+version = "0.9.0"
 dependencies = [
  "breakpad-symbols",
  "disasm",
