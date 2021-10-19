@@ -167,6 +167,78 @@ fn test_scan_without_symbols() {
 }
 
 #[test]
+fn test_scan_with_symbols() {
+    // Test that we can refine our scanning using symbols. Specifically we
+    // should be able to reject pointers that are in modules but don't map to
+    // any FUNC/PUBLIC record.
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start = 0x80000000;
+    stack.start().set_const(stack_start);
+
+    let return_address = 0x50000200;
+
+    let frame1_sp = Label::new();
+    stack = stack
+        // frame 0
+        .append_repeated(0, 16) // space
+        .D64(0x40090000) // junk that's not
+        .D64(0x60000000) // a return address
+        .D64(0x40001000) // a couple of plausible addresses
+        .D64(0x5000F000) // that are not within functions
+        .D64(return_address) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .append_repeated(0, 64); // end of stack
+
+    f.raw.set_register("pc", 0x40000200);
+    f.raw.set_register("sp", stack.start().value().unwrap());
+
+    f.add_symbols(
+        String::from("module1"),
+        // The youngest frame's function.
+        String::from("FUNC 100 400 10 monotreme\n"),
+    );
+    f.add_symbols(
+        String::from("module2"),
+        // The calling frame's function.
+        String::from("FUNC 100 400 10 marsupial\n"),
+    );
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 2);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[test]
 fn test_scan_first_frame() {
     // The first (context) frame gets extra long scans, this test checks that.
     let mut f = TestFixture::new();
@@ -334,6 +406,117 @@ fn test_frame_pointer() {
         }
     }
 }
+
+#[test]
+fn test_ptr_auth_strip() {
+    // Same as the basic frame pointer test but extra high bits have been set which
+    // must be masked out. This is vaguely emulating Arm Pointer Authentication,
+    // although very synthetically. This might break if we implement more accurate
+    // stripping. But at that point we should have a better understanding of how
+    // to make an "accurate" test!
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u64;
+    let return_address2 = 0x50000900u64;
+    let authenticated_return_address1 = return_address1 | 0x13420000000000u64;
+    let authenticated_return_address2 = return_address2 | 0x1110000000000000u64;
+
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_fp) // next fp will point to the next value
+        .D64(&frame2_fp) // save current frame pointer
+        .D64(authenticated_return_address2) // save current link register
+        .mark(&frame1_sp)
+        // frame 1
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame2_fp)
+        .D64(0)
+        .D64(0)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 64) // Whatever values on the stack.
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000); // a return address.
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", authenticated_return_address1);
+    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 3);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 4);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        // Frame 2
+        let frame = &s.frames[2];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 4);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), 0);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap()
+            );
+            assert_eq!(ctx.get_register("fp", valid).unwrap(), 0);
+        } else {
+            unreachable!();
+        }
+    }
+}
+
 const CALLEE_SAVE_REGS: &[&str] = &[
     "pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];

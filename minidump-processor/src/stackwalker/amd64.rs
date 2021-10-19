@@ -289,13 +289,8 @@ where
                         caller_bp = Some(bp);
                     }
                 } else if last_bp >= address_of_ip + POINTER_WIDTH {
-                    // Sanity check that resulting bp is still inside stack memory.
-                    if stack_memory
-                        .get_memory_at_address::<Pointer>(last_bp as u64)
-                        .is_some()
-                    {
-                        caller_bp = Some(last_bp);
-                    }
+                    // Don't sanity check that the address is inside the stack? Hmm.
+                    caller_bp = Some(last_bp);
                 }
             }
 
