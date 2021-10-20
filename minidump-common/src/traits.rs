@@ -1,6 +1,5 @@
 //! Some common traits used by minidump-related crates.
 
-use log::warn;
 use range_map::{Range, RangeMap};
 
 use std::borrow::Cow;
@@ -80,19 +79,22 @@ where
         let mut vec: Vec<(Range<u64>, V)> = Vec::with_capacity(input.len());
         for (range, val) in input.into_iter() {
             if range.is_none() {
-                warn!("Unable to create valid range for {:?}", val);
+                // warn!("Unable to create valid range for {:?}", val);
                 continue;
             }
             let range = range.unwrap();
 
             if let Some(&mut (ref mut last_range, ref last_val)) = vec.last_mut() {
                 if range.start <= last_range.end && &val != last_val {
-                    //TODO: add a way for callers to do custom logging here? Perhaps
-                    // a callback function?
-                    warn!(
-                        "overlapping ranges {:?} and {:?} map to values {:?} and {:?}",
-                        last_range, range, last_val, val
-                    );
+                    // This logging is nice to have but some symbol files are absolutely
+                    // horribly polluted with duplicate entries with different values(!!!)
+                    // and this generates literally a gigabyte of logs, yikes!
+
+                    /*
+                    warn!("overlapping ranges {:?} and {:?}", last_range, range);
+                    warn!(" value1: {:?}", last_val);
+                    warn!(" value2: {:?}\n", val);
+                    */
                     continue;
                 }
 
