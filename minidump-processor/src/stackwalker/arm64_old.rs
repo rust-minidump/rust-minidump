@@ -141,6 +141,12 @@ where
         }
     };
 
+    if last_fp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+        // Although this code generally works fine if the pointer math overflows,
+        // debug builds will still panic, and this guard protects against it without
+        // drowning the rest of the code in checked_add.
+        return None;
+    }
     let caller_fp = stack_memory.get_memory_at_address(last_fp as u64)?;
     let caller_lr = stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?;
     let caller_lr = ptr_auth_strip(modules, caller_lr);
@@ -309,11 +315,11 @@ where
     };
 
     for i in 0..scan_range {
-        let address_of_pc = last_sp + i * POINTER_WIDTH;
+        let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider) {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
-            let caller_sp = address_of_pc + POINTER_WIDTH;
+            let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)

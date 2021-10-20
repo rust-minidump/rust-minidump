@@ -560,3 +560,31 @@ fn test_cfi_at_4006() {
 
     check_cfi(f, stack, expected, expected_valid);
 }
+
+#[test]
+fn test_overflow() {
+    // Make sure we don't explode when trying frame pointer analysis on a value
+    // that will overflow.
+
+    // Functions typically push their %rbp upon entry and set %rbp pointing
+    // there.  If stackwalking finds a plausible address for the next frame's
+    // %rbp directly below the return address, assume that it is indeed the
+    // next frame's %rbp.
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start = 0x8000000080000000;
+    stack.start().set_const(stack_start);
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 1000); // junk, not important to the test
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = u64::MAX;
+    f.raw.rsp = stack.start().value().unwrap();
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 1);
+
+    // As long as we don't panic, we're good!
+}
