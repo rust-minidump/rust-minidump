@@ -52,9 +52,5 @@ You can then either provide those symbol files directly with the `--symbols-path
 If you're trying to analyze firefox minidumps, you'll want to point minidump-stackwalk to [Mozilla's Tecken server](https://symbols.mozilla.org/).
 
 ```
-> mkdir /tmp/symbols/cache
-> minidump-stackwalk \
-    --symbols-url=https://symbols.mozilla.org/ \
-    --symbols-cache=/tmp/symbols/cache \
-    /path/to/minidump.dmp
+> minidump-stackwalk --symbols-url=https://symbols.mozilla.org/ /path/to/minidump.dmp
 ```

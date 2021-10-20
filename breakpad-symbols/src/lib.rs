@@ -39,7 +39,7 @@ use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -310,12 +310,23 @@ impl HttpSymbolSupplier {
 
 /// Save the data in `contents` to `path`.
 fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
+    // Use tempfile to save things to our cache to ensure proper
+    // atomicity of writes. We may want multiple instances of rust-minidump
+    // to be sharing a cache, and we don't want one instance to see another
+    // instance's partially written results.
+    //
+    // tempfile is designed explicitly for this purpose, and will handle all
+    // the platform-specific details and do its best to cleanup if things
+    // crash. See `std::env::temp_dir()` for how it chooses where to put
+    // the temporary file (defaults to /tmp on linux).
     let base = path.parent().ok_or_else(|| {
         io::Error::new(io::ErrorKind::Other, format!("Bad cache path: {:?}", path))
     })?;
     fs::create_dir_all(&base)?;
-    let mut f = File::create(path)?;
-    f.write_all(contents)?;
+
+    let mut temp = tempfile::NamedTempFile::new()?;
+    temp.write_all(contents)?;
+    temp.persist(path)?;
     Ok(())
 }
 
@@ -333,6 +344,8 @@ fn fetch_symbol_file(
     let mut buf = vec![];
     res.read_to_end(&mut buf)?;
     let local = cache.join(rel_path);
+
+    // Ensure the cache exists
     match save_contents(&buf, &local) {
         Ok(_) => {}
         Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),

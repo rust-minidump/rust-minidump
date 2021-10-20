@@ -13,9 +13,9 @@ use minidump_processor::{
     http_symbol_supplier, simple_symbol_supplier, DwarfSymbolizer, MultiSymbolProvider, Symbolizer,
 };
 
-use clap::{crate_authors, crate_version, App, Arg};
+use clap::{crate_version, App, AppSettings, Arg};
 use log::error;
-use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
+use simplelog::{ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode};
 
 fn print_minidump_process(
     path: &Path,
@@ -28,7 +28,10 @@ fn print_minidump_process(
     if let Ok(dump) = Minidump::read_path(path) {
         let mut provider = MultiSymbolProvider::new();
 
-        if let Some(symbols_cache) = symbols_cache {
+        if !symbol_urls.is_empty() {
+            let symbols_cache =
+                symbols_cache.unwrap_or_else(|| std::env::temp_dir().join("rust-minidump-cache"));
+            log::trace!("symbols-cache {:?}", symbols_cache);
             provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
                 symbol_paths,
                 symbol_urls,
@@ -65,11 +68,16 @@ fn print_minidump_process(
 fn main() {
     let matches = App::new("minidump_stackwalk")
         .version(crate_version!())
-        .author(crate_authors!("\n"))
-        .about("Analyzes minidumps and produces a machine-readable JSON report")
+        .about("Analyzes minidumps and produces a machine-readable JSON report.")
+        .setting(AppSettings::NextLineHelp)
+        .setting(AppSettings::ColoredHelp)
         .arg(
             Arg::with_name("human")
-                .help("Emit a human-readable report instead")
+                .long_help("Emit a human-readable report instead.
+
+The human-readable report does not have a specified format, and may not have as \
+many details as the default JSON format. It is intended for quickly inspecting \
+a crash or debugging rust-minidump itself.\n\n\n")
                 .long("human")
         )
         .arg(
@@ -79,48 +87,113 @@ fn main() {
         )
         .arg(
             Arg::with_name("verbose")
-                .help("Set the level of verbosity (off, error (default), warn, info, debug, trace)")
+                .long_help("Set the level of verbosity (off, error (default), warn, info, debug, trace)
+
+The unwinder has been heavily instrumented with `trace` logging, so if you want to debug why \
+an unwind happened the way it did, --verbose=trace is very useful (all unwinder logging will \
+be prefixed with `unwind:`).\n\n\n")
                 .long("verbose")
                 .default_value("error")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("raw-json")
-                .help("An input JSON file with the extra information (not yet implemented)")
+                .long_help("An input JSON file with the extra information (not yet implemented).
+
+This is a gross hack for some legacy side-channel information that mozilla uses. It will \
+hopefully be phased out and deprecated in favour of just using custom streams in the \
+minidump itself.\n\n\n")
                 .long("raw-json")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("symbols-url")
-                .help("A base URL from which URLs to symbol files can be constructed")
+                .long_help("base URL from which URLs to symbol files can be constructed.
+
+If multiple symbols-url values are provided, they will each be tried in order until \
+one resolves.
+
+The server the base URL points to is expected to conform to the Tecken \
+symbol server protocol. For more details, see the Tecken docs:
+
+https://tecken.readthedocs.io/en/latest/
+
+Example symbols-url value: https://symbols.mozilla.org/\n\n\n")
                 .multiple(true)
                 .long("symbols-url")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("symbols-cache")
-                .help("A directory in which downloaded symbols can be stored")
+                .long_help("A directory in which downloaded symbols can be stored.
+                    
+Symbol files can be very large, so we recommend placing cached files in your \
+system's temp directory so that it can garbage collect unused ones for you. \
+To this end, the default value for this flag is a `rust-minidump-cache` \
+subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).\n\n\n")
                 .long("symbols-cache")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("symbols-tmp")
-                .help("A directory to use as temp space for downloading symbols. Must be on the same filesystem as symbols-cache. (not yet implemented)")
+                .long_help("A directory to use as temp space for downloading symbols.
+
+A temp dir is necessary to allow for multiple rust-minidump instances to share a cache without \
+race conditions. Files to be added to the cache will be constructed in this location before \
+being atomically moved to the cache.
+
+This argument is currently ignored in favour of `std::env::temp_dir()` to improve portability. \
+See the rust documentation for how to set that value if you wish to use something other than \
+your system's default temp directory.\n\n\n")
                 .long("symbols-tmp")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("minidump")
-                .help("Path to the minidump file")
+                .help("Path to the minidump file to analyze.")
                 .required(true)
                 .takes_value(true)
         )
         .arg(
             Arg::with_name("symbols-path")
-                .help("Path to a symbol file")
+                .long_help("Path to a symbol file.
+
+If multiple symbols-path values are provided, all symbol files will be merged \
+into minidump-stackwalk's symbol database.\n\n\n")
                 .multiple(true)
                 .takes_value(true)
         )
+        .after_help("
+
+Purpose of Symbols:
+
+  Symbols are used for two purposes:
+
+  1. To fill in more information about each frame of the backtraces. (function names, lines, etc.)
+
+  2. To do produce a more *accurate* backtrace. This is primarily accomplished with \
+call frame information (CFI), but just knowing what parts of a module maps to actual \
+code is also useful!
+
+
+
+Supported Symbol Formats:
+
+  Currently only breakpad text symbol files are supported, although we hope to eventually \
+support native formats like PDB and DWARF as well.
+
+
+
+Breakpad Symbol Files:
+
+  Breakpad symbol files are basically a simplified version of the information found in \
+native debuginfo formats. We recommend using a version of dump_syms to generate them.
+
+  See:
+    * symbol file docs: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
+    * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
+
+")
         .get_matches();
 
     let verbosity = match matches.value_of("verbose").unwrap() {
@@ -132,10 +205,16 @@ fn main() {
         _ => LevelFilter::Error,
     };
 
-    // Init the logger
+    // Init the logger (and make trace logging less noisy)
     let _ = TermLogger::init(
         verbosity,
-        Config::default(),
+        ConfigBuilder::new()
+            .set_location_level(LevelFilter::Off)
+            .set_time_level(LevelFilter::Off)
+            .set_thread_level(LevelFilter::Off)
+            .set_target_level(LevelFilter::Off)
+            .set_level_color(Level::Trace, None)
+            .build(),
         TerminalMode::Stderr,
         ColorChoice::Auto,
     );
@@ -185,11 +264,6 @@ fn main() {
 
     if pretty && human {
         eprintln!("Humans must be hideous! (The --pretty and --human flags cannot both be set)");
-        std::process::exit(1);
-    }
-
-    if symbols_urls.is_empty() != symbols_cache.is_none() {
-        eprintln!("You must specify both --symbols-url and --symbols-cache when using one of these options");
         std::process::exit(1);
     }
 
