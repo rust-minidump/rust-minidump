@@ -4,7 +4,7 @@
 //! The state of a process.
 
 use std::borrow::{Borrow, Cow};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
 
@@ -131,6 +131,8 @@ pub struct ProcessState {
     pub time: DateTime<Utc>,
     /// When the process started, if available
     pub process_create_time: Option<DateTime<Utc>>,
+    /// Known code signing certificates (module name => cert name)
+    pub cert_info: HashMap<String, String>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
     pub crash_reason: Option<CrashReason>,
     /// The memory address implicated in the crash.
@@ -497,16 +499,21 @@ Loaded modules:
         let main_address = self.modules.main_module().map(|m| m.base_address());
         for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
+            let full_name = module.code_file();
+            let name = basename(&full_name);
             write!(
                 f,
                 "{:#010x} - {:#010x}  {}  {}",
                 module.base_address(),
                 module.base_address() + module.size() - 1,
-                basename(&module.code_file()),
+                name,
                 module.version().unwrap_or(Cow::Borrowed("???"))
             )?;
             if eq_some(main_address, module.base_address()) {
                 write!(f, "  (main)")?;
+            }
+            if let Some(cert) = self.cert_info.get(name) {
+                write!(f, " ({})", cert)?;
             }
             writeln!(f)?;
         }
@@ -517,13 +524,19 @@ Unloaded modules:
 "
         )?;
         for module in self.unloaded_modules.by_addr() {
-            writeln!(
+            let full_name = module.code_file();
+            let name = basename(&full_name);
+            write!(
                 f,
                 "{:#010x} - {:#010x}  {}",
                 module.base_address(),
                 module.base_address() + module.size() - 1,
                 basename(&module.code_file()),
             )?;
+            if let Some(cert) = self.cert_info.get(name) {
+                write!(f, " ({})", cert)?;
+            }
+            writeln!(f)?;
         }
         if !self.unimplemented_streams.is_empty() {
             write!(
@@ -585,7 +598,6 @@ Unknown streams encountered:
                 "cpu_microcode_version": null,
             },
             "crash_info": {
-                // TODO: Issue #22
                 "type": self.crash_reason.map(|reason| reason.to_string()),
                 "address": self.crash_address.map(json_hex),
                 // thread index | null
@@ -618,45 +630,43 @@ Unknown streams encountered:
 
             // the first module is always the main one
             "main_module": 0,
-            // TODO: Issue #171
-            "modules_contains_cert_info": false,
-            "modules": self.modules.iter().map(|module| json!({
-                "base_addr": json_hex(module.raw.base_of_image),
-                // filename | empty string
-                "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
-                // [[:xdigit:]]{33} | empty string
-                "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
-                "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
-                "filename": module.name,
-                "code_id": module.code_identifier(),
-                "version": module.version(),
+            "modules_contains_cert_info": !self.cert_info.is_empty(),
+            "modules": self.modules.iter().map(|module| {
+                let full_name = module.code_file();
+                let name = basename(&full_name);
+                json!({
+                    "base_addr": json_hex(module.raw.base_of_image),
+                    // filename | empty string
+                    "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
+                    // [[:xdigit:]]{33} | empty string
+                    "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
+                    "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
+                    "filename": &name,
+                    "code_id": module.code_identifier(),
+                    "version": module.version(),
+                    "cert_subject": self.cert_info.get(name),
 
-                // These are all just metrics for debugging minidump-processor's execution
+                    // These are all just metrics for debugging minidump-processor's execution
 
-                // optional, if mdsw looked for the file and it does exist
-                // "loaded_symbols": true,
-                // optional, if mdsw looked for the file and it doesn't exist
-                // "missing_symbols": true,
-                // optional, if mdsw found a file that has parse errors
-                // "corrupt_symbols": true,
-                // optional, whether or not the SYM file was fetched from disk cache
-                // "symbol_disk_cache_hit": <bool>,
-                // optional, time in ms it took to fetch symbol file from url; omitted
-                // if the symbol file was in disk cache
-                // "symbols_fetch_time": <float>,
-                // optional, url of symbol file
-                // "symbol_url": <string>
-
-                // TODO: Issue #171
-                // optional
-                // "cert_subject": <string>
-
-            })).collect::<Vec<_>>(),
+                    // optional, if mdsw looked for the file and it does exist
+                    // "loaded_symbols": true,
+                    // optional, if mdsw looked for the file and it doesn't exist
+                    // "missing_symbols": true,
+                    // optional, if mdsw found a file that has parse errors
+                    // "corrupt_symbols": true,
+                    // optional, whether or not the SYM file was fetched from disk cache
+                    // "symbol_disk_cache_hit": <bool>,
+                    // optional, time in ms it took to fetch symbol file from url; omitted
+                    // if the symbol file was in disk cache
+                    // "symbols_fetch_time": <float>,
+                    // optional, url of symbol file
+                    // "symbol_url": <string>
+                })
+            }).collect::<Vec<_>>(),
             "pid": self.process_id,
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
                 "frame_count": thread.frames.len(),
-                // TODO: I think this is legacy gunk that we don't ever do?
                 "frames_truncated": false,
                 // optional, if truncated, this is the original total
                 "total_frames": thread.frames.len(),
@@ -703,6 +713,7 @@ Unknown streams encountered:
                 "code_id": module.code_identifier(),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                 "filename": module.name,
+                "cert_subject": self.cert_info.get(&module.name),
             })).collect::<Vec<_>>(),
 
             "sensitive": {
