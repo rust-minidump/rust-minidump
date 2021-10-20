@@ -274,7 +274,18 @@ pub struct HttpSymbolSupplier {
     /// A `SimpleSymbolSupplier` to use for local symbol paths.
     local: SimpleSymbolSupplier,
     /// A path at which to cache downloaded symbols.
+    ///
+    /// We recommend using a subdirectory of `std::env::temp_dir()`, as this
+    /// will be your OS's intended location for tempory files. This should
+    /// give you free garbage collection of the cache while still allowing it
+    /// to function between runs.
     cache: PathBuf,
+    /// A path to a temporary location where downloaded symbols can be written
+    /// before being atomically swapped into the cache.
+    ///
+    /// We recommend using `std::env::temp_dir()`, as this will be your OS's
+    /// intended location for temporary files.
+    tmp: PathBuf,
 }
 
 impl HttpSymbolSupplier {
@@ -285,6 +296,7 @@ impl HttpSymbolSupplier {
     pub fn new(
         urls: Vec<String>,
         cache: PathBuf,
+        tmp: PathBuf,
         mut local_paths: Vec<PathBuf>,
     ) -> HttpSymbolSupplier {
         let client = Client::new();
@@ -304,12 +316,13 @@ impl HttpSymbolSupplier {
             urls,
             local,
             cache,
+            tmp,
         }
     }
 }
 
 /// Save the data in `contents` to `path`.
-fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
+fn save_contents(contents: &[u8], final_path: &Path, tmp_path: &Path) -> io::Result<()> {
     // Use tempfile to save things to our cache to ensure proper
     // atomicity of writes. We may want multiple instances of rust-minidump
     // to be sharing a cache, and we don't want one instance to see another
@@ -317,16 +330,23 @@ fn save_contents(contents: &[u8], path: &Path) -> io::Result<()> {
     //
     // tempfile is designed explicitly for this purpose, and will handle all
     // the platform-specific details and do its best to cleanup if things
-    // crash. See `std::env::temp_dir()` for how it chooses where to put
-    // the temporary file (defaults to /tmp on linux).
-    let base = path.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::Other, format!("Bad cache path: {:?}", path))
+    // crash.
+
+    // First ensure that the target directory in the cache exists
+    let base = final_path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Bad cache path: {:?}", final_path),
+        )
     })?;
     fs::create_dir_all(&base)?;
 
-    let mut temp = tempfile::NamedTempFile::new()?;
+    let mut temp = tempfile::NamedTempFile::new_in(tmp_path)?;
     temp.write_all(contents)?;
-    temp.persist(path)?;
+
+    // If another process already wrote this entry, prefer their value to
+    // avoid needless file system churn.
+    temp.persist_noclobber(final_path)?;
     Ok(())
 }
 
@@ -337,6 +357,7 @@ fn fetch_symbol_file(
     base_url: &Url,
     rel_path: &str,
     cache: &Path,
+    tmp: &Path,
 ) -> Result<Vec<u8>, Error> {
     let url = base_url.join(rel_path)?;
     debug!("Trying {}", url);
@@ -345,8 +366,7 @@ fn fetch_symbol_file(
     res.read_to_end(&mut buf)?;
     let local = cache.join(rel_path);
 
-    // Ensure the cache exists
-    match save_contents(&buf, &local) {
+    match save_contents(&buf, &local, tmp) {
         Ok(_) => {}
         Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),
     }
@@ -362,7 +382,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
                 if let Some(rel_path) = relative_symbol_path(module, "sym") {
                     for url in self.urls.iter() {
                         if let Ok(buf) =
-                            fetch_symbol_file(&self.client, url, &rel_path, &self.cache)
+                            fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp)
                         {
                             return SymbolFile::from_bytes(&buf)
                                 .map(SymbolResult::Ok)

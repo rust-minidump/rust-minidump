@@ -21,7 +21,8 @@ fn print_minidump_process(
     path: &Path,
     symbol_paths: Vec<PathBuf>,
     symbol_urls: Vec<String>,
-    symbols_cache: Option<PathBuf>,
+    symbols_cache: PathBuf,
+    symbols_tmp: PathBuf,
     human: bool,
     pretty: bool,
 ) {
@@ -29,13 +30,11 @@ fn print_minidump_process(
         let mut provider = MultiSymbolProvider::new();
 
         if !symbol_urls.is_empty() {
-            let symbols_cache =
-                symbols_cache.unwrap_or_else(|| std::env::temp_dir().join("rust-minidump-cache"));
-            log::trace!("symbols-cache {:?}", symbols_cache);
             provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
                 symbol_paths,
                 symbol_urls,
                 symbols_cache,
+                symbols_tmp,
             ))));
         } else if !symbol_paths.is_empty() {
             provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
@@ -130,7 +129,11 @@ Example symbols-url value: https://symbols.mozilla.org/\n\n\n")
 Symbol files can be very large, so we recommend placing cached files in your \
 system's temp directory so that it can garbage collect unused ones for you. \
 To this end, the default value for this flag is a `rust-minidump-cache` \
-subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).\n\n\n")
+subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
+
+symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean anything to \
+you, don't worry about it, you're probably not doing something that will run afoul of it).
+\n\n\n")
                 .long("symbols-cache")
                 .takes_value(true),
         )
@@ -142,9 +145,13 @@ A temp dir is necessary to allow for multiple rust-minidump instances to share a
 race conditions. Files to be added to the cache will be constructed in this location before \
 being atomically moved to the cache.
 
-This argument is currently ignored in favour of `std::env::temp_dir()` to improve portability. \
+If no path is specified, `std::env::temp_dir()` will be used to improve portability. \
 See the rust documentation for how to set that value if you wish to use something other than \
-your system's default temp directory.\n\n\n")
+your system's default temp directory.
+
+symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean anything to \
+you, don't worry about it, you're probably not doing something that will run afoul of it).
+\n\n\n")
                 .long("symbols-tmp")
                 .takes_value(true),
         )
@@ -241,10 +248,21 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 
     // All options the original minidump-stackwalk has, stubbed out for when we need them:
     let _json_path = matches.value_of_os("raw-json").map(Path::new);
+
+    let temp_dir = std::env::temp_dir();
+
+    // Default to env::temp_dir()/rust-minidump-cache
     let symbols_cache = matches
         .value_of_os("symbols-cache")
-        .map(|os_str| Path::new(os_str).to_owned());
-    let _symbols_tmp = matches.value_of_os("symbols-tmp").map(Path::new);
+        .map(|os_str| Path::new(os_str).to_owned())
+        .unwrap_or_else(|| temp_dir.join("rust-minidump-cache"));
+
+    // Default to env::temp_dir()
+    let symbols_tmp = matches
+        .value_of_os("symbols-tmp")
+        .map(|os_str| Path::new(os_str).to_owned())
+        .unwrap_or(temp_dir);
+
     let symbols_urls = matches
         .values_of("symbols-url")
         .map(|v| v.map(String::from).collect::<Vec<_>>())
@@ -272,6 +290,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         symbols_paths,
         symbols_urls,
         symbols_cache,
+        symbols_tmp,
         human,
         pretty,
     );

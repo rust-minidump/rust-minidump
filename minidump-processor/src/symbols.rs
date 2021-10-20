@@ -75,8 +75,14 @@ mod symbols_shim {
         symbol_paths: Vec<PathBuf>,
         symbol_urls: Vec<String>,
         symbols_cache: PathBuf,
+        symbols_tmp: PathBuf,
     ) -> impl SymbolSupplier {
-        breakpad_symbols::HttpSymbolSupplier::new(symbol_urls, symbols_cache, symbol_paths)
+        breakpad_symbols::HttpSymbolSupplier::new(
+            symbol_urls,
+            symbols_cache,
+            symbols_tmp,
+            symbol_paths,
+        )
     }
 
     /// Gets a SymbolSupplier that looks up symbols by path.
@@ -220,6 +226,7 @@ mod symbols_shim {
         _symbol_paths: Vec<PathBuf>,
         _symbol_urls: Vec<String>,
         _symbols_cache: PathBuf,
+        _symbols_tmp: PathBuf,
     ) -> impl SymbolSupplier {
         HttpSymbolSupplier {}
     }
