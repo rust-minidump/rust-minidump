@@ -166,6 +166,8 @@ chain!(
 // Matches a STACK WIN record.
 named!(stack_win_line<&[u8], WinFrameType>,
   chain!(
+    // Use this for debugging the parser:
+    // line: peek!(map_res!(not_line_ending, str::from_utf8)) ~
     tag!("STACK WIN") ~
     space ~
     // Frame type, currently ignored.
@@ -192,7 +194,23 @@ named!(stack_win_line<&[u8], WinFrameType>,
     rest: map_res!(not_line_ending, str::from_utf8) ~
     my_eol ,
       || {
-          let program_string_or_base_pointer = if has_program_string {
+          // Sometimes has_program_string is just wrong. We could try to infer which one is right
+          // but this is rare enough that it's better to just play it safe and discard the input.
+          let really_has_program_string = ty == b"4";
+          if really_has_program_string != has_program_string {
+            let kind = match ty {
+              b"4" => "FrameData",
+              b"0" => "Fpo",
+              _ => "Unknown Type!",
+            };
+            warn!("STACK WIN entry had inconsistent values for type and has_program_string, discarding corrupt entry");
+            // warn!("  {}", &line);
+            warn!("  type: {} ({}), has_program_string: {}, final_arg: {}", str::from_utf8(ty).unwrap_or(""), kind, has_program_string, rest);
+
+            return WinFrameType::Unhandled;
+          }
+
+          let program_string_or_base_pointer = if really_has_program_string {
               WinStackThing::ProgramString(rest.to_string())
           } else {
               WinStackThing::AllocatesBasePointer(rest == "1")
@@ -324,7 +342,9 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
                                     // addr: 1, len: 2
                                     // addr: 4, len: 6
                                     last.size = (info.address - last.address) as u32;
-                                } else {
+                                } else if last.memory_range().unwrap() != memory_range {
+                                    // We silently drop identical ranges because sometimes
+                                    // duplicates happen, but we complain for non-trivial duplicates.
                                     warn!(
                                         "STACK WIN entry had bad intersections, dropping it {:?}",
                                         info
@@ -1030,4 +1050,74 @@ FILE"[..]
         parse_symbol_bytes(&b""[..]).is_err(),
         "Should fail to parse empty file"
     );
+}
+
+#[test]
+fn test_parse_stack_win_inconsistent() {
+    // Various cases where the has_program_string value is inconsistent
+    // with the type of the STACK WIN entry.
+    //
+    // type=0 (FPO) should go with has_program_string==0 (false)
+    // type=4 (FrameData) should go with has_program_string==1 (true)
+    //
+    // Only 4d93e and 8d93e are totally valid.
+    //
+    // Current policy is to discard all the other ones, but all the cases
+    // are here in case we decide on a more sophisticated heuristic.
+
+    let bytes = b"MODULE Windows x86 D3096ED481217FD4C16B29CD9BC208BA0 firefox-bin
+FILE 0 foo.c
+STACK WIN 0 1d93e 4 4 0 0 10 0 0 1 1
+STACK WIN 0 2d93e 4 4 0 0 10 0 0 1 0
+STACK WIN 0 3d93e 4 4 0 0 10 0 0 1 prog string
+STACK WIN 0 4d93e 4 4 0 0 10 0 0 0 1
+STACK WIN 4 5d93e 4 4 0 0 10 0 0 0 1
+STACK WIN 4 6d93e 4 4 0 0 10 0 0 0 0
+STACK WIN 4 7d93e 4 4 0 0 10 0 0 0 prog string
+STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
+";
+    let sym = parse_symbol_bytes(&bytes[..]).unwrap();
+
+    assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
+    let ws = sym
+        .win_stack_framedata_info
+        .ranges_values()
+        .map(|&(_, ref s)| s)
+        .collect::<Vec<_>>();
+    {
+        let stack = &ws[0];
+        assert_eq!(stack.address, 0x8d93e);
+        assert_eq!(stack.size, 0x4);
+        assert_eq!(stack.prologue_size, 0x4);
+        assert_eq!(stack.epilogue_size, 0);
+        assert_eq!(stack.parameter_size, 0);
+        assert_eq!(stack.saved_register_size, 0x10);
+        assert_eq!(stack.local_size, 0);
+        assert_eq!(stack.max_stack_size, 0);
+        assert_eq!(
+            stack.program_string_or_base_pointer,
+            WinStackThing::ProgramString("prog string".to_string())
+        );
+    }
+    assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
+    let ws = sym
+        .win_stack_fpo_info
+        .ranges_values()
+        .map(|&(_, ref s)| s)
+        .collect::<Vec<_>>();
+    {
+        let stack = &ws[0];
+        assert_eq!(stack.address, 0x4d93e);
+        assert_eq!(stack.size, 0x4);
+        assert_eq!(stack.prologue_size, 0x4);
+        assert_eq!(stack.epilogue_size, 0);
+        assert_eq!(stack.parameter_size, 0);
+        assert_eq!(stack.saved_register_size, 0x10);
+        assert_eq!(stack.local_size, 0);
+        assert_eq!(stack.max_stack_size, 0);
+        assert_eq!(
+            stack.program_string_or_base_pointer,
+            WinStackThing::AllocatesBasePointer(true)
+        );
+    }
 }

@@ -146,6 +146,12 @@ where
     // %bp_new = *(%bp_old)
     // %sp_new = %bp_old + ptr*2
 
+    if last_bp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+        // Although this code generally works fine if the pointer math overflows,
+        // debug builds will still panic, and this guard protects against it without
+        // drowning the rest of the code in checked_add.
+        return None;
+    }
     let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
     let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
@@ -242,11 +248,11 @@ where
     };
 
     for i in 0..scan_range {
-        let address_of_ip = last_sp + i * POINTER_WIDTH;
+        let address_of_ip = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_ip = stack_memory.get_memory_at_address(address_of_ip as u64)?;
         if instruction_seems_valid(caller_ip, modules, symbol_provider) {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
-            let caller_sp = address_of_ip + POINTER_WIDTH;
+            let caller_sp = address_of_ip.checked_add(POINTER_WIDTH)?;
 
             // Try to restore bp as well. This can be possible in two cases:
             //
@@ -288,7 +294,7 @@ where
                     {
                         caller_bp = Some(bp);
                     }
-                } else if last_bp >= address_of_ip + POINTER_WIDTH {
+                } else if last_bp >= caller_sp {
                     // Don't sanity check that the address is inside the stack? Hmm.
                     caller_bp = Some(last_bp);
                 }
