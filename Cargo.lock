@@ -152,6 +152,7 @@ dependencies = [
  "range-map",
  "reqwest 0.11.3",
  "tempdir",
+ "tempfile",
 ]
 
 [[package]]

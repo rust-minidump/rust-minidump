@@ -199,7 +199,8 @@ impl SourceLookup for SymLookup {
 }
 
 fn handle_symbol_paths(symbol_paths: Vec<PathBuf>) -> Result<Symbolizer, Error> {
-    let tmp_path = env::temp_dir().join("symbols");
+    let tmp_path = env::temp_dir();
+    let tmp_symbols_path = tmp_path.join("symbols");
     fs::create_dir_all(&tmp_path)?;
     let (symbol_paths, symbol_urls) = if symbol_paths.is_empty() {
         // Use the Mozilla symbol server if no symbol paths are supplied.
@@ -217,7 +218,7 @@ fn handle_symbol_paths(symbol_paths: Vec<PathBuf>) -> Result<Symbolizer, Error> 
             .collect();
         (paths, urls)
     };
-    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_path, symbol_paths);
+    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_symbols_path, tmp_path, symbol_paths);
     Ok(Symbolizer::new(supplier))
 }
 
