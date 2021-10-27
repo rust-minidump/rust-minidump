@@ -6,6 +6,7 @@ use std::env;
 use std::ops::Deref;
 use std::panic;
 use std::path::Path;
+use std::path::PathBuf;
 
 use minidump::*;
 use minidump_processor::{
@@ -15,6 +16,52 @@ use minidump_processor::{
 use clap::{crate_version, App, AppSettings, Arg};
 use log::error;
 use simplelog::{ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode};
+
+fn print_minidump_process(
+    path: &Path,
+    symbol_paths: Vec<PathBuf>,
+    symbol_urls: Vec<String>,
+    symbols_cache: PathBuf,
+    symbols_tmp: PathBuf,
+    human: bool,
+    pretty: bool,
+) {
+    if let Ok(dump) = Minidump::read_path(path) {
+        let mut provider = MultiSymbolProvider::new();
+
+        if !symbol_urls.is_empty() {
+            provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
+                symbol_paths,
+                symbol_urls,
+                symbols_cache,
+                symbols_tmp,
+            ))));
+        } else if !symbol_paths.is_empty() {
+            provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
+                symbol_paths,
+            ))));
+        }
+        provider.add(Box::new(DwarfSymbolizer::new()));
+
+        match minidump_processor::process_minidump(&dump, &provider) {
+            Ok(state) => {
+                let mut stdout = std::io::stdout();
+                if human {
+                    state.print(&mut stdout).unwrap();
+                } else {
+                    state.print_json(&mut stdout, pretty).unwrap();
+                }
+            }
+            Err(err) => {
+                eprintln!("Error processing dump: {:?}", err);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        eprintln!("Error reading dump");
+        std::process::exit(1);
+    }
+}
 
 #[cfg_attr(test, allow(dead_code))]
 fn main() {
@@ -50,7 +97,7 @@ be prefixed with `unwind:`).\n\n\n")
         )
         .arg(
             Arg::with_name("raw-json")
-                .long_help("An input JSON file with the extra information.
+                .long_help("An input JSON file with the extra information (not yet implemented).
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will \
 hopefully be phased out and deprecated in favour of just using custom streams in the \
@@ -200,7 +247,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
     }));
 
     // All options the original minidump-stackwalk has, stubbed out for when we need them:
-    let evil_json_path = matches.value_of_os("raw-json").map(Path::new);
+    let _json_path = matches.value_of_os("raw-json").map(Path::new);
 
     let temp_dir = std::env::temp_dir();
 
@@ -238,41 +285,13 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         std::process::exit(1);
     }
 
-    // Ok now let's do the thing!!!!
-
-    if let Ok(dump) = Minidump::read_path(minidump_path) {
-        let mut provider = MultiSymbolProvider::new();
-
-        if !symbols_urls.is_empty() {
-            provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
-                symbols_paths,
-                symbols_urls,
-                symbols_cache,
-                symbols_tmp,
-            ))));
-        } else if !symbols_paths.is_empty() {
-            provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
-                symbols_paths,
-            ))));
-        }
-        provider.add(Box::new(DwarfSymbolizer::new()));
-
-        match minidump_processor::process_minidump_with_evil(&dump, &provider, evil_json_path) {
-            Ok(state) => {
-                let mut stdout = std::io::stdout();
-                if human {
-                    state.print(&mut stdout).unwrap();
-                } else {
-                    state.print_json(&mut stdout, pretty).unwrap();
-                }
-            }
-            Err(err) => {
-                eprintln!("Error processing dump: {:?}", err);
-                std::process::exit(1);
-            }
-        }
-    } else {
-        eprintln!("Error reading dump");
-        std::process::exit(1);
-    }
+    print_minidump_process(
+        minidump_path,
+        symbols_paths,
+        symbols_urls,
+        symbols_cache,
+        symbols_tmp,
+        human,
+        pretty,
+    );
 }

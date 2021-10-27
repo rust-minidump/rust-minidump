@@ -4,7 +4,7 @@
 //! The state of a process.
 
 use std::borrow::{Borrow, Cow};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io;
 use std::io::prelude::*;
 
@@ -131,8 +131,6 @@ pub struct ProcessState {
     pub time: DateTime<Utc>,
     /// When the process started, if available
     pub process_create_time: Option<DateTime<Utc>>,
-    /// Known code signing certificates (module name => cert name)
-    pub cert_info: HashMap<String, String>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
     pub crash_reason: Option<CrashReason>,
     /// The memory address implicated in the crash.
@@ -511,9 +509,6 @@ Loaded modules:
                 write!(f, "  (main)")?;
             }
             writeln!(f)?;
-            if let Some(cert) = self.cert_info.get(&module.name) {
-                write!(f, " (signature: {})", cert)?;
-            }
         }
         write!(
             f,
@@ -590,6 +585,7 @@ Unknown streams encountered:
                 "cpu_microcode_version": null,
             },
             "crash_info": {
+                // TODO: Issue #22
                 "type": self.crash_reason.map(|reason| reason.to_string()),
                 "address": self.crash_address.map(json_hex),
                 // thread index | null
@@ -622,7 +618,8 @@ Unknown streams encountered:
 
             // the first module is always the main one
             "main_module": 0,
-            "modules_contains_cert_info": !self.cert_info.is_empty(),
+            // TODO: Issue #171
+            "modules_contains_cert_info": false,
             "modules": self.modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
                 // filename | empty string
@@ -633,7 +630,6 @@ Unknown streams encountered:
                 "filename": module.name,
                 "code_id": module.code_identifier(),
                 "version": module.version(),
-                "cert_subject": self.cert_info.get(&module.name),
 
                 // These are all just metrics for debugging minidump-processor's execution
 
@@ -650,11 +646,17 @@ Unknown streams encountered:
                 // "symbols_fetch_time": <float>,
                 // optional, url of symbol file
                 // "symbol_url": <string>
+
+                // TODO: Issue #171
+                // optional
+                // "cert_subject": <string>
+
             })).collect::<Vec<_>>(),
             "pid": self.process_id,
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
                 "frame_count": thread.frames.len(),
+                // TODO: I think this is legacy gunk that we don't ever do?
                 "frames_truncated": false,
                 // optional, if truncated, this is the original total
                 "total_frames": thread.frames.len(),
@@ -701,7 +703,6 @@ Unknown streams encountered:
                 "code_id": module.code_identifier(),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                 "filename": module.name,
-                "cert_subject": self.cert_info.get(&module.name),
             })).collect::<Vec<_>>(),
 
             "sensitive": {
