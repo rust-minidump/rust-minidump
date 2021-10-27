@@ -212,6 +212,9 @@ where
     let unknown_streams = dump.unknown_streams().collect();
     let unimplemented_streams = dump.unimplemented_streams().collect();
 
+    // Get symbol stats from the symbolizer
+    let symbol_stats = symbol_provider.stats();
+
     // Finally, handle the evil JSON file (get module signing certs)
     let cert_info = evil_json
         .and_then(|evil_path| handle_evil(evil_path))
@@ -234,6 +237,7 @@ where
         unloaded_modules,
         unknown_streams,
         unimplemented_streams,
+        symbol_stats,
     })
 }
 

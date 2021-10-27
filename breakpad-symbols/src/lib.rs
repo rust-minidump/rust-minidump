@@ -49,6 +49,17 @@ pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
+/// Statistics on the symbols of a module.
+#[derive(Default, Debug)]
+pub struct SymbolStats {
+    /// If the module's symbols were downloaded, this is the url used.
+    pub symbol_url: Option<String>,
+    /// If the symbols were found and loaded into memory.
+    pub loaded_symbols: bool,
+    /// If we tried to parse the symbols, but failed.
+    pub corrupt_symbols: bool,
+}
+
 /// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
@@ -158,34 +169,78 @@ pub fn relative_symbol_path(module: &dyn Module, extension: &str) -> Option<Stri
     })
 }
 
-/// Possible results of locating symbols.
+/// Possible results of locating symbols for a module.
+///
+/// Because symbols may be found from different sources, symbol providers
+/// are usually configured to "cascade" into the next one whenever they report
+/// `NotFound`.
+///
+/// Cascading currently assumes that if any provider finds symbols for
+/// a module, all other providers will find the same symbols (if any).
+/// Therefore cascading will not be applied if a LoadError or ParseError
+/// occurs (because presumably, all the other sources will also fail to
+/// load/parse.)
+///
+/// In theory we could do some interesting things where we attempt to
+/// be more robust and actually merge together the symbols from multiple
+/// sources, but that would make it difficult to cache symbol files, and
+/// would rarely actually improve results.
+///
+/// Since symbol files can be on the order of a gigabyte(!) and downloaded
+/// from the network, aggressive caching is pretty important. The current
+/// approach is a nice balance of simple and effective.
 #[derive(Debug)]
-pub enum SymbolResult {
-    /// Symbols loaded successfully.
-    Ok(SymbolFile),
+pub enum SymbolError {
     /// Symbol file could not be found.
+    ///
+    /// In this case other symbol providers may still be able to find it!
     NotFound,
-    /// Error loading symbol file.
+    /// Symbol file could not be loaded into memory.
     LoadError(Error),
+    /// Symbol file was too corrupt to be parsed at all.
+    ///
+    /// Because symbol files are pretty modular, many corruptions/ambiguities
+    /// can be either repaired or discarded at a fairly granular level
+    /// (e.g. a bad STACK WIN line can be discarded without affecting anything
+    /// else). But sometimes we can't make any sense of the symbol file, and
+    /// you find yourself here.
+    ParseError(Error),
 }
 
-impl PartialEq for SymbolResult {
-    fn eq(&self, other: &SymbolResult) -> bool {
-        match (self, other) {
-            (&SymbolResult::Ok(ref a), &SymbolResult::Ok(ref b)) => a == b,
-            (&SymbolResult::NotFound, &SymbolResult::NotFound) => true,
-            (&SymbolResult::LoadError(_), &SymbolResult::LoadError(_)) => true,
-            _ => false,
-        }
+/// An error produced by fill_symbol.
+#[derive(Debug)]
+pub struct FillSymbolError {
+    // We don't want to yield a full SymbolError for fill_symbol
+// as this would involve cloning bulky Error strings every time
+// someone requested symbols for a missing module.
+//
+// As it turns out there's currently no reason to care about *why*
+// fill_symbol, so for now this is just a dummy type until we have
+// something to put here.
+//
+// The only reason fill_symbol *can* produce an Err is so that
+// the caller can distinguish between "we had symbols, but this address
+// didn't map to a function name" and "we had no symbols for that module"
+// (this is used as a heuristic for stack scanning).
+}
+
+impl PartialEq for SymbolError {
+    fn eq(&self, other: &SymbolError) -> bool {
+        matches!(
+            (self, other),
+            (SymbolError::NotFound, SymbolError::NotFound)
+                | (SymbolError::LoadError(_), SymbolError::LoadError(_))
+                | (SymbolError::ParseError(_), SymbolError::ParseError(_))
+        )
     }
 }
 
-impl fmt::Display for SymbolResult {
+impl fmt::Display for SymbolError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SymbolResult::Ok(_) => write!(f, "Ok"),
-            SymbolResult::NotFound => write!(f, "Not found"),
-            SymbolResult::LoadError(ref e) => write!(f, "Load error: {}", e),
+        match self {
+            SymbolError::NotFound => write!(f, "Not found"),
+            SymbolError::LoadError(e) => write!(f, "Load error: {}", e),
+            SymbolError::ParseError(e) => write!(f, "Parse error: {}", e),
         }
     }
 }
@@ -196,7 +251,7 @@ pub trait SymbolSupplier {
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult;
+    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError>;
 }
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
@@ -218,18 +273,16 @@ impl SimpleSymbolSupplier {
 }
 
 impl SymbolSupplier for SimpleSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    return SymbolFile::from_file(&test_path)
-                        .map(SymbolResult::Ok)
-                        .unwrap_or_else(SymbolResult::LoadError);
+                    return SymbolFile::from_file(&test_path);
                 }
             }
         }
-        SymbolResult::NotFound
+        Err(SymbolError::NotFound)
     }
 }
 
@@ -249,14 +302,11 @@ impl StringSymbolSupplier {
 }
 
 impl SymbolSupplier for StringSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
         if let Some(symbols) = self.modules.get(&*module.code_file()) {
-            return SymbolFile::from_bytes(symbols.as_bytes())
-                .map(SymbolResult::Ok)
-                .unwrap_or_else(SymbolResult::LoadError);
+            return SymbolFile::from_bytes(symbols.as_bytes());
         }
-
-        SymbolResult::NotFound
+        Err(SymbolError::NotFound)
     }
 }
 
@@ -358,10 +408,10 @@ fn fetch_symbol_file(
     rel_path: &str,
     cache: &Path,
     tmp: &Path,
-) -> Result<Vec<u8>, Error> {
+) -> Result<(Url, Vec<u8>), Error> {
     let url = base_url.join(rel_path)?;
     debug!("Trying {}", url);
-    let mut res = client.get(url).send()?.error_for_status()?;
+    let mut res = client.get(url.clone()).send()?.error_for_status()?;
     let mut buf = vec![];
     res.read_to_end(&mut buf)?;
     let local = cache.join(rel_path);
@@ -370,29 +420,33 @@ fn fetch_symbol_file(
         Ok(_) => {}
         Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),
     }
-    Ok(buf)
+    Ok((url, buf))
 }
 
 impl SymbolSupplier for HttpSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> SymbolResult {
+    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
         // Check local paths first.
-        match self.local.locate_symbols(module) {
-            res @ SymbolResult::Ok(_) | res @ SymbolResult::LoadError(_) => res,
-            SymbolResult::NotFound => {
-                if let Some(rel_path) = relative_symbol_path(module, "sym") {
-                    for url in self.urls.iter() {
-                        if let Ok(buf) =
-                            fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp)
-                        {
-                            return SymbolFile::from_bytes(&buf)
-                                .map(SymbolResult::Ok)
-                                .unwrap_or_else(SymbolResult::LoadError);
-                        }
-                    }
+        let local_result = self.local.locate_symbols(module);
+        if !matches!(local_result, Err(SymbolError::NotFound)) {
+            // Everything but NotFound prevents cascading
+            return local_result;
+        }
+        // Now try urls
+        if let Some(rel_path) = relative_symbol_path(module, "sym") {
+            for url in &self.urls {
+                if let Ok((full_url, buf)) =
+                    fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp)
+                {
+                    // Parse the symbol file and set the "url" statistic
+                    return SymbolFile::from_bytes(&buf).map(|mut file| {
+                        file.url = Some(full_url.into());
+                        file
+                    });
                 }
-                SymbolResult::NotFound
             }
         }
+        // If we get this far, we have failed to find anything
+        Err(SymbolError::NotFound)
     }
 }
 
@@ -511,8 +565,11 @@ pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
     supplier: Box<dyn SymbolSupplier + 'static>,
     /// Cache of symbol locating results.
-    //TODO: use lru-cache: https://crates.io/crates/lru-cache/
-    symbols: RefCell<HashMap<ModuleKey, SymbolResult>>,
+    // TODO?: use lru-cache: https://crates.io/crates/lru-cache/
+    // note that using an lru-cache would mess up the fact that we currently
+    // use this for statistics collection. Splitting out statistics would be
+    // way messier but not impossible.
+    symbols: RefCell<HashMap<ModuleKey, Result<SymbolFile, SymbolError>>>,
 }
 
 impl Symbolizer {
@@ -572,28 +629,61 @@ impl Symbolizer {
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    #[allow(clippy::result_unit_err)]
     pub fn fill_symbol(
         &self,
         module: &dyn Module,
         frame: &mut dyn FrameSymbolizer,
-    ) -> Result<(), ()> {
+    ) -> Result<(), FillSymbolError> {
         let k = key(module);
         self.ensure_module(module, &k);
-        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
-            sym.fill_symbol(module, frame);
-            Ok(())
-        } else {
-            // Treat it as an error if we can't find a symbol file (this allows us to distinguish
-            // between "we had no symbols" and "we had symbols and this frame just had no matches").
-            Err(())
-        }
+
+        // Symbols will always contain an entry after ensure_module (though it may be an Err).
+        self.symbols.borrow()[&k]
+            .as_ref()
+            .map(|sym| {
+                sym.fill_symbol(module, frame);
+            })
+            .map_err(|_| FillSymbolError {})
     }
 
+    /// Collect various statistics on the symbols.
+    ///
+    /// Keys are the file name of the module (code_file's file name).
+    pub fn stats(&self) -> HashMap<String, SymbolStats> {
+        self.symbols
+            .borrow()
+            .iter()
+            .map(|(k, res)| {
+                let mut stats = SymbolStats::default();
+                match res {
+                    Ok(sym) => {
+                        stats.symbol_url = sym.url.clone();
+                        stats.loaded_symbols = true;
+                        stats.corrupt_symbols = false;
+                    }
+                    Err(SymbolError::NotFound) => {
+                        stats.loaded_symbols = false;
+                    }
+                    Err(SymbolError::LoadError(_)) => {
+                        stats.loaded_symbols = false;
+                    }
+                    Err(SymbolError::ParseError(_)) => {
+                        stats.loaded_symbols = true;
+                        stats.corrupt_symbols = true;
+                    }
+                }
+                (leafname(&k.0).to_string(), stats)
+            })
+            .collect()
+    }
+
+    /// Tries to use CFI to walk the stack frame of the FrameWalker
+    /// using the symbols of the given Module. Output will be written
+    /// using the FrameWalker's `set_caller_*` APIs.
     pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
         let k = key(module);
         self.ensure_module(module, &k);
-        if let Some(SymbolResult::Ok(ref sym)) = self.symbols.borrow().get(&k) {
+        if let Some(Ok(ref sym)) = self.symbols.borrow().get(&k) {
             trace!("unwind: found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
@@ -602,10 +692,13 @@ impl Symbolizer {
         }
     }
 
+    /// Ensures there is an entry in the `symbols` map for the given key
+    /// (although it may be an Error). Will not change the entry if it already
+    /// exists (so if they first time we look is an Error, it always will be).
     fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
         if !self.symbols.borrow().contains_key(k) {
             let res = self.supplier.locate_symbols(module);
-            debug!("locate_symbols for {}: {}", module.code_file(), res);
+            debug!("locate_symbols for {}: {:?}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
         }
     }
@@ -752,7 +845,7 @@ mod test {
 
         let supplier = SimpleSymbolSupplier::new(paths.clone());
         let bad = SimpleModule::default();
-        assert_eq!(supplier.locate_symbols(&bad), SymbolResult::NotFound);
+        assert_eq!(supplier.locate_symbols(&bad), Err(SymbolError::NotFound));
 
         // Try loading symbols for each of two modules in each of the two
         // search paths.
@@ -764,11 +857,11 @@ mod test {
         {
             let m = SimpleModule::new(file, id);
             // No symbols present yet.
-            assert_eq!(supplier.locate_symbols(&m), SymbolResult::NotFound);
+            assert_eq!(supplier.locate_symbols(&m), Err(SymbolError::NotFound));
             write_good_symbol_file(&path.join(sym));
             // Should load OK now that it exists.
             assert!(
-                matches!(supplier.locate_symbols(&m), SymbolResult::Ok(_)),
+                matches!(supplier.locate_symbols(&m), Ok(_)),
                 "{}",
                 format!("Located symbols for {}", sym)
             );
@@ -777,11 +870,11 @@ mod test {
         // Write a malformed symbol file, verify that it's found but fails to load.
         let mal = SimpleModule::new("baz.pdb", "ffff0000");
         let sym = "baz.pdb/ffff0000/baz.sym";
-        assert_eq!(supplier.locate_symbols(&mal), SymbolResult::NotFound);
+        assert_eq!(supplier.locate_symbols(&mal), Err(SymbolError::NotFound));
         write_bad_symbol_file(&paths[0].join(sym));
         let res = supplier.locate_symbols(&mal);
         assert!(
-            matches!(res, SymbolResult::LoadError(_)),
+            matches!(res, Err(SymbolError::ParseError(_))),
             "{}",
             format!("Correctly failed to parse {}, result: {:?}", sym, res)
         );

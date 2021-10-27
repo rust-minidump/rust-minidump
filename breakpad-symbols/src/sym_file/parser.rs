@@ -1,7 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use failure::{format_err, Error};
+use failure::format_err;
 use log::warn;
 use nom::IResult::*;
 use nom::*;
@@ -18,6 +18,7 @@ use std::str::FromStr;
 use minidump_common::traits::IntoRangeMapSafe;
 
 use crate::sym_file::types::*;
+use crate::SymbolError;
 
 enum Line<'a> {
     Info,
@@ -394,6 +395,16 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
             .into_iter()
             .map(|s| (s.memory_range(), s))
             .into_rangemap_safe(),
+        // Will get filled in by the caller
+        url: None,
+        // TODO
+        ambiguities_repaired: 0,
+        // TODO
+        ambiguities_discarded: 0,
+        // TODO
+        corruptions_discarded: 0,
+        // TODO
+        cfi_eval_corruptions: 0,
     }
 }
 
@@ -406,7 +417,7 @@ named!(symbol_file<&[u8], SymbolFile>,
 );
 
 /// Parse a `SymbolFile` from `bytes`.
-pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
+pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
     match symbol_file(bytes) {
         Done(rest, symfile) => {
             if rest == b"" {
@@ -427,13 +438,16 @@ pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
         Error(e) => Err(format_err!("Failed to parse file: {}", e)),
         Incomplete(_) => Err(format_err!("Failed to parse file: incomplete data")),
     }
+    .map_err(SymbolError::ParseError)
 }
 
 /// Parse a `SymbolFile` from `path`.
-pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, Error> {
-    let mut f = File::open(path)?;
+pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, SymbolError> {
+    let mut f = File::open(path)
+        .map_err(|e| SymbolError::LoadError(format_err!("Failed to open file: {}", e)))?;
     let mut bytes = vec![];
-    f.read_to_end(&mut bytes)?;
+    f.read_to_end(&mut bytes)
+        .map_err(|e| SymbolError::LoadError(format_err!("Failed to read file: {}", e)))?;
     parse_symbol_bytes(&bytes)
 }
 
