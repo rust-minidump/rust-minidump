@@ -3,6 +3,8 @@
 
 use std::boxed::Box;
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use std::ops::Deref;
 use std::panic;
 use std::path::Path;
@@ -14,7 +16,9 @@ use minidump_processor::{
 
 use clap::{crate_version, App, AppSettings, Arg};
 use log::error;
-use simplelog::{ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode};
+use simplelog::{
+    ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode, WriteLogger,
+};
 
 #[cfg_attr(test, allow(dead_code))]
 fn main() {
@@ -109,6 +113,18 @@ you, don't worry about it, you're probably not doing something that will run afo
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name("output-file")
+                .long("output-file")
+                .help("Where to write the output to (if unspecified, stdout is used)")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("log-file")
+                .long("log-file")
+                .help("Where to write logs to (if unspecified, stderr is used)")
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name("minidump")
                 .help("Path to the minidump file to analyze.")
                 .required(true)
@@ -156,6 +172,14 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 ")
         .get_matches();
 
+    let output_file = matches
+        .value_of_os("output-file")
+        .map(|os_str| Path::new(os_str).to_owned());
+
+    let log_file = matches
+        .value_of_os("log-file")
+        .map(|os_str| Path::new(os_str).to_owned());
+
     let verbosity = match matches.value_of("verbose").unwrap() {
         "off" => LevelFilter::Off,
         "warn" => LevelFilter::Warn,
@@ -166,18 +190,33 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
     };
 
     // Init the logger (and make trace logging less noisy)
-    let _ = TermLogger::init(
-        verbosity,
-        ConfigBuilder::new()
-            .set_location_level(LevelFilter::Off)
-            .set_time_level(LevelFilter::Off)
-            .set_thread_level(LevelFilter::Off)
-            .set_target_level(LevelFilter::Off)
-            .set_level_color(Level::Trace, None)
-            .build(),
-        TerminalMode::Stderr,
-        ColorChoice::Auto,
-    );
+    if let Some(log_path) = log_file {
+        let log_file = File::create(log_path).unwrap();
+        let _ = WriteLogger::init(
+            verbosity,
+            ConfigBuilder::new()
+                .set_location_level(LevelFilter::Off)
+                .set_time_level(LevelFilter::Off)
+                .set_thread_level(LevelFilter::Off)
+                .set_target_level(LevelFilter::Off)
+                .build(),
+            log_file,
+        )
+        .unwrap();
+    } else {
+        let _ = TermLogger::init(
+            verbosity,
+            ConfigBuilder::new()
+                .set_location_level(LevelFilter::Off)
+                .set_time_level(LevelFilter::Off)
+                .set_thread_level(LevelFilter::Off)
+                .set_target_level(LevelFilter::Off)
+                .set_level_color(Level::Trace, None)
+                .build(),
+            TerminalMode::Stderr,
+            ColorChoice::Auto,
+        );
+    }
 
     // Set a panic hook to redirect to the logger
     panic::set_hook(Box::new(|panic_info| {
@@ -234,7 +273,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         .unwrap_or_else(Vec::new);
 
     if pretty && human {
-        eprintln!("Humans must be hideous! (The --pretty and --human flags cannot both be set)");
+        error!("Humans must be hideous! (The --pretty and --human flags cannot both be set)");
         std::process::exit(1);
     }
 
@@ -259,20 +298,30 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 
         match minidump_processor::process_minidump_with_evil(&dump, &provider, evil_json_path) {
             Ok(state) => {
-                let mut stdout = std::io::stdout();
-                if human {
-                    state.print(&mut stdout).unwrap();
+                let mut stdout;
+                let mut output_f;
+
+                let mut output: &mut dyn Write = if let Some(output_path) = output_file {
+                    output_f = File::create(output_path).unwrap();
+                    &mut output_f
                 } else {
-                    state.print_json(&mut stdout, pretty).unwrap();
+                    stdout = std::io::stdout();
+                    &mut stdout
+                };
+
+                if human {
+                    state.print(&mut output).unwrap();
+                } else {
+                    state.print_json(&mut output, pretty).unwrap();
                 }
             }
             Err(err) => {
-                eprintln!("Error processing dump: {:?}", err);
+                error!("Error processing dump: {:?}", err);
                 std::process::exit(1);
             }
         }
     } else {
-        eprintln!("Error reading dump");
+        error!("Error reading dump");
         std::process::exit(1);
     }
 }
