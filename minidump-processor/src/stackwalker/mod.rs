@@ -191,7 +191,7 @@ where
                 symbol_provider,
             );
         }
-        trace!("unwind: finished stack unwind");
+        trace!("unwind: finished stack unwind\n");
     } else {
         info = CallStackInfo::MissingContext;
     }
