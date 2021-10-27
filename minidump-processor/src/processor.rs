@@ -267,6 +267,7 @@ fn handle_evil(evil_path: &Path) -> Option<HashMap<String, String>> {
             temp_obj = serde_json::from_str(string)
                 .map_err(|e| {
                     error!("Could not parse Extra JSON's ModuleSignatureInfo (not an object)");
+                    error!("ModuleSignatureInfo: {}", string);
                     e
                 })
                 .ok()?;

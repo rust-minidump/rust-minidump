@@ -499,21 +499,23 @@ Loaded modules:
         let main_address = self.modules.main_module().map(|m| m.base_address());
         for module in self.modules.by_addr() {
             // TODO: missing symbols, corrupt symbols
+            let full_name = module.code_file();
+            let name = basename(&full_name);
             write!(
                 f,
                 "{:#010x} - {:#010x}  {}  {}",
                 module.base_address(),
                 module.base_address() + module.size() - 1,
-                basename(&module.code_file()),
+                name,
                 module.version().unwrap_or(Cow::Borrowed("???"))
             )?;
             if eq_some(main_address, module.base_address()) {
                 write!(f, "  (main)")?;
             }
-            writeln!(f)?;
-            if let Some(cert) = self.cert_info.get(&module.name) {
-                write!(f, " (signature: {})", cert)?;
+            if let Some(cert) = self.cert_info.get(name) {
+                write!(f, " ({})", cert)?;
             }
+            writeln!(f)?;
         }
         write!(
             f,
@@ -522,13 +524,19 @@ Unloaded modules:
 "
         )?;
         for module in self.unloaded_modules.by_addr() {
-            writeln!(
+            let full_name = module.code_file();
+            let name = basename(&full_name);
+            write!(
                 f,
                 "{:#010x} - {:#010x}  {}",
                 module.base_address(),
                 module.base_address() + module.size() - 1,
                 basename(&module.code_file()),
             )?;
+            if let Some(cert) = self.cert_info.get(name) {
+                write!(f, " ({})", cert)?;
+            }
+            writeln!(f)?;
         }
         if !self.unimplemented_streams.is_empty() {
             write!(
@@ -623,34 +631,38 @@ Unknown streams encountered:
             // the first module is always the main one
             "main_module": 0,
             "modules_contains_cert_info": !self.cert_info.is_empty(),
-            "modules": self.modules.iter().map(|module| json!({
-                "base_addr": json_hex(module.raw.base_of_image),
-                // filename | empty string
-                "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
-                // [[:xdigit:]]{33} | empty string
-                "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
-                "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
-                "filename": module.name,
-                "code_id": module.code_identifier(),
-                "version": module.version(),
-                "cert_subject": self.cert_info.get(&module.name),
+            "modules": self.modules.iter().map(|module| {
+                let full_name = module.code_file();
+                let name = basename(&full_name);
+                json!({
+                    "base_addr": json_hex(module.raw.base_of_image),
+                    // filename | empty string
+                    "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
+                    // [[:xdigit:]]{33} | empty string
+                    "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
+                    "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
+                    "filename": &name,
+                    "code_id": module.code_identifier(),
+                    "version": module.version(),
+                    "cert_subject": self.cert_info.get(name),
 
-                // These are all just metrics for debugging minidump-processor's execution
+                    // These are all just metrics for debugging minidump-processor's execution
 
-                // optional, if mdsw looked for the file and it does exist
-                // "loaded_symbols": true,
-                // optional, if mdsw looked for the file and it doesn't exist
-                // "missing_symbols": true,
-                // optional, if mdsw found a file that has parse errors
-                // "corrupt_symbols": true,
-                // optional, whether or not the SYM file was fetched from disk cache
-                // "symbol_disk_cache_hit": <bool>,
-                // optional, time in ms it took to fetch symbol file from url; omitted
-                // if the symbol file was in disk cache
-                // "symbols_fetch_time": <float>,
-                // optional, url of symbol file
-                // "symbol_url": <string>
-            })).collect::<Vec<_>>(),
+                    // optional, if mdsw looked for the file and it does exist
+                    // "loaded_symbols": true,
+                    // optional, if mdsw looked for the file and it doesn't exist
+                    // "missing_symbols": true,
+                    // optional, if mdsw found a file that has parse errors
+                    // "corrupt_symbols": true,
+                    // optional, whether or not the SYM file was fetched from disk cache
+                    // "symbol_disk_cache_hit": <bool>,
+                    // optional, time in ms it took to fetch symbol file from url; omitted
+                    // if the symbol file was in disk cache
+                    // "symbols_fetch_time": <float>,
+                    // optional, url of symbol file
+                    // "symbol_url": <string>
+                })
+            }).collect::<Vec<_>>(),
             "pid": self.process_id,
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
