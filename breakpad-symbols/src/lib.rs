@@ -49,6 +49,17 @@ pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
+/// Statistics on the symbols of a module.
+#[derive(Default, Debug)]
+pub struct SymbolStats {
+    /// If the module's symbols were downloaded, this is the url used.
+    pub symbol_url: Option<String>,
+    /// If the symbols were found and loaded into memory.
+    pub loaded_symbols: bool,
+    /// If we tried to parse the symbols, but failed.
+    pub corrupt_symbols: bool,
+}
+
 /// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
@@ -633,6 +644,37 @@ impl Symbolizer {
                 sym.fill_symbol(module, frame);
             })
             .map_err(|_| FillSymbolError {})
+    }
+
+    /// Collect various statistics on the symbols.
+    ///
+    /// Keys are the file name of the module (code_file's file name).
+    pub fn stats(&self) -> HashMap<String, SymbolStats> {
+        self.symbols
+            .borrow()
+            .iter()
+            .map(|(k, res)| {
+                let mut stats = SymbolStats::default();
+                match res {
+                    Ok(sym) => {
+                        stats.symbol_url = sym.url.clone();
+                        stats.loaded_symbols = true;
+                        stats.corrupt_symbols = false;
+                    }
+                    Err(SymbolError::NotFound) => {
+                        stats.loaded_symbols = false;
+                    }
+                    Err(SymbolError::LoadError(_)) => {
+                        stats.loaded_symbols = false;
+                    }
+                    Err(SymbolError::ParseError(_)) => {
+                        stats.loaded_symbols = true;
+                        stats.corrupt_symbols = true;
+                    }
+                }
+                (leafname(&k.0).to_string(), stats)
+            })
+            .collect()
     }
 
     /// Tries to use CFI to walk the stack frame of the FrameWalker

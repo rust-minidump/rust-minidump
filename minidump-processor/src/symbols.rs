@@ -1,4 +1,5 @@
 use minidump::Module;
+use std::collections::HashMap;
 pub use symbols_shim::*;
 
 pub trait SymbolProvider {
@@ -8,6 +9,7 @@ pub trait SymbolProvider {
         frame: &mut dyn FrameSymbolizer,
     ) -> Result<(), FillSymbolError>;
     fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
+    fn stats(&self) -> HashMap<String, SymbolStats>;
 }
 
 #[derive(Default)]
@@ -51,19 +53,27 @@ impl SymbolProvider for MultiSymbolProvider {
         }
         None
     }
+
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        let mut result = HashMap::new();
+        for p in self.providers.iter() {
+            // FIXME: do more intelligent merging of the stats
+            // (currently doesn't matter as only one provider reports non-empty stats).
+            result.extend(p.stats());
+        }
+        result
+    }
 }
 
 #[cfg(feature = "breakpad-syms")]
 mod symbols_shim {
     use super::SymbolProvider;
+    pub use breakpad_symbols::{
+        FillSymbolError, FrameSymbolizer, FrameWalker, SymbolStats, SymbolSupplier, Symbolizer,
+    };
     use minidump::Module;
     use std::collections::HashMap;
     use std::path::PathBuf;
-
-    pub use breakpad_symbols::{
-        FillSymbolError, FrameSymbolizer, FrameWalker, SymbolSupplier, Symbolizer,
-    };
-
     impl SymbolProvider for Symbolizer {
         fn fill_symbol(
             &self,
@@ -74,6 +84,9 @@ mod symbols_shim {
         }
         fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
             self.walk_frame(module, walker)
+        }
+        fn stats(&self) -> HashMap<String, SymbolStats> {
+            self.stats()
         }
     }
 
@@ -298,4 +311,15 @@ mod symbols_shim {
 
     // Whatever representation you want, rust-minidump won't look at it.
     struct SymbolFile {}
+
+    /// Statistics on the symbols of a module.
+    #[derive(Default, Debug)]
+    pub struct SymbolStats {
+        /// If the module's symbols were downloaded, this is the url used.
+        pub symbol_url: Option<String>,
+        /// If the symbols were found and loaded into memory.
+        pub loaded_symbols: bool,
+        /// If we tried to parse the symbols, but failed.
+        pub corrupt_symbols: bool,
+    }
 }

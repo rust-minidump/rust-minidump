@@ -9,7 +9,7 @@ use std::fs::File;
 
 use minidump::Module;
 
-use crate::{FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider};
+use crate::{FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider, SymbolStats};
 
 #[derive(Default)]
 pub struct DwarfSymbolizer {
@@ -82,5 +82,9 @@ impl SymbolProvider for DwarfSymbolizer {
     fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
         // unimplemented
         None
+    }
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        // unimplemented
+        HashMap::new()
     }
 }

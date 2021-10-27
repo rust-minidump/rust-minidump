@@ -9,7 +9,7 @@ use std::io;
 use std::io::prelude::*;
 
 use crate::system_info::SystemInfo;
-use crate::FrameSymbolizer;
+use crate::{FrameSymbolizer, SymbolStats};
 use chrono::prelude::*;
 use minidump::system_info::Cpu;
 use minidump::*;
@@ -173,6 +173,7 @@ pub struct ProcessState {
     // exploitability
     pub unknown_streams: Vec<MinidumpUnknownStream>,
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
+    pub symbol_stats: HashMap<String, SymbolStats>,
 }
 
 impl FrameTrust {
@@ -634,6 +635,16 @@ Unknown streams encountered:
             "modules": self.modules.iter().map(|module| {
                 let full_name = module.code_file();
                 let name = basename(&full_name);
+
+                // Gather statistics on the module's symbols
+                let stats = self.symbol_stats.get(name);
+                let had_stats = stats.is_some();
+                let default = SymbolStats::default();
+                let stats = stats.unwrap_or(&default);
+                // Only consider the symbols "missing" if the symbolizer
+                // actually has statistics on them (implying it *tried* to
+                // get the symbols but failed.)
+                let missing_symbols = had_stats && !stats.loaded_symbols;
                 json!({
                     "base_addr": json_hex(module.raw.base_of_image),
                     // filename | empty string
@@ -648,19 +659,20 @@ Unknown streams encountered:
 
                     // These are all just metrics for debugging minidump-processor's execution
 
-                    // optional, if mdsw looked for the file and it does exist
-                    // "loaded_symbols": true,
                     // optional, if mdsw looked for the file and it doesn't exist
-                    // "missing_symbols": true,
+                    "missing_symbols": missing_symbols,
+                    // optional, if mdsw looked for the file and it does exist
+                    "loaded_symbols": stats.loaded_symbols,
                     // optional, if mdsw found a file that has parse errors
-                    // "corrupt_symbols": true,
+                    "corrupt_symbols": stats.corrupt_symbols,
+                    // optional, url of symbol file
+                    "symbol_url": stats.symbol_url,
                     // optional, whether or not the SYM file was fetched from disk cache
                     // "symbol_disk_cache_hit": <bool>,
                     // optional, time in ms it took to fetch symbol file from url; omitted
                     // if the symbol file was in disk cache
                     // "symbols_fetch_time": <float>,
-                    // optional, url of symbol file
-                    // "symbol_url": <string>
+
                 })
             }).collect::<Vec<_>>(),
             "pid": self.process_id,
