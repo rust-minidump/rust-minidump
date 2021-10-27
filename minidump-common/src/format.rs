@@ -7187,7 +7187,7 @@ pub struct SYSTEMTIME {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/timezoneapi/ns-timezoneapi-_time_zone_information
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct TIME_ZONE_INFORMATION {
     pub bias: i32,
     pub standard_name: [u16; 32],
@@ -7196,20 +7196,6 @@ pub struct TIME_ZONE_INFORMATION {
     pub daylight_name: [u16; 32],
     pub daylight_date: SYSTEMTIME,
     pub daylight_bias: i32,
-}
-
-impl Default for TIME_ZONE_INFORMATION {
-    fn default() -> Self {
-        Self {
-            bias: 0,
-            standard_name: [0; 32],
-            standard_date: SYSTEMTIME::default(),
-            standard_bias: 0,
-            daylight_name: [0; 32],
-            daylight_date: SYSTEMTIME::default(),
-            daylight_bias: 0,
-        }
-    }
 }
 
 /*

@@ -274,7 +274,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
         // a module so we don't start corrupting normal pointers that are just
         // in modules we don't know about.
         if modules.module_at_address(stripped).is_some() {
-            trace!("unwind: stripped pointer {} -> {}", ptr, stripped);
+            // trace!("unwind: stripped pointer {:016x} -> {:016x}", ptr, stripped);
             return stripped;
         }
     }

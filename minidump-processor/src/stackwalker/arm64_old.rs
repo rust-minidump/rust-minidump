@@ -274,7 +274,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
         // a module so we don't start corrupting normal pointers that are just
         // in modules we don't know about.
         if modules.module_at_address(stripped).is_some() {
-            trace!("unwind: stripped pointer {} -> {}", ptr, stripped);
+            // trace!("unwind: stripped pointer {:016x} -> {:016x}", ptr, stripped);
             return stripped;
         }
     }
@@ -343,8 +343,6 @@ where
                 valid: MinidumpContextValidity::Some(valid),
             };
             return Some(StackFrame::from_context(context, FrameTrust::Scan));
-        } else {
-            trace!("unwind: rejecting 0x{:08x} ", caller_pc);
         }
     }
 

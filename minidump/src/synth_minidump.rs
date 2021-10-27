@@ -1069,8 +1069,8 @@ impl From<MiscStream> for Section {
         // for that version, leaning on Default to fill in values that are None.
         let mut section = section.D32(flags.bits() as u64 as u32);
 
-        let process_id = process_id.unwrap_or_else(Default::default);
-        let process_times = process_times.unwrap_or_else(Default::default);
+        let process_id = process_id.unwrap_or_default();
+        let process_times = process_times.unwrap_or_default();
         section = section.D32(process_id);
         section = section
             .D32(process_times.process_create_time)
@@ -1078,7 +1078,7 @@ impl From<MiscStream> for Section {
             .D32(process_times.process_kernel_time);
 
         if misc_info_version >= 2 {
-            let power_info = power_info.unwrap_or_else(Default::default);
+            let power_info = power_info.unwrap_or_default();
             section = section
                 .D32(power_info.processor_max_mhz)
                 .D32(power_info.processor_current_mhz)
@@ -1088,10 +1088,10 @@ impl From<MiscStream> for Section {
         }
 
         if misc_info_version >= 3 {
-            let process_integrity_level = process_integrity_level.unwrap_or_else(Default::default);
-            let process_execute_flags = process_execute_flags.unwrap_or_else(Default::default);
-            let protected_process = protected_process.unwrap_or_else(Default::default);
-            let time_zone = time_zone.unwrap_or_else(Default::default);
+            let process_integrity_level = process_integrity_level.unwrap_or_default();
+            let process_execute_flags = process_execute_flags.unwrap_or_default();
+            let protected_process = protected_process.unwrap_or_default();
+            let time_zone = time_zone.unwrap_or_default();
 
             section = section.D32(process_integrity_level);
             section = section.D32(process_execute_flags);
@@ -1125,7 +1125,7 @@ impl From<MiscStream> for Section {
         }
 
         if misc_info_version >= 4 {
-            let build_strings = build_strings.unwrap_or_else(Default::default);
+            let build_strings = build_strings.unwrap_or_default();
             for &val in &build_strings.build_string {
                 section = section.D16(val);
             }
@@ -1135,8 +1135,8 @@ impl From<MiscStream> for Section {
         }
 
         if misc_info_version >= 5 {
-            let misc_5 = misc_5.unwrap_or_else(Default::default);
-            let process_cookie = misc_5.process_cookie.unwrap_or_else(Default::default);
+            let misc_5 = misc_5.unwrap_or_default();
+            let process_cookie = misc_5.process_cookie.unwrap_or_default();
             let xstate = misc_5.xstate_data;
             section = section
                 .D32(xstate.size_of_info)

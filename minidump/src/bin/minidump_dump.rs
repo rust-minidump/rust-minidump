@@ -20,7 +20,7 @@ fn print_raw_stream<T: Write>(name: &str, contents: &[u8], out: &mut T) -> io::R
     writeln!(out, "Stream {}:", name)?;
     let s = contents
         .split(|&v| v == 0)
-        .map(|s| String::from_utf8_lossy(s))
+        .map(String::from_utf8_lossy)
         .collect::<Vec<_>>()
         .join("\\0\n");
     write!(out, "{}\n\n", s)

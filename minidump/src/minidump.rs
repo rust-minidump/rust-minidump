@@ -519,10 +519,7 @@ fn read_cstring_utf8(offset: &mut usize, bytes: &[u8]) -> Result<String, ()> {
 
 /// Convert `bytes` with trailing NUL characters to a string
 fn string_from_bytes_nul(bytes: &[u8]) -> Option<Cow<'_, str>> {
-    bytes
-        .split(|&b| b == 0)
-        .next()
-        .map(|b| String::from_utf8_lossy(b))
+    bytes.split(|&b| b == 0).next().map(String::from_utf8_lossy)
 }
 
 /// Format `bytes` as a String of hex digits

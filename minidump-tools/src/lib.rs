@@ -144,7 +144,7 @@ fn parse_vcs_info(filename: &str) -> Result<Box<dyn VcsFile>, Error> {
             })
         }
         (Some("git"), Some(repo), Some(path), Some(rev)) if repo.starts_with("github.com/") => {
-            let repo = repo.splitn(2, '/').nth(1).unwrap().to_owned();
+            let repo = repo.split_once('/').unwrap().1.to_owned();
             let path = path.to_owned();
             let rev = rev.to_owned();
             Box::new(GitHubFile { repo, rev, path })

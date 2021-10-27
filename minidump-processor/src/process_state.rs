@@ -667,12 +667,6 @@ Unknown streams encountered:
                     "corrupt_symbols": stats.corrupt_symbols,
                     // optional, url of symbol file
                     "symbol_url": stats.symbol_url,
-                    // optional, whether or not the SYM file was fetched from disk cache
-                    // "symbol_disk_cache_hit": <bool>,
-                    // optional, time in ms it took to fetch symbol file from url; omitted
-                    // if the symbol file was in disk cache
-                    // "symbols_fetch_time": <float>,
-
                 })
             }).collect::<Vec<_>>(),
             "pid": self.process_id,
@@ -715,11 +709,6 @@ Unknown streams encountered:
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
 
-            // TODO: Issue #169
-            // "largest_free_vm_block": 0x000000
-            // "tiny_block_size": <int>,
-            // "write_combine_size": <int>,
-
             "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
                 "code_id": module.code_identifier(),
@@ -731,7 +720,7 @@ Unknown streams encountered:
             "sensitive": {
                 // TODO: Issue #25
                 // low | medium | high | interesting | none | ERROR: *
-                "exploitability": "TODO",
+                "exploitability": null,
             }
         });
 
