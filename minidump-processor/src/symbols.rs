@@ -2,8 +2,11 @@ use minidump::Module;
 pub use symbols_shim::*;
 
 pub trait SymbolProvider {
-    #[allow(clippy::result_unit_err)]
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) -> Result<(), ()>;
+    fn fill_symbol(
+        &self,
+        module: &dyn Module,
+        frame: &mut dyn FrameSymbolizer,
+    ) -> Result<(), FillSymbolError>;
     fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
 }
 
@@ -23,11 +26,15 @@ impl MultiSymbolProvider {
 }
 
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) -> Result<(), ()> {
+    fn fill_symbol(
+        &self,
+        module: &dyn Module,
+        frame: &mut dyn FrameSymbolizer,
+    ) -> Result<(), FillSymbolError> {
         // Return Ok if *any* symbol provider came back with Ok, so that the user can
         // distinguish between having no symbols at all and just not being able to
         // symbolize this particular frame.
-        let mut best_result = Err(());
+        let mut best_result = Err(FillSymbolError {});
         for p in self.providers.iter() {
             let new_result = p.fill_symbol(module, frame);
             best_result = best_result.or(new_result);
@@ -53,14 +60,16 @@ mod symbols_shim {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    pub use breakpad_symbols::{FrameSymbolizer, FrameWalker, SymbolSupplier, Symbolizer};
+    pub use breakpad_symbols::{
+        FillSymbolError, FrameSymbolizer, FrameWalker, SymbolSupplier, Symbolizer,
+    };
 
     impl SymbolProvider for Symbolizer {
         fn fill_symbol(
             &self,
             module: &dyn Module,
             frame: &mut dyn FrameSymbolizer,
-        ) -> Result<(), ()> {
+        ) -> Result<(), FillSymbolError> {
             self.fill_symbol(module, frame)
         }
         fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
@@ -114,7 +123,7 @@ mod symbols_shim {
         ///
         /// Implementations may use any strategy for locating and loading
         /// symbols.
-        fn locate_symbols(&mut self, module: &dyn Module) -> SymbolResult;
+        fn locate_symbols(&mut self, module: &dyn Module) -> Result<SymbolFile, SymbolError>;
     }
 
     /// A trait for setting symbol information on something like a stack frame.
@@ -187,7 +196,11 @@ mod symbols_shim {
     }
 
     impl SymbolProvider for Symbolizer {
-        fn fill_symbol(&self, _module: &dyn Module, _frame: &mut dyn FrameSymbolizer) {
+        fn fill_symbol(
+            &self,
+            _module: &dyn Module,
+            _frame: &mut dyn FrameSymbolizer,
+        ) -> Result<(), FillSymbolError> {
             unimplemented!()
         }
         fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
@@ -202,19 +215,19 @@ mod symbols_shim {
     pub struct StringSymbolSupplier {}
 
     impl SymbolSupplier for HttpSymbolSupplier {
-        fn locate_symbols(&self, _module: &dyn Module) -> SymbolResult {
+        fn locate_symbols(&self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }
 
     impl SymbolSupplier for SimpleSymbolSupplier {
-        fn locate_symbols(&self, _module: &dyn Module) -> SymbolResult {
+        fn locate_symbols(&self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }
 
     impl SymbolSupplier for StringSymbolSupplier {
-        fn locate_symbols(&self, _module: &dyn Module) -> SymbolResult {
+        fn locate_symbols(&self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }
@@ -241,4 +254,48 @@ mod symbols_shim {
     pub fn string_symbol_supplier(_modules: HashMap<String, String>) -> impl SymbolSupplier {
         StringSymbolSupplier {}
     }
+
+    /// Possible results of locating symbols for a module.
+    ///
+    /// Because symbols may be found from different sources, symbol providers
+    /// are usually configured to "cascade" into the next one whenever they report
+    /// `NotFound`.
+    ///
+    /// Cascading currently assumes that if any provider finds symbols for
+    /// a module, all other providers will find the same symbols (if any).
+    /// Therefore cascading will not be applied if a LoadError or ParseError
+    /// occurs (because presumably, all the other sources will also fail to
+    /// load/parse.)
+    ///
+    /// In theory we could do some interesting things where we attempt to
+    /// be more robust and actually merge together the symbols from multiple
+    /// sources, but that would make it difficult to cache symbol files, and
+    /// would rarely actually improve results.
+    ///
+    /// Since symbol files can be on the order of a gigabyte(!) and downloaded
+    /// from the network, aggressive caching is pretty important. The current
+    /// approach is a nice balance of simple and effective.
+    #[derive(Debug)]
+    pub enum SymbolError {
+        /// Symbol file could not be found.
+        ///
+        /// In this case other symbol providers may still be able to find it!
+        NotFound,
+        /// Symbol file could not be loaded into memory.
+        LoadError(Error),
+        /// Symbol file was too corrupt to be parsed at all.
+        ///
+        /// Because symbol files are pretty modular, many corruptions/ambiguities
+        /// can be either repaired or discarded at a fairly granular level
+        /// (e.g. a bad STACK WIN line can be discarded without affecting anything
+        /// else). But sometimes we can't make any sense of the symbol file, and
+        /// you find yourself here.
+        ParseError(Error),
+    }
+
+    #[derive(Debug)]
+    pub struct FillSymbolError {}
+
+    // Whatever representation you want, rust-minidump won't look at it.
+    struct SymbolFile {}
 }

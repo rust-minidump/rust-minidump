@@ -182,4 +182,54 @@ pub struct SymbolFile {
     pub win_stack_framedata_info: RangeMap<u64, StackInfoWin>,
     /// Windows unwind information (FPO data).
     pub win_stack_fpo_info: RangeMap<u64, StackInfoWin>,
+
+    // Statistics which are strictly best-effort. Generally this
+    // means we might undercount in situations where we forgot to
+    // log an event.
+    /// If the symbol file was loaded from a URL, this is the url
+    pub url: Option<String>,
+    /// The number of times the parser found that the symbol file was
+    /// strictly ambiguous but simple heuristics repaired it. (e.g.
+    /// two STACK WIN entries overlapped, but the second was a suffix of
+    /// the first, so we just truncated the first.)
+    ///
+    /// Ideally dump_syms would never output this kind of thing, but it's
+    /// tolerable.
+    pub ambiguities_repaired: u64,
+    /// The number of times the parser found that the symbol file was
+    /// ambiguous and just randomly picked one of the options to make
+    /// progress.
+    ///
+    /// e.g. two STACK WIN entries with identical ranges but
+    /// different values, so one was discarded arbitrarily.
+    pub ambiguities_discarded: u64,
+    /// The number of times the parser found that a section of the file
+    /// (generally a line) was corrupt and discarded it.
+    ///
+    /// e.g. a STACK WIN entry where the `type` and `has_program` fields
+    /// have inconsistent values.
+    pub corruptions_discarded: u64,
+    /// The number of times the cfi evaluator failed out in a way that
+    /// implies the cfi entry is fundamentally corrupt.
+    ///
+    /// This isn't detectected during parsing for two reasons:
+    ///
+    /// * We don't parse cfi program strings until we are requested to
+    ///   execute them (there's ~millions of program strings which will
+    ///   never need to be parsed, so eagerly parsing them would be
+    ///   horribly expensive and pointless for anything but debug stats.)
+    ///
+    /// * A program string may technically parse but still be impossible
+    ///   to fully evaluate. For instance, it might try to pop values from
+    ///   its internal stack when there are none left.
+    ///
+    /// This number may be inflated if a corrupt cfi entry occurs in multiple
+    /// frames, as each attempted eval will be counted.
+    ///
+    /// This number does not include cfi evaluations that failed in ways that
+    /// may be a result of incorrect input memory/registers (e.g. failing
+    /// to evaluate a "dereference pointer" instruction because the pointer
+    /// was not mapped memory). In these situations the cfi entry *may*
+    /// still be correct.
+    pub cfi_eval_corruptions: u64,
 }

@@ -1,12 +1,10 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use failure::Error;
-
 use std::path::Path;
 
 use crate::sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
-use crate::{FrameSymbolizer, FrameWalker, Module};
+use crate::{FrameSymbolizer, FrameWalker, Module, SymbolError};
 
 pub use crate::sym_file::types::*;
 
@@ -16,12 +14,12 @@ mod walker;
 
 impl SymbolFile {
     /// Parse a `SymbolFile` from `path`.
-    pub fn from_file(path: &Path) -> Result<SymbolFile, Error> {
+    pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
         parse_symbol_file(path)
     }
 
     /// Parse an in-memory `SymbolFile` from `bytes`.
-    pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
         parse_symbol_bytes(bytes)
     }
 
