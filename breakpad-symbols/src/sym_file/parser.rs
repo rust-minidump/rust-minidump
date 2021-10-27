@@ -293,10 +293,10 @@ named!(line<&[u8], Line>,
   alt!(
     info_line => { |_| Line::Info } |
     file_line => { |(i,f)| Line::File(i, f) } |
-    public_line => { |p| Line::Public(p) } |
-    func_lines => { |f| Line::Function(f) } |
-    stack_win_line => { |s| Line::StackWin(s) } |
-    stack_cfi_lines => { |s| Line::StackCfi(s) }
+    public_line => { Line::Public } |
+    func_lines => { Line::Function } |
+    stack_win_line => { Line::StackWin } |
+    stack_cfi_lines => { Line::StackCfi }
 ));
 
 // Return a `SymbolFile` given a vec of `Line` data.
@@ -427,7 +427,7 @@ pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
                 let next_line = rest
                     .split(|b| *b == b'\r')
                     .next()
-                    .map(|bytes| String::from_utf8_lossy(bytes))
+                    .map(String::from_utf8_lossy)
                     .unwrap_or(Cow::Borrowed(""));
                 Err(format_err!(
                     "Failed to parse file, next line was: `{}`",

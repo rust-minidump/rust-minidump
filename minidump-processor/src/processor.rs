@@ -216,9 +216,7 @@ where
     let symbol_stats = symbol_provider.stats();
 
     // Finally, handle the evil JSON file (get module signing certs)
-    let cert_info = evil_json
-        .and_then(|evil_path| handle_evil(evil_path))
-        .unwrap_or_else(HashMap::new);
+    let cert_info = evil_json.and_then(handle_evil).unwrap_or_else(HashMap::new);
 
     Ok(ProcessState {
         process_id,
