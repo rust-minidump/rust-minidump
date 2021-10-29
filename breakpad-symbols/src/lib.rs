@@ -372,7 +372,7 @@ impl HttpSymbolSupplier {
 }
 
 /// Save the data in `contents` to `path`.
-fn save_contents(contents: &[u8], final_path: &Path, tmp_path: &Path) -> io::Result<()> {
+fn save_contents(contents: &[u8], url: &Url, final_path: &Path, tmp_path: &Path) -> io::Result<()> {
     // Use tempfile to save things to our cache to ensure proper
     // atomicity of writes. We may want multiple instances of rust-minidump
     // to be sharing a cache, and we don't want one instance to see another
@@ -393,6 +393,15 @@ fn save_contents(contents: &[u8], final_path: &Path, tmp_path: &Path) -> io::Res
 
     let mut temp = tempfile::NamedTempFile::new_in(tmp_path)?;
     temp.write_all(contents)?;
+
+    // Append any extra metadata we also want to be cached as "INFO" lines,
+    // because this is an established format that parsers will ignore the
+    // contents of by default.
+
+    // INFO URL allows us to properly report the url we retrieved a symbol file
+    // from, even when the file is loaded from our on-disk cache.
+    let cache_metadata = format!("INFO URL {}\n", url);
+    temp.write_all(cache_metadata.as_bytes())?;
 
     // If another process already wrote this entry, prefer their value to
     // avoid needless file system churn.
@@ -416,7 +425,7 @@ fn fetch_symbol_file(
     res.read_to_end(&mut buf)?;
     let local = cache.join(rel_path);
 
-    match save_contents(&buf, &local, tmp) {
+    match save_contents(&buf, &url, &local, tmp) {
         Ok(_) => {}
         Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),
     }

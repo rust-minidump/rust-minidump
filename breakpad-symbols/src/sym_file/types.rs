@@ -82,6 +82,17 @@ impl Function {
     }
 }
 
+/// Extra metadata that can be safely ignored, but may contain useful facts.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Info {
+    /// The URL this file was downloaded from. This is added to symbol files
+    /// by HttpSymbolSupplier when it stores them in its cache, so that we
+    /// can populate that info even on a cache hit.
+    Url(String),
+    /// An info line we either don't know about or don't care about.
+    Unknown,
+}
+
 /// DWARF CFI rules for recovering registers at a specific address.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CfiRules {
