@@ -215,6 +215,12 @@ Pretty-print --json output.
 Provide a briefer --human report.
 
 Only provides the top-level summary and a backtrace of the crashing thread.
+
+### `--recover-function-args`
+Heuristically recover function arguments
+
+This is an experimental feature, which currently only shows up in --human output.
+
 ### `-h, --help`
 Prints help information
 

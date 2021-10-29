@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
 
+use crate::arg_recovery;
 use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
@@ -20,6 +21,9 @@ use crate::system_info::SystemInfo;
 pub struct ProcessorOptions<'a> {
     /// The evil "raw json" mozilla's legacy infrastructure relies on (to be phased out).
     pub evil_json: Option<&'a Path>,
+
+    /// Whether to try to heuristically recover function arguments in backtraces.
+    pub recover_function_args: bool,
 }
 
 /// An error encountered during minidump processing.
@@ -241,10 +245,11 @@ where
             thread_context.as_deref()
         };
 
-        let stack = thread.stack_memory(&memory_list);
+        let stack_memory = thread.stack_memory(&memory_list);
 
         let mut stack =
-            stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider).await;
+            stackwalker::walk_stack(&context, stack_memory.as_deref(), &modules, symbol_provider)
+                .await;
         stack.thread_id = id;
         for frame in &mut stack.frames {
             // If the frame doesn't have a loaded module, try to find an unloaded module
@@ -271,6 +276,10 @@ where
         stack.thread_name = name;
 
         stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
+
+        if options.recover_function_args {
+            arg_recovery::fill_arguments(&mut stack, stack_memory.as_deref());
+        }
 
         threads.push(stack);
     }
