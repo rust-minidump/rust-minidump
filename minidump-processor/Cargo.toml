@@ -21,7 +21,7 @@ breakpad-syms = ["breakpad-symbols"]
 symbolic-syms = []
 
 [dependencies]
-addr2line = "0.15.2"
+addr2line = "0.16.0"
 breakpad-symbols = { version = "0.9.1", path = "../breakpad-symbols", optional = true }
 chrono = { version = "0.4.6", features = ["serde"] }
 clap = "2.33"
