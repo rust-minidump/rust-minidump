@@ -37,6 +37,8 @@ pub struct SynthMinidump {
     thread_names_list: Option<ListStream<ThreadName>>,
     /// List of memory regions in this minidump.
     memory_list: Option<ListStream<Section>>,
+    /// List of extra info about memory regions in this minidump.
+    memory_info_list: Option<ExListStream<MemoryInfo>>,
     /// Crashpad extension containing annotations.
     crashpad_info: Option<CrashpadInfo>,
 }
@@ -176,6 +178,11 @@ impl SynthMinidump {
                 md::MINIDUMP_STREAM_TYPE::MemoryListStream,
                 endian,
             )),
+            memory_info_list: Some(ExListStream::new(
+                md::MINIDUMP_STREAM_TYPE::MemoryInfoListStream,
+                mem::size_of::<md::MINIDUMP_MEMORY_INFO>(),
+                endian,
+            )),
             crashpad_info: None,
         }
     }
@@ -227,6 +234,15 @@ impl SynthMinidump {
             .map(|memory_list| memory_list.add(descriptor));
         // Add the memory region itself.
         self.add(memory)
+    }
+
+    /// Add `info` to `self`, adding it to the memory info list stream as well.
+    pub fn add_memory_info(mut self, info: MemoryInfo) -> SynthMinidump {
+        self.memory_info_list = self
+            .memory_info_list
+            .take()
+            .map(|info_list| info_list.add(info));
+        self
     }
 
     /// Add `thread` to `self`, adding it to the thread list stream as well.
@@ -297,6 +313,9 @@ impl SynthMinidump {
         // Add memory list stream if any memory regions were added.
         let memories = self.memory_list.take();
         self = self.finish_list(memories);
+        // Add memory info list stream if any memory infos were added.
+        let memory_infos = self.memory_info_list.take();
+        self = self.finish_ex_list(memory_infos);
         // Add thread list stream if any threads were added.
         let threads = self.thread_list.take();
         self = self.finish_list(threads);
@@ -893,6 +912,45 @@ impl_dumpsection!(Memory);
 impl From<Memory> for Section {
     fn from(memory: Memory) -> Self {
         memory.section
+    }
+}
+
+/// A minidump unloaded module.
+pub struct MemoryInfo {
+    section: Section,
+}
+
+impl MemoryInfo {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        endian: Endian,
+        base_address: u64,
+        allocation_base: u64,
+        allocation_protection: u32,
+        region_size: u64,
+        state: u32,
+        protection: u32,
+        ty: u32,
+    ) -> MemoryInfo {
+        let section = Section::with_endian(endian)
+            .D64(base_address)
+            .D64(allocation_base)
+            .D32(allocation_protection)
+            .D32(0) // __alignment1
+            .D64(region_size)
+            .D32(state)
+            .D32(protection)
+            .D32(ty)
+            .D32(0); // __alignment2
+        MemoryInfo { section }
+    }
+}
+
+impl_dumpsection!(MemoryInfo);
+
+impl From<MemoryInfo> for Section {
+    fn from(info: MemoryInfo) -> Self {
+        info.section
     }
 }
 
