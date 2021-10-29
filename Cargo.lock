@@ -1026,7 +1026,7 @@ dependencies = [
  "log",
  "memmap 0.7.0",
  "minidump",
- "object 0.24.0",
+ "object 0.26.0",
  "scroll 0.10.2",
  "serde",
  "serde_json",
@@ -1246,6 +1246,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a5b3dd1c072ee7963717671d1ca129f1048fda25edea6b752bfc71ac8854170"
 dependencies = [
  "flate2",
+]
+
+[[package]]
+name = "object"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c55827317fb4c08822499848a14237d2874d6f139828893017237e7ab93eb386"
+dependencies = [
+ "flate2",
+ "memchr",
 ]
 
 [[package]]
