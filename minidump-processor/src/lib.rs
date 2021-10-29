@@ -76,6 +76,7 @@
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
 
+mod arg_recovery;
 mod evil;
 mod process_state;
 mod processor;

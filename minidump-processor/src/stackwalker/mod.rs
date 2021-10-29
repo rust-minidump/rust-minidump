@@ -211,6 +211,7 @@ where
     } else {
         info = CallStackInfo::MissingContext;
     }
+
     CallStack {
         frames,
         info,

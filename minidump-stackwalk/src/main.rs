@@ -110,7 +110,7 @@ be prefixed with `unwind:`).\n\n\n")
                 .long("brief")
                 .help("Provide a briefer --human report.
 
-Only provides the top-level summary and a backtrace of the crashing thread.")
+Only provides the top-level summary and a backtrace of the crashing thread.\n\n\n")
         )
         .arg(
             Arg::with_name("raw-json")
@@ -121,6 +121,13 @@ Only provides the top-level summary and a backtrace of the crashing thread.")
 This is a gross hack for some legacy side-channel information that mozilla uses. It will \
 hopefully be phased out and deprecated in favour of just using custom streams in the \
 minidump itself.\n\n\n")
+        )
+        .arg(
+            Arg::with_name("recover-function-args")
+                .long("recover-function-args")
+                .help("Heuristically recover function arguments
+
+This is an experimental feature, which currently only shows up in --human output.\n\n\n")
         )
         .arg(
             Arg::with_name("symbols-url")
@@ -315,6 +322,7 @@ async fn main() {
     let mut options = ProcessorOptions::default();
 
     options.evil_json = matches.value_of_os("raw-json").map(Path::new);
+    options.recover_function_args = matches.is_present("recover-function-args");
 
     let temp_dir = std::env::temp_dir();
 

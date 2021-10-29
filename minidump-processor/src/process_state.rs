@@ -36,6 +36,32 @@ pub enum FrameTrust {
     Context,
 }
 
+#[derive(Debug)]
+pub enum CallingConvention {
+    Cdecl,
+    WindowsThisCall,
+    OtherThisCall,
+}
+
+/// Arguments for this function
+#[derive(Debug)]
+pub struct FunctionArgs {
+    /// What we assumed the calling convention was
+    pub calling_convention: CallingConvention,
+
+    /// The actual arguments
+    pub args: Vec<FunctionArg>,
+}
+
+/// A function argument
+#[derive(Debug)]
+pub struct FunctionArg {
+    /// The name of the argument (usually actually just the type)
+    pub name: String,
+    /// The value of the argument
+    pub value: Option<u64>,
+}
+
 /// A single stack frame produced from unwinding a thread's stack.
 #[derive(Debug)]
 pub struct StackFrame {
@@ -136,6 +162,9 @@ pub struct StackFrame {
 
     /// The CPU context containing register state for this frame.
     pub context: MinidumpContext,
+
+    /// Any function args we recovered.
+    pub arguments: Option<FunctionArgs>,
 }
 
 /// Information about the results of unwinding a thread's stack.
@@ -274,6 +303,7 @@ impl StackFrame {
             source_file_name: None,
             source_line: None,
             source_line_base: None,
+            arguments: None,
             trust,
             context,
         }
@@ -430,6 +460,38 @@ impl CallStack {
             writeln!(f)?;
             print_registers(f, &frame.context)?;
             writeln!(f, "    Found by: {}", frame.trust.description())?;
+
+            if let Some(args) = &frame.arguments {
+                use MinidumpRawContext::*;
+                let pointer_width = match &frame.context.raw {
+                    X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) => 4,
+                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) => 8,
+                };
+
+                let cc_summary = match args.calling_convention {
+                    CallingConvention::Cdecl => "cdecl [static function]",
+                    CallingConvention::WindowsThisCall => "windows thiscall [C++ member function]",
+                    CallingConvention::OtherThisCall => {
+                        "non-windows thiscall [C++ member function]"
+                    }
+                };
+
+                writeln!(f, "    Arguments (assuming {})", cc_summary)?;
+                for (idx, arg) in args.args.iter().enumerate() {
+                    if let Some(val) = arg.value {
+                        if pointer_width == 4 {
+                            writeln!(f, "        arg {} ({}) = 0x{:08x}", idx, arg.name, val)?;
+                        } else {
+                            writeln!(f, "        arg {} ({}) = 0x{:016x}", idx, arg.name, val)?;
+                        }
+                    } else {
+                        writeln!(f, "        arg {} ({}) = <unknown>", idx, arg.name)?;
+                    }
+                }
+                // Add an extra new-line between frames when there's function arguments to make
+                // it more readable.
+                writeln!(f)?;
+            }
         }
         Ok(())
     }
