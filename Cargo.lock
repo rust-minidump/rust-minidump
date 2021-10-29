@@ -612,6 +612,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
 dependencies = [
  "fallible-iterator 0.2.0",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "gimli"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81a03ce013ffccead76c11a15751231f777d9295b845cc1266ed4d34fcbd7977"
+dependencies = [
+ "fallible-iterator 0.2.0",
  "indexmap",
  "stable_deref_trait",
 ]
@@ -1022,7 +1032,7 @@ dependencies = [
  "chrono",
  "clap",
  "failure",
- "gimli 0.24.0",
+ "gimli 0.26.0",
  "log",
  "memmap 0.7.0",
  "minidump",
