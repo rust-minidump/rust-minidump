@@ -31,16 +31,25 @@ fn print_minidump_dump(path: &Path) {
         Ok(dump) => {
             let stdout = &mut std::io::stdout();
             dump.print(stdout).unwrap();
+            // FIXME: doesn't handle the "bug" native windows minidumps have where
+            // the RVA is null but start_of_memory_range has a valid value we can
+            // use to get the memory range. This results in loss of missing
+            // thread memory dumps!
             if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
                 thread_list.print(stdout).unwrap();
             }
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
             }
+            if let Ok(module_list) = dump.get_stream::<MinidumpUnloadedModuleList>() {
+                module_list.print(stdout).unwrap();
+            }
             if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList<'_>>() {
                 memory_list.print(stdout).unwrap();
             }
-            // TODO: MemoryList
+            if let Ok(memory_info_list) = dump.get_stream::<MinidumpMemoryInfoList<'_>>() {
+                memory_info_list.print(stdout).unwrap();
+            }
             if let Ok(exception) = dump.get_stream::<MinidumpException>() {
                 exception.print(stdout).unwrap();
             }
@@ -59,7 +68,6 @@ fn print_minidump_dump(path: &Path) {
             if let Ok(thread_names) = dump.get_stream::<MinidumpThreadNames>() {
                 thread_names.print(stdout).unwrap();
             }
-            // TODO: MemoryInfoList
             match dump.get_stream::<MinidumpCrashpadInfo>() {
                 Ok(crashpad_info) => crashpad_info.print(stdout).unwrap(),
                 Err(Error::StreamNotFound) => (),

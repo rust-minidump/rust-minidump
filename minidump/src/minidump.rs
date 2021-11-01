@@ -11,7 +11,6 @@ use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{self, Pread, BE, LE};
 use std::borrow::Cow;
-use std::boxed::Box;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -100,9 +99,23 @@ pub enum Error {
     CodeViewReadFailure,
 }
 
-/* TODO
-pub struct MinidumpMemoryInfoList;
-*/
+#[derive(Debug, Clone)]
+pub struct MinidumpMemoryInfoList<'a> {
+    /// The memory regions, in the order they were stored in the minidump.
+    regions: Vec<MinidumpMemoryInfo<'a>>,
+    /// Map from address range to index in regions. Use `MinidumpMemoryInfoList::memory_info_at_address`.
+    regions_by_addr: RangeMap<u64, usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MinidumpMemoryInfo<'a> {
+    raw: md::MINIDUMP_MEMORY_INFO,
+    pub allocation_protection: md::MemoryProtection,
+    pub state: md::MemoryState,
+    pub protection: md::MemoryProtection,
+    pub ty: md::MemoryType,
+    _phantom: PhantomData<&'a u8>,
+}
 
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream<'a>: Sized {
@@ -1380,7 +1393,7 @@ Memory
         Ok(())
     }
 
-    fn memory_range(&self) -> Option<Range<u64>> {
+    pub fn memory_range(&self) -> Option<Range<u64>> {
         if self.size == 0 {
             return None;
         }
@@ -1388,23 +1401,6 @@ Memory
             self.base_address,
             self.base_address.checked_add(self.size)? - 1,
         ))
-    }
-}
-
-/// An iterator over `MinidumpMemory`s.
-#[allow(missing_debug_implementations)]
-pub struct MemoryRegions<'iter, 'data> {
-    iter: Box<dyn Iterator<Item = &'iter MinidumpMemory<'data>> + 'iter>,
-}
-
-impl<'iter, 'data> Iterator for MemoryRegions<'iter, 'data>
-where
-    'data: 'iter,
-{
-    type Item = &'iter MinidumpMemory<'data>;
-
-    fn next(&mut self) -> Option<&'iter MinidumpMemory<'data>> {
-        self.iter.next()
     }
 }
 
@@ -1443,21 +1439,15 @@ impl<'mdmp> MinidumpMemoryList<'mdmp> {
     /// That is the lifetime of the item is bound to the lifetime of the iterator itself
     /// (`'slf`), while the slice inside [MinidumpMemory] pointing at the memory itself has
     /// the lifetime of the [Minidump] struct ('mdmp).
-    pub fn iter<'slf>(&'slf self) -> MemoryRegions<'slf, 'mdmp> {
-        MemoryRegions {
-            iter: Box::new(self.regions.iter()),
-        }
+    pub fn iter<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemory<'mdmp>> {
+        self.regions.iter()
     }
 
     /// Iterate over the memory regions in order by memory address.
-    pub fn by_addr<'slf>(&'slf self) -> MemoryRegions<'slf, 'mdmp> {
-        MemoryRegions {
-            iter: Box::new(
-                self.regions_by_addr
-                    .ranges_values()
-                    .map(move |&(_, index)| &self.regions[index]),
-            ),
-        }
+    pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemory<'mdmp>> {
+        self.regions_by_addr
+            .ranges_values()
+            .map(move |&(_, index)| &self.regions[index])
     }
 
     /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
@@ -1508,6 +1498,154 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
             }
         }
         Ok(MinidumpMemoryList::from_regions(regions))
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpMemoryInfoList<'a> {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MemoryInfoListStream;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpMemoryInfoList<'a>, Error> {
+        let mut offset = 0;
+        let raw_regions: Vec<md::MINIDUMP_MEMORY_INFO> =
+            read_ex_stream_list(&mut offset, bytes, endian)?;
+        let regions = raw_regions
+            .into_iter()
+            .map(|raw| MinidumpMemoryInfo {
+                allocation_protection: md::MemoryProtection::from_bits_truncate(
+                    raw.allocation_protection,
+                ),
+                state: md::MemoryState::from_bits_truncate(raw.state),
+                protection: md::MemoryProtection::from_bits_truncate(raw.protection),
+                ty: md::MemoryType::from_bits_truncate(raw._type),
+                raw,
+                _phantom: PhantomData,
+            })
+            .collect();
+        Ok(MinidumpMemoryInfoList::from_regions(regions))
+    }
+}
+
+impl<'a> Default for MinidumpMemoryInfoList<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
+    /// Return an empty `MinidumpMemoryList`.
+    pub fn new() -> MinidumpMemoryInfoList<'mdmp> {
+        MinidumpMemoryInfoList {
+            regions: vec![],
+            regions_by_addr: RangeMap::new(),
+        }
+    }
+
+    /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
+    pub fn from_regions(regions: Vec<MinidumpMemoryInfo<'mdmp>>) -> MinidumpMemoryInfoList<'mdmp> {
+        let regions_by_addr = regions
+            .iter()
+            .enumerate()
+            .map(|(i, region)| (region.memory_range(), i))
+            .into_rangemap_safe();
+        MinidumpMemoryInfoList {
+            regions,
+            regions_by_addr,
+        }
+    }
+
+    /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
+    pub fn memory_info_at_address(&self, address: u64) -> Option<&MinidumpMemoryInfo<'mdmp>> {
+        self.regions_by_addr
+            .get(address)
+            .map(|&index| &self.regions[index])
+    }
+
+    /// Iterate over the memory regions in the order contained in the minidump.
+    ///
+    /// The iterator returns items of [MinidumpMemory] as `&'slf MinidumpMemory<'mdmp>`.
+    /// That is the lifetime of the item is bound to the lifetime of the iterator itself
+    /// (`'slf`), while the slice inside [MinidumpMemory] pointing at the memory itself has
+    /// the lifetime of the [Minidump] struct ('mdmp).
+    pub fn iter<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemoryInfo<'mdmp>> {
+        self.regions.iter()
+    }
+
+    /// Iterate over the memory regions in order by memory address.
+    pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemoryInfo<'mdmp>> {
+        self.regions_by_addr
+            .ranges_values()
+            .map(move |&(_, index)| &self.regions[index])
+    }
+
+    /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpMemoryInfoList
+  region_count = {}
+
+",
+            self.regions.len()
+        )?;
+        for (i, region) in self.regions.iter().enumerate() {
+            writeln!(f, "region[{}]", i)?;
+            region.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MinidumpMemoryInfo<'a> {
+    /// Write a human-readable description of this `MinidumpMemory` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MINIDUMP_MEMORY_INFO
+  base_address          = {:#x}
+  allocation_base       = {:#x}
+  allocation_protection = {:#x}
+  region_size           = {:#x}
+  state                 = {:#x}
+  protection            = {:#x}
+  _type                 = {:#x}
+",
+            self.raw.base_address,
+            self.raw.allocation_base,
+            self.allocation_protection,
+            self.raw.region_size,
+            self.state,
+            self.protection,
+            self.ty,
+        )?;
+        writeln!(f)
+    }
+
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        if self.raw.region_size == 0 {
+            return None;
+        }
+        Some(Range::new(
+            self.raw.base_address,
+            self.raw.base_address.checked_add(self.raw.region_size)? - 1,
+        ))
+    }
+
+    /// Whether this memory range was executable.
+    pub fn is_executable(&self) -> bool {
+        self.protection.intersects(
+            md::MemoryProtection::PAGE_EXECUTE
+                | md::MemoryProtection::PAGE_EXECUTE_READ
+                | md::MemoryProtection::PAGE_EXECUTE_READWRITE
+                | md::MemoryProtection::PAGE_EXECUTE_WRITECOPY,
+        )
     }
 }
 
@@ -3393,7 +3531,7 @@ where
     }
 
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 39] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 38] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -3406,7 +3544,6 @@ where
             MINIDUMP_STREAM_TYPE::CommentStreamW,
             MINIDUMP_STREAM_TYPE::HandleDataStream,
             MINIDUMP_STREAM_TYPE::FunctionTable,
-            MINIDUMP_STREAM_TYPE::MemoryInfoListStream,
             MINIDUMP_STREAM_TYPE::ThreadInfoListStream,
             MINIDUMP_STREAM_TYPE::HandleOperationListStream,
             MINIDUMP_STREAM_TYPE::TokenStream,
@@ -3547,10 +3684,11 @@ fn stream_vendor(stream_type: u32) -> &'static str {
 mod test {
     use super::*;
     use crate::synth_minidump::{
-        self, AnnotationValue, CrashpadInfo, DumpString, Memory, MiscFieldsBuildString,
-        MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields,
-        MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, Thread,
-        ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
+        self, AnnotationValue, CrashpadInfo, DumpString, Memory, MemoryInfo as SynthMemoryInfo,
+        MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
+        MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
+        SynthMinidump, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
+        STOCK_VERSION_INFO,
     };
     use md::GUID;
     use std::mem;
@@ -3692,6 +3830,82 @@ mod test {
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
         assert_eq!(modules[0].code_identifier(), "B1054D2Aada542bd");
+    }
+
+    #[test]
+    fn test_memory_info() {
+        let info1_alloc_protection = md::MemoryProtection::PAGE_GUARD;
+        let info1_protection = md::MemoryProtection::PAGE_EXECUTE_READ;
+        let info1_state = md::MemoryState::MEM_FREE;
+        let info1_ty = md::MemoryType::MEM_MAPPED;
+        let info1 = SynthMemoryInfo::new(
+            Endian::Little,
+            0xa90206ca83eb2852,
+            0xa802064a83eb2752,
+            info1_alloc_protection.bits(),
+            0xf80e064a93eb2356,
+            info1_state.bits(),
+            info1_protection.bits(),
+            info1_ty.bits(),
+        );
+
+        let info2_alloc_protection = md::MemoryProtection::PAGE_EXECUTE_READ;
+        let info2_protection = md::MemoryProtection::PAGE_READONLY;
+        let info2_state = md::MemoryState::MEM_COMMIT;
+        let info2_ty = md::MemoryType::MEM_PRIVATE;
+        let info2 = SynthMemoryInfo::new(
+            Endian::Little,
+            0xd70206ca83eb2852,
+            0xb802064383eb2752,
+            info2_alloc_protection.bits(),
+            0xe80e064a93eb2356,
+            info2_state.bits(),
+            info2_protection.bits(),
+            info2_ty.bits(),
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_memory_info(info1)
+            .add_memory_info(info2);
+
+        let dump = read_synth_dump(dump).unwrap();
+        let info_list = dump.get_stream::<MinidumpMemoryInfoList>().unwrap();
+        let infos = info_list.iter().collect::<Vec<_>>();
+
+        assert_eq!(infos.len(), 2);
+
+        assert_eq!(infos[0].raw.base_address, 0xa90206ca83eb2852);
+        assert_eq!(infos[0].raw.allocation_base, 0xa802064a83eb2752);
+        assert_eq!(
+            infos[0].raw.allocation_protection,
+            info1_alloc_protection.bits()
+        );
+        assert_eq!(infos[0].raw.region_size, 0xf80e064a93eb2356);
+        assert_eq!(infos[0].raw.state, info1_state.bits());
+        assert_eq!(infos[0].raw.protection, info1_protection.bits());
+        assert_eq!(infos[0].raw._type, info1_ty.bits());
+
+        assert_eq!(infos[0].allocation_protection, info1_alloc_protection);
+        assert_eq!(infos[0].protection, info1_protection);
+        assert_eq!(infos[0].state, info1_state);
+        assert_eq!(infos[0].ty, info1_ty);
+        assert!(infos[0].is_executable());
+
+        assert_eq!(infos[1].raw.base_address, 0xd70206ca83eb2852);
+        assert_eq!(infos[1].raw.allocation_base, 0xb802064383eb2752);
+        assert_eq!(
+            infos[1].raw.allocation_protection,
+            info2_alloc_protection.bits()
+        );
+        assert_eq!(infos[1].raw.region_size, 0xe80e064a93eb2356);
+        assert_eq!(infos[1].raw.state, info2_state.bits());
+        assert_eq!(infos[1].raw.protection, info2_protection.bits());
+        assert_eq!(infos[1].raw._type, info2_ty.bits());
+
+        assert_eq!(infos[1].allocation_protection, info2_alloc_protection);
+        assert_eq!(infos[1].protection, info2_protection);
+        assert_eq!(infos[1].state, info2_state);
+        assert_eq!(infos[1].ty, info2_ty);
+        assert!(!infos[1].is_executable());
     }
 
     #[test]
