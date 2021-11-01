@@ -395,12 +395,28 @@ pub struct MinidumpBreakpadInfo {
 }
 
 #[derive(Default, Debug)]
+/// Interesting values extracted from /etc/lsb-release
 pub struct MinidumpLinuxLsbRelease {
     pub id: String,
     pub release: String,
     pub codename: String,
     pub description: String,
 }
+
+/// Interesting values extracted from /proc/self/environ
+#[derive(Default, Debug)]
+pub struct MinidumpLinuxEnviron {}
+
+/// Interesting values extracted from /proc/cpuinfo
+#[derive(Default, Debug)]
+pub struct MinidumpLinuxCpuInfo {
+    /// The microcode version of the cpu
+    pub microcode_version: Option<u64>,
+}
+
+/// Interesting values extracted from /proc/self/status
+#[derive(Default, Debug)]
+pub struct MinidumpLinuxProcStatus {}
 
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -1033,8 +1049,14 @@ impl Module for MinidumpUnloadedModule {
     }
 }
 
-fn read_linux_list(bytes: &[u8]) -> Result<impl Iterator<Item = (&str, &str)>, Error> {
+/// Parses X:Y or X=Y lists, skipping any blank/unparseable lines
+fn read_linux_list(
+    bytes: &[u8],
+    separator: char,
+) -> Result<impl Iterator<Item = (&str, &str)>, Error> {
     fn strip_quotes(input: &str) -> &str {
+        // Remove any extra surrounding whitespace since formats are inconsistent on this.
+        let input = input.trim();
         // Convert `"MyValue"` into `MyValue`
         input
             .strip_prefix('"')
@@ -1043,8 +1065,8 @@ fn read_linux_list(bytes: &[u8]) -> Result<impl Iterator<Item = (&str, &str)>, E
     }
 
     let string = str::from_utf8(bytes).unwrap();
-    Ok(string.split('\n').filter_map(|line| {
-        line.split_once('=')
+    Ok(string.split('\n').filter_map(move |line| {
+        line.split_once(separator)
             .map(|(label, val)| (strip_quotes(label), (strip_quotes(val))))
     }))
 }
@@ -2827,7 +2849,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
 
     fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
         let mut lsb = Self::default();
-        for (key, val) in read_linux_list(bytes)? {
+        for (key, val) in read_linux_list(bytes, '=')? {
             match key {
                 "DISTRIB_ID" | "ID" => lsb.id = String::from(val),
                 "DISTRIB_RELEASE" | "VERSION_ID" => lsb.release = String::from(val),
@@ -2837,6 +2859,64 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
             }
         }
         Ok(lsb)
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxEnviron;
+
+    #[allow(clippy::single_match)]
+    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+        let environ = Self::default();
+        for (key, _val) in read_linux_list(bytes, '=')? {
+            match key {
+                "todo: collect some entries here" => {}
+                _ => {
+                    // unknown or uninteresting
+                }
+            }
+        }
+        Ok(environ)
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxProcStatus;
+
+    #[allow(clippy::single_match)]
+    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+        let status = Self::default();
+        for (key, _val) in read_linux_list(bytes, ':')? {
+            match key {
+                "todo: collect some entries here" => {}
+                _ => {
+                    // unknown or uninteresting
+                }
+            }
+        }
+        Ok(status)
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxCpuInfo;
+
+    #[allow(clippy::single_match)]
+    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+        let mut info = Self::default();
+        for (key, val) in read_linux_list(bytes, ':')? {
+            match key {
+                "microcode" => {
+                    info.microcode_version = val
+                        .strip_prefix("0x")
+                        .and_then(|val| u64::from_str_radix(val, 16).ok());
+                }
+                _ => {
+                    // unknown or uninteresting
+                }
+            }
+        }
+        Ok(info)
     }
 }
 
@@ -4024,7 +4104,7 @@ where
     }
 
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 36] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 33] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -4059,10 +4139,7 @@ where
             MINIDUMP_STREAM_TYPE::ceStreamProcessModuleMap,
             MINIDUMP_STREAM_TYPE::ceStreamDiagnosisList,
             // non-standard streams (should also be implemented):
-            MINIDUMP_STREAM_TYPE::LinuxCpuInfo,
-            MINIDUMP_STREAM_TYPE::LinuxProcStatus,
             MINIDUMP_STREAM_TYPE::LinuxCmdLine,
-            MINIDUMP_STREAM_TYPE::LinuxEnviron,
             MINIDUMP_STREAM_TYPE::LinuxAuxv,
             MINIDUMP_STREAM_TYPE::LinuxDsoDebug,
         ];
@@ -4656,6 +4733,88 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
             assert!(map.is_err());
         }
+    }
+
+    #[test]
+    fn test_linux_lsb_release() {
+        // Whitespace intentionally wonky to test robustness
+        {
+            let input = r#"
+DISTRIB_ID="hello"
+"DISTRIB_RELEASE"  =there
+"DISTRIB_CODENAME" =   "very long string"
+DISTRIB_DESCRIPTION= wow long string!!!
+"#;
+            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
+            let dump = read_synth_dump(dump).unwrap();
+
+            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+
+            assert_eq!(stream.id, "hello");
+            assert_eq!(stream.release, "there");
+            assert_eq!(stream.codename, "very long string");
+            assert_eq!(stream.description, "wow long string!!!");
+        }
+
+        {
+            let input = r#"
+ID="hello"
+"VERSION_ID"  =there
+"VERSION_CODENAME" =   "very long string"
+PRETTY_NAME= wow long string!!!
+"#;
+            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
+            let dump = read_synth_dump(dump).unwrap();
+
+            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+
+            assert_eq!(stream.id, "hello");
+            assert_eq!(stream.release, "there");
+            assert_eq!(stream.codename, "very long string");
+            assert_eq!(stream.description, "wow long string!!!");
+        }
+    }
+
+    #[test]
+    fn test_linux_cpu_info() {
+        // Whitespace intentionally wonky to test robustness
+
+        let input = "
+microcode : 0x1e34a6789
+";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_cpu_info(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let stream = dump.get_stream::<MinidumpLinuxCpuInfo>().unwrap();
+
+        assert_eq!(stream.microcode_version, Some(0x1e34a6789));
+    }
+
+    #[test]
+    fn test_linux_environ() {
+        // Whitespace intentionally wonky to test robustness
+
+        // TODO: add tests for values we care about
+        let input = "";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_environ(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let _stream = dump.get_stream::<MinidumpLinuxEnviron>().unwrap();
+    }
+
+    #[test]
+    fn test_linux_proc_status() {
+        // Whitespace intentionally wonky to test robustness
+
+        // TODO: add tests for values we care about
+        let input = "";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_proc_status(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let _stream = dump.get_stream::<MinidumpLinuxProcStatus>().unwrap();
     }
 
     #[test]

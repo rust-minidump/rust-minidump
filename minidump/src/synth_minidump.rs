@@ -43,6 +43,14 @@ pub struct SynthMinidump {
     crashpad_info: Option<CrashpadInfo>,
     /// /proc/self/maps string
     linux_maps: Option<SimpleStream>,
+    /// /etc/lsb-release string
+    linux_lsb_release: Option<SimpleStream>,
+    /// /proc/cpuinfo string
+    linux_cpu_info: Option<SimpleStream>,
+    /// /proc/self/environ string
+    linux_environ: Option<SimpleStream>,
+    /// /proc/self/status string
+    linux_proc_status: Option<SimpleStream>,
 }
 
 /// A block of data contained in a minidump.
@@ -186,6 +194,10 @@ impl SynthMinidump {
                 endian,
             )),
             linux_maps: None,
+            linux_lsb_release: None,
+            linux_environ: None,
+            linux_cpu_info: None,
+            linux_proc_status: None,
             crashpad_info: None,
         }
     }
@@ -281,6 +293,42 @@ impl SynthMinidump {
         self
     }
 
+    /// Set the contents of the `LinuxLsbRelease` stream.
+    pub fn set_linux_lsb_release(mut self, lsb: &str) -> SynthMinidump {
+        self.linux_lsb_release = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32,
+            section: Section::new().append_bytes(lsb.as_bytes()),
+        });
+        self
+    }
+
+    /// Set the contents of the `LinuxProcStatus` stream.
+    pub fn set_linux_proc_status(mut self, proc_status: &str) -> SynthMinidump {
+        self.linux_proc_status = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32,
+            section: Section::new().append_bytes(proc_status.as_bytes()),
+        });
+        self
+    }
+
+    /// Set the contents of the `LinuxCpuInfo` stream.
+    pub fn set_linux_cpu_info(mut self, cpu_info: &str) -> SynthMinidump {
+        self.linux_cpu_info = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32,
+            section: Section::new().append_bytes(cpu_info.as_bytes()),
+        });
+        self
+    }
+
+    /// Set the contents of the `LinuxEnviron` stream.
+    pub fn set_linux_environ(mut self, environ: &str) -> SynthMinidump {
+        self.linux_environ = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::LinuxEnviron as u32,
+            section: Section::new().append_bytes(environ.as_bytes()),
+        });
+        self
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -338,8 +386,20 @@ impl SynthMinidump {
         if let Some(crashpad_info) = self.crashpad_info.take() {
             self = self.add_stream(crashpad_info);
         }
-        if let Some(linux_maps) = self.linux_maps.take() {
-            self = self.add_stream(linux_maps);
+        if let Some(stream) = self.linux_maps.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.linux_lsb_release.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.linux_cpu_info.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.linux_proc_status.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.linux_environ.take() {
+            self = self.add_stream(stream);
         }
 
         let SynthMinidump {

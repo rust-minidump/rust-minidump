@@ -110,14 +110,20 @@ where
         .cpu_info()
         .map(|string| string.into_owned());
 
+    let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
+    let linux_cpu_info = dump.get_stream::<MinidumpLinuxCpuInfo>().ok();
+    let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
+    let _linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
+
     let system_info = SystemInfo {
         os: dump_system_info.os,
         os_version: Some(os_version),
         cpu: dump_system_info.cpu,
         cpu_info,
+        cpu_microcode_version: linux_cpu_info.and_then(|info| info.microcode_version),
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
-    let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
+
     let mac_crash_info = dump
         .get_stream::<MinidumpMacCrashInfo>()
         .ok()
