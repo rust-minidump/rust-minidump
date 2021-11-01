@@ -21,7 +21,7 @@ use crate::sym_file::types::*;
 use crate::SymbolError;
 
 enum Line<'a> {
-    Info,
+    Info(Info),
     File(u32, &'a str),
     Public(PublicSymbol),
     Function(Function),
@@ -62,7 +62,19 @@ named!(module_line<&[u8], ()>,
     || {}
 ));
 
-// Matches an INFO record.
+// Matches an INFO LINE record.
+named!(
+    info_url<&[u8], Info>,
+    chain!(
+        tag!("INFO URL") ~
+        space ~
+        url: map_res!(not_line_ending, str::from_utf8) ~
+        my_eol,
+          ||{ Info::Url(url.to_string()) }
+    )
+);
+
+// Matches other INFO records.
 named!(
     info_line,
     chain!(
@@ -291,7 +303,8 @@ named!(stack_cfi_lines<&[u8], StackInfoCfi>,
 // Parse any of the line data that can occur in the body of a symbol file.
 named!(line<&[u8], Line>,
   alt!(
-    info_line => { |_| Line::Info } |
+    info_url => { Line::Info } |
+    info_line => { |_| Line::Info(Info::Unknown) } |
     file_line => { |(i,f)| Line::File(i, f) } |
     public_line => { Line::Public } |
     func_lines => { Line::Function } |
@@ -307,9 +320,15 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
     let mut stack_cfi = vec![];
     let mut stack_win_framedata: Vec<StackInfoWin> = vec![];
     let mut stack_win_fpo: Vec<StackInfoWin> = vec![];
+    let mut url = None;
     for line in lines {
         match line {
-            Line::Info => {}
+            Line::Info(Info::Url(cached_url)) => {
+                url = Some(cached_url);
+            }
+            Line::Info(Info::Unknown) => {
+                // Don't care
+            }
             Line::File(id, filename) => {
                 files.insert(id, filename.to_string());
             }
@@ -396,7 +415,7 @@ fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
             .map(|s| (s.memory_range(), s))
             .into_rangemap_safe(),
         // Will get filled in by the caller
-        url: None,
+        url,
         // TODO
         ambiguities_repaired: 0,
         // TODO
@@ -488,6 +507,14 @@ fn test_info_line2() {
     let bits = &b"CODE_ID   abc xyz"[..];
     let rest = &b""[..];
     assert_eq!(info_line(line), Done(rest, bits));
+}
+
+#[test]
+fn test_info_url() {
+    let line = b"INFO URL https://www.example.com\n";
+    let url = "https://www.example.com".to_string();
+    let rest = &b""[..];
+    assert_eq!(info_url(line), Done(rest, Info::Url(url)));
 }
 
 #[test]
