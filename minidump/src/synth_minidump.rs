@@ -41,6 +41,8 @@ pub struct SynthMinidump {
     memory_info_list: Option<ExListStream<MemoryInfo>>,
     /// Crashpad extension containing annotations.
     crashpad_info: Option<CrashpadInfo>,
+    /// /proc/self/maps string
+    linux_maps: Option<SimpleStream>,
 }
 
 /// A block of data contained in a minidump.
@@ -183,6 +185,7 @@ impl SynthMinidump {
                 mem::size_of::<md::MINIDUMP_MEMORY_INFO>(),
                 endian,
             )),
+            linux_maps: None,
             crashpad_info: None,
         }
     }
@@ -269,6 +272,15 @@ impl SynthMinidump {
         self
     }
 
+    /// Set the contents of the `LinuxMaps` stream.
+    pub fn set_linux_maps(mut self, maps: &str) -> SynthMinidump {
+        self.linux_maps = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::LinuxMaps as u32,
+            section: Section::new().append_bytes(maps.as_bytes()),
+        });
+        self
+    }
+
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
         self.stream_directory = stream.cite_stream_in(self.stream_directory);
@@ -325,6 +337,9 @@ impl SynthMinidump {
         // Add crashpad info stream if any.
         if let Some(crashpad_info) = self.crashpad_info.take() {
             self = self.add_stream(crashpad_info);
+        }
+        if let Some(linux_maps) = self.linux_maps.take() {
+            self = self.add_stream(linux_maps);
         }
 
         let SynthMinidump {

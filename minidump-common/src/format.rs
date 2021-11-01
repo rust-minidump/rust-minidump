@@ -7431,7 +7431,7 @@ pub struct MINIDUMP_MEMORY_INFO_LIST {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_info
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, PartialEq, Eq, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO {
     /// The base address of the region of pages
     pub base_address: u64,
