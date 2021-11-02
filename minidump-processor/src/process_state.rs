@@ -596,7 +596,7 @@ Unknown streams encountered:
                 "cpu_count": sys.cpu_count,
                 // TODO: Issue #19
                 // optional
-                "cpu_microcode_version": null,
+                "cpu_microcode_version": sys.cpu_microcode_version,
             },
             "crash_info": {
                 "type": self.crash_reason.map(|reason| reason.to_string()),
