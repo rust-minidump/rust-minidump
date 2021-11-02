@@ -99,24 +99,6 @@ pub enum Error {
     CodeViewReadFailure,
 }
 
-#[derive(Debug, Clone)]
-pub struct MinidumpMemoryInfoList<'a> {
-    /// The memory regions, in the order they were stored in the minidump.
-    regions: Vec<MinidumpMemoryInfo<'a>>,
-    /// Map from address range to index in regions. Use `MinidumpMemoryInfoList::memory_info_at_address`.
-    regions_by_addr: RangeMap<u64, usize>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MinidumpMemoryInfo<'a> {
-    raw: md::MINIDUMP_MEMORY_INFO,
-    pub allocation_protection: md::MemoryProtection,
-    pub state: md::MemoryState,
-    pub protection: md::MemoryProtection,
-    pub ty: md::MemoryType,
-    _phantom: PhantomData<&'a u8>,
-}
-
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream<'a>: Sized {
     /// The stream type constant used in the `md::MDRawDirectory` entry.
@@ -127,6 +109,123 @@ pub trait MinidumpStream<'a>: Sized {
     /// `all` refers to the full contents of the minidump, for reading auxilliary data
     /// referred to with `MINIDUMP_LOCATION_DESCRIPTOR`s.
     fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error>;
+}
+
+/// Provides a unified interface for getting metadata about the process's mapped memory regions
+/// at the time of the crash.
+///
+/// Currently this is one of [`MinidumpMemoryInfoList`], available in Windows minidumps,
+/// or [`MinidumpLinuxMaps`], available in Linux minidumps.
+///
+/// This allows you to e.g. check whether an address was executable or not without
+/// worrying about which platform the crash occured on. If you need to do more
+/// specific analysis, you can get the native formats with [`UnifiedMemoryInfoList::info`]
+/// and [`UnifiedMemoryInfoList::maps`].
+///
+/// Currently an enum because there is no situation where you can have both,
+/// but this may change if the format evolves. Prefer using this type's methods
+/// over pattern matching.
+#[derive(Debug, Clone)]
+pub enum UnifiedMemoryInfoList<'a> {
+    Maps(MinidumpLinuxMaps<'a>),
+    Info(MinidumpMemoryInfoList<'a>),
+}
+
+#[derive(Debug, Copy, Clone)]
+/// A [`UnifiedMemoryInfoList`] entry, providing metatadata on a region of
+/// memory in the crashed process.
+pub enum UnifiedMemoryInfo<'a> {
+    Map(&'a MinidumpLinuxMapInfo<'a>),
+    Info(&'a MinidumpMemoryInfo<'a>),
+}
+
+/// The contents of `/proc/self/maps` for the crashing process.
+///
+/// This is roughly equivalent in functionality to [`MinidumpMemoryInfoList`].
+/// Use [`UnifiedMemoryInfoList`] to handle the two uniformly.
+#[derive(Debug, Clone)]
+pub struct MinidumpLinuxMaps<'a> {
+    /// The memory regions, in the order they were stored in the minidump.
+    regions: Vec<MinidumpLinuxMapInfo<'a>>,
+    /// Map from address range to index in regions. Use
+    /// [`MinidumpLinuxMaps::memory_info_at_address`].
+    regions_by_addr: RangeMap<u64, usize>,
+}
+
+/// A memory mapping entry for the process we are analyzing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MinidumpLinuxMapInfo<'a> {
+    /// The first address this metadata applies to
+    pub base_address: u64,
+    /// The last address this metadata applies to
+    pub final_address: u64,
+
+    /// The kind of mapping
+    pub kind: MinidumpLinuxMapKind,
+
+    // FIXME: These could be bitflags but I'm not worried about it right now
+    /// Whether the memory region is readable.
+    pub is_read: bool,
+    /// Whether the memory region is writeable.
+    pub is_write: bool,
+    /// Whether the memory region is executable.
+    pub is_exec: bool,
+    /// Whether the memory region is shared.
+    pub is_shared: bool,
+    /// Whether the memory region is private (copy-on-write).
+    pub is_private: bool,
+
+    // Fields in the format we ignore (not yet useful)
+    // * offset
+    // * dev
+    // * inode
+    _phantom: PhantomData<&'a u8>,
+}
+
+/// A broad classification of the mapped memory described by a [`MinidumpLinuxMapInfo`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MinidumpLinuxMapKind {
+    /// This is the main thread's stack.
+    MainThreadStack,
+    /// This is the stack of a non-main thread with the given `tid`.
+    Stack(u64),
+    /// This is the process's heap.
+    Heap,
+    /// This is the "Virtual Dynamically-linked Shared Object".
+    Vdso,
+    /// This is an anonymous mmap.
+    AnonymousMap,
+    /// Some other special kind that we don't know/care about.
+    UnknownSpecial(String),
+    /// This is a mapped file/device at the given path.
+    File(String),
+    /// This is a mapped file/device at the given path, and that file was deleted.
+    DeletedFile(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct MinidumpMemoryInfoList<'a> {
+    /// The memory regions, in the order they were stored in the minidump.
+    regions: Vec<MinidumpMemoryInfo<'a>>,
+    /// Map from address range to index in regions. Use
+    /// [`MinidumpMemoryInfoList::memory_info_at_address`].
+    regions_by_addr: RangeMap<u64, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Metadata about a region of memory (whether it is executable, freed, private, and so on).
+pub struct MinidumpMemoryInfo<'a> {
+    /// The raw value from the minidump.
+    raw: md::MINIDUMP_MEMORY_INFO,
+    /// The memory protection when the region was initially allocated.
+    pub allocation_protection: md::MemoryProtection,
+    /// The state of the pages in the region (whether it is freed or not).
+    pub state: md::MemoryState,
+    /// The access protection of the pages in the region.
+    pub protection: md::MemoryProtection,
+    /// What kind of memory mapping the pages in this region are.
+    pub ty: md::MemoryType,
+    _phantom: PhantomData<&'a u8>,
 }
 
 /// CodeView data describes how to locate debug symbols
@@ -1581,9 +1680,7 @@ impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
             .map(move |&(_, index)| &self.regions[index])
     }
 
-    /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
-    ///
-    /// This is very verbose, it is the format used by `minidump_dump`.
+    /// Write a human-readable description.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         write!(
             f,
@@ -1602,9 +1699,7 @@ impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
 }
 
 impl<'a> MinidumpMemoryInfo<'a> {
-    /// Write a human-readable description of this `MinidumpMemory` to `f`.
-    ///
-    /// This is very verbose, it is the format used by `minidump_dump`.
+    /// Write a human-readable description.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         write!(
             f,
@@ -1646,6 +1741,404 @@ impl<'a> MinidumpMemoryInfo<'a> {
                 | md::MemoryProtection::PAGE_EXECUTE_READWRITE
                 | md::MemoryProtection::PAGE_EXECUTE_WRITECOPY,
         )
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxMaps;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+    ) -> Result<MinidumpLinuxMaps<'a>, Error> {
+        let regions = str::from_utf8(bytes)
+            .unwrap_or("")
+            .lines()
+            .map(MinidumpLinuxMapInfo::from_line)
+            .filter_map(|x| x.ok())
+            .collect::<Vec<_>>();
+
+        Ok(MinidumpLinuxMaps::from_regions(regions))
+    }
+}
+
+impl<'a> Default for MinidumpLinuxMaps<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
+    /// Return an empty `MinidumpMemoryList`.
+    pub fn new() -> Self {
+        Self {
+            regions: vec![],
+            regions_by_addr: RangeMap::new(),
+        }
+    }
+
+    /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
+    pub fn from_regions(regions: Vec<MinidumpLinuxMapInfo<'mdmp>>) -> Self {
+        let regions_by_addr = regions
+            .iter()
+            .enumerate()
+            .map(|(i, region)| (region.memory_range(), i))
+            .into_rangemap_safe();
+        Self {
+            regions,
+            regions_by_addr,
+        }
+    }
+
+    /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
+    pub fn memory_info_at_address(&self, address: u64) -> Option<&MinidumpLinuxMapInfo<'mdmp>> {
+        self.regions_by_addr
+            .get(address)
+            .map(|&index| &self.regions[index])
+    }
+
+    /// Iterate over the memory regions in the order contained in the minidump.
+    pub fn iter<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpLinuxMapInfo<'mdmp>> {
+        self.regions.iter()
+    }
+
+    /// Iterate over the memory regions in order by memory address.
+    pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpLinuxMapInfo<'mdmp>> {
+        self.regions_by_addr
+            .ranges_values()
+            .map(move |&(_, index)| &self.regions[index])
+    }
+
+    /// Write a human-readable description.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpLinuxMapInfo
+  region_count = {}
+
+",
+            self.regions.len()
+        )?;
+        for (i, region) in self.regions.iter().enumerate() {
+            writeln!(f, "region[{}]", i)?;
+            region.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MinidumpLinuxMapInfo<'a> {
+    /// Parses a line from /proc/self/maps into a `[MinidumpLinuxMapInfo]`.
+    pub fn from_line(line: &str) -> Result<Self, Error> {
+        // /proc/self/maps is a listing of all the mapped ranges of memory
+        // in the (crashing) process. We can use it to find out what regions
+        // were executable (and what file they mapped to), where stacks/heap
+        // are mapped, and various other things.
+        //
+        // Format of each line (by examples):
+        //
+        // ```text
+        //
+        //        address        perms   offset   dev   inode       path/kind         deleted?
+        // 7fca3a80c0-7fca3a81a0  r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb.so  (deleted)
+        // 7ffe2e7910-7ffe2e7b10  rw-p  000000000 00:00 0       [stack]
+        //
+        // ```
+        //
+        // * address: the start and end addresses (TODO: inclusive?)
+        // * perms: permissions the process had on the memory
+        //   * r = read
+        //   * w = write
+        //   * x = execute
+        //   * s = shared
+        //   * p = private (copy on write)
+        //   * - = <ignore> (just for formatting)
+        // * offset: the offset this mapping has into the mapped file/device. (ignored)
+        // * dev: the "device" (major:minor). (ignored)
+        // * inode: the inode on the device, 0 means no inode (uninitialized memory?). (ignored)
+        // * path/kind: either a path to the mapped file/device or a special `[kind]`:
+        //   * `[stack]`       - the main thread's stack
+        //   * `[stack:<tid>]` - the stack of the thread with this tid (e.g. `[stack:123]`)
+        //   * `[heap]`        - the process's heap
+        //   * `[vdso]`        - the Virtual Dynamically-linked Shared Object
+        //   * `<blank>`       - an anonymous mmap
+        //
+        // A path has a few extra caveats:
+        //  * If suffixed with `(deleted)` that indicates the mapped file was deleted.
+        //  * If the path contains a newline (yikes), it will appear as \012. It is impossible
+        //    to distinguish this from the path literally containing the string `\012`.
+        //    (We aren't resolving these paths so don't worry about it.)
+
+        let mut tokens = line.trim().split_ascii_whitespace();
+
+        let (base_address, final_address) = tokens
+            .next()
+            .and_then(|range| range.split_once('-'))
+            .and_then(|(start, end)| {
+                u64::from_str_radix(start, 16)
+                    .ok()
+                    .zip(u64::from_str_radix(end, 16).ok())
+            })
+            .ok_or(Error::DataError)?;
+
+        let perms = tokens.next().unwrap_or("");
+
+        let mut is_read = false;
+        let mut is_write = false;
+        let mut is_exec = false;
+        let mut is_shared = false;
+        let mut is_private = false;
+
+        // Although some of these are mutually exclusive and they come in a specific
+        // order, I see no reason to mandate this in this parser.
+        for c in perms.chars() {
+            match c {
+                'r' => is_read = true,
+                'w' => is_write = true,
+                'x' => is_exec = true,
+                's' => is_shared = true,
+                'p' => is_private = true,
+                '-' => {}
+                _ => {
+                    // This shouldn't happen. That said, there's no obvious reason
+                    // to fail the entire parse if there's new info we don't know about,
+                    // so I suppose it's fine?
+                }
+            }
+        }
+
+        // We don't care about these values
+        let _offset = tokens.next();
+        let _dev = tokens.next();
+        let _inode = tokens.next();
+
+        let kind = tokens.next();
+        let kind = match kind {
+            Some("[stack]") => MinidumpLinuxMapKind::MainThreadStack,
+            Some("[heap]") => MinidumpLinuxMapKind::Heap,
+            Some("[vdso]") => MinidumpLinuxMapKind::Vdso,
+            Some("") | None => MinidumpLinuxMapKind::AnonymousMap,
+            Some(kind) => {
+                // Try to parse [stack:<tid>]
+                if let Some(tid) = kind
+                    .strip_prefix("[stack:")
+                    .and_then(|x| x.strip_suffix(']'))
+                {
+                    // As far as I know, this part *is* base 10!
+                    let tid = str::parse(tid).map_err(|_| Error::DataError)?;
+                    MinidumpLinuxMapKind::Stack(tid)
+                } else {
+                    // Finally just assume it's a path. Use the fact that we're handling
+                    // a subslice to retrieve the index of the full string (so we don't lose any whitespace).
+
+                    let base = line.as_ptr() as usize;
+                    let pos = kind.as_ptr() as usize;
+                    let idx = pos - base;
+
+                    let path = line[idx..].trim();
+
+                    // Check if this path has the `(deleted)` suffix
+                    if let Some((path, "(deleted)")) = path.rsplit_once(' ') {
+                        // (extra trim in case there was extra space between them)
+                        MinidumpLinuxMapKind::DeletedFile(path.trim().to_string())
+                    } else {
+                        MinidumpLinuxMapKind::File(path.to_string())
+                    }
+                }
+            }
+        };
+
+        Ok(MinidumpLinuxMapInfo {
+            base_address,
+            final_address,
+            kind,
+            is_read,
+            is_write,
+            is_exec,
+            is_private,
+            is_shared,
+            _phantom: PhantomData,
+        })
+    }
+    /// Write a human-readable description of this.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        // TODO permissions
+        write!(
+            f,
+            "MINIDUMP_LINUX_MAP_INFO
+  base_address          = {:#x}
+  final_address         = {:#x}
+  kind                  = {:#?}
+  permissions           = 
+",
+            self.base_address, self.final_address, self.kind,
+        )?;
+
+        if self.is_read {
+            write!(f, "r")?;
+        } else {
+            write!(f, "-")?;
+        }
+        if self.is_write {
+            write!(f, "w")?;
+        } else {
+            write!(f, "-")?;
+        }
+        if self.is_exec {
+            write!(f, "r")?;
+        } else {
+            write!(f, "-")?;
+        }
+        if self.is_private {
+            write!(f, "p")?;
+        } else if self.is_shared {
+            write!(f, "s")?;
+        } else {
+            write!(f, "-")?;
+        }
+        writeln!(f)
+    }
+
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        // final address is inclusive afaik
+        if self.base_address < self.final_address {
+            return None;
+        }
+        Some(Range::new(self.base_address, self.final_address))
+    }
+
+    /// Whether this memory range was executable.
+    pub fn is_executable(&self) -> bool {
+        self.is_exec
+    }
+}
+
+impl<'a> Default for UnifiedMemoryInfoList<'a> {
+    fn default() -> Self {
+        Self::Info(MinidumpMemoryInfoList::default())
+    }
+}
+
+impl<'a> UnifiedMemoryInfoList<'a> {
+    /// Take two potential memory info sources and create an interface that unifies them.
+    ///
+    /// Under normal circumstances a minidump should only contain one of these.
+    /// If both are provided, one will be arbitrarily preferred to attempt to
+    /// make progress.
+    pub fn new(
+        info: Option<MinidumpMemoryInfoList<'a>>,
+        maps: Option<MinidumpLinuxMaps<'a>>,
+    ) -> Option<Self> {
+        match (info, maps) {
+            (Some(info), Some(_maps)) => {
+                warn!("UnifiedMemoryInfoList got both kinds of info! (using InfoList)");
+                // Just pick one I guess?
+                Some(Self::Info(info))
+            }
+            (Some(info), None) => Some(Self::Info(info)),
+            (None, Some(maps)) => Some(Self::Maps(maps)),
+            (None, None) => None,
+        }
+    }
+
+    /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
+    pub fn memory_info_at_address(&self, address: u64) -> Option<UnifiedMemoryInfo> {
+        match self {
+            Self::Info(info) => info
+                .memory_info_at_address(address)
+                .map(UnifiedMemoryInfo::Info),
+            Self::Maps(maps) => maps
+                .memory_info_at_address(address)
+                .map(UnifiedMemoryInfo::Map),
+        }
+    }
+
+    /// Iterate over the memory regions in the order contained in the minidump.
+    pub fn iter(&self) -> impl Iterator<Item = UnifiedMemoryInfo> {
+        // Use `flat_map` and `chain` to create a unified stream of the two types
+        // (only one of which will conatin any values). Note that we are using
+        // the fact that `Option` can be iterated (producing 1 to 0 values).
+        let info = self
+            .info()
+            .into_iter()
+            .flat_map(|info| info.iter().map(UnifiedMemoryInfo::Info));
+        let maps = self
+            .maps()
+            .into_iter()
+            .flat_map(|maps| maps.iter().map(UnifiedMemoryInfo::Map));
+
+        info.chain(maps)
+    }
+
+    /// Iterate over the memory regions in order by memory address.
+    pub fn by_addr(&self) -> impl Iterator<Item = UnifiedMemoryInfo> {
+        let info = self
+            .info()
+            .into_iter()
+            .flat_map(|info| info.by_addr().map(UnifiedMemoryInfo::Info));
+        let maps = self
+            .maps()
+            .into_iter()
+            .flat_map(|maps| maps.by_addr().map(UnifiedMemoryInfo::Map));
+
+        info.chain(maps)
+    }
+
+    /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        match self {
+            Self::Info(info) => info.print(f),
+            Self::Maps(maps) => maps.print(f),
+        }
+    }
+
+    /// Get the [`MinidumpLinuxMaps`] contained inside, if it exists.
+    ///
+    /// Potentially useful for doing a more refined analysis in specific places.
+    pub fn maps(&self) -> Option<&MinidumpLinuxMaps<'a>> {
+        match &self {
+            Self::Maps(maps) => Some(maps),
+            Self::Info(_) => None,
+        }
+    }
+
+    /// Get the [`MinidumpMemoryInfoList`] contained inside, if it exists.
+    ///
+    /// Potentially useful for doing a more refined analysis in specific places.
+    pub fn info(&self) -> Option<&MinidumpMemoryInfoList<'a>> {
+        match &self {
+            Self::Maps(_) => None,
+            Self::Info(info) => Some(info),
+        }
+    }
+}
+
+impl<'a> UnifiedMemoryInfo<'a> {
+    /// Write a human-readable description.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        match self {
+            Self::Info(info) => info.print(f),
+            Self::Map(map) => map.print(f),
+        }
+    }
+
+    /// The range of memory this info applies to.
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        match self {
+            Self::Info(info) => info.memory_range(),
+            Self::Map(map) => map.memory_range(),
+        }
+    }
+
+    /// Whether this memory range was executable.
+    pub fn is_executable(&self) -> bool {
+        match self {
+            Self::Info(info) => info.is_executable(),
+            Self::Map(map) => map.is_executable(),
+        }
     }
 }
 
@@ -3531,7 +4024,7 @@ where
     }
 
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 38] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 36] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -3571,9 +4064,7 @@ where
             MINIDUMP_STREAM_TYPE::LinuxCmdLine,
             MINIDUMP_STREAM_TYPE::LinuxEnviron,
             MINIDUMP_STREAM_TYPE::LinuxAuxv,
-            MINIDUMP_STREAM_TYPE::LinuxMaps,
             MINIDUMP_STREAM_TYPE::LinuxDsoDebug,
-            MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream,
         ];
         self.streams.iter().filter_map(|(_, (_, stream))| {
             MINIDUMP_STREAM_TYPE::from_u32(stream.stream_type).and_then(|stream_type| {
@@ -3868,7 +4359,26 @@ mod test {
             .add_memory_info(info2);
 
         let dump = read_synth_dump(dump).unwrap();
-        let info_list = dump.get_stream::<MinidumpMemoryInfoList>().unwrap();
+
+        // Read both kinds of info to test this path on UnifiedMemoryInfo
+        let info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
+        let maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+        assert!(info_list.is_some());
+        assert!(maps.is_none());
+
+        let unified_info = UnifiedMemoryInfoList::new(info_list, maps).unwrap();
+        let info_list = unified_info.info().unwrap();
+        assert!(unified_info.maps().is_none());
+
+        // Assert that unified and the info_list agree
+        for (info, unified) in info_list.iter().zip(unified_info.iter()) {
+            if let UnifiedMemoryInfo::Info(info2) = unified {
+                assert_eq!(info, info2);
+            } else {
+                unreachable!();
+            }
+        }
+
         let infos = info_list.iter().collect::<Vec<_>>();
 
         assert_eq!(infos.len(), 2);
@@ -3906,6 +4416,246 @@ mod test {
         assert_eq!(infos[1].state, info2_state);
         assert_eq!(infos[1].ty, info2_ty);
         assert!(!infos[1].is_executable());
+    }
+
+    #[test]
+    fn test_linux_maps() {
+        // Whitespace intentionally wonky to test robustness
+        let input = "
+
+ a90206ca83eb2852-b90206ca83eb3852 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  
+c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libtdb2.so  (deleted)
+
+";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_maps(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        // Read both kinds of info to test this path on UnifiedMemoryInfo
+        let info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
+        let maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+        assert!(info_list.is_none());
+        assert!(maps.is_some());
+
+        let unified_info = UnifiedMemoryInfoList::new(info_list, maps).unwrap();
+        let maps = unified_info.maps().unwrap();
+        assert!(unified_info.info().is_none());
+
+        // Assert that unified and the maps agree
+        for (info, unified) in maps.iter().zip(unified_info.iter()) {
+            if let UnifiedMemoryInfo::Map(info2) = unified {
+                assert_eq!(info, info2);
+            } else {
+                unreachable!();
+            }
+        }
+
+        let maps = maps.iter().collect::<Vec<_>>();
+        assert_eq!(maps.len(), 2);
+
+        assert_eq!(maps[0].base_address, 0xa90206ca83eb2852);
+        assert_eq!(maps[0].final_address, 0xb90206ca83eb3852);
+        assert_eq!(
+            maps[0].kind,
+            MinidumpLinuxMapKind::File(String::from("/usr/lib64/libtdb1.so"))
+        );
+        assert!(maps[0].is_read);
+        assert!(!maps[0].is_write);
+        assert!(maps[0].is_exec);
+        assert!(maps[0].is_private);
+        assert!(!maps[0].is_shared);
+        assert!(maps[0].is_executable());
+
+        assert_eq!(maps[1].base_address, 0xc70206ca83eb2852);
+        assert_eq!(maps[1].final_address, 0xde0206ca83eb2852);
+        assert_eq!(
+            maps[1].kind,
+            MinidumpLinuxMapKind::DeletedFile(String::from("/usr/lib64/libtdb2.so"))
+        );
+        assert!(!maps[1].is_read);
+        assert!(maps[1].is_write);
+        assert!(!maps[1].is_exec);
+        assert!(!maps[1].is_private);
+        assert!(maps[1].is_shared);
+        assert!(!maps[1].is_executable());
+    }
+
+    #[test]
+    fn test_linux_map_parse() {
+        use MinidumpLinuxMapKind::*;
+
+        let parse = MinidumpLinuxMapInfo::from_line;
+
+        // Whitespace intentionally wonky to test parser robustness
+
+        {
+            // Normal file
+            let map = parse("  10a00-10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, File(String::from("/usr/lib64/libtdb1.so")));
+
+            assert!(map.is_read);
+            assert!(!map.is_write);
+            assert!(map.is_exec);
+            assert!(map.is_executable());
+            assert!(map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Deleted file (also some whitespace in the file name)
+            let map = parse("ffffffffff600000-ffffffffff601000 -wxs  10bac9000 fd:05 1196511  /usr/lib64/ libtdb1.so   (deleted) ");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0xffffffffff600000);
+            assert_eq!(map.final_address, 0xffffffffff601000);
+            assert_eq!(
+                map.kind,
+                DeletedFile(String::from("/usr/lib64/ libtdb1.so"))
+            );
+
+            assert!(!map.is_read);
+            assert!(map.is_write);
+            assert!(map.is_exec);
+            assert!(map.is_executable());
+            assert!(!map.is_private);
+            assert!(map.is_shared);
+        }
+
+        {
+            // Stack
+            let map = parse("10a00-10b00 -------  10bac9000 fd:05 1196511  [stack] ");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, MainThreadStack);
+
+            assert!(!map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Stack with tid
+            let map = parse("10a00-10b00 -------  10bac9000 fd:05 1196511  [stack:1234567] ");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, Stack(1234567));
+
+            assert!(!map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Heap
+            let map = parse("10a00-10b00 --  10bac9000 fd:05 1196511  [heap]");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, Heap);
+
+            assert!(!map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Vdso
+            let map = parse("10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [vdso]");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, Vdso);
+
+            assert!(map.is_read);
+            assert!(map.is_write);
+            assert!(map.is_exec);
+            assert!(map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Anonymous
+            let map = parse("10a00-10b00 -r-  10bac9000 fd:05 1196511  ");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, AnonymousMap);
+
+            assert!(map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Truncated defaults to anonymous
+            let map = parse("10a00-10b00");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.kind, AnonymousMap);
+
+            assert!(!map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // blank line
+            let map = parse("");
+            assert!(map.is_err());
+
+            let map = parse("   ");
+            assert!(map.is_err());
+        }
+
+        {
+            // bad addresses
+            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            assert!(map.is_err());
+
+            let map = parse("  10b00- r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            assert!(map.is_err());
+
+            let map = parse("  10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            assert!(map.is_err());
+        }
+
+        {
+            // bad [stack:<tid>]
+            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:] ");
+            assert!(map.is_err());
+
+            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
+            assert!(map.is_err());
+        }
     }
 
     #[test]

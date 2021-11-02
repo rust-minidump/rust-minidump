@@ -165,9 +165,9 @@ where
         Err(_) => MinidumpUnloadedModuleList::new(),
     };
     let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
-    let _memory_info_list = dump
-        .get_stream::<MinidumpMemoryInfoList>()
-        .unwrap_or_default();
+    let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
+    let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+    let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
     // Get memory list
     let mut threads = vec![];
