@@ -25,6 +25,7 @@ use std::path::Path;
 use std::str;
 
 pub use crate::context::*;
+use crate::strings::*;
 use crate::system_info::{Cpu, Os};
 use minidump_common::format as md;
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
@@ -161,7 +162,7 @@ pub struct MinidumpLinuxMapInfo<'a> {
     pub final_address: u64,
 
     /// The kind of mapping
-    pub kind: MinidumpLinuxMapKind,
+    pub kind: MinidumpLinuxMapKind<'a>,
 
     // FIXME: These could be bitflags but I'm not worried about it right now
     /// Whether the memory region is readable.
@@ -184,7 +185,7 @@ pub struct MinidumpLinuxMapInfo<'a> {
 
 /// A broad classification of the mapped memory described by a [`MinidumpLinuxMapInfo`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MinidumpLinuxMapKind {
+pub enum MinidumpLinuxMapKind<'a> {
     /// This is the main thread's stack.
     MainThreadStack,
     /// This is the stack of a non-main thread with the given `tid`.
@@ -196,11 +197,11 @@ pub enum MinidumpLinuxMapKind {
     /// This is an anonymous mmap.
     AnonymousMap,
     /// Some other special kind that we don't know/care about.
-    UnknownSpecial(String),
+    UnknownSpecial(Cow<'a, LinuxOsStr>),
     /// This is a mapped file/device at the given path.
-    File(String),
+    File(Cow<'a, LinuxOsStr>),
     /// This is a mapped file/device at the given path, and that file was deleted.
-    DeletedFile(String),
+    DeletedFile(Cow<'a, LinuxOsStr>),
 }
 
 #[derive(Debug, Clone)]
@@ -396,27 +397,32 @@ pub struct MinidumpBreakpadInfo {
 
 #[derive(Default, Debug)]
 /// Interesting values extracted from /etc/lsb-release
-pub struct MinidumpLinuxLsbRelease {
-    pub id: String,
-    pub release: String,
-    pub codename: String,
-    pub description: String,
+pub struct MinidumpLinuxLsbRelease<'a> {
+    pub id: Cow<'a, LinuxOsStr>,
+    pub release: Cow<'a, LinuxOsStr>,
+    pub codename: Cow<'a, LinuxOsStr>,
+    pub description: Cow<'a, LinuxOsStr>,
 }
 
 /// Interesting values extracted from /proc/self/environ
 #[derive(Default, Debug)]
-pub struct MinidumpLinuxEnviron {}
+pub struct MinidumpLinuxEnviron<'a> {
+    _phantom: PhantomData<&'a [u8]>,
+}
 
 /// Interesting values extracted from /proc/cpuinfo
 #[derive(Default, Debug)]
-pub struct MinidumpLinuxCpuInfo {
+pub struct MinidumpLinuxCpuInfo<'a> {
     /// The microcode version of the cpu
     pub microcode_version: Option<u64>,
+    _phantom: PhantomData<&'a [u8]>,
 }
 
 /// Interesting values extracted from /proc/self/status
 #[derive(Default, Debug)]
-pub struct MinidumpLinuxProcStatus {}
+pub struct MinidumpLinuxProcStatus<'a> {
+    _phantom: PhantomData<&'a [u8]>,
+}
 
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -1052,20 +1058,23 @@ impl Module for MinidumpUnloadedModule {
 /// Parses X:Y or X=Y lists, skipping any blank/unparseable lines
 fn read_linux_list(
     bytes: &[u8],
-    separator: char,
-) -> Result<impl Iterator<Item = (&str, &str)>, Error> {
-    fn strip_quotes(input: &str) -> &str {
+    separator: u8,
+) -> Result<impl Iterator<Item = (&LinuxOsStr, &LinuxOsStr)>, Error> {
+    fn strip_quotes(input: &LinuxOsStr) -> &LinuxOsStr {
         // Remove any extra surrounding whitespace since formats are inconsistent on this.
-        let input = input.trim();
-        // Convert `"MyValue"` into `MyValue`
-        input
-            .strip_prefix('"')
-            .and_then(|input| input.strip_suffix('"'))
-            .unwrap_or(input)
+        let input = input.trim_ascii_whitespace();
+
+        // Convert `"MyValue"` into `MyValue`, or just return the trimmed input.
+        let output = input
+            .strip_prefix(b"\"")
+            .and_then(|input| input.strip_suffix(b"\""))
+            .unwrap_or(input);
+
+        LinuxOsStr::from_bytes(output)
     }
 
-    let string = str::from_utf8(bytes).unwrap();
-    Ok(string.split('\n').filter_map(move |line| {
+    let input = LinuxOsStr::from_bytes(bytes);
+    Ok(input.lines().filter_map(move |line| {
         line.split_once(separator)
             .map(|(label, val)| (strip_quotes(label), (strip_quotes(val))))
     }))
@@ -1774,8 +1783,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
         _all: &'a [u8],
         _endian: scroll::Endian,
     ) -> Result<MinidumpLinuxMaps<'a>, Error> {
-        let regions = str::from_utf8(bytes)
-            .unwrap_or("")
+        let regions = LinuxOsStr::from_bytes(bytes)
             .lines()
             .map(MinidumpLinuxMapInfo::from_line)
             .filter_map(|x| x.ok())
@@ -1852,7 +1860,7 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
 
 impl<'a> MinidumpLinuxMapInfo<'a> {
     /// Parses a line from /proc/self/maps into a `[MinidumpLinuxMapInfo]`.
-    pub fn from_line(line: &str) -> Result<Self, Error> {
+    pub fn from_line(line: &'a LinuxOsStr) -> Result<MinidumpLinuxMapInfo<'a>, Error> {
         // /proc/self/maps is a listing of all the mapped ranges of memory
         // in the (crashing) process. We can use it to find out what regions
         // were executable (and what file they mapped to), where stacks/heap
@@ -1892,19 +1900,29 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         //    to distinguish this from the path literally containing the string `\012`.
         //    (We aren't resolving these paths so don't worry about it.)
 
-        let mut tokens = line.trim().split_ascii_whitespace();
+        let mut tokens = line.split_ascii_whitespace();
 
         let (base_address, final_address) = tokens
             .next()
-            .and_then(|range| range.split_once('-'))
+            .and_then(|range| range.split_once(b'-'))
             .and_then(|(start, end)| {
-                u64::from_str_radix(start, 16)
+                // Parsing numbers, so can require them to be utf8
+                let start = start
+                    .to_str()
                     .ok()
-                    .zip(u64::from_str_radix(end, 16).ok())
+                    .and_then(|x| u64::from_str_radix(x, 16).ok());
+
+                let end = end
+                    .to_str()
+                    .ok()
+                    .and_then(|x| u64::from_str_radix(x, 16).ok());
+
+                start.zip(end)
             })
             .ok_or(Error::DataError)?;
 
-        let perms = tokens.next().unwrap_or("");
+        let empty = LinuxOsStr::new();
+        let perms = tokens.next().unwrap_or(empty);
 
         let mut is_read = false;
         let mut is_write = false;
@@ -1914,14 +1932,14 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
 
         // Although some of these are mutually exclusive and they come in a specific
         // order, I see no reason to mandate this in this parser.
-        for c in perms.chars() {
-            match c {
-                'r' => is_read = true,
-                'w' => is_write = true,
-                'x' => is_exec = true,
-                's' => is_shared = true,
-                'p' => is_private = true,
-                '-' => {}
+        for c in perms.iter() {
+            match &c {
+                b'r' => is_read = true,
+                b'w' => is_write = true,
+                b'x' => is_exec = true,
+                b's' => is_shared = true,
+                b'p' => is_private = true,
+                b'-' => {}
                 _ => {
                     // This shouldn't happen. That said, there's no obvious reason
                     // to fail the entire parse if there's new info we don't know about,
@@ -1936,15 +1954,19 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         let _inode = tokens.next();
 
         let kind = tokens.next();
-        let kind = match kind {
-            Some("[stack]") => MinidumpLinuxMapKind::MainThreadStack,
-            Some("[heap]") => MinidumpLinuxMapKind::Heap,
-            Some("[vdso]") => MinidumpLinuxMapKind::Vdso,
-            Some("") | None => MinidumpLinuxMapKind::AnonymousMap,
-            Some(kind) => {
+        let kind = match kind.map(|x| x.as_bytes()) {
+            Some(b"[stack]") => MinidumpLinuxMapKind::MainThreadStack,
+            Some(b"[heap]") => MinidumpLinuxMapKind::Heap,
+            Some(b"[vdso]") => MinidumpLinuxMapKind::Vdso,
+            Some(b"") | None => MinidumpLinuxMapKind::AnonymousMap,
+            Some(_) => {
+                // Go back to the LinuxOsStr
+                let kind = kind.unwrap();
                 // Try to parse [stack:<tid>]
                 if let Some(tid) = kind
-                    .strip_prefix("[stack:")
+                    .to_str()
+                    .ok()
+                    .and_then(|x| x.strip_prefix("[stack:"))
                     .and_then(|x| x.strip_suffix(']'))
                 {
                     // As far as I know, this part *is* base 10!
@@ -1958,15 +1980,21 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
                     let pos = kind.as_ptr() as usize;
                     let idx = pos - base;
 
-                    let path = line[idx..].trim();
+                    let path = LinuxOsStr::from_bytes(&line[idx..]).trim_ascii_whitespace();
 
                     // Check if this path has the `(deleted)` suffix
-                    if let Some((path, "(deleted)")) = path.rsplit_once(' ') {
-                        // (extra trim in case there was extra space between them)
-                        MinidumpLinuxMapKind::DeletedFile(path.trim().to_string())
-                    } else {
-                        MinidumpLinuxMapKind::File(path.to_string())
-                    }
+                    path.rsplit_once(b' ')
+                        .and_then(|(path, deleted)| {
+                            if deleted.as_bytes() == b"(deleted)" {
+                                // (extra trim in case there was extra space between them)
+                                Some(MinidumpLinuxMapKind::DeletedFile(Cow::Borrowed(
+                                    path.trim_ascii_whitespace(),
+                                )))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(MinidumpLinuxMapKind::File(Cow::Borrowed(path)))
                 }
             }
         };
@@ -2844,17 +2872,21 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
     }
 }
 
-impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
+impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxLsbRelease;
 
-    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+    ) -> Result<MinidumpLinuxLsbRelease<'a>, Error> {
         let mut lsb = Self::default();
-        for (key, val) in read_linux_list(bytes, '=')? {
-            match key {
-                "DISTRIB_ID" | "ID" => lsb.id = String::from(val),
-                "DISTRIB_RELEASE" | "VERSION_ID" => lsb.release = String::from(val),
-                "DISTRIB_CODENAME" | "VERSION_CODENAME" => lsb.codename = String::from(val),
-                "DISTRIB_DESCRIPTION" | "PRETTY_NAME" => lsb.description = String::from(val),
+        for (key, val) in read_linux_list(bytes, b'=')? {
+            match key.as_bytes() {
+                b"DISTRIB_ID" | b"ID" => lsb.id = Cow::Borrowed(val),
+                b"DISTRIB_RELEASE" | b"VERSION_ID" => lsb.release = Cow::Borrowed(val),
+                b"DISTRIB_CODENAME" | b"VERSION_CODENAME" => lsb.codename = Cow::Borrowed(val),
+                b"DISTRIB_DESCRIPTION" | b"PRETTY_NAME" => lsb.description = Cow::Borrowed(val),
                 _ => {}
             }
         }
@@ -2862,15 +2894,19 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
     }
 }
 
-impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron {
+impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxEnviron;
 
     #[allow(clippy::single_match)]
-    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+    ) -> Result<MinidumpLinuxEnviron<'a>, Error> {
         let environ = Self::default();
-        for (key, _val) in read_linux_list(bytes, '=')? {
-            match key {
-                "todo: collect some entries here" => {}
+        for (key, _val) in read_linux_list(bytes, b'=')? {
+            match key.as_bytes() {
+                b"todo: collect some entries here" => {}
                 _ => {
                     // unknown or uninteresting
                 }
@@ -2880,15 +2916,19 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron {
     }
 }
 
-impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus {
+impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxProcStatus;
 
     #[allow(clippy::single_match)]
-    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+    ) -> Result<MinidumpLinuxProcStatus<'a>, Error> {
         let status = Self::default();
-        for (key, _val) in read_linux_list(bytes, ':')? {
-            match key {
-                "todo: collect some entries here" => {}
+        for (key, _val) in read_linux_list(bytes, b':')? {
+            match key.as_bytes() {
+                b"todo: collect some entries here" => {}
                 _ => {
                     // unknown or uninteresting
                 }
@@ -2898,17 +2938,23 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus {
     }
 }
 
-impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo {
+impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxCpuInfo;
 
     #[allow(clippy::single_match)]
-    fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+    ) -> Result<MinidumpLinuxCpuInfo<'a>, Error> {
         let mut info = Self::default();
-        for (key, val) in read_linux_list(bytes, ':')? {
-            match key {
-                "microcode" => {
+        for (key, val) in read_linux_list(bytes, b':')? {
+            match key.as_bytes() {
+                b"microcode" => {
                     info.microcode_version = val
-                        .strip_prefix("0x")
+                        .to_str()
+                        .ok()
+                        .and_then(|val| val.strip_prefix("0x"))
                         .and_then(|val| u64::from_str_radix(val, 16).ok());
                 }
                 _ => {
@@ -4498,10 +4544,11 @@ mod test {
     #[test]
     fn test_linux_maps() {
         // Whitespace intentionally wonky to test robustness
-        let input = "
+        let input = b"
 
  a90206ca83eb2852-b90206ca83eb3852 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  
 c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libtdb2.so  (deleted)
+
 
 ";
 
@@ -4534,7 +4581,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(maps[0].final_address, 0xb90206ca83eb3852);
         assert_eq!(
             maps[0].kind,
-            MinidumpLinuxMapKind::File(String::from("/usr/lib64/libtdb1.so"))
+            MinidumpLinuxMapKind::File(Cow::Borrowed(LinuxOsStr::from_bytes(
+                b"/usr/lib64/libtdb1.so"
+            )))
         );
         assert!(maps[0].is_read);
         assert!(!maps[0].is_write);
@@ -4547,7 +4596,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(maps[1].final_address, 0xde0206ca83eb2852);
         assert_eq!(
             maps[1].kind,
-            MinidumpLinuxMapKind::DeletedFile(String::from("/usr/lib64/libtdb2.so"))
+            MinidumpLinuxMapKind::DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
+                b"/usr/lib64/libtdb2.so"
+            )))
         );
         assert!(!maps[1].is_read);
         assert!(maps[1].is_write);
@@ -4561,18 +4612,26 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     fn test_linux_map_parse() {
         use MinidumpLinuxMapKind::*;
 
-        let parse = MinidumpLinuxMapInfo::from_line;
+        let parse = |input| {
+            let string = LinuxOsStr::from_bytes(input);
+            MinidumpLinuxMapInfo::from_line(string)
+        };
 
         // Whitespace intentionally wonky to test parser robustness
 
         {
             // Normal file
-            let map = parse("  10a00-10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            let map = parse(b"  10a00-10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.kind, File(String::from("/usr/lib64/libtdb1.so")));
+            assert_eq!(
+                map.kind,
+                File(Cow::Borrowed(LinuxOsStr::from_bytes(
+                    b"/usr/lib64/libtdb1.so"
+                )))
+            );
 
             assert!(map.is_read);
             assert!(!map.is_write);
@@ -4584,14 +4643,16 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Deleted file (also some whitespace in the file name)
-            let map = parse("ffffffffff600000-ffffffffff601000 -wxs  10bac9000 fd:05 1196511  /usr/lib64/ libtdb1.so   (deleted) ");
+            let map = parse(b"ffffffffff600000-ffffffffff601000 -wxs  10bac9000 fd:05 1196511  /usr/lib64/ libtdb1.so   (deleted) ");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0xffffffffff600000);
             assert_eq!(map.final_address, 0xffffffffff601000);
             assert_eq!(
                 map.kind,
-                DeletedFile(String::from("/usr/lib64/ libtdb1.so"))
+                DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
+                    b"/usr/lib64/ libtdb1.so"
+                )))
             );
 
             assert!(!map.is_read);
@@ -4604,7 +4665,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Stack
-            let map = parse("10a00-10b00 -------  10bac9000 fd:05 1196511  [stack] ");
+            let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack] ");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4621,7 +4682,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Stack with tid
-            let map = parse("10a00-10b00 -------  10bac9000 fd:05 1196511  [stack:1234567] ");
+            let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack:1234567] ");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4638,7 +4699,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Heap
-            let map = parse("10a00-10b00 --  10bac9000 fd:05 1196511  [heap]");
+            let map = parse(b"10a00-10b00 --  10bac9000 fd:05 1196511  [heap]");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4655,7 +4716,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Vdso
-            let map = parse("10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [vdso]");
+            let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [vdso]");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4672,7 +4733,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Anonymous
-            let map = parse("10a00-10b00 -r-  10bac9000 fd:05 1196511  ");
+            let map = parse(b"10a00-10b00 -r-  10bac9000 fd:05 1196511  ");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4689,7 +4750,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // Truncated defaults to anonymous
-            let map = parse("10a00-10b00");
+            let map = parse(b"10a00-10b00");
             let map = map.unwrap();
 
             assert_eq!(map.base_address, 0x10a00);
@@ -4706,31 +4767,31 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         {
             // blank line
-            let map = parse("");
+            let map = parse(b"");
             assert!(map.is_err());
 
-            let map = parse("   ");
+            let map = parse(b"   ");
             assert!(map.is_err());
         }
 
         {
             // bad addresses
-            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
             assert!(map.is_err());
 
-            let map = parse("  10b00- r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            let map = parse(b"  10b00- r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
             assert!(map.is_err());
 
-            let map = parse("  10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
+            let map = parse(b"  10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
             assert!(map.is_err());
         }
 
         {
             // bad [stack:<tid>]
-            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:] ");
+            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:] ");
             assert!(map.is_err());
 
-            let map = parse("  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
+            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
             assert!(map.is_err());
         }
     }
@@ -4739,7 +4800,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     fn test_linux_lsb_release() {
         // Whitespace intentionally wonky to test robustness
         {
-            let input = r#"
+            let input = br#"
 DISTRIB_ID="hello"
 "DISTRIB_RELEASE"  =there
 "DISTRIB_CODENAME" =   "very long string"
@@ -4750,14 +4811,23 @@ DISTRIB_DESCRIPTION= wow long string!!!
 
             let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
 
-            assert_eq!(stream.id, "hello");
-            assert_eq!(stream.release, "there");
-            assert_eq!(stream.codename, "very long string");
-            assert_eq!(stream.description, "wow long string!!!");
+            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
+            assert_eq!(
+                stream.release,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
+            );
+            assert_eq!(
+                stream.codename,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
+            );
+            assert_eq!(
+                stream.description,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
+            );
         }
 
         {
-            let input = r#"
+            let input = br#"
 ID="hello"
 "VERSION_ID"  =there
 "VERSION_CODENAME" =   "very long string"
@@ -4768,10 +4838,19 @@ PRETTY_NAME= wow long string!!!
 
             let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
 
-            assert_eq!(stream.id, "hello");
-            assert_eq!(stream.release, "there");
-            assert_eq!(stream.codename, "very long string");
-            assert_eq!(stream.description, "wow long string!!!");
+            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
+            assert_eq!(
+                stream.release,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
+            );
+            assert_eq!(
+                stream.codename,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
+            );
+            assert_eq!(
+                stream.description,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
+            );
         }
     }
 
@@ -4779,7 +4858,7 @@ PRETTY_NAME= wow long string!!!
     fn test_linux_cpu_info() {
         // Whitespace intentionally wonky to test robustness
 
-        let input = "
+        let input = b"
 microcode : 0x1e34a6789
 ";
 
@@ -4796,7 +4875,7 @@ microcode : 0x1e34a6789
         // Whitespace intentionally wonky to test robustness
 
         // TODO: add tests for values we care about
-        let input = "";
+        let input = b"";
 
         let dump = SynthMinidump::with_endian(Endian::Little).set_linux_environ(input);
         let dump = read_synth_dump(dump).unwrap();
@@ -4809,7 +4888,7 @@ microcode : 0x1e34a6789
         // Whitespace intentionally wonky to test robustness
 
         // TODO: add tests for values we care about
-        let input = "";
+        let input = b"";
 
         let dump = SynthMinidump::with_endian(Endian::Little).set_linux_proc_status(input);
         let dump = read_synth_dump(dump).unwrap();

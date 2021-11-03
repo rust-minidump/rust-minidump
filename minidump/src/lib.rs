@@ -36,6 +36,7 @@ pub use minidump_common::traits::Module;
 pub use crate::iostuff::Readable;
 pub use crate::minidump::*;
 
+pub mod strings;
 #[cfg(test)]
 pub mod synth_minidump;
 pub mod system_info;

@@ -285,46 +285,46 @@ impl SynthMinidump {
     }
 
     /// Set the contents of the `LinuxMaps` stream.
-    pub fn set_linux_maps(mut self, maps: &str) -> SynthMinidump {
+    pub fn set_linux_maps(mut self, maps: &[u8]) -> SynthMinidump {
         self.linux_maps = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxMaps as u32,
-            section: Section::new().append_bytes(maps.as_bytes()),
+            section: Section::new().append_bytes(maps),
         });
         self
     }
 
     /// Set the contents of the `LinuxLsbRelease` stream.
-    pub fn set_linux_lsb_release(mut self, lsb: &str) -> SynthMinidump {
+    pub fn set_linux_lsb_release(mut self, lsb: &[u8]) -> SynthMinidump {
         self.linux_lsb_release = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32,
-            section: Section::new().append_bytes(lsb.as_bytes()),
+            section: Section::new().append_bytes(lsb),
         });
         self
     }
 
     /// Set the contents of the `LinuxProcStatus` stream.
-    pub fn set_linux_proc_status(mut self, proc_status: &str) -> SynthMinidump {
+    pub fn set_linux_proc_status(mut self, proc_status: &[u8]) -> SynthMinidump {
         self.linux_proc_status = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32,
-            section: Section::new().append_bytes(proc_status.as_bytes()),
+            section: Section::new().append_bytes(proc_status),
         });
         self
     }
 
     /// Set the contents of the `LinuxCpuInfo` stream.
-    pub fn set_linux_cpu_info(mut self, cpu_info: &str) -> SynthMinidump {
+    pub fn set_linux_cpu_info(mut self, cpu_info: &[u8]) -> SynthMinidump {
         self.linux_cpu_info = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32,
-            section: Section::new().append_bytes(cpu_info.as_bytes()),
+            section: Section::new().append_bytes(cpu_info),
         });
         self
     }
 
     /// Set the contents of the `LinuxEnviron` stream.
-    pub fn set_linux_environ(mut self, environ: &str) -> SynthMinidump {
+    pub fn set_linux_environ(mut self, environ: &[u8]) -> SynthMinidump {
         self.linux_environ = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxEnviron as u32,
-            section: Section::new().append_bytes(environ.as_bytes()),
+            section: Section::new().append_bytes(environ),
         });
         self
     }

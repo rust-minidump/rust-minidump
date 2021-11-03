@@ -123,6 +123,13 @@ pub struct CallStack {
     pub thread_name: Option<String>,
 }
 
+pub struct LinuxStandardBase {
+    pub id: String,
+    pub release: String,
+    pub codename: String,
+    pub description: String,
+}
+
 /// The state of a process as recorded by a `Minidump`.
 pub struct ProcessState {
     /// The PID of the process.
@@ -162,7 +169,7 @@ pub struct ProcessState {
     /// Information about the system on which the minidump was written.
     pub system_info: SystemInfo,
     /// Linux Standard Base Info
-    pub linux_standard_base: Option<MinidumpLinuxLsbRelease>,
+    pub linux_standard_base: Option<LinuxStandardBase>,
     pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.

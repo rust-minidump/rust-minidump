@@ -12,7 +12,7 @@ use std::path::Path;
 
 use minidump::{self, *};
 
-use crate::process_state::{CallStack, CallStackInfo, ProcessState};
+use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
@@ -123,6 +123,13 @@ where
         cpu_microcode_version: linux_cpu_info.and_then(|info| info.microcode_version),
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
+
+    let linux_standard_base = linux_standard_base.map(|lsb| LinuxStandardBase {
+        id: lsb.id.to_string_lossy().into_owned(),
+        release: lsb.release.to_string_lossy().into_owned(),
+        codename: lsb.codename.to_string_lossy().into_owned(),
+        description: lsb.description.to_string_lossy().into_owned(),
+    });
 
     let mac_crash_info = dump
         .get_stream::<MinidumpMacCrashInfo>()
