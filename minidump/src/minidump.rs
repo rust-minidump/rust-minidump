@@ -1962,16 +1962,21 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
             Some(_) => {
                 // Go back to the LinuxOsStr
                 let kind = kind.unwrap();
-                // Try to parse [stack:<tid>]
-                if let Some(tid) = kind
+                // Try to parse an arbitrary [<special>]
+                if let Some(special) = kind
                     .to_str()
                     .ok()
-                    .and_then(|x| x.strip_prefix("[stack:"))
+                    .and_then(|x| x.strip_prefix('['))
                     .and_then(|x| x.strip_suffix(']'))
                 {
-                    // As far as I know, this part *is* base 10!
-                    let tid = str::parse(tid).map_err(|_| Error::DataError)?;
-                    MinidumpLinuxMapKind::Stack(tid)
+                    // See if it's a [stack:<tid>] special entry
+                    if let Some(tid) = special.strip_prefix("stack:") {
+                        // As far as I know, this part *is* base 10!
+                        let tid = str::parse(tid).map_err(|_| Error::DataError)?;
+                        MinidumpLinuxMapKind::Stack(tid)
+                    } else {
+                        MinidumpLinuxMapKind::UnknownSpecial(Cow::Borrowed(kind))
+                    }
                 } else {
                     // Finally just assume it's a path. Use the fact that we're handling
                     // a subslice to retrieve the index of the full string (so we don't lose any whitespace).
@@ -4722,6 +4727,26 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
             assert_eq!(map.kind, Vdso);
+
+            assert!(map.is_read);
+            assert!(map.is_write);
+            assert!(map.is_exec);
+            assert!(map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Unknown Special
+            let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [asdfasd]");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0x10a00);
+            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(
+                map.kind,
+                UnknownSpecial(Cow::Borrowed(LinuxOsStr::from_bytes(b"[asdfasd]")))
+            );
 
             assert!(map.is_read);
             assert!(map.is_write);
