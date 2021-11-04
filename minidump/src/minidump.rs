@@ -2276,11 +2276,7 @@ impl<'a> MinidumpThreadList<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::SystemInfoStream;
 
-    fn read(
-        bytes: &[u8],
-        _all: &[u8],
-        endian: scroll::Endian,
-    ) -> Result<MinidumpSystemInfo, Error> {
+    fn read(bytes: &[u8], all: &[u8], endian: scroll::Endian) -> Result<MinidumpSystemInfo, Error> {
         use std::fmt::Write;
 
         let raw: md::MINIDUMP_SYSTEM_INFO = bytes
@@ -2290,7 +2286,7 @@ impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
         let cpu = Cpu::from_processor_architecture(raw.processor_architecture);
 
         let mut csd_offset = raw.csd_version_rva as usize;
-        let csd_version = read_string_utf16(&mut csd_offset, bytes, endian).ok();
+        let csd_version = read_string_utf16(&mut csd_offset, all, endian).ok();
 
         // self.raw.cpu.data is actually a union which we resolve here.
         let cpu_info = match cpu {

@@ -128,7 +128,7 @@ fn test_system_info() {
         system_info.cpu_info().unwrap(),
         "GenuineIntel family 6 model 13 stepping 8"
     );
-    assert_eq!(system_info.csd_version(), None);
+    assert_eq!(&system_info.csd_version().unwrap(), "Service Pack 2");
 }
 
 #[test]
