@@ -31,10 +31,6 @@ fn print_minidump_dump(path: &Path) {
         Ok(dump) => {
             let stdout = &mut std::io::stdout();
             dump.print(stdout).unwrap();
-            // FIXME: doesn't handle the "bug" native windows minidumps have where
-            // the RVA is null but start_of_memory_range has a valid value we can
-            // use to get the memory range. This results in loss of missing
-            // thread memory dumps!
             if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
                 thread_list.print(stdout).unwrap();
             }

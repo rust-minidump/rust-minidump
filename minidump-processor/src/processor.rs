@@ -81,9 +81,14 @@ where
     T: Deref<Target = [u8]> + 'a,
     P: SymbolProvider,
 {
+    let memory_list = dump.get_stream::<MinidumpMemoryList>().ok();
+    let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
+    let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+    let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+
     // Thread list is required for processing.
     let thread_list = dump
-        .get_stream::<MinidumpThreadList>()
+        .get_stream_with_dep::<MinidumpThreadList>(memory_list.as_ref())
         .or(Err(ProcessError::MissingThreadList))?;
     // Try to get thread names, but it's only a nice-to-have.
     let thread_names = dump
@@ -170,12 +175,7 @@ where
         // Just give an empty list, simplifies things.
         Err(_) => MinidumpUnloadedModuleList::new(),
     };
-    let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
-    let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
-    let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
-    let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
-    // Get memory list
     let mut threads = vec![];
     let mut requesting_thread = None;
     for (i, thread) in thread_list.threads.iter().enumerate() {
@@ -198,12 +198,7 @@ where
             thread.context.as_ref()
         };
 
-        let stack = thread.stack.as_ref().or_else(|| {
-            // Windows probably gave us null RVAs for our stack memory descriptors.
-            // If this happens, then we need to look up the memory region by address.
-            let stack_addr = thread.raw.stack.start_of_memory_range;
-            memory_list.memory_at_address(stack_addr)
-        });
+        let stack = thread.stack.as_ref();
 
         let mut stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
 

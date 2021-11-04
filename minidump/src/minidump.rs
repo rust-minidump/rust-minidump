@@ -101,6 +101,10 @@ pub enum Error {
 
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream<'a>: Sized {
+    /// The stream this stream optionally depends on to refine its output.
+    /// If no dependency exists, `NoStream` should be used.
+    type StreamDependency: MinidumpStream<'a>;
+
     /// The stream type constant used in the `md::MDRawDirectory` entry.
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE;
     /// Read this `MinidumpStream` type from `bytes`.
@@ -109,6 +113,41 @@ pub trait MinidumpStream<'a>: Sized {
     /// `all` refers to the full contents of the minidump, for reading auxilliary data
     /// referred to with `MINIDUMP_LOCATION_DESCRIPTOR`s.
     fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error>;
+
+    /// `read` but with an optional dependent stream.
+    ///
+    /// This allows streams to depend on other streams. This is necessary for e.g.
+    /// properly resolving stacks when parsing a ThreadListStream (using MinidumpMemory).
+    ///
+    /// The default implementation simply ignores the dependency, so most streams
+    /// can just implement `read` and ignore this machinery.
+    fn read_with_dep(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        _dep: Option<&Self::StreamDependency>,
+    ) -> Result<Self, Error> {
+        Self::read(bytes, all, endian)
+    }
+}
+
+/// A stream that doesn't exist.
+///
+/// This is used by the MinidumpStream dependency resolver to indicate a stream
+/// doesn't depend on any others. In theory, this type should never actually
+/// be instantiated.
+#[derive(Debug)]
+pub struct NoStream {
+    _no_constructing_me: (),
+}
+
+impl<'a> MinidumpStream<'a> for NoStream {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::UnusedStream;
+    type StreamDependency = NoStream;
+
+    fn read(_bytes: &'a [u8], _all: &'a [u8], _endian: scroll::Endian) -> Result<Self, Error> {
+        unimplemented!()
+    }
 }
 
 /// Provides a unified interface for getting metadata about the process's mapped memory regions
@@ -328,7 +367,7 @@ pub struct MinidumpSystemInfo {
 }
 
 /// A region of memory from the process that wrote the minidump.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MinidumpMemory<'a> {
     /// The raw `MINIDUMP_MEMORY_DESCRIPTOR` from the minidump.
     pub desc: md::MINIDUMP_MEMORY_DESCRIPTOR,
@@ -1195,6 +1234,7 @@ where
 
 impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadNamesStream;
+    type StreamDependency = NoStream;
 
     fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
         let mut offset = 0;
@@ -1330,6 +1370,7 @@ impl Default for MinidumpModuleList {
 
 impl<'a> MinidumpStream<'a> for MinidumpModuleList {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ModuleListStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -1422,6 +1463,7 @@ impl Default for MinidumpUnloadedModuleList {
 
 impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::UnloadedModuleListStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -1599,6 +1641,7 @@ impl<'a> Default for MinidumpMemoryList<'a> {
 
 impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MemoryListStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -1624,6 +1667,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
 
 impl<'a> MinidumpStream<'a> for MinidumpMemoryInfoList<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MemoryInfoListStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -1768,6 +1812,7 @@ impl<'a> MinidumpMemoryInfo<'a> {
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxMaps;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -2214,11 +2259,13 @@ impl<'a> MinidumpThread<'a> {
 
 impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadListStream;
+    type StreamDependency = MinidumpMemoryList<'a>;
 
-    fn read(
+    fn read_with_dep(
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        memory: Option<&MinidumpMemoryList<'a>>,
     ) -> Result<MinidumpThreadList<'a>, Error> {
         let mut offset = 0;
         let raw_threads: Vec<md::MINIDUMP_THREAD> = read_stream_list(&mut offset, bytes, endian)?;
@@ -2229,10 +2276,16 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
             let context_data = location_slice(all, &raw.thread_context)?;
             let context = MinidumpContext::read(context_data, endian).ok();
 
-            // If this fails, it's ok. That probably means the RVA was null
-            // and we need to lookup the stack's memory by address in the
-            // mapped memory regions (minidump-processor will handle this).
-            let stack = MinidumpMemory::read(&raw.stack, all).ok();
+            // Sometimes the raw.stack RVA is null/busted, but the start_of_memory_range
+            // value is correct. So if the `read` fails, try resolving start_of_memory_range
+            // with MinidumpMemoryList. (This seems to specifically be a problem with
+            // Windows minidumps.)
+            let stack = MinidumpMemory::read(&raw.stack, all).ok().or_else(|| {
+                memory.and_then(|memory_list| {
+                    let stack_addr = raw.stack.start_of_memory_range;
+                    memory_list.memory_at_address(stack_addr).cloned()
+                })
+            });
             threads.push(MinidumpThread {
                 raw,
                 context,
@@ -2243,6 +2296,10 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
             threads,
             thread_ids,
         })
+    }
+
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+        Self::read_with_dep(bytes, all, endian, None)
     }
 }
 
@@ -2275,6 +2332,7 @@ impl<'a> MinidumpThreadList<'a> {
 
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::SystemInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(bytes: &[u8], all: &[u8], endian: scroll::Endian) -> Result<MinidumpSystemInfo, Error> {
         use std::fmt::Write;
@@ -2605,6 +2663,7 @@ impl RawMiscInfo {
 
 impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MiscInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(bytes: &[u8], _all: &[u8], endian: scroll::Endian) -> Result<MinidumpMiscInfo, Error> {
         // The misc info has gone through several revisions, so try to read the largest known
@@ -2730,6 +2789,7 @@ impl RawMacCrashInfo {
 
 impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &[u8],
@@ -2842,6 +2902,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxLsbRelease;
+    type StreamDependency = NoStream;
 
     fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
         let mut lsb = Self::default();
@@ -2860,6 +2921,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease {
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxEnviron;
+    type StreamDependency = NoStream;
 
     #[allow(clippy::single_match)]
     fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
@@ -2878,6 +2940,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron {
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxProcStatus;
+    type StreamDependency = NoStream;
 
     #[allow(clippy::single_match)]
     fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
@@ -2896,6 +2959,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus {
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxCpuInfo;
+    type StreamDependency = NoStream;
 
     #[allow(clippy::single_match)]
     fn read(bytes: &[u8], _all: &[u8], _endian: scroll::Endian) -> Result<Self, Error> {
@@ -3049,6 +3113,7 @@ impl MinidumpMiscInfo {
 
 impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::BreakpadInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &[u8],
@@ -3552,6 +3617,7 @@ impl fmt::Display for CrashReason {
 
 impl<'a> MinidumpStream<'a> for MinidumpException {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ExceptionStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -3650,6 +3716,7 @@ impl MinidumpException {
 
 impl<'a> MinidumpStream<'a> for MinidumpAssertion {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::AssertionInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(
         bytes: &'a [u8],
@@ -3879,6 +3946,7 @@ fn read_crashpad_module_links(
 
 impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::CrashpadInfoStream;
+    type StreamDependency = NoStream;
 
     fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
         let raw: md::MINIDUMP_CRASHPAD_INFO = bytes
@@ -4066,11 +4134,29 @@ where
     where
         S: MinidumpStream<'a>,
     {
+        let dep = if S::StreamDependency::STREAM_TYPE != MINIDUMP_STREAM_TYPE::UnusedStream {
+            self.get_stream::<S::StreamDependency>().ok()
+        } else {
+            None
+        };
+        self.get_stream_with_dep(dep.as_ref())
+    }
+
+    /// `get_stream` but with the ability to provide the stream's dependency.
+    ///
+    /// This allows you to avoid double-parsing the dependent stream if you need
+    /// to parse that one anyway.
+    ///
+    /// If you call this with None, Minidump will not try to resolve the dependency.
+    pub fn get_stream_with_dep<S>(&'a self, dep: Option<&S::StreamDependency>) -> Result<S, Error>
+    where
+        S: MinidumpStream<'a>,
+    {
         match self.get_raw_stream(S::STREAM_TYPE) {
             Err(e) => Err(e),
             Ok(bytes) => {
                 let all_bytes = self.data.deref();
-                S::read(bytes, all_bytes, self.endian)
+                S::read_with_dep(bytes, all_bytes, self.endian, dep)
             }
         }
     }
