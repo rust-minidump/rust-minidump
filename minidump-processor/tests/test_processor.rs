@@ -2,9 +2,16 @@
 // file at the top-level directory of this distribution.
 
 use minidump::system_info::{Cpu, Os};
-use minidump::*;
-use minidump_processor::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
+use minidump::{
+    Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
+};
+use minidump_processor::{
+    simple_symbol_supplier, CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer,
+};
 use std::path::{Path, PathBuf};
+
+use synth_minidump::*;
+use test_assembler::*;
 
 fn locate_testdata() -> PathBuf {
     // This is a little weird because while cargo will always build this code by running rustc
@@ -125,7 +132,27 @@ fn test_processor_symbols() {
     );
 }
 
-/* TODO
+fn minimal_minidump() -> SynthMinidump {
+    let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
+    let stack = Memory::with_section(
+        Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+        0x1000,
+    );
+    let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little);
+    SynthMinidump::with_endian(Endian::Little)
+        .add_thread(thread)
+        .add_system_info(system_info)
+        .add(context)
+        .add_memory(stack)
+}
+
+fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
+    let dump = Minidump::read(dump.finish().unwrap()).unwrap();
+    minidump_processor::process_minidump(&dump, &Symbolizer::new(simple_symbol_supplier(vec![])))
+        .unwrap()
+}
+
 #[test]
 fn test_linux_cpu_info() {
     // Whitespace intentionally wonky to test robustness
@@ -134,97 +161,80 @@ fn test_linux_cpu_info() {
 microcode : 0x1e34a6789
 ";
 
-    let dump = SynthMinidump::with_endian(Endian::Little).set_linux_cpu_info(input);
-    let dump = read_synth_dump(dump).unwrap();
+    let dump = minimal_minidump().set_linux_cpu_info(input);
+    let state = read_synth_dump(dump);
 
-    let stream = dump.get_stream::<MinidumpLinuxCpuInfo>().unwrap();
-
-    assert_eq!(stream.microcode_version, Some(0x1e34a6789));
+    assert_eq!(state.system_info.cpu_microcode_version, Some(0x1e34a6789));
 }
 
-
-    #[test]
-    fn test_linux_lsb_release() {
-        // Whitespace intentionally wonky to test robustness
-        {
-            let input = br#"
+#[test]
+fn test_linux_lsb_release() {
+    // Whitespace intentionally wonky to test robustness
+    {
+        let input = br#"
 DISTRIB_ID="hello"
 "DISTRIB_RELEASE"  =there
 "DISTRIB_CODENAME" =   "very long string"
 DISTRIB_DESCRIPTION= wow long string!!!
 "#;
-            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
-            let dump = read_synth_dump(dump).unwrap();
+        let dump = minimal_minidump().set_linux_lsb_release(input);
+        let state = read_synth_dump(dump);
 
-            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+        let LinuxStandardBase {
+            id,
+            release,
+            codename,
+            description,
+        } = state.linux_standard_base.unwrap();
 
-            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
-            assert_eq!(
-                stream.release,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
-            );
-            assert_eq!(
-                stream.codename,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
-            );
-            assert_eq!(
-                stream.description,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
-            );
-        }
+        assert_eq!(id, "hello");
+        assert_eq!(release, "there");
+        assert_eq!(codename, "very long string");
+        assert_eq!(description, "wow long string!!!");
+    }
 
-        {
-            let input = br#"
+    {
+        let input = br#"
 ID="hello"
 "VERSION_ID"  =there
 "VERSION_CODENAME" =   "very long string"
 PRETTY_NAME= wow long string!!!
 "#;
-            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
-            let dump = read_synth_dump(dump).unwrap();
+        let dump = minimal_minidump().set_linux_lsb_release(input);
+        let state = read_synth_dump(dump);
 
-            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+        let LinuxStandardBase {
+            id,
+            release,
+            codename,
+            description,
+        } = state.linux_standard_base.unwrap();
 
-            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
-            assert_eq!(
-                stream.release,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
-            );
-            assert_eq!(
-                stream.codename,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
-            );
-            assert_eq!(
-                stream.description,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
-            );
-        }
+        assert_eq!(id, "hello");
+        assert_eq!(release, "there");
+        assert_eq!(codename, "very long string");
+        assert_eq!(description, "wow long string!!!");
     }
+}
 
-    #[test]
-    fn test_linux_environ() {
-        // Whitespace intentionally wonky to test robustness
+#[test]
+fn test_linux_environ() {
+    // Whitespace intentionally wonky to test robustness
 
-        // TODO: add tests for values we care about
-        let input = b"";
+    // TODO: add tests for values we care about
+    let input = b"";
 
-        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_environ(input);
-        let dump = read_synth_dump(dump).unwrap();
+    let dump = minimal_minidump().set_linux_environ(input);
+    let _state = read_synth_dump(dump);
+}
 
-        let _stream = dump.get_stream::<MinidumpLinuxEnviron>().unwrap();
-    }
+#[test]
+fn test_linux_proc_status() {
+    // Whitespace intentionally wonky to test robustness
 
-    #[test]
-    fn test_linux_proc_status() {
-        // Whitespace intentionally wonky to test robustness
+    // TODO: add tests for values we care about
+    let input = b"";
 
-        // TODO: add tests for values we care about
-        let input = b"";
-
-        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_proc_status(input);
-        let dump = read_synth_dump(dump).unwrap();
-
-        let _stream = dump.get_stream::<MinidumpLinuxProcStatus>().unwrap();
-    }
-
-*/
+    let dump = minimal_minidump().set_linux_proc_status(input);
+    let _state = read_synth_dump(dump);
+}

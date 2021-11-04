@@ -4317,15 +4317,15 @@ fn stream_vendor(stream_type: u32) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::synth_minidump::{
+    use md::GUID;
+    use std::mem;
+    use synth_minidump::{
         self, AnnotationValue, CrashpadInfo, DumpString, Memory, MemoryInfo as SynthMemoryInfo,
         MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
         MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
         SynthMinidump, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
         STOCK_VERSION_INFO,
     };
-    use md::GUID;
-    use std::mem;
     use test_assembler::*;
 
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {

@@ -24,5 +24,6 @@ scroll = "0.10.2"
 memmap = "0.7.0"
 
 [dev-dependencies]
+synth-minidump = { path = "../synth-minidump" }
 test-assembler = "0.1.5"
 doc-comment = "0.3.3"
