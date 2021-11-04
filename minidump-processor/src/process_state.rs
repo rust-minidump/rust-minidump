@@ -123,6 +123,7 @@ pub struct CallStack {
     pub thread_name: Option<String>,
 }
 
+#[derive(Debug, Default)]
 pub struct LinuxStandardBase {
     pub id: String,
     pub release: String,

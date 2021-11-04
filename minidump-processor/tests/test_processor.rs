@@ -124,3 +124,107 @@ fn test_processor_symbols() {
         Some("`anonymous namespace'::CrashFunction")
     );
 }
+
+/* TODO
+#[test]
+fn test_linux_cpu_info() {
+    // Whitespace intentionally wonky to test robustness
+
+    let input = b"
+microcode : 0x1e34a6789
+";
+
+    let dump = SynthMinidump::with_endian(Endian::Little).set_linux_cpu_info(input);
+    let dump = read_synth_dump(dump).unwrap();
+
+    let stream = dump.get_stream::<MinidumpLinuxCpuInfo>().unwrap();
+
+    assert_eq!(stream.microcode_version, Some(0x1e34a6789));
+}
+
+
+    #[test]
+    fn test_linux_lsb_release() {
+        // Whitespace intentionally wonky to test robustness
+        {
+            let input = br#"
+DISTRIB_ID="hello"
+"DISTRIB_RELEASE"  =there
+"DISTRIB_CODENAME" =   "very long string"
+DISTRIB_DESCRIPTION= wow long string!!!
+"#;
+            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
+            let dump = read_synth_dump(dump).unwrap();
+
+            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+
+            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
+            assert_eq!(
+                stream.release,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
+            );
+            assert_eq!(
+                stream.codename,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
+            );
+            assert_eq!(
+                stream.description,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
+            );
+        }
+
+        {
+            let input = br#"
+ID="hello"
+"VERSION_ID"  =there
+"VERSION_CODENAME" =   "very long string"
+PRETTY_NAME= wow long string!!!
+"#;
+            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
+            let dump = read_synth_dump(dump).unwrap();
+
+            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
+
+            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
+            assert_eq!(
+                stream.release,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
+            );
+            assert_eq!(
+                stream.codename,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
+            );
+            assert_eq!(
+                stream.description,
+                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
+            );
+        }
+    }
+
+    #[test]
+    fn test_linux_environ() {
+        // Whitespace intentionally wonky to test robustness
+
+        // TODO: add tests for values we care about
+        let input = b"";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_environ(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let _stream = dump.get_stream::<MinidumpLinuxEnviron>().unwrap();
+    }
+
+    #[test]
+    fn test_linux_proc_status() {
+        // Whitespace intentionally wonky to test robustness
+
+        // TODO: add tests for values we care about
+        let input = b"";
+
+        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_proc_status(input);
+        let dump = read_synth_dump(dump).unwrap();
+
+        let _stream = dump.get_stream::<MinidumpLinuxProcStatus>().unwrap();
+    }
+
+*/

@@ -398,30 +398,25 @@ pub struct MinidumpBreakpadInfo {
 #[derive(Default, Debug)]
 /// Interesting values extracted from /etc/lsb-release
 pub struct MinidumpLinuxLsbRelease<'a> {
-    pub id: Cow<'a, LinuxOsStr>,
-    pub release: Cow<'a, LinuxOsStr>,
-    pub codename: Cow<'a, LinuxOsStr>,
-    pub description: Cow<'a, LinuxOsStr>,
+    data: &'a [u8],
 }
 
 /// Interesting values extracted from /proc/self/environ
 #[derive(Default, Debug)]
 pub struct MinidumpLinuxEnviron<'a> {
-    _phantom: PhantomData<&'a [u8]>,
+    data: &'a [u8],
 }
 
 /// Interesting values extracted from /proc/cpuinfo
 #[derive(Default, Debug)]
 pub struct MinidumpLinuxCpuInfo<'a> {
-    /// The microcode version of the cpu
-    pub microcode_version: Option<u64>,
-    _phantom: PhantomData<&'a [u8]>,
+    data: &'a [u8],
 }
 
 /// Interesting values extracted from /proc/self/status
 #[derive(Default, Debug)]
 pub struct MinidumpLinuxProcStatus<'a> {
-    _phantom: PhantomData<&'a [u8]>,
+    data: &'a [u8],
 }
 
 /// The reason for a process crash.
@@ -1056,10 +1051,10 @@ impl Module for MinidumpUnloadedModule {
 }
 
 /// Parses X:Y or X=Y lists, skipping any blank/unparseable lines
-fn read_linux_list(
+fn linux_list_iter(
     bytes: &[u8],
     separator: u8,
-) -> Result<impl Iterator<Item = (&LinuxOsStr, &LinuxOsStr)>, Error> {
+) -> impl Iterator<Item = (&LinuxOsStr, &LinuxOsStr)> {
     fn strip_quotes(input: &LinuxOsStr) -> &LinuxOsStr {
         // Remove any extra surrounding whitespace since formats are inconsistent on this.
         let input = input.trim_ascii_whitespace();
@@ -1074,10 +1069,10 @@ fn read_linux_list(
     }
 
     let input = LinuxOsStr::from_bytes(bytes);
-    Ok(input.lines().filter_map(move |line| {
+    input.lines().filter_map(move |line| {
         line.split_once(separator)
             .map(|(label, val)| (strip_quotes(label), (strip_quotes(val))))
-    }))
+    })
 }
 
 fn read_stream_list<'a, T>(
@@ -2885,17 +2880,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
         _all: &'a [u8],
         _endian: scroll::Endian,
     ) -> Result<MinidumpLinuxLsbRelease<'a>, Error> {
-        let mut lsb = Self::default();
-        for (key, val) in read_linux_list(bytes, b'=')? {
-            match key.as_bytes() {
-                b"DISTRIB_ID" | b"ID" => lsb.id = Cow::Borrowed(val),
-                b"DISTRIB_RELEASE" | b"VERSION_ID" => lsb.release = Cow::Borrowed(val),
-                b"DISTRIB_CODENAME" | b"VERSION_CODENAME" => lsb.codename = Cow::Borrowed(val),
-                b"DISTRIB_DESCRIPTION" | b"PRETTY_NAME" => lsb.description = Cow::Borrowed(val),
-                _ => {}
-            }
-        }
-        Ok(lsb)
+        Ok(Self { data: bytes })
     }
 }
 
@@ -2908,16 +2893,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
         _all: &'a [u8],
         _endian: scroll::Endian,
     ) -> Result<MinidumpLinuxEnviron<'a>, Error> {
-        let environ = Self::default();
-        for (key, _val) in read_linux_list(bytes, b'=')? {
-            match key.as_bytes() {
-                b"todo: collect some entries here" => {}
-                _ => {
-                    // unknown or uninteresting
-                }
-            }
-        }
-        Ok(environ)
+        Ok(Self { data: bytes })
     }
 }
 
@@ -2930,44 +2906,83 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
         _all: &'a [u8],
         _endian: scroll::Endian,
     ) -> Result<MinidumpLinuxProcStatus<'a>, Error> {
-        let status = Self::default();
-        for (key, _val) in read_linux_list(bytes, b':')? {
-            match key.as_bytes() {
-                b"todo: collect some entries here" => {}
-                _ => {
-                    // unknown or uninteresting
-                }
-            }
-        }
-        Ok(status)
+        Ok(Self { data: bytes })
     }
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxCpuInfo;
 
-    #[allow(clippy::single_match)]
     fn read(
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
     ) -> Result<MinidumpLinuxCpuInfo<'a>, Error> {
-        let mut info = Self::default();
-        for (key, val) in read_linux_list(bytes, b':')? {
-            match key.as_bytes() {
-                b"microcode" => {
-                    info.microcode_version = val
-                        .to_str()
-                        .ok()
-                        .and_then(|val| val.strip_prefix("0x"))
-                        .and_then(|val| u64::from_str_radix(val, 16).ok());
-                }
-                _ => {
-                    // unknown or uninteresting
-                }
-            }
-        }
-        Ok(info)
+        Ok(Self { data: bytes })
+    }
+}
+
+impl<'a> MinidumpLinuxCpuInfo<'a> {
+    /// Get an iterator over the key-value pairs stored in the `/proc/cpuinfo` dump.
+    ///
+    /// Keys and values are `trim`ed of leading/trailing spaces, and if a key
+    /// or value was surrounded by quotes ("like this"), the quotes will be
+    /// stripped.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a LinuxOsStr, &'a LinuxOsStr)> {
+        linux_list_iter(self.data, b':')
+    }
+
+    /// Get the raw bytes of the `/proc/cpuinfo` dump.
+    pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
+        Cow::Borrowed(self.data)
+    }
+}
+
+impl<'a> MinidumpLinuxEnviron<'a> {
+    /// Get an iterator over the key-value pairs stored in the `/proc/self/environ` dump.
+    ///
+    /// Keys and values are `trim`ed of leading/trailing spaces, and if a key
+    /// or value was surrounded by quotes ("like this"), the quotes will be
+    /// stripped.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a LinuxOsStr, &'a LinuxOsStr)> {
+        linux_list_iter(self.data, b'=')
+    }
+
+    /// Get the raw bytes of the `/proc/self/environ` dump.
+    pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
+        Cow::Borrowed(self.data)
+    }
+}
+
+impl<'a> MinidumpLinuxProcStatus<'a> {
+    /// Get an iterator over the key-value pairs stored in the `/proc/self/status` dump.
+    ///
+    /// Keys and values are `trim`ed of leading/trailing spaces, and if a key
+    /// or value was surrounded by quotes ("like this"), the quotes will be
+    /// stripped.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a LinuxOsStr, &'a LinuxOsStr)> {
+        linux_list_iter(self.data, b':')
+    }
+
+    /// Get the raw bytes of the `/proc/self/status` dump.
+    pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
+        Cow::Borrowed(self.data)
+    }
+}
+
+impl<'a> MinidumpLinuxLsbRelease<'a> {
+    /// Get an iterator over the key-value pairs stored in the `/etc/lsb-release` dump.
+    ///
+    /// Keys and values are `trim`ed of leading/trailing spaces, and if a key
+    /// or value was surrounded by quotes ("like this"), the quotes will be
+    /// stripped.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a LinuxOsStr, &'a LinuxOsStr)> {
+        linux_list_iter(self.data, b'=')
+    }
+
+    /// Get the raw bytes of the `/etc/lsb-release` dump.
+    pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
+        Cow::Borrowed(self.data)
     }
 }
 
@@ -4819,106 +4834,6 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
             assert!(map.is_err());
         }
-    }
-
-    #[test]
-    fn test_linux_lsb_release() {
-        // Whitespace intentionally wonky to test robustness
-        {
-            let input = br#"
-DISTRIB_ID="hello"
-"DISTRIB_RELEASE"  =there
-"DISTRIB_CODENAME" =   "very long string"
-DISTRIB_DESCRIPTION= wow long string!!!
-"#;
-            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
-            let dump = read_synth_dump(dump).unwrap();
-
-            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
-
-            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
-            assert_eq!(
-                stream.release,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
-            );
-            assert_eq!(
-                stream.codename,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
-            );
-            assert_eq!(
-                stream.description,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
-            );
-        }
-
-        {
-            let input = br#"
-ID="hello"
-"VERSION_ID"  =there
-"VERSION_CODENAME" =   "very long string"
-PRETTY_NAME= wow long string!!!
-"#;
-            let dump = SynthMinidump::with_endian(Endian::Little).set_linux_lsb_release(input);
-            let dump = read_synth_dump(dump).unwrap();
-
-            let stream = dump.get_stream::<MinidumpLinuxLsbRelease>().unwrap();
-
-            assert_eq!(stream.id, Cow::Borrowed(LinuxOsStr::from_bytes(b"hello")));
-            assert_eq!(
-                stream.release,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"there"))
-            );
-            assert_eq!(
-                stream.codename,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"very long string"))
-            );
-            assert_eq!(
-                stream.description,
-                Cow::Borrowed(LinuxOsStr::from_bytes(b"wow long string!!!"))
-            );
-        }
-    }
-
-    #[test]
-    fn test_linux_cpu_info() {
-        // Whitespace intentionally wonky to test robustness
-
-        let input = b"
-microcode : 0x1e34a6789
-";
-
-        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_cpu_info(input);
-        let dump = read_synth_dump(dump).unwrap();
-
-        let stream = dump.get_stream::<MinidumpLinuxCpuInfo>().unwrap();
-
-        assert_eq!(stream.microcode_version, Some(0x1e34a6789));
-    }
-
-    #[test]
-    fn test_linux_environ() {
-        // Whitespace intentionally wonky to test robustness
-
-        // TODO: add tests for values we care about
-        let input = b"";
-
-        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_environ(input);
-        let dump = read_synth_dump(dump).unwrap();
-
-        let _stream = dump.get_stream::<MinidumpLinuxEnviron>().unwrap();
-    }
-
-    #[test]
-    fn test_linux_proc_status() {
-        // Whitespace intentionally wonky to test robustness
-
-        // TODO: add tests for values we care about
-        let input = b"";
-
-        let dump = SynthMinidump::with_endian(Endian::Little).set_linux_proc_status(input);
-        let dump = read_synth_dump(dump).unwrap();
-
-        let _stream = dump.get_stream::<MinidumpLinuxProcStatus>().unwrap();
     }
 
     #[test]
