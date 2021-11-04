@@ -707,7 +707,6 @@ impl Symbolizer {
     fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
         if !self.symbols.borrow().contains_key(k) {
             let res = self.supplier.locate_symbols(module);
-            debug!("locate_symbols for {}: {:?}", module.code_file(), res);
             self.symbols.borrow_mut().insert(k.clone(), res);
         }
     }
