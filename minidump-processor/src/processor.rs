@@ -85,11 +85,17 @@ where
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
 
     // Thread list is required for processing.
+    // Pack MinidumpThreadList deps up.
+    let thread_list_deps = (memory_list, misc_info);
     let thread_list = dump
-        .get_stream_with_dep::<MinidumpThreadList>(memory_list.as_ref())
+        .get_stream_with_dep::<MinidumpThreadList>(Some(&thread_list_deps))
         .or(Err(ProcessError::MissingThreadList))?;
+    // Unpack deps for reuse.
+    let (_memory_list, misc_info) = thread_list_deps;
+
     // Try to get thread names, but it's only a nice-to-have.
     let thread_names = dump
         .get_stream::<MinidumpThreadNames>()
@@ -134,15 +140,14 @@ where
         .ok()
         .map(|info| info.raw);
     // Process create time is optional.
-    let (process_id, process_create_time) =
-        if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
-            (
-                misc_info.raw.process_id().cloned(),
-                misc_info.process_create_time(),
-            )
-        } else {
-            (None, None)
-        };
+    let (process_id, process_create_time) = if let Some(misc_info) = &misc_info {
+        (
+            misc_info.raw.process_id().cloned(),
+            misc_info.process_create_time(),
+        )
+    } else {
+        (None, None)
+    };
     // If Breakpad info exists in dump, get dump and requesting thread ids.
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
     let (dump_thread_id, requesting_thread_id) = if let Ok(info) = breakpad_info {
@@ -199,6 +204,7 @@ where
         };
 
         let stack = thread.stack.as_ref();
+        assert!(stack.is_some());
 
         let mut stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
 
