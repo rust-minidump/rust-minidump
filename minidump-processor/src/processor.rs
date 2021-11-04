@@ -12,7 +12,7 @@ use std::path::Path;
 
 use minidump::{self, *};
 
-use crate::process_state::{CallStack, CallStackInfo, ProcessState};
+use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
@@ -106,21 +106,61 @@ where
         os_version.push_str(&csd_version);
     }
 
+    let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
+    let linux_cpu_info = dump
+        .get_stream::<MinidumpLinuxCpuInfo>()
+        .unwrap_or_default();
+    let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
+    let _linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
+
+    // Extract everything we care about from linux streams here.
+    // We don't eagerly process them in the minidump crate because there's just
+    // tons of random information in there and it's not obvious what anyone
+    // would care about. So just providing an iterator and letting minidump-processor
+    // pull out the things it cares about is simple and effective.
+
+    let mut cpu_microcode_version = None;
+    for (key, val) in linux_cpu_info.iter() {
+        if key.as_bytes() == b"microcode" {
+            cpu_microcode_version = val
+                .to_str()
+                .ok()
+                .and_then(|val| val.strip_prefix("0x"))
+                .and_then(|val| u64::from_str_radix(val, 16).ok());
+            break;
+        }
+    }
+
+    let linux_standard_base = linux_standard_base.map(|linux_standard_base| {
+        let mut lsb = LinuxStandardBase::default();
+        for (key, val) in linux_standard_base.iter() {
+            match key.as_bytes() {
+                b"DISTRIB_ID" | b"ID" => lsb.id = val.to_string_lossy().into_owned(),
+                b"DISTRIB_RELEASE" | b"VERSION_ID" => {
+                    lsb.release = val.to_string_lossy().into_owned()
+                }
+                b"DISTRIB_CODENAME" | b"VERSION_CODENAME" => {
+                    lsb.codename = val.to_string_lossy().into_owned()
+                }
+                b"DISTRIB_DESCRIPTION" | b"PRETTY_NAME" => {
+                    lsb.description = val.to_string_lossy().into_owned()
+                }
+                _ => {}
+            }
+        }
+        lsb
+    });
+
     let cpu_info = dump_system_info
         .cpu_info()
         .map(|string| string.into_owned());
-
-    let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
-    let linux_cpu_info = dump.get_stream::<MinidumpLinuxCpuInfo>().ok();
-    let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
-    let _linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
 
     let system_info = SystemInfo {
         os: dump_system_info.os,
         os_version: Some(os_version),
         cpu: dump_system_info.cpu,
         cpu_info,
-        cpu_microcode_version: linux_cpu_info.and_then(|info| info.microcode_version),
+        cpu_microcode_version,
         cpu_count: dump_system_info.raw.number_of_processors as usize,
     };
 

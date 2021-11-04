@@ -997,6 +997,7 @@ dependencies = [
  "num-traits 0.2.14",
  "range-map",
  "scroll 0.10.2",
+ "synth-minidump",
  "test-assembler",
 ]
 
@@ -1031,6 +1032,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simplelog",
+ "synth-minidump",
  "test-assembler",
 ]
 
@@ -1995,6 +1997,16 @@ dependencies = [
  "serde_json",
  "walkdir",
  "yaml-rust",
+]
+
+[[package]]
+name = "synth-minidump"
+version = "0.1.0"
+dependencies = [
+ "encoding",
+ "minidump-common",
+ "scroll 0.10.2",
+ "test-assembler",
 ]
 
 [[package]]

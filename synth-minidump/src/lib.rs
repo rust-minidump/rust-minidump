@@ -27,6 +27,7 @@ pub struct SynthMinidump {
     stream_directory_rva: Label,
     /// The contents of the stream directory.
     stream_directory: Section,
+    system_info: Option<SystemInfo>,
     /// List of modules in this minidump.
     module_list: Option<ListStream<Module>>,
     /// List of unloaded modules in this minidump.
@@ -167,6 +168,7 @@ impl SynthMinidump {
             stream_count_label,
             stream_directory_rva,
             stream_directory: Section::with_endian(endian),
+            system_info: None,
             module_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::ModuleListStream,
                 endian,
@@ -284,47 +286,52 @@ impl SynthMinidump {
         self
     }
 
+    pub fn add_system_info(mut self, system_info: SystemInfo) -> Self {
+        self.system_info = Some(system_info);
+        self
+    }
+
     /// Set the contents of the `LinuxMaps` stream.
-    pub fn set_linux_maps(mut self, maps: &str) -> SynthMinidump {
+    pub fn set_linux_maps(mut self, maps: &[u8]) -> SynthMinidump {
         self.linux_maps = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxMaps as u32,
-            section: Section::new().append_bytes(maps.as_bytes()),
+            section: Section::new().append_bytes(maps),
         });
         self
     }
 
     /// Set the contents of the `LinuxLsbRelease` stream.
-    pub fn set_linux_lsb_release(mut self, lsb: &str) -> SynthMinidump {
+    pub fn set_linux_lsb_release(mut self, lsb: &[u8]) -> SynthMinidump {
         self.linux_lsb_release = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32,
-            section: Section::new().append_bytes(lsb.as_bytes()),
+            section: Section::new().append_bytes(lsb),
         });
         self
     }
 
     /// Set the contents of the `LinuxProcStatus` stream.
-    pub fn set_linux_proc_status(mut self, proc_status: &str) -> SynthMinidump {
+    pub fn set_linux_proc_status(mut self, proc_status: &[u8]) -> SynthMinidump {
         self.linux_proc_status = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32,
-            section: Section::new().append_bytes(proc_status.as_bytes()),
+            section: Section::new().append_bytes(proc_status),
         });
         self
     }
 
     /// Set the contents of the `LinuxCpuInfo` stream.
-    pub fn set_linux_cpu_info(mut self, cpu_info: &str) -> SynthMinidump {
+    pub fn set_linux_cpu_info(mut self, cpu_info: &[u8]) -> SynthMinidump {
         self.linux_cpu_info = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32,
-            section: Section::new().append_bytes(cpu_info.as_bytes()),
+            section: Section::new().append_bytes(cpu_info),
         });
         self
     }
 
     /// Set the contents of the `LinuxEnviron` stream.
-    pub fn set_linux_environ(mut self, environ: &str) -> SynthMinidump {
+    pub fn set_linux_environ(mut self, environ: &[u8]) -> SynthMinidump {
         self.linux_environ = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxEnviron as u32,
-            section: Section::new().append_bytes(environ.as_bytes()),
+            section: Section::new().append_bytes(environ),
         });
         self
     }
@@ -385,6 +392,9 @@ impl SynthMinidump {
         // Add crashpad info stream if any.
         if let Some(crashpad_info) = self.crashpad_info.take() {
             self = self.add_stream(crashpad_info);
+        }
+        if let Some(stream) = self.system_info.take() {
+            self = self.add_stream(stream);
         }
         if let Some(stream) = self.linux_maps.take() {
             self = self.add_stream(stream);
@@ -1621,6 +1631,102 @@ impl From<CrashpadInfo> for Section {
 impl Stream for CrashpadInfo {
     fn stream_type(&self) -> u32 {
         md::MINIDUMP_STREAM_TYPE::CrashpadInfoStream.into()
+    }
+}
+
+// Hastily stubbed out to just barely work
+pub struct SystemInfo {
+    section: Section,
+    pub processor_architecture: u16,
+    pub processor_level: u16,
+    pub processor_revision: u16,
+    pub number_of_processors: u8,
+    pub product_type: u8,
+    pub major_version: u32,
+    pub minor_version: u32,
+    pub build_number: u32,
+    pub platform_id: u32,
+    pub csd_version_rva: u32,
+    pub suite_mask: u16,
+    pub reserved2: u16,
+    pub cpu: CpuInfo,
+}
+
+pub enum CpuInfo {
+    X86CpuInfo {
+        vendor_id: [u32; 3],
+        version_information: u32,
+        feature_information: u32,
+        amd_extended_cpu_features: u32,
+    },
+}
+
+impl SystemInfo {
+    pub fn new(endian: Endian) -> Self {
+        Self {
+            section: Section::with_endian(endian),
+            processor_architecture: 0,
+            processor_level: 6,
+            processor_revision: 0x0000,
+            number_of_processors: 1,
+            product_type: 0,
+            major_version: 0,
+            minor_version: 0,
+            build_number: 0,
+            platform_id: 0,
+            csd_version_rva: 0,
+            suite_mask: 0,
+            reserved2: 0,
+            cpu: CpuInfo::X86CpuInfo {
+                vendor_id: [0; 3],
+                version_information: 0,
+                feature_information: 0,
+                amd_extended_cpu_features: 0,
+            },
+        }
+    }
+}
+
+impl_dumpsection!(SystemInfo);
+
+impl From<SystemInfo> for Section {
+    fn from(info: SystemInfo) -> Self {
+        let section = info
+            .section
+            .D16(info.processor_architecture)
+            .D16(info.processor_architecture)
+            .D16(info.processor_level)
+            .D16(info.processor_revision)
+            .D8(info.number_of_processors)
+            .D8(info.product_type)
+            .D32(info.major_version)
+            .D32(info.minor_version)
+            .D32(info.build_number)
+            .D32(info.platform_id)
+            .D32(info.csd_version_rva)
+            .D16(info.suite_mask)
+            .D16(info.reserved2);
+
+        match info.cpu {
+            CpuInfo::X86CpuInfo {
+                vendor_id,
+                version_information,
+                feature_information,
+                amd_extended_cpu_features,
+            } => section
+                .D32(vendor_id[0])
+                .D32(vendor_id[1])
+                .D32(vendor_id[2])
+                .D32(version_information)
+                .D32(feature_information)
+                .D32(amd_extended_cpu_features),
+        }
+    }
+}
+
+impl Stream for SystemInfo {
+    fn stream_type(&self) -> u32 {
+        md::MINIDUMP_STREAM_TYPE::SystemInfoStream.into()
     }
 }
 

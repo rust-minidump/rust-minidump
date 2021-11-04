@@ -38,3 +38,4 @@ scroll = "0.10.2"
 
 [dev-dependencies]
 test-assembler = "0.1.5"
+synth-minidump = { path = "../synth-minidump" }
