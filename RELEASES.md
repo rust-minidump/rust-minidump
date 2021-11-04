@@ -11,30 +11,36 @@ Changes:
 
 New features:
 
-* MemoryInfoListStream has been implemented (as `MinidumpMemoryInfoList`)
-    * Provides metadata on the mapped memory regions like "was executable" or "was it freed"
-* LinuxMapsStream has been implemented (as `MinidumpLinuxMaps`)
-    * Linux version of `MemoryInfoListStream` (using a dump of `/proc/self/maps`)
-    * Currently sloppily requires paths reported by the metadata to be uft8 (will be fixed)
-* New `UnifiedMemoryInfoList` type
-    * Takes both `MemoryInfoList` and `LinuxMaps` provides a unified memory metadata interface
-* Various simple Linux streams have had their implementations stubbed out
-    * The streams are:
+* MemoryInfo:
+    * MemoryInfoListStream has been implemented (as `MinidumpMemoryInfoList`)
+        * Provides metadata on the mapped memory regions like "was executable" or "was it freed"
+    * LinuxMapsStream has been implemented (as `MinidumpLinuxMaps`)
+        * Linux version of `MemoryInfoListStream` (using a dump of `/proc/self/maps`)
+    * New `UnifiedMemoryInfoList` type
+        * Takes both `MemoryInfoList` and `LinuxMaps` provides a unified memory metadata interface
+
+* Linux Streams:
+    * New Linux strings types (`LinuxOsString` and `LinuxOsStr`) to represent the fact that some values contain things like raw linux paths (and therefore may not be utf8).
+    * Various simple Linux streams have minimal implementations that are exposed as a key-value pair iterator (and also just let you get the raw bytes of the dumped section).
         * LinuxCpuInfoStream (as `MinidumpLinuxCpuInfo`)
             * A dump of `/proc/cpuinfo`
         * LinuxProcStatus (as `MinidumpLinuxProcStatus`) 
             * A dump of `/proc/self/status`
         * LinuxEnviron (as `MinidumpLinuxEnviron`)
             * A dump of `/proc/self/environ`
-    * Right now these are \~useless as they don't actually expose any of the data (except for one field from `LinuxCpuInfo` for minidump-stackwalk's use).
-    * Right now these are sloppy with respect to string encoding (will be fixed)
-        * If the streams contain non-utf8 the stream will fail to decode, reporting an empty stream
-        * This is possible because the files contain linux file paths, which may be arbitrary bytes
+        * LinuxLsbRelease (as `MinidumpLinuxLsbRelease`)
+            * A dump of `/etc/lsb-release`
+    * Because these streams are just giant bags of random info, it's hard to reasonably pick out specific values to expose. The iterator API at least makes it so you can get whatever you want easily.
 
 
 Improvements:
 
+* MinidumpSystemInfo::csd_version now works
+    * Was reading its value from the wrong array *shrug*
+    * This also improves minidump processor's `os_ver` string (now at parity with breakpad)
 * More docs and tests backfilled (including synth-minidump framework).
+* More misbehaving logging removed
+* synth-minidump has been pulled out into a separate crate so the other crates can use it for testing.
 
 
 Breaking changes:
@@ -42,6 +48,8 @@ Breaking changes:
 * Some explicitly typed iterators have been replaced with `impl Iterator`
     * These were always supposed to be like that, this code just pre-existed the feature
     * Comes with minor efficiency win because they were internally boxed and dynamically dispatched(!) to simulate `impl Iterator`.
+ * LinuxLsbRelease has had all its parsed out values removed in favour of the new iterator API. The logic that parsed out specific fields has been moved to minidump-processor.
+ * LinuxLsbRelease (and some others?) now borrow the Minidump.
 
 
 
@@ -56,6 +64,7 @@ Symbol cache:
 Json schema:
 
 * Now properly populates the `system_info.cpu_microcode` field (using `LinuxCpuInfoStream`)
+* `system_info.os_ver` now includes the contents of `MinidumpSystemInfo::csd_version` (as intended)
 
 
 
