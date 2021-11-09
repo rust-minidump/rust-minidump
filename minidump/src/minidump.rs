@@ -2256,7 +2256,7 @@ impl<'a> MinidumpThread<'a> {
             .memory_at_address(addr)?
             .get_memory_at_address(addr)?;
 
-        Some(CrashReason::from_windows_code(val))
+        Some(CrashReason::from_windows_error(val))
     }
 }
 
@@ -3209,16 +3209,28 @@ impl CrashReason {
         reason.unwrap_or(CrashReason::Unknown(exception_code, exception_flags))
     }
 
-    /// Heuristically identifies what kind of windows error this is.
+    /// Heuristically identifies what kind of windows exception code this is.
+    ///
+    /// Augments [`CrashReason::from_windows_error`] by also including
+    /// `ExceptionCodeWindows`. Appropriate for an actual crash reason.
     pub fn from_windows_code(exception_code: u32) -> CrashReason {
         if let Some(err) = md::ExceptionCodeWindows::from_u32(exception_code) {
-            CrashReason::WindowsGeneral(err)
-        } else if let Some(err) = md::WinErrorWindows::from_u32(exception_code) {
-            CrashReason::WindowsWinError(err)
-        } else if let Some(err) = md::NtStatusWindows::from_u32(exception_code) {
-            CrashReason::WindowsNtStatus(err)
+            Self::WindowsGeneral(err)
         } else {
-            CrashReason::WindowsUnknown(exception_code)
+            Self::from_windows_error(exception_code)
+        }
+    }
+
+    /// Heuristically identifies what kind of windows error code this is.
+    ///
+    /// Appropriate for things like LastErrorValue() which may be non-fatal.
+    pub fn from_windows_error(error_code: u32) -> CrashReason {
+        if let Some(err) = md::WinErrorWindows::from_u32(error_code) {
+            Self::WindowsWinError(err)
+        } else if let Some(err) = md::NtStatusWindows::from_u32(error_code) {
+            Self::WindowsNtStatus(err)
+        } else {
+            Self::WindowsUnknown(error_code)
         }
     }
 
