@@ -215,7 +215,9 @@ where
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
-    // Get memory list
+    // Get the evil JSON file (thread names and module certificates)
+    let evil = evil_json.and_then(handle_evil).unwrap_or_default();
+
     let mut threads = vec![];
     let mut requesting_thread = None;
     for (i, thread) in thread_list.threads.iter().enumerate() {
@@ -249,7 +251,8 @@ where
 
         let name = thread_names
             .get_name(thread.raw.thread_id)
-            .map(|cow| cow.into_owned());
+            .map(|cow| cow.into_owned())
+            .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
         stack.thread_name = name;
 
         stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
@@ -264,14 +267,11 @@ where
     // Get symbol stats from the symbolizer
     let symbol_stats = symbol_provider.stats();
 
-    // Finally, handle the evil JSON file (get module signing certs)
-    let cert_info = evil_json.and_then(handle_evil).unwrap_or_else(HashMap::new);
-
     Ok(ProcessState {
         process_id,
         time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time,
-        cert_info,
+        cert_info: evil.certs,
         crash_reason,
         crash_address,
         assertion,
@@ -288,9 +288,20 @@ where
     })
 }
 
-fn handle_evil(evil_path: &Path) -> Option<HashMap<String, String>> {
-    use log::{error, warn};
-    use serde_json::Value::{self, *};
+/// Things extracted from the Evil JSON File
+#[derive(Debug, Default)]
+struct Evil {
+    /// module name => cert
+    certs: HashMap<String, String>,
+    /// thread id => thread name
+    thread_names: HashMap<u32, String>,
+}
+
+fn handle_evil(evil_path: &Path) -> Option<Evil> {
+    use log::error;
+    use serde_json::map::Map;
+    use serde_json::Value;
+    use std::str::FromStr;
 
     // Get the evil json
     let evil_json = File::open(evil_path)
@@ -301,52 +312,78 @@ fn handle_evil(evil_path: &Path) -> Option<HashMap<String, String>> {
         .ok()?;
 
     let buf = BufReader::new(evil_json);
-    let json: Value = serde_json::from_reader(buf)
+    let mut json: Map<String, Value> = serde_json::from_reader(buf)
         .map_err(|e| {
             error!("Could not parse Extra JSON (was not valid JSON)");
             e
         })
         .ok()?;
 
-    // Get module signing info
-    let temp_obj;
-    let certs = match json.get("ModuleSignatureInfo") {
-        Some(Object(obj)) => obj,
-        Some(String(string)) => {
-            // Possible the signature info was wrapped in a string by mistake,
-            // So try to parse that string as an object.
-            temp_obj = serde_json::from_str(string)
-                .map_err(|e| {
-                    error!("Could not parse Extra JSON's ModuleSignatureInfo (not an object)");
-                    error!("ModuleSignatureInfo: {}", string);
-                    e
-                })
-                .ok()?;
-            &temp_obj
-        }
-        _ => {
-            error!("Could not parse Extra JSON's ModuleSignatureInfo (not an object)");
-            return None;
-        }
-    };
-
-    // Each certificate lists the modules it applies to, but we want the
-    // reverse mapping -- module names to certificates. Invert the map.
-    let mut cert_map = HashMap::new();
-    for (cert, modules) in certs {
-        if let Array(modules) = modules {
-            for module in modules {
-                if let String(module) = module {
-                    cert_map.insert(module.clone(), cert.clone());
-                }
+    // Of course evil json contains a string-that-can-be-parsed-as-a-json-object
+    // instead of having a normal json object!
+    fn evil_obj<K, V>(json: &mut Map<String, Value>, field_name: &str) -> Option<HashMap<K, V>>
+    where
+        K: for<'de> serde::de::Deserialize<'de> + Eq + std::hash::Hash,
+        V: for<'de> serde::de::Deserialize<'de>,
+    {
+        json.remove(field_name).and_then(|val| {
+            match val {
+                Value::Object(_) => serde_json::from_value(val).ok(),
+                Value::String(string) => serde_json::from_str(&string).ok(),
+                _ => None,
             }
-        } else {
-            warn!(
-                "Extra JSON had corrupt entry -- \"{}\": {:?}",
-                cert, modules
-            );
-        }
+            .or_else(|| {
+                error!("Could not parse Evil JSON's {} (not an object)", field_name);
+                None
+            })
+        })
     }
 
-    Some(cert_map)
+    // Convert certs from
+    // "cert_name1": ["module1", "module2", ...], "cert_name2": ...
+    // to
+    // "module1": "cert_name1", "module2": "cert_name1", ...
+    let certs = evil_obj(&mut json, "ModuleSignatureInfo")
+        .map(|certs: HashMap<String, Vec<String>>| {
+            let mut cert_map = HashMap::new();
+            for (cert, modules) in certs {
+                for module in modules {
+                    cert_map.insert(module, cert.clone());
+                }
+            }
+            cert_map
+        })
+        .unwrap_or_default();
+
+    // Get thread name mappings
+
+    // In typical evil json fashion, this list doesn't conform to even the evil_obj format!
+    // It's just a set of comma-separated int:string pairs, with a trailing comma.
+    // This cannot be parsed as JSON at all, since the keys are not strings. So we just
+    // do a sloppy `split` based parse and hope we don't encounter thread names with commas
+    // in them because I hate this JSON file with a passion.
+    //
+    // ex: 123: "name1", 456: "name",
+    let thread_names = json
+        .remove("ThreadIdNameMapping")
+        .unwrap_or_default()
+        .as_str()
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|entry| {
+            entry.split_once(":").and_then(|(key, val)| {
+                let key = u32::from_str(key).ok();
+                let val = val
+                    .strip_prefix('"')
+                    .and_then(|val| val.strip_suffix('"'))
+                    .map(String::from);
+                key.zip(val)
+            })
+        })
+        .collect();
+
+    Some(Evil {
+        certs,
+        thread_names,
+    })
 }
