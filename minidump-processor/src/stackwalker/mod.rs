@@ -199,6 +199,7 @@ where
         frames,
         info,
         thread_name: None,
+        last_error_value: None,
     }
 }
 

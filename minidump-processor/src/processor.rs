@@ -252,6 +252,8 @@ where
             .map(|cow| cow.into_owned());
         stack.thread_name = name;
 
+        stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
+
         threads.push(stack);
     }
 

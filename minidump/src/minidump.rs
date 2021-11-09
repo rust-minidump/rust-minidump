@@ -2238,6 +2238,26 @@ impl<'a> MinidumpThread<'a> {
         writeln!(f)?;
         Ok(())
     }
+
+    /// Gets the last error code the thread recorded, just like win32's GetLastError.
+    ///
+    /// The value is heuristically converted into a CrashReason because that's our
+    /// general error code handling machinery, even though this may not actually be
+    /// the reason for the crash!
+    pub fn last_error(&self, cpu: Cpu, memory: &MinidumpMemoryList) -> Option<CrashReason> {
+        // Early hacky implementation: rather than implementing all the TEB layouts,
+        // just use the fact that we know the value we want is a 13-pointers offset
+        // from the start of the TEB.
+        let teb = self.raw.teb;
+        let pointer_width = cpu.pointer_width()?;
+        let offset = pointer_width.checked_mul(13)?;
+        let addr = teb.checked_add(offset)?;
+        let val: u32 = memory
+            .memory_at_address(addr)?
+            .get_memory_at_address(addr)?;
+
+        Some(CrashReason::from_windows_code(val))
+    }
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {

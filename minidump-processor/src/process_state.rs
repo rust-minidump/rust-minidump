@@ -121,6 +121,8 @@ pub struct CallStack {
     pub info: CallStackInfo,
     /// The name of the thread, if known.
     pub thread_name: Option<String>,
+    /// The GetLastError() value stored in the TEB.
+    pub last_error_value: Option<CrashReason>,
 }
 
 #[derive(Debug, Default)]
@@ -316,6 +318,7 @@ impl CallStack {
             info,
             frames: vec![],
             thread_name: None,
+            last_error_value: None,
         }
     }
 
@@ -686,7 +689,7 @@ Unknown streams encountered:
                 "total_frames": thread.frames.len(),
                 // TODO: Issue #156
                 // optional
-                "last_error_value": null,
+                "last_error_value": thread.last_error_value.map(|error| error.to_string()),
                 // optional
                 "thread_name": thread.thread_name,
                 "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({

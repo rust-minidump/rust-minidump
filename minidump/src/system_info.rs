@@ -114,6 +114,15 @@ impl Cpu {
             _ => Cpu::Unknown(arch),
         }
     }
+
+    /// The native pointer width of this platform
+    pub fn pointer_width(&self) -> Option<u64> {
+        match self {
+            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm => Some(4),
+            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 => Some(8),
+            Cpu::Unknown(_) => None,
+        }
+    }
 }
 
 impl fmt::Display for Cpu {
