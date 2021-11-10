@@ -31,12 +31,21 @@ fn print_minidump_dump(path: &Path) {
         Ok(dump) => {
             let stdout = &mut std::io::stdout();
             dump.print(stdout).unwrap();
-            // FIXME: doesn't handle the "bug" native windows minidumps have where
-            // the RVA is null but start_of_memory_range has a valid value we can
-            // use to get the memory range. This results in loss of missing
-            // thread memory dumps!
+
+            // Other streams depend on these, so load them upfront.
+            let system_info = dump.get_stream::<MinidumpSystemInfo>().ok();
+            let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().ok();
+            let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+
             if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
-                thread_list.print(stdout).unwrap();
+                thread_list
+                    .print(
+                        stdout,
+                        memory_list.as_ref(),
+                        system_info.as_ref(),
+                        misc_info.as_ref(),
+                    )
+                    .unwrap();
             }
             if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
                 module_list.print(stdout).unwrap();
@@ -44,22 +53,24 @@ fn print_minidump_dump(path: &Path) {
             if let Ok(module_list) = dump.get_stream::<MinidumpUnloadedModuleList>() {
                 module_list.print(stdout).unwrap();
             }
-            if let Ok(memory_list) = dump.get_stream::<MinidumpMemoryList<'_>>() {
+            if let Some(memory_list) = memory_list {
                 memory_list.print(stdout).unwrap();
             }
             if let Ok(memory_info_list) = dump.get_stream::<MinidumpMemoryInfoList<'_>>() {
                 memory_info_list.print(stdout).unwrap();
             }
             if let Ok(exception) = dump.get_stream::<MinidumpException>() {
-                exception.print(stdout).unwrap();
+                exception
+                    .print(stdout, system_info.as_ref(), misc_info.as_ref())
+                    .unwrap();
             }
             if let Ok(assertion) = dump.get_stream::<MinidumpAssertion>() {
                 assertion.print(stdout).unwrap();
             }
-            if let Ok(system_info) = dump.get_stream::<MinidumpSystemInfo>() {
+            if let Some(system_info) = system_info {
                 system_info.print(stdout).unwrap();
             }
-            if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
+            if let Some(misc_info) = misc_info {
                 misc_info.print(stdout).unwrap();
             }
             if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {

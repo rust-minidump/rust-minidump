@@ -2225,7 +2225,13 @@ impl<'a> MinidumpThread<'a> {
     /// Write a human-readable description of this `MinidumpThread` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(
+        &self,
+        f: &mut T,
+        memory: Option<&MinidumpMemoryList<'a>>,
+        system: Option<&MinidumpSystemInfo>,
+        misc: Option<&MinidumpMiscInfo>,
+    ) -> io::Result<()> {
         write!(
             f,
             r#"MINIDUMP_THREAD
@@ -2252,14 +2258,21 @@ impl<'a> MinidumpThread<'a> {
             self.raw.thread_context.data_size,
             self.raw.thread_context.rva,
         )?;
-        if let Some(_ctx) = self.context {
-            // TODO: temporarily disabled
-            // ctx.print(f)?;
+        if let Some(system_info) = system {
+            if let Some(ctx) = self.context(system_info, misc) {
+                ctx.print(f)?;
+            } else {
+                write!(f, "  (no context)\n\n")?;
+            }
         } else {
             write!(f, "  (no context)\n\n")?;
         }
 
-        if let Some(ref stack) = self.stack {
+        // We might not need any memory, so try to limp forward with an empty
+        // MemoryList if we don't have one.
+        let dummy_memory = MinidumpMemoryList::default();
+        let memory = memory.unwrap_or(&dummy_memory);
+        if let Some(ref stack) = self.stack_memory(memory) {
             writeln!(f, "Stack")?;
             stack.print_contents(f)?;
         } else {
@@ -2335,7 +2348,13 @@ impl<'a> MinidumpThreadList<'a> {
     /// Write a human-readable description of this `MinidumpThreadList` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(
+        &self,
+        f: &mut T,
+        memory: Option<&MinidumpMemoryList<'a>>,
+        system: Option<&MinidumpSystemInfo>,
+        misc: Option<&MinidumpMiscInfo>,
+    ) -> io::Result<()> {
         write!(
             f,
             r#"MinidumpThreadList
@@ -2347,7 +2366,7 @@ impl<'a> MinidumpThreadList<'a> {
 
         for (i, thread) in self.threads.iter().enumerate() {
             writeln!(f, "thread[{}]", i)?;
-            thread.print(f)?;
+            thread.print(f, memory, system, misc)?;
         }
         Ok(())
     }
@@ -3743,7 +3762,12 @@ impl<'a> MinidumpException<'a> {
     /// Write a human-readable description of this `MinidumpException` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(
+        &self,
+        f: &mut T,
+        system: Option<&MinidumpSystemInfo>,
+        misc: Option<&MinidumpMiscInfo>,
+    ) -> io::Result<()> {
         write!(
             f,
             "MINIDUMP_EXCEPTION
@@ -3775,16 +3799,24 @@ impl<'a> MinidumpException<'a> {
 ",
             self.raw.thread_context.data_size, self.raw.thread_context.rva
         )?;
-        if let Some(_context) = self.context {
-            writeln!(f)?;
-            // TODO: temporarily disabled
-            // context.print(f)?;
+        if let Some(system_info) = system {
+            if let Some(context) = self.context(system_info, misc) {
+                writeln!(f)?;
+                context.print(f)?;
+            } else {
+                write!(
+                    f,
+                    "  (no context)
+
+    "
+                )?;
+            }
         } else {
             write!(
                 f,
                 "  (no context)
 
-"
+    "
             )?;
         }
         Ok(())
