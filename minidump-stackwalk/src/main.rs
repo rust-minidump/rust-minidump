@@ -11,7 +11,8 @@ use std::path::Path;
 
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, DwarfSymbolizer, MultiSymbolProvider, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, DwarfSymbolizer, MultiSymbolProvider,
+    ProcessorOptions, Symbolizer,
 };
 
 use clap::{crate_version, App, AppSettings, Arg};
@@ -238,8 +239,9 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         error!("A panic occurred at {}:{}: {}", filename, line, cause);
     }));
 
-    // All options the original minidump-stackwalk has, stubbed out for when we need them:
-    let evil_json_path = matches.value_of_os("raw-json").map(Path::new);
+    let mut options = ProcessorOptions::default();
+
+    options.evil_json = matches.value_of_os("raw-json").map(Path::new);
 
     let temp_dir = std::env::temp_dir();
 
@@ -296,7 +298,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         }
         provider.add(Box::new(DwarfSymbolizer::new()));
 
-        match minidump_processor::process_minidump_with_evil(&dump, &provider, evil_json_path) {
+        match minidump_processor::process_minidump_with_options(&dump, &provider, options) {
             Ok(state) => {
                 let mut stdout;
                 let mut output_f;

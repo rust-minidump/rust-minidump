@@ -7,6 +7,7 @@
 //! [`process_minidump`]: fn.process_minidump.html
 
 mod dwarf_symbolizer;
+mod evil;
 mod process_state;
 mod processor;
 mod stackwalker;

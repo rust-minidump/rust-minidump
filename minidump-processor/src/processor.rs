@@ -4,18 +4,24 @@
 use chrono::{TimeZone, Utc};
 use failure::Fail;
 
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufReader;
 use std::ops::Deref;
 use std::path::Path;
 
 use minidump::{self, *};
 
+use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
+
+/// Various advanced options for the processor.
+#[derive(Default, Debug, Clone)]
+#[non_exhaustive]
+pub struct ProcessorOptions<'a> {
+    /// The evil "raw json" mozilla's legacy infrastructure relies on (to be phased out).
+    pub evil_json: Option<&'a Path>,
+}
 
 /// An error encountered during minidump processing.
 #[derive(Debug, Fail)]
@@ -66,16 +72,14 @@ where
     P: SymbolProvider,
 {
     // No Evil JSON Here!
-    process_minidump_with_evil(dump, symbol_provider, None)
+    process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default())
 }
 
-/// The same as `process_minidump` but with an extra evil little json file.
-///
-/// This is a hack to support mozilla's legacy workflow, just use `process_minidump`.
-pub fn process_minidump_with_evil<'a, T, P>(
+/// The same as [`process_minidump`] but with extra options.
+pub fn process_minidump_with_options<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
-    evil_json: Option<&Path>,
+    options: ProcessorOptions,
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
@@ -215,7 +219,12 @@ where
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
-    // Get memory list
+    // Get the evil JSON file (thread names and module certificates)
+    let evil = options
+        .evil_json
+        .and_then(evil::handle_evil)
+        .unwrap_or_default();
+
     let mut threads = vec![];
     let mut requesting_thread = None;
     for (i, thread) in thread_list.threads.iter().enumerate() {
@@ -249,7 +258,8 @@ where
 
         let name = thread_names
             .get_name(thread.raw.thread_id)
-            .map(|cow| cow.into_owned());
+            .map(|cow| cow.into_owned())
+            .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
         stack.thread_name = name;
 
         stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
@@ -264,14 +274,11 @@ where
     // Get symbol stats from the symbolizer
     let symbol_stats = symbol_provider.stats();
 
-    // Finally, handle the evil JSON file (get module signing certs)
-    let cert_info = evil_json.and_then(handle_evil).unwrap_or_else(HashMap::new);
-
     Ok(ProcessState {
         process_id,
         time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
         process_create_time,
-        cert_info,
+        cert_info: evil.certs,
         crash_reason,
         crash_address,
         assertion,
@@ -286,67 +293,4 @@ where
         unimplemented_streams,
         symbol_stats,
     })
-}
-
-fn handle_evil(evil_path: &Path) -> Option<HashMap<String, String>> {
-    use log::{error, warn};
-    use serde_json::Value::{self, *};
-
-    // Get the evil json
-    let evil_json = File::open(evil_path)
-        .map_err(|e| {
-            error!("Could not load Extra JSON at {:?}", evil_path);
-            e
-        })
-        .ok()?;
-
-    let buf = BufReader::new(evil_json);
-    let json: Value = serde_json::from_reader(buf)
-        .map_err(|e| {
-            error!("Could not parse Extra JSON (was not valid JSON)");
-            e
-        })
-        .ok()?;
-
-    // Get module signing info
-    let temp_obj;
-    let certs = match json.get("ModuleSignatureInfo") {
-        Some(Object(obj)) => obj,
-        Some(String(string)) => {
-            // Possible the signature info was wrapped in a string by mistake,
-            // So try to parse that string as an object.
-            temp_obj = serde_json::from_str(string)
-                .map_err(|e| {
-                    error!("Could not parse Extra JSON's ModuleSignatureInfo (not an object)");
-                    error!("ModuleSignatureInfo: {}", string);
-                    e
-                })
-                .ok()?;
-            &temp_obj
-        }
-        _ => {
-            error!("Could not parse Extra JSON's ModuleSignatureInfo (not an object)");
-            return None;
-        }
-    };
-
-    // Each certificate lists the modules it applies to, but we want the
-    // reverse mapping -- module names to certificates. Invert the map.
-    let mut cert_map = HashMap::new();
-    for (cert, modules) in certs {
-        if let Array(modules) = modules {
-            for module in modules {
-                if let String(module) = module {
-                    cert_map.insert(module.clone(), cert.clone());
-                }
-            }
-        } else {
-            warn!(
-                "Extra JSON had corrupt entry -- \"{}\": {:?}",
-                cert, modules
-            );
-        }
-    }
-
-    Some(cert_map)
 }
