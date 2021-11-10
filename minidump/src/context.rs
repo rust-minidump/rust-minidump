@@ -3,6 +3,8 @@
 
 //! CPU contexts.
 
+use log::warn;
+use num_traits::FromPrimitive;
 use scroll::{self, Pread};
 use std::collections::HashSet;
 use std::fmt;
@@ -583,89 +585,136 @@ impl MinidumpContext {
     pub fn read(
         bytes: &[u8],
         endian: scroll::Endian,
-        _system_info: &MinidumpSystemInfo,
+        system_info: &MinidumpSystemInfo,
         _misc: Option<&MinidumpMiscInfo>,
     ) -> Result<MinidumpContext, ContextError> {
-        // Some contexts don't have a context flags word at the beginning,
-        // so special-case them by size.
-        let mut offset = 0;
-        if bytes.len() == mem::size_of::<md::CONTEXT_AMD64>() {
-            let ctx: md::CONTEXT_AMD64 = bytes
-                .gread_with(&mut offset, endian)
-                .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_flags(ctx.context_flags) != ContextFlagsCpu::CONTEXT_AMD64 {
-                return Err(ContextError::ReadFailure);
-            } else {
-                return Ok(MinidumpContext::from_raw(MinidumpRawContext::Amd64(ctx)));
-            }
-        } else if bytes.len() == mem::size_of::<md::CONTEXT_PPC64>() {
-            let ctx: md::CONTEXT_PPC64 = bytes
-                .gread_with(&mut offset, endian)
-                .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_flags(ctx.context_flags as u32)
-                != ContextFlagsCpu::CONTEXT_PPC64
-            {
-                return Err(ContextError::ReadFailure);
-            } else {
-                return Ok(MinidumpContext::from_raw(MinidumpRawContext::Ppc64(ctx)));
-            }
-        } else if bytes.len() == mem::size_of::<md::CONTEXT_ARM64_OLD>() {
-            let ctx: md::CONTEXT_ARM64_OLD = bytes
-                .gread_with(&mut offset, endian)
-                .or(Err(ContextError::ReadFailure))?;
-            if ContextFlagsCpu::from_flags(ctx.context_flags as u32)
-                != ContextFlagsCpu::CONTEXT_ARM64_OLD
-            {
-                return Err(ContextError::ReadFailure);
-            } else {
-                return Ok(MinidumpContext::from_raw(MinidumpRawContext::OldArm64(ctx)));
-            }
-        }
+        use md::ProcessorArchitecture::*;
 
-        // For everything else, read the flags and determine context
-        // type from that.
-        let flags: u32 = bytes
-            .gread_with(&mut offset, endian)
-            .or(Err(ContextError::ReadFailure))?;
-        // Seek back, the flags are also part of the RawContext structs.
-        offset = 0;
-        // TODO: handle dumps with MD_CONTEXT_ARM_OLD
-        match ContextFlagsCpu::from_flags(flags) {
-            ContextFlagsCpu::CONTEXT_X86 => {
+        let mut offset = 0;
+
+        // Although every context contains `context_flags` which tell us what kind
+        // ok context we're handling, they aren't all in the same location, so we
+        // need to use SystemInfo to choose what kind of context to parse this as.
+        // We can then use the `context_flags` to validate our parse.
+        // We need to use the raw processor_architecture because system_info.cpu
+        // flattens away some key distinctions for this code.
+        match md::ProcessorArchitecture::from_u16(system_info.raw.processor_architecture) {
+            Some(PROCESSOR_ARCHITECTURE_INTEL) | Some(PROCESSOR_ARCHITECTURE_IA32_ON_WIN64) => {
+                // Not 100% sure IA32_ON_WIN64 is this format, but let's assume so?
                 let ctx: md::CONTEXT_X86 = bytes
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::X86(ctx)))
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_X86 {
+                    if ctx.context_flags & md::CONTEXT_HAS_XSTATE != 0 {
+                        // FIXME: uses MISC_INFO_5 to parse out extra sections here
+                        warn!("Cpu context has extra XSTATE that is being ignored");
+                    }
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::X86(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
             }
-            ContextFlagsCpu::CONTEXT_PPC => {
+            Some(PROCESSOR_ARCHITECTURE_AMD64) => {
+                let ctx: md::CONTEXT_AMD64 = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_AMD64 {
+                    if ctx.context_flags & md::CONTEXT_HAS_XSTATE != 0 {
+                        // FIXME: uses MISC_INFO_5 to parse out extra sections here
+                        warn!("Cpu context has extra XSTATE that is being ignored");
+                    }
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Amd64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
+            Some(PROCESSOR_ARCHITECTURE_PPC) => {
                 let ctx: md::CONTEXT_PPC = bytes
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::Ppc(ctx)))
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_PPC {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Ppc(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
             }
-            ContextFlagsCpu::CONTEXT_SPARC => {
+            Some(PROCESSOR_ARCHITECTURE_PPC64) => {
+                let ctx: md::CONTEXT_PPC64 = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_PPC64 {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Ppc64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
+            Some(PROCESSOR_ARCHITECTURE_SPARC) => {
                 let ctx: md::CONTEXT_SPARC = bytes
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::Sparc(ctx)))
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_SPARC {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Sparc(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
             }
-            ContextFlagsCpu::CONTEXT_ARM => {
+            Some(PROCESSOR_ARCHITECTURE_ARM) => {
                 let ctx: md::CONTEXT_ARM = bytes
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm(ctx)))
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_ARM {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
             }
-            ContextFlagsCpu::CONTEXT_MIPS => {
-                let ctx: md::CONTEXT_MIPS = bytes
-                    .gread_with(&mut offset, endian)
-                    .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::Mips(ctx)))
-            }
-            ContextFlagsCpu::CONTEXT_ARM64 => {
+            Some(PROCESSOR_ARCHITECTURE_ARM64) => {
                 let ctx: md::CONTEXT_ARM64 = bytes
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
-                Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm64(ctx)))
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_ARM64 {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
+            Some(PROCESSOR_ARCHITECTURE_ARM64_OLD) => {
+                let ctx: md::CONTEXT_ARM64_OLD = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_ARM64_OLD {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::OldArm64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
+            Some(PROCESSOR_ARCHITECTURE_MIPS) => {
+                let ctx: md::CONTEXT_MIPS = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                if flags == ContextFlagsCpu::CONTEXT_MIPS {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Mips(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
             }
             _ => Err(ContextError::UnknownCpuContext),
         }

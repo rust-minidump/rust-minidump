@@ -6797,6 +6797,9 @@ pub enum ExceptionCodeMacResourceThreadsFlavor {
 
 /// Valid bits in a `context_flags` for [`ContextFlagsCpu`]
 pub const CONTEXT_CPU_MASK: u32 = 0xffffff00;
+/// x86 and x64 contexts have this bit set in their `context_flags` when they have
+/// extra XSTATE beyond the traditional context definition.
+pub const CONTEXT_HAS_XSTATE: u32 = 0x00000040;
 
 bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs

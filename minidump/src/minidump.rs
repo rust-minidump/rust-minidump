@@ -5469,7 +5469,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000,
         );
-        let system_info = SystemInfo::new(Endian::Little);
+        let arch = md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_INTEL as u16;
+        let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(arch);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_thread(thread)
@@ -5506,7 +5507,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000000010000000,
         );
-        let system_info = SystemInfo::new(Endian::Little);
+        let arch = md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16;
+        let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(arch);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_thread(thread)
