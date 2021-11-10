@@ -4,18 +4,24 @@
 use chrono::{TimeZone, Utc};
 use failure::Fail;
 
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufReader;
 use std::ops::Deref;
 use std::path::Path;
 
 use minidump::{self, *};
 
+use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
+
+/// Various advanced options for the processor.
+#[derive(Default, Debug, Clone)]
+#[non_exhaustive]
+pub struct ProcessorOptions<'a> {
+    /// The evil "raw json" mozilla's legacy infrastructure relies on (to be phased out).
+    pub evil_json: Option<&'a Path>,
+}
 
 /// An error encountered during minidump processing.
 #[derive(Debug, Fail)]
@@ -66,16 +72,14 @@ where
     P: SymbolProvider,
 {
     // No Evil JSON Here!
-    process_minidump_with_evil(dump, symbol_provider, None)
+    process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default())
 }
 
-/// The same as `process_minidump` but with an extra evil little json file.
-///
-/// This is a hack to support mozilla's legacy workflow, just use `process_minidump`.
-pub fn process_minidump_with_evil<'a, T, P>(
+/// The same as [`process_minidump`] but with extra options.
+pub fn process_minidump_with_options<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
-    evil_json: Option<&Path>,
+    options: ProcessorOptions,
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
@@ -216,7 +220,10 @@ where
     let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
     // Get the evil JSON file (thread names and module certificates)
-    let evil = evil_json.and_then(handle_evil).unwrap_or_default();
+    let evil = options
+        .evil_json
+        .and_then(evil::handle_evil)
+        .unwrap_or_default();
 
     let mut threads = vec![];
     let mut requesting_thread = None;
@@ -285,105 +292,5 @@ where
         unknown_streams,
         unimplemented_streams,
         symbol_stats,
-    })
-}
-
-/// Things extracted from the Evil JSON File
-#[derive(Debug, Default)]
-struct Evil {
-    /// module name => cert
-    certs: HashMap<String, String>,
-    /// thread id => thread name
-    thread_names: HashMap<u32, String>,
-}
-
-fn handle_evil(evil_path: &Path) -> Option<Evil> {
-    use log::error;
-    use serde_json::map::Map;
-    use serde_json::Value;
-    use std::str::FromStr;
-
-    // Get the evil json
-    let evil_json = File::open(evil_path)
-        .map_err(|e| {
-            error!("Could not load Extra JSON at {:?}", evil_path);
-            e
-        })
-        .ok()?;
-
-    let buf = BufReader::new(evil_json);
-    let mut json: Map<String, Value> = serde_json::from_reader(buf)
-        .map_err(|e| {
-            error!("Could not parse Extra JSON (was not valid JSON)");
-            e
-        })
-        .ok()?;
-
-    // Of course evil json contains a string-that-can-be-parsed-as-a-json-object
-    // instead of having a normal json object!
-    fn evil_obj<K, V>(json: &mut Map<String, Value>, field_name: &str) -> Option<HashMap<K, V>>
-    where
-        K: for<'de> serde::de::Deserialize<'de> + Eq + std::hash::Hash,
-        V: for<'de> serde::de::Deserialize<'de>,
-    {
-        json.remove(field_name).and_then(|val| {
-            match val {
-                Value::Object(_) => serde_json::from_value(val).ok(),
-                Value::String(string) => serde_json::from_str(&string).ok(),
-                _ => None,
-            }
-            .or_else(|| {
-                error!("Could not parse Evil JSON's {} (not an object)", field_name);
-                None
-            })
-        })
-    }
-
-    // Convert certs from
-    // "cert_name1": ["module1", "module2", ...], "cert_name2": ...
-    // to
-    // "module1": "cert_name1", "module2": "cert_name1", ...
-    let certs = evil_obj(&mut json, "ModuleSignatureInfo")
-        .map(|certs: HashMap<String, Vec<String>>| {
-            let mut cert_map = HashMap::new();
-            for (cert, modules) in certs {
-                for module in modules {
-                    cert_map.insert(module, cert.clone());
-                }
-            }
-            cert_map
-        })
-        .unwrap_or_default();
-
-    // Get thread name mappings
-
-    // In typical evil json fashion, this list doesn't conform to even the evil_obj format!
-    // It's just a set of comma-separated int:string pairs, with a trailing comma.
-    // This cannot be parsed as JSON at all, since the keys are not strings. So we just
-    // do a sloppy `split` based parse and hope we don't encounter thread names with commas
-    // in them because I hate this JSON file with a passion.
-    //
-    // ex: 123: "name1", 456: "name",
-    let thread_names = json
-        .remove("ThreadIdNameMapping")
-        .unwrap_or_default()
-        .as_str()
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|entry| {
-            entry.split_once(":").and_then(|(key, val)| {
-                let key = u32::from_str(key).ok();
-                let val = val
-                    .strip_prefix('"')
-                    .and_then(|val| val.strip_suffix('"'))
-                    .map(String::from);
-                key.zip(val)
-            })
-        })
-        .collect();
-
-    Some(Evil {
-        certs,
-        thread_names,
     })
 }
