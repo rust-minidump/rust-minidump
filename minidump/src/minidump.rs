@@ -1875,7 +1875,7 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         //
         // ```
         //
-        // * address: the start and end addresses (TODO: inclusive?)
+        // * address: the start and end addresses (inclusive)
         // * perms: permissions the process had on the memory
         //   * r = read
         //   * w = write
@@ -2017,7 +2017,6 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
     }
     /// Write a human-readable description of this.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        // TODO permissions
         write!(
             f,
             "MINIDUMP_LINUX_MAP_INFO
@@ -3172,7 +3171,6 @@ impl MinidumpMiscInfo {
                         write!(f, "    feature {:2} - (unknown)           : ", i)?;
                     }
                     writeln!(f, " offset {:4}, size {:4}", feature.offset, feature.size)?;
-                    // TODO: load the XSAVE state and print it?
                 }
             }
             None => writeln!(f, "(invalid)")?,
