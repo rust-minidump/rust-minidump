@@ -116,7 +116,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c4a342b450b268e1be8036311e2c613d7f8a7ed31214dff1cc3b60852a3168d"
 dependencies = [
- "byteorder 1.4.3",
+ "byteorder",
  "safemem",
 ]
 
@@ -160,12 +160,6 @@ name = "bumpalo"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63396b8a4b9de3f4fdfb320ab6080762242f66a8ef174c49d8e19b674db4cdbe"
-
-[[package]]
-name = "byteorder"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fc10e8cc6b2580fda3f36eb6dc5316657f812a3df879a44a66fc9f0fdbc4855"
 
 [[package]]
 name = "byteorder"
@@ -600,7 +594,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7f6ee5390883802431e4abe323390f52f10ff16e8f8d2d6ce598251f900ede"
 dependencies = [
  "arrayvec",
- "byteorder 1.4.3",
+ "byteorder",
  "fallible-iterator 0.1.6",
  "stable_deref_trait",
 ]
@@ -1318,7 +1312,7 @@ version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "511379a8194230c2395d2f5fa627a5a7e108a9f976656ce723ae68fca4097bfc"
 dependencies = [
- "byteorder 1.4.3",
+ "byteorder",
 ]
 
 [[package]]
@@ -1384,7 +1378,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61ac2afed2856590ae79d6f358a24b85ece246d2aa134741a66d589519b7503"
 dependencies = [
  "base64 0.8.0",
- "byteorder 1.4.3",
+ "byteorder",
  "chrono",
  "serde",
  "xml-rs",
@@ -2044,11 +2038,11 @@ dependencies = [
 
 [[package]]
 name = "test-assembler"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ccc488d8ed3a4a31f68372ba429642245ddbdf6642054334b7fcc06264cbde9"
+checksum = "9a6da51de149453f5c43fa67d5e73cccd75b3c5727a38a2f18c5f3c47f2db582"
 dependencies = [
- "byteorder 0.5.3",
+ "byteorder",
 ]
 
 [[package]]
