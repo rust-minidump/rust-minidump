@@ -296,9 +296,11 @@ pub struct MinidumpThread<'a> {
     /// The `MINIDUMP_THREAD` direct from the minidump file.
     pub raw: md::MINIDUMP_THREAD,
     /// The CPU context for the thread, if present.
-    pub context: Option<MinidumpContext>,
+    context: Option<&'a [u8]>,
     /// The stack memory for the thread, if present.
-    pub stack: Option<MinidumpMemory<'a>>,
+    stack: Option<MinidumpMemory<'a>>,
+    /// Saved endianess for lazy parsing.
+    endian: scroll::Endian,
 }
 
 /// A list of `MinidumpThread`s contained in a `Minidump`.
@@ -329,7 +331,7 @@ pub struct MinidumpSystemInfo {
 }
 
 /// A region of memory from the process that wrote the minidump.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MinidumpMemory<'a> {
     /// The raw `MINIDUMP_MEMORY_DESCRIPTOR` from the minidump.
     pub desc: md::MINIDUMP_MEMORY_DESCRIPTOR,
@@ -475,7 +477,7 @@ pub enum CrashReason {
 /// contains the CPU context for the exception thread at the time the exception
 /// occurred.
 #[derive(Debug)]
-pub struct MinidumpException {
+pub struct MinidumpException<'a> {
     /// The raw exception information from the minidump stream.
     pub raw: md::MINIDUMP_EXCEPTION_STREAM,
     /// The thread that encountered this exception.
@@ -486,7 +488,9 @@ pub struct MinidumpException {
     /// `thread_id`, since it points to the code location where the exception happened,
     /// without any exception handling routines that are likely to be on the stack after
     /// that point.
-    pub context: Option<MinidumpContext>,
+    context: Option<&'a [u8]>,
+    /// Saved endianess for lazy parsing.
+    endian: scroll::Endian,
 }
 
 /// A list of memory regions included in a minidump.
@@ -2193,6 +2197,31 @@ impl<'a> UnifiedMemoryInfo<'a> {
 }
 
 impl<'a> MinidumpThread<'a> {
+    pub fn context(
+        &self,
+        system_info: &MinidumpSystemInfo,
+        misc: Option<&MinidumpMiscInfo>,
+    ) -> Option<Cow<MinidumpContext>> {
+        MinidumpContext::read(self.context?, self.endian, system_info, misc)
+            .ok()
+            .map(Cow::Owned)
+    }
+
+    pub fn stack_memory(
+        &self,
+        memory_list: &MinidumpMemoryList<'a>,
+    ) -> Option<Cow<MinidumpMemory<'a>>> {
+        self.stack.as_ref().map(Cow::Borrowed).or_else(|| {
+            // Sometimes the raw.stack RVA is null/busted, but the start_of_memory_range
+            // value is correct. So if the `read` fails, try resolving start_of_memory_range
+            // with the MinidumpMemoryList. (This seems to specifically be a problem with
+            // Windows minidumps.)
+            let stack_addr = self.raw.stack.start_of_memory_range;
+            let memory = memory_list.memory_at_address(stack_addr)?;
+            Some(Cow::Owned(memory.clone()))
+        })
+    }
+
     /// Write a human-readable description of this `MinidumpThread` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
@@ -2223,8 +2252,9 @@ impl<'a> MinidumpThread<'a> {
             self.raw.thread_context.data_size,
             self.raw.thread_context.rva,
         )?;
-        if let Some(ref ctx) = self.context {
-            ctx.print(f)?;
+        if let Some(_ctx) = self.context {
+            // TODO: temporarily disabled
+            // ctx.print(f)?;
         } else {
             write!(f, "  (no context)\n\n")?;
         }
@@ -2274,17 +2304,19 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
         let mut thread_ids = HashMap::with_capacity(raw_threads.len());
         for raw in raw_threads.into_iter() {
             thread_ids.insert(raw.thread_id, threads.len());
-            let context_data = location_slice(all, &raw.thread_context)?;
-            let context = MinidumpContext::read(context_data, endian).ok();
 
-            // If this fails, it's ok. That probably means the RVA was null
-            // and we need to lookup the stack's memory by address in the
-            // mapped memory regions (minidump-processor will handle this).
+            // Defer parsing of this to the `context` method, where we will have access
+            // to other streams that are required to parse a context properly.
+            let context = location_slice(all, &raw.thread_context).ok();
+
+            // Try to get the stack memory here, but the `stack_memory` method will
+            // attempt a fallback method with access to other streams.
             let stack = MinidumpMemory::read(&raw.stack, all).ok();
             threads.push(MinidumpThread {
                 raw,
                 context,
                 stack,
+                endian,
             });
         }
         Ok(MinidumpThreadList {
@@ -3654,29 +3686,35 @@ impl fmt::Display for CrashReason {
     }
 }
 
-impl<'a> MinidumpStream<'a> for MinidumpException {
+impl<'a> MinidumpStream<'a> for MinidumpException<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ExceptionStream;
 
-    fn read(
-        bytes: &'a [u8],
-        all: &'a [u8],
-        endian: scroll::Endian,
-    ) -> Result<MinidumpException, Error> {
+    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
         let raw: md::MINIDUMP_EXCEPTION_STREAM = bytes
             .pread_with(0, endian)
             .or(Err(Error::StreamReadFailure))?;
-        let context_data = location_slice(all, &raw.thread_context)?;
-        let context = MinidumpContext::read(context_data, endian).ok();
+        let context = location_slice(all, &raw.thread_context).ok();
         let thread_id = raw.thread_id;
         Ok(MinidumpException {
             raw,
             thread_id,
             context,
+            endian,
         })
     }
 }
 
-impl MinidumpException {
+impl<'a> MinidumpException<'a> {
+    pub fn context(
+        &self,
+        system_info: &MinidumpSystemInfo,
+        misc: Option<&MinidumpMiscInfo>,
+    ) -> Option<Cow<MinidumpContext>> {
+        MinidumpContext::read(self.context?, self.endian, system_info, misc)
+            .ok()
+            .map(Cow::Owned)
+    }
+
     /// Get the crash address for an exception.
     pub fn get_crash_address(&self, os: Os) -> u64 {
         match (
@@ -3737,9 +3775,10 @@ impl MinidumpException {
 ",
             self.raw.thread_context.data_size, self.raw.thread_context.rva
         )?;
-        if let Some(ref context) = self.context {
+        if let Some(_context) = self.context {
             writeln!(f)?;
-            context.print(f)?;
+            // TODO: temporarily disabled
+            // context.print(f)?;
         } else {
             write!(
                 f,
@@ -4357,7 +4396,7 @@ mod test {
         self, AnnotationValue, CrashpadInfo, DumpString, Memory, MemoryInfo as SynthMemoryInfo,
         MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
         MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
-        SynthMinidump, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
+        SynthMinidump, SystemInfo, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
         STOCK_VERSION_INFO,
     };
     use test_assembler::*;
@@ -5430,18 +5469,24 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000,
         );
+        let system_info = SystemInfo::new(Endian::Little);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_thread(thread)
             .add(context)
-            .add_memory(stack);
+            .add_memory(stack)
+            .add_system_info(system_info);
         let dump = read_synth_dump(dump).unwrap();
         let mut thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
         assert_eq!(thread_list.threads.len(), 1);
         let mut thread = thread_list.threads.pop().unwrap();
         assert_eq!(thread.raw.thread_id, 0x1234);
-        let context = thread.context.expect("Should have a thread context");
-        match context.raw {
+        let context = thread
+            .context(&system_info, misc_info.as_ref())
+            .expect("Should have a thread context");
+        match &context.raw {
             MinidumpRawContext::X86(raw) => {
                 assert_eq!(raw.eip, 0xabcd1234);
                 assert_eq!(raw.esp, 0x1010);
@@ -5461,18 +5506,24 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000000010000000,
         );
+        let system_info = SystemInfo::new(Endian::Little);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_thread(thread)
             .add(context)
-            .add_memory(stack);
+            .add_memory(stack)
+            .add_system_info(system_info);
         let dump = read_synth_dump(dump).unwrap();
         let mut thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
         assert_eq!(thread_list.threads.len(), 1);
         let mut thread = thread_list.threads.pop().unwrap();
         assert_eq!(thread.raw.thread_id, 0x1234);
-        let context = thread.context.expect("Should have a thread context");
-        match context.raw {
+        let context = thread
+            .context(&system_info, misc_info.as_ref())
+            .expect("Should have a thread context");
+        match &context.raw {
             MinidumpRawContext::Amd64(raw) => {
                 assert_eq!(raw.rip, 0x1234abcd1234abcd);
                 assert_eq!(raw.rsp, 0x1000000010000000);

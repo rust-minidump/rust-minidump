@@ -205,9 +205,14 @@ fn test_assertion() {
 fn test_exception() {
     let dump = read_test_minidump().unwrap();
     let exception = dump.get_stream::<MinidumpException>().unwrap();
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
     assert_eq!(exception.thread_id, 0xbf4);
     assert_eq!(exception.raw.exception_record.exception_code, 0xc0000005);
-    if let Some(ref ctx) = exception.context {
+    if let Some(ctx) = exception
+        .context(&system_info, misc_info.as_ref())
+        .as_deref()
+    {
         assert_eq!(ctx.get_instruction_pointer(), 0x40429e);
         assert_eq!(ctx.get_stack_pointer(), 0x12fe84);
         if let MinidumpContext {
@@ -229,13 +234,22 @@ fn test_exception() {
 fn test_thread_list() {
     let dump = read_test_minidump().unwrap();
     let thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+    let memory_list = dump
+        .get_stream::<MinidumpMemoryList<'_>>()
+        .unwrap_or_default();
+
     let threads = &thread_list.threads;
     assert_eq!(threads.len(), 2);
     assert_eq!(threads[0].raw.thread_id, 0xbf4);
     assert_eq!(threads[1].raw.thread_id, 0x11c0);
     let id = threads[1].raw.thread_id;
     assert_eq!(thread_list.get_thread(id).unwrap().raw.thread_id, id);
-    if let Some(ref ctx) = threads[0].context {
+    if let Some(ctx) = threads[0]
+        .context(&system_info, misc_info.as_ref())
+        .as_deref()
+    {
         assert_eq!(ctx.get_instruction_pointer(), 0x7c90eb94);
         assert_eq!(ctx.get_stack_pointer(), 0x12f320);
         if let MinidumpContext {
@@ -251,7 +265,7 @@ fn test_thread_list() {
     } else {
         panic!("Missing context");
     }
-    if let Some(ref stack) = threads[0].stack {
+    if let Some(ref stack) = threads[0].stack_memory(&memory_list) {
         // Try the beginning
         assert_eq!(stack.get_memory_at_address::<u8>(0x12f31c).unwrap(), 0);
         assert_eq!(stack.get_memory_at_address::<u16>(0x12f31c).unwrap(), 0);

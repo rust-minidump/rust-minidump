@@ -11,8 +11,8 @@ use structopt::StructOpt;
 use breakpad_symbols::{HttpSymbolSupplier, SimpleFrame, Symbolizer};
 use minidump::system_info::Cpu;
 use minidump::{
-    Minidump, MinidumpException, MinidumpMemoryList, MinidumpModule, MinidumpModuleList,
-    MinidumpSystemInfo,
+    Minidump, MinidumpException, MinidumpMemoryList, MinidumpMiscInfo, MinidumpModule,
+    MinidumpModuleList, MinidumpSystemInfo,
 };
 use minidump_common::traits::Module;
 
@@ -231,16 +231,20 @@ pub fn get_minidump_instructions() -> Result<(), Error> {
     } = GetMinidumpInstructions::from_args();
     let dump = Minidump::read_path(&minidump)?;
     let modules = dump.get_stream::<MinidumpModuleList>()?;
+    let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
+    let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
     let exception = dump.get_stream::<MinidumpException>()?;
-    let context = exception
-        .context
+    let context = exception.context(&sys_info, misc_info.as_ref());
+
+    let context = context
         .as_ref()
         .ok_or_else(|| format_err!("Missing exception context"))?;
     let ip = context.get_instruction_pointer();
-    let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
+
     let memory = memory_list.memory_at_address(ip)
         .ok_or_else(|| format_err!("Minidump doesn't contain a memory region that contains the instruction pointer from the exception record"))?;
-    let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
+
     let arch = match sys_info.cpu {
         Cpu::X86 => CpuArch::X86,
         Cpu::X86_64 => CpuArch::X86_64,
@@ -320,6 +324,8 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
     let modules = dump.get_stream::<MinidumpModuleList>()?;
     let memory_list = dump.get_stream::<MinidumpMemoryList>()?;
     let sys_info = dump.get_stream::<MinidumpSystemInfo>()?;
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+
     let wordsize = match sys_info.cpu {
         Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm => 4,
         Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 => 8,
@@ -328,8 +334,8 @@ pub fn dump_minidump_stack() -> Result<(), Error> {
     // TODO: provide a commandline option for the address.
     // Default to the top of the crashing stack.
     let exception = dump.get_stream::<MinidumpException>()?;
-    let context = exception
-        .context
+    let context = exception.context(&sys_info, misc_info.as_ref());
+    let context = context
         .as_ref()
         .ok_or_else(|| format_err!("Missing exception context"))?;
     let sp = context.get_stack_pointer();

@@ -172,16 +172,17 @@ where
         .get_stream::<MinidumpMacCrashInfo>()
         .ok()
         .map(|info| info.raw);
+
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
     // Process create time is optional.
-    let (process_id, process_create_time) =
-        if let Ok(misc_info) = dump.get_stream::<MinidumpMiscInfo>() {
-            (
-                misc_info.raw.process_id().cloned(),
-                misc_info.process_create_time(),
-            )
-        } else {
-            (None, None)
-        };
+    let (process_id, process_create_time) = if let Some(misc_info) = misc_info.as_ref() {
+        (
+            misc_info.raw.process_id().cloned(),
+            misc_info.process_create_time(),
+        )
+    } else {
+        (None, None)
+    };
     // If Breakpad info exists in dump, get dump and requesting thread ids.
     let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
     let (dump_thread_id, requesting_thread_id) = if let Ok(info) = breakpad_info {
@@ -201,7 +202,8 @@ where
     } else {
         (None, None, None)
     };
-    let exception_context = exception_ref.and_then(|e| e.context.as_ref());
+    let exception_context =
+        exception_ref.and_then(|e| e.context(&dump_system_info, misc_info.as_ref()));
     // Get assertion
     let assertion = None;
     let modules = match dump.get_stream::<MinidumpModuleList>() {
@@ -233,6 +235,8 @@ where
             threads.push(CallStack::with_info(CallStackInfo::DumpThreadSkipped));
             continue;
         }
+
+        let thread_context = thread.context(&dump_system_info, misc_info.as_ref());
         // If this thread requested the dump then try to use the exception
         // context if it exists. (prefer the exception stream's thread id over
         // the breakpad info stream's thread id.)
@@ -242,19 +246,17 @@ where
             .unwrap_or(false)
         {
             requesting_thread = Some(i);
-            exception_context.or_else(|| thread.context.as_ref())
+            exception_context
+                .as_deref()
+                .or_else(|| thread_context.as_deref())
         } else {
-            thread.context.as_ref()
+            thread_context.as_deref()
         };
 
-        let stack = thread.stack.as_ref().or_else(|| {
-            // Windows probably gave us null RVAs for our stack memory descriptors.
-            // If this happens, then we need to look up the memory region by address.
-            let stack_addr = thread.raw.stack.start_of_memory_range;
-            memory_list.memory_at_address(stack_addr)
-        });
+        let stack = thread.stack_memory(&memory_list);
 
-        let mut stack = stackwalker::walk_stack(&context, stack, &modules, symbol_provider);
+        let mut stack =
+            stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider);
 
         let name = thread_names
             .get_name(thread.raw.thread_id)

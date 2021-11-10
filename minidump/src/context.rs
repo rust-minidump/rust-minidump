@@ -11,6 +11,7 @@ use std::io::prelude::*;
 use std::mem;
 
 use crate::iostuff::*;
+use crate::{MinidumpMiscInfo, MinidumpSystemInfo};
 use minidump_common::format as md;
 use minidump_common::format::ContextFlagsCpu;
 
@@ -579,7 +580,12 @@ impl MinidumpContext {
     }
 
     /// Read a `MinidumpContext` from `bytes`.
-    pub fn read(bytes: &[u8], endian: scroll::Endian) -> Result<MinidumpContext, ContextError> {
+    pub fn read(
+        bytes: &[u8],
+        endian: scroll::Endian,
+        _system_info: &MinidumpSystemInfo,
+        _misc: Option<&MinidumpMiscInfo>,
+    ) -> Result<MinidumpContext, ContextError> {
         // Some contexts don't have a context flags word at the beginning,
         // so special-case them by size.
         let mut offset = 0;
