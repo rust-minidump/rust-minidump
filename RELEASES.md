@@ -1,8 +1,11 @@
-# Pending Release (TBD)
+# Version 0.9.2 (2021-11-10)
 
-Commit: TBD
+Commit: this one! (TBD)
 
-Polishing and bugfixing to reach final feature parity with mozilla's minidump-stackwalk.
+Tentative parity with mozilla/minidump-stackwalk (and all the breakpad features it uses)! 🎉
+
+All that remains before a potential 1.0 release is testing/documenting/cleanup.
+
 
 Changes:
 
