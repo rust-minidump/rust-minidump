@@ -27,6 +27,7 @@ pub struct SynthMinidump {
     stream_directory_rva: Label,
     /// The contents of the stream directory.
     stream_directory: Section,
+    /// System info (cpu arch, os, etc.)
     system_info: Option<SystemInfo>,
     /// List of modules in this minidump.
     module_list: Option<ListStream<Module>>,
@@ -1684,6 +1685,11 @@ impl SystemInfo {
                 amd_extended_cpu_features: 0,
             },
         }
+    }
+
+    pub fn set_processor_architecture(mut self, arch: u16) -> Self {
+        self.processor_architecture = arch;
+        self
     }
 }
 

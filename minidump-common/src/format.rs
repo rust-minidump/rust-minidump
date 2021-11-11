@@ -6797,6 +6797,9 @@ pub enum ExceptionCodeMacResourceThreadsFlavor {
 
 /// Valid bits in a `context_flags` for [`ContextFlagsCpu`]
 pub const CONTEXT_CPU_MASK: u32 = 0xffffff00;
+/// x86 and x64 contexts have this bit set in their `context_flags` when they have
+/// extra XSTATE beyond the traditional context definition.
+pub const CONTEXT_HAS_XSTATE: u32 = 0x00000040;
 
 bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs
@@ -7507,18 +7510,55 @@ multi_structs! {
         pub xstate_data: XSTATE_CONFIG_FEATURE_MSC_INFO,
         pub process_cookie: u32,
     }
-    // TODO: read xstate_data and process the extra XSAVE sections at the
-    // end of each thread's cpu context.
 }
 
-/// A descriptor of the XSAVE context which can be found at the end of
-/// each thread's cpu context.
+/// A descriptor of the XSAVE context, which extends a normal x86/x64 context.
 ///
 /// The sections of this context are dumps of some of the CPUs registers
 /// (e.g. one section might contain the contents of the SSE registers).
 ///
 /// Intel documents its XSAVE entries in Volume 1, Chapter 13 of the
 /// "Intel 64 and IA-32 Architectures Software Developer’s Manual".
+///
+///
+/// # The XSTATE Format in Minidumps
+///
+/// This format is slightly messed up in the context of minidumps because it's
+/// grafted onto Microsoft's own formats. Here's what's important to know:
+///
+/// * The "Cpu Context" and the "XSAVE context" are in fact the same regions
+/// of memory.
+///
+/// * Whether XSTATE is present or not, the classic layouts of CONTEXT_X86
+/// and [`CONTEXT_AMD64`] both apply -- xstate will only add stuff after *or*
+/// refine your understanding of memory in the existing layout. So you can
+/// safely ignore the existence of XSTATE, but you might be missing new info.
+///
+/// * AMD64 doesn't have a standard way to save general purpose registers,
+/// so the first 256 bytes of [`CONTEXT_AMD64`] are just however microsoft
+/// decided to save the registers, and will not be referred to by the XSTATE.
+///
+/// **!!! THIS PART IS IMPORTANT !!!**
+///
+/// * As a consequence, all [`XSTATE_FEATURE::offset`] values must have 256
+/// added to them to get the correct offset for that feature! For example, the
+/// LEGACY_FLOATING_POINT feature should always have an offset of 0, but it
+/// is actually at offset 256 in [`CONTEXT_AMD64`] (it corresponds to
+/// [`CONTEXT_AMD64::float_save`]).
+///
+/// * The following features are already contained inside of [`CONTEXT_AMD64`]:
+///    * LEGACY_FLOATING_POINT
+///    * LEGACY_SSE
+///    * GSSE_AND_AVX
+///
+/// * If there are XSTATE entries that *actually* map outside of the context's
+/// normal memory range, then the context's [`context_flags`](`CONTEXT_AMD64::context_flags`)
+/// will have bit 0x40 set ([`CONTEXT_HAS_XSTATE`]).
+///
+/// * [`ContextFlagsCpu::from_flags`] will mask out the [`CONTEXT_HAS_XSTATE`] bit.
+/// If you want to check for that bit, check the raw value of
+/// [`context_flags`](`CONTEXT_AMD64::context_flags`).
+
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
     /// The size of this struct.
@@ -7609,6 +7649,9 @@ impl XstateFeatureIndex {
 #[derive(Clone, Copy, Debug, Default, Pread, SizeWith, PartialEq, Eq)]
 pub struct XSTATE_FEATURE {
     /// This entry's offset from the start of the context (in bytes).
+    ///
+    /// NOTE: THIS VALUE IS A LIE. At least on AMD64 you need to add 256
+    /// to this! See the docs of [`XSTATE_CONFIG_FEATURE_MSC_INFO`].
     pub offset: u32,
     /// This entry's size (in bytes).
     pub size: u32,

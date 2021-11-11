@@ -11,6 +11,10 @@ Changes:
 
 New features:
 
+* GetLastError
+    * MinidumpThread now has a method to retrieve the thread's GetLastError value
+    * We now parse more Windows error codes
+
 * MemoryInfo:
     * MemoryInfoListStream has been implemented (as `MinidumpMemoryInfoList`)
         * Provides metadata on the mapped memory regions like "was executable" or "was it freed"
@@ -35,6 +39,9 @@ New features:
 
 Improvements:
 
+* Contexts with XSTATE are now properly parsed.
+    * (although we still ignore the XSTATE data, but previously we would have returned an error)
+* minidump_dump now properly handles bad stack RVAs properly.
 * MinidumpSystemInfo::csd_version now works
     * Was reading its value from the wrong array *shrug*
     * This also improves minidump processor's `os_ver` string (now at parity with breakpad)
@@ -45,6 +52,13 @@ Improvements:
 
 Breaking changes:
 
+* `MinidumpThread` and `MinidumpException` now lazily parse their `context` value (and `stack` for
+`MinidumpThread`).
+    * This is because these values cannot be reliable parsed without access to other streams.
+    * These fields have been private, in favour of accessors which require the other streams
+    necessary to properly parse them.
+    * `print` functionality for them (and `MinidumpThreadList`) now also takes those values.
+    * For most users this won't be a big deal since you'll want all the dependent streams anyway.
 * Some explicitly typed iterators have been replaced with `impl Iterator`
     * These were always supposed to be like that, this code just pre-existed the feature
     * Comes with minor efficiency win because they were internally boxed and dynamically dispatched(!) to simulate `impl Iterator`.
@@ -55,6 +69,11 @@ Breaking changes:
 
 ## minidump-stack/minidump-processor/breakpad-symbols
 
+Thread names:
+
+* Now can retrieve thread names from the evil_json (if this means nothing to you, don't worry about it.)
+
+
 Symbol cache:
 
 * Now writes (and reads back) an `INFO URL` line to the symbol file
@@ -63,14 +82,22 @@ Symbol cache:
 
 Json schema:
 
+* Now properly populates the `thread.last_error_value` field
 * Now properly populates the `system_info.cpu_microcode` field (using `LinuxCpuInfoStream`)
 * `system_info.os_ver` now includes the contents of `MinidumpSystemInfo::csd_version` (as intended)
 
 
+Breaking changes:
 
-## minidump-common/minidump-tools
+* `process_minidump_with_evil` has been replaced with the more general `process_minidump_with_options`
 
-No changes
+
+
+## minidump-common
+
+* More Windows error type definitions
+* CONTEXT_HAS_XSTATE value added
+* doc cleanups
 
 
 

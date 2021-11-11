@@ -11,13 +11,15 @@ It's fairly heavily modeled after the [Google Breakpad](https://chromium.googles
 Print the raw details of the exception stream from a minidump:
 
 ```rust
-use minidump::{Error, Minidump, MinidumpException, MinidumpStream};
+use minidump::{Error, Minidump, MinidumpMiscInfo, MinidumpSystemInfo, MinidumpException, MinidumpStream};
 use std::io::{self, Write};
 
 fn work() -> Result<(), Error> {
   let mut dump = minidump::Minidump::read_path("../testdata/test.dmp")?;
+  let system_info: Option<MinidumpSystemInfo> = dump.get_stream().ok();
+  let misc_info: Option<MinidumpMiscInfo> = dump.get_stream().ok();
   let exception: MinidumpException = dump.get_stream()?;
-  drop(exception.print(&mut io::stdout()));
+  drop(exception.print(&mut io::stdout(), system_info.as_ref(), misc_info.as_ref()));
   Ok(())
 }
 
