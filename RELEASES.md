@@ -2,7 +2,28 @@
 
 Commit: TBD
 
-Polishing and bugfixing to reach final feature parity with mozilla's minidump-stackwalk.
+Bugfixes, testing, docs!
+
+
+Changes:
+
+None yet!
+
+
+
+
+
+
+
+
+# Version 0.9.2 (2021-11-10)
+
+Commit: [4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72](https://github.com/luser/rust-minidump/commit/4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72)
+
+Tentative parity with mozilla/minidump-stackwalk (and all the breakpad features it uses)! 🎉
+
+All that remains before a potential 1.0 release is testing/documenting/cleanup.
+
 
 Changes:
 
