@@ -6,6 +6,7 @@ use reqwest::blocking::Client;
 use std::env;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use structopt::StructOpt;
 
 use breakpad_symbols::{HttpSymbolSupplier, SimpleFrame, Symbolizer};
@@ -218,7 +219,13 @@ fn handle_symbol_paths(symbol_paths: Vec<PathBuf>) -> Result<Symbolizer, Error> 
             .collect();
         (paths, urls)
     };
-    let supplier = HttpSymbolSupplier::new(symbol_urls, tmp_symbols_path, tmp_path, symbol_paths);
+    let supplier = HttpSymbolSupplier::new(
+        symbol_urls,
+        tmp_symbols_path,
+        tmp_path,
+        symbol_paths,
+        Duration::from_secs(1000),
+    );
     Ok(Symbolizer::new(supplier))
 }
 

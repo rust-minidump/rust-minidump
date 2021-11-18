@@ -8,6 +8,8 @@ use std::io::Write;
 use std::ops::Deref;
 use std::panic;
 use std::path::Path;
+use std::str::FromStr;
+use std::time::Duration;
 
 use minidump::*;
 use minidump_processor::{
@@ -111,6 +113,14 @@ symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mea
 you, don't worry about it, you're probably not doing something that will run afoul of it).
 \n\n\n")
                 .long("symbols-tmp")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("symbol-download-timeout-secs")
+                .long("symbol-download-timeout-secs")
+                .help("The maximum amount of time (in seconds) a symbol file download is allowed \
+to take. This is necessary to enforce forward progress on misbehaving http responses.")
+                .default_value("1000")
                 .takes_value(true),
         )
         .arg(
@@ -262,6 +272,12 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
         .map(|v| v.map(String::from).collect::<Vec<_>>())
         .unwrap_or_else(Vec::new);
 
+    let timeout = matches
+        .value_of("symbol-download-timeout-secs")
+        .and_then(|x| u64::from_str(x).ok())
+        .map(Duration::from_secs)
+        .unwrap();
+
     let pretty = matches.is_present("pretty");
     let human = matches.is_present("human");
 
@@ -290,6 +306,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
                 symbols_urls,
                 symbols_cache,
                 symbols_tmp,
+                timeout,
             ))));
         } else if !symbols_paths.is_empty() {
             provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(

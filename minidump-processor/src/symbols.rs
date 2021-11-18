@@ -74,6 +74,7 @@ mod symbols_shim {
     use minidump::Module;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::time::Duration;
     impl SymbolProvider for Symbolizer {
         fn fill_symbol(
             &self,
@@ -98,12 +99,14 @@ mod symbols_shim {
         symbol_urls: Vec<String>,
         symbols_cache: PathBuf,
         symbols_tmp: PathBuf,
+        timeout: Duration,
     ) -> impl SymbolSupplier {
         breakpad_symbols::HttpSymbolSupplier::new(
             symbol_urls,
             symbols_cache,
             symbols_tmp,
             symbol_paths,
+            timeout,
         )
     }
 
@@ -127,6 +130,7 @@ mod symbols_shim {
     use minidump::Module;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     // Import symbolic here
 
@@ -253,6 +257,7 @@ mod symbols_shim {
         _symbol_urls: Vec<String>,
         _symbols_cache: PathBuf,
         _symbols_tmp: PathBuf,
+        _timeout: Duration,
     ) -> impl SymbolSupplier {
         HttpSymbolSupplier {}
     }
