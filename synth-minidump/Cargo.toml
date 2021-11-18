@@ -1,12 +1,12 @@
 [package]
 name = "synth-minidump"
-version = "0.9.2"
+version = "0.9.3"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 test-assembler = "0.1.5"
-minidump-common = { version = "0.9.2", path = "../minidump-common" }
+minidump-common = { version = "0.9.3", path = "../minidump-common" }
 encoding = "0.2"
 scroll = "0.10.2"
