@@ -1,16 +1,19 @@
-# Pending Release (TBD)
+# Version 0.9.3 (2021-11-18)
 
-Commit: TBD
+Commit: This one!
 
-Bugfixes, testing, docs!
-
+New features added to make symbol downloading more reliable.
 
 Changes:
 
-None yet!
+* vendored-openssl feature added to minidump-stackwalk
+    * Allows you to statically link openssl (useful for docker)
+* `--symbol-download-timeout-secs` flag added to minidump-stackwalk
+    * Sets a timeout for downloading symbol files
+    * Forces forward progress for misbehaving http response bodies
+    * Default is 1000 seconds for one file
 
-
-
+This is a breaking change for the constructor of HttpSymbolSupplier, as it now requires the timeout.
 
 
 
