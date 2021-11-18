@@ -6,7 +6,6 @@
 //!
 //! [`process_minidump`]: fn.process_minidump.html
 
-mod dwarf_symbolizer;
 mod evil;
 mod process_state;
 mod processor;
@@ -14,7 +13,6 @@ mod stackwalker;
 mod symbols;
 mod system_info;
 
-pub use crate::dwarf_symbolizer::DwarfSymbolizer;
 pub use crate::process_state::*;
 pub use crate::processor::*;
 pub use crate::stackwalker::*;

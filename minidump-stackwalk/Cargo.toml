@@ -16,7 +16,6 @@ edition = "2018"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
-addr2line = "0.15.2"
 clap = "2.33"
 log = "0.4"
 minidump = { version = "0.9.3", path = "../minidump" }

@@ -8,8 +8,8 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c866703d4f9130dec71afffafd4a6cda7b1a5cd6db63d2cc05c2499194cc700e"
 dependencies = [
- "cpp_demangle 0.2.16",
- "fallible-iterator 0.1.6",
+ "cpp_demangle",
+ "fallible-iterator",
  "gimli 0.16.1",
  "intervaltree",
  "lazycell",
@@ -24,12 +24,7 @@ version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7a2e47a1fbe209ee101dd6d61285226744c6c8d3c21c8dc878ba6cb9f467f3a"
 dependencies = [
- "cpp_demangle 0.3.2",
- "fallible-iterator 0.2.0",
  "gimli 0.24.0",
- "object 0.24.0",
- "rustc-demangle",
- "smallvec 1.6.1",
 ]
 
 [[package]]
@@ -290,16 +285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cpp_demangle"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44919ecaf6f99e8e737bc239408931c9a01e9a6c74814fee8242dd2506b65390"
-dependencies = [
- "cfg-if 1.0.0",
- "glob",
-]
-
-[[package]]
 name = "crc32fast"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -457,12 +442,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb7217124812dc5672b7476d0c2d20cfe9f7c0f1ba0904b674a9762a0212f72e"
 
 [[package]]
-name = "fallible-iterator"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
-
-[[package]]
 name = "flate2"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -595,7 +574,7 @@ checksum = "9a7f6ee5390883802431e4abe323390f52f10ff16e8f8d2d6ce598251f900ede"
 dependencies = [
  "arrayvec",
  "byteorder",
- "fallible-iterator 0.1.6",
+ "fallible-iterator",
  "stable_deref_trait",
 ]
 
@@ -604,11 +583,6 @@ name = "gimli"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4075386626662786ddb0ec9081e7c7eeb1ba31951f447ca780ef9f5d568189"
-dependencies = [
- "fallible-iterator 0.2.0",
- "indexmap",
- "stable_deref_trait",
-]
 
 [[package]]
 name = "glob"
@@ -1012,16 +986,13 @@ dependencies = [
 name = "minidump-processor"
 version = "0.9.3"
 dependencies = [
- "addr2line 0.15.2",
  "breakpad-symbols",
  "chrono",
  "clap",
  "failure",
- "gimli 0.24.0",
  "log",
  "memmap 0.7.0",
  "minidump",
- "object 0.24.0",
  "scroll 0.10.2",
  "serde",
  "serde_json",
@@ -1034,7 +1005,6 @@ dependencies = [
 name = "minidump-stackwalk"
 version = "0.9.3"
 dependencies = [
- "addr2line 0.15.2",
  "clap",
  "log",
  "minidump",
@@ -1241,9 +1211,6 @@ name = "object"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a5b3dd1c072ee7963717671d1ca129f1048fda25edea6b752bfc71ac8854170"
-dependencies = [
- "flate2",
-]
 
 [[package]]
 name = "once_cell"

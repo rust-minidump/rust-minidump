@@ -13,8 +13,7 @@ use std::time::Duration;
 
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, DwarfSymbolizer, MultiSymbolProvider,
-    ProcessorOptions, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
 };
 
 use clap::{crate_version, App, AppSettings, Arg};
@@ -313,7 +312,6 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
                 symbols_paths,
             ))));
         }
-        provider.add(Box::new(DwarfSymbolizer::new()));
 
         match minidump_processor::process_minidump_with_options(&dump, &provider, options) {
             Ok(state) => {
