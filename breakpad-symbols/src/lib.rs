@@ -42,6 +42,7 @@ use std::fmt;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub use minidump_common::traits::Module;
 
@@ -348,8 +349,9 @@ impl HttpSymbolSupplier {
         cache: PathBuf,
         tmp: PathBuf,
         mut local_paths: Vec<PathBuf>,
+        timeout: Duration,
     ) -> HttpSymbolSupplier {
-        let client = Client::new();
+        let client = Client::builder().timeout(timeout).build().unwrap();
         let urls = urls
             .into_iter()
             .filter_map(|mut u| {
