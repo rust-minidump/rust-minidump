@@ -1,6 +1,24 @@
+# Pending Release (TBD)
+
+Commit: TBD
+
+Bugfixes, testing, docs!
+
+
+Changes:
+
+None yet!
+
+
+
+
+
+
+
+
 # Version 0.9.3 (2021-11-18)
 
-Commit: This one!
+Commit: [1e7cc1a18399e32b5589d95575447e5f159d275d](https://github.com/luser/rust-minidump/commit/1e7cc1a18399e32b5589d95575447e5f159d275d)
 
 New features added to make symbol downloading more reliable.
 
@@ -14,6 +32,9 @@ Changes:
     * Default is 1000 seconds for one file
 
 This is a breaking change for the constructor of HttpSymbolSupplier, as it now requires the timeout.
+
+
+
 
 
 
