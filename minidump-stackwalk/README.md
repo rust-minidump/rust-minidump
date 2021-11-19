@@ -1,8 +1,8 @@
+# minidump-stackwalk
+
 [![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
 
-**THIS APPLICATION IS STILL UNDER HEAVY DEVELOPMENT, DO NOT RELY ON IT YET.**
-
-A binary that wraps [minidump-processor](https://github.com/luser/rust-minidump/tree/master/minidump-processor) and provides a CLI frontend.
+A CLI frontend for [minidump-processor]((https://crates.io/crates/minidump-processor), providing both machine-readable and human-readable digests of a minidump with backtraces and symbolication.
 
 This is specifically designed to provide a compatible interface to [mozilla's minidump-stackwalk](https://github.com/mozilla-services/minidump-stackwalk) which is itself similar to [google-breakpad's minidump-stackwalk](https://github.com/google/breakpad/blob/main/src/processor/minidump_stackwalk.cc).
 
@@ -26,7 +26,7 @@ minidump-stackwalk defaults to outputting machine-readable JSON in a [format](ht
 
 If you pass the --human flag, minidump-stackwalk will instead output a report in a more human-friendly format with no particular structure.
 
-(Either way we recommend piping the output to a file, as it will usually be thousands of lines of output you'll want to search through.)
+(Either way we recommend using the --output-file argument to write the results to a file, or piping this through `more` -- minidumps contain a lot of information!)
 
 
 
