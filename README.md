@@ -114,7 +114,7 @@ Provides a simple interface for mocking minidumps for unit tests.
 # Applications
 
 
-## [minidump-stackwalk](minidump-stackwalk) [![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk))
+## [minidump-stackwalk](minidump-stackwalk) [![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
 
 A CLI frontend for `minidump-processor`, providing both machine-readable and human-readable
 digests of a minidump with backtraces and symbolication.
