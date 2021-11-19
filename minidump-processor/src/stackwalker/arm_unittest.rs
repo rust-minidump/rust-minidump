@@ -334,6 +334,98 @@ fn test_frame_pointer() {
     }
 }
 
+#[test]
+fn test_frame_pointer_infinite_equality() {
+    // Leaf functions on Arm are allowed to not update the stack pointer, so
+    // it's valid for the frame pointer analysis to conclude that the stack
+    // pointer doesn't change. However we must only provide this allowance
+    // to the first stack frame, or else we're vulnerable to infinite loops.
+    //
+    // One of the CFI tests already checks that we allow the leaf case to work,
+    // so here we test that we don't get stuck in an infinite loop for the
+    // non-leaf case.
+    //
+    // This is just a copy-paste of test_frame_pointer except for the line
+    // "EVIL INFINITE FRAME POINTER" has been changed from frame2_fp to frame1_fp.
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u32;
+    let return_address2 = 0x50000900u32;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 32) // space
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame1_fp) // next fp will point to the next value
+        .D32(&frame1_fp) // <--- EVIL INFINITE FRAME POINTER
+        .D32(return_address2) // save current link register
+        .mark(&frame1_sp)
+        // frame 1
+        .append_repeated(0, 32) // space
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(0)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 32) // Whatever values on the stack.
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000); // a return address.
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1);
+    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw
+        .set_register("sp", stack.start().value().unwrap() as u32);
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 4);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap() as u32
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame1_fp.value().unwrap() as u32
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    // Never get to frame 2, alas!
+}
+
 const CALLEE_SAVE_REGS: &[&str] = &["pc", "sp", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"];
 
 fn init_cfi_state() -> (TestFixture, Section, CONTEXT_ARM, MinidumpContextValidity) {
