@@ -1,14 +1,21 @@
-# Pending Release (TBD)
+# Version 0.9.4 (2021-11-19)
 
-Commit: TBD
+Commit: This One!
 
-Bugfixes, testing, docs!
-
+Removing derelict experiments, and one bugfix.
 
 Changes:
 
-None yet!
+## ARM Bugfix
 
+minidump-processor's ARM stackwalker should no longer infinitely loop on misbehaving inputs.
+
+
+## Removed Code
+
+The experimental native DWARF debuginfo symbolizer has been removed from minidump-processor. This code was still technically functional, but it was using very old libraries and not being hooked into new features of minidump-processor. Not worth the maintenance burden until we have a clearer plan for it.
+
+The private minidump-tools subcrate has been completely removed from the project. This has no affect on users using the crates published on crates.io, as it wasn't published. It was a collection of random experiments and tools that are more work to maintain than they're worth now that minidump-processor and minidump-dump work as well as they do. Also it just had some really ancient dependencies -- removing it massively reduces the amount of work needed to compile the workspace.
 
 
 
