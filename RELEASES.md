@@ -1,6 +1,21 @@
+# Pending Release (TBD)
+
+Commit: TBD
+
+Bugfixes, testing, docs!
+
+
+Changes:
+
+None yet!
+
+
+
+
+
 # Version 0.9.4 (2021-11-19)
 
-Commit: This One!
+Commit: [8308577df997bae72cf952ddbfaeb901a992d950](https://github.com/luser/rust-minidump/commit/8308577df997bae72cf952ddbfaeb901a992d950)
 
 Removing derelict experiments, and one bugfix.
 
