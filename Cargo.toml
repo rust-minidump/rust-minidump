@@ -5,7 +5,6 @@ members = [
         "minidump-common",
         "minidump-processor",
         "minidump-stackwalk",
-        "minidump-tools",
 ]
 exclude = [
     "scripts/*",
