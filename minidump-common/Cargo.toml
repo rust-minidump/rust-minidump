@@ -5,7 +5,6 @@ version = "0.9.3"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 readme = "README.md"
 license = "MIT"
-documentation = "https://docs.rs/minidump-common"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
 edition = "2018"

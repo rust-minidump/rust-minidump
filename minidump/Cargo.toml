@@ -4,12 +4,11 @@ description = "A parser for the minidump format."
 version = "0.9.3"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
-documentation = "https://luser.github.io/rust-project-docs/minidump/minidump/"
 homepage = "https://github.com/luser/rust-minidump"
 repository = "https://github.com/luser/rust-minidump"
-keywords = ["breakpad", "symbols"]
+keywords = ["breakpad", "symbols", "minidump"]
 categories = ["parsing"]
-readme = "../README.md"
+readme = "README.md"
 edition = "2018"
 
 [dependencies]
