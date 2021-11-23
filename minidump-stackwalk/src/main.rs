@@ -296,49 +296,52 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 
     // Ok now let's do the thing!!!!
 
-    if let Ok(dump) = Minidump::read_path(minidump_path) {
-        let mut provider = MultiSymbolProvider::new();
+    match Minidump::read_path(minidump_path) {
+        Ok(dump) => {
+            let mut provider = MultiSymbolProvider::new();
 
-        if !symbols_urls.is_empty() {
-            provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
-                symbols_paths,
-                symbols_urls,
-                symbols_cache,
-                symbols_tmp,
-                timeout,
-            ))));
-        } else if !symbols_paths.is_empty() {
-            provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
-                symbols_paths,
-            ))));
-        }
+            if !symbols_urls.is_empty() {
+                provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
+                    symbols_paths,
+                    symbols_urls,
+                    symbols_cache,
+                    symbols_tmp,
+                    timeout,
+                ))));
+            } else if !symbols_paths.is_empty() {
+                provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
+                    symbols_paths,
+                ))));
+            }
 
-        match minidump_processor::process_minidump_with_options(&dump, &provider, options) {
-            Ok(state) => {
-                let mut stdout;
-                let mut output_f;
+            match minidump_processor::process_minidump_with_options(&dump, &provider, options) {
+                Ok(state) => {
+                    let mut stdout;
+                    let mut output_f;
 
-                let mut output: &mut dyn Write = if let Some(output_path) = output_file {
-                    output_f = File::create(output_path).unwrap();
-                    &mut output_f
-                } else {
-                    stdout = std::io::stdout();
-                    &mut stdout
-                };
+                    let mut output: &mut dyn Write = if let Some(output_path) = output_file {
+                        output_f = File::create(output_path).unwrap();
+                        &mut output_f
+                    } else {
+                        stdout = std::io::stdout();
+                        &mut stdout
+                    };
 
-                if human {
-                    state.print(&mut output).unwrap();
-                } else {
-                    state.print_json(&mut output, pretty).unwrap();
+                    if human {
+                        state.print(&mut output).unwrap();
+                    } else {
+                        state.print_json(&mut output, pretty).unwrap();
+                    }
+                }
+                Err(err) => {
+                    error!("Error processing dump: {}", err);
+                    std::process::exit(1);
                 }
             }
-            Err(err) => {
-                error!("Error processing dump: {:?}", err);
-                std::process::exit(1);
-            }
         }
-    } else {
-        error!("Error reading dump");
-        std::process::exit(1);
+        Err(err) => {
+            error!("Error reading dump: {}", err);
+            std::process::exit(1);
+        }
     }
 }

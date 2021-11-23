@@ -73,18 +73,18 @@ pub enum Error {
     FileNotFound,
     #[fail(display = "I/O error")]
     IoError,
-    #[fail(display = "Missing minidump header")]
+    #[fail(display = "Missing minidump header (empty minidump?)")]
     MissingHeader,
     #[fail(display = "Header mismatch")]
     HeaderMismatch,
     #[fail(display = "Minidump version mismatch")]
     VersionMismatch,
-    #[fail(display = "Missing stream directory")]
+    #[fail(display = "Missing stream directory (heavily truncated minidump?)")]
     MissingDirectory,
     #[fail(display = "Error reading stream")]
     StreamReadFailure,
     #[fail(
-        display = "Stream size mismatch: expected {} byes, found {} bytes",
+        display = "Stream size mismatch: expected {} bytes, found {} bytes",
         expected, actual
     )]
     StreamSizeMismatch { expected: usize, actual: usize },
@@ -4213,7 +4213,28 @@ where
             let dir: md::MINIDUMP_DIRECTORY = data
                 .gread_with(&mut offset, endian)
                 .or(Err(Error::MissingDirectory))?;
-            streams.insert(dir.stream_type, (i, dir));
+            if let Some((old_idx, old_dir)) = streams.insert(dir.stream_type, (i, dir.clone())) {
+                if let Some(known_stream_type) = MINIDUMP_STREAM_TYPE::from_u32(dir.stream_type) {
+                    warn!("Minidump contains multiple streams of type {} ({:?}) at indices {} ({} bytes) and {} ({} bytes) (using {})",
+                        dir.stream_type,
+                        known_stream_type,
+                        old_idx,
+                        old_dir.location.data_size,
+                        i,
+                        dir.location.data_size,
+                        i,
+                    );
+                } else {
+                    warn!("Minidump contains multiple streams of unknown type {} at indices {} ({} bytes) and {} ({} bytes) (using {})",
+                        dir.stream_type,
+                        old_idx,
+                        old_dir.location.data_size,
+                        i,
+                        dir.location.data_size,
+                        i,
+                    );
+                }
+            }
         }
         Ok(Minidump {
             data,

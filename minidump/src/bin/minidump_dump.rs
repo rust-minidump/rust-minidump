@@ -99,7 +99,7 @@ fn print_minidump_dump(path: &Path) {
         }
         Err(err) => {
             let mut stderr = std::io::stderr();
-            writeln!(&mut stderr, "Error reading dump: {:?}", err).unwrap();
+            writeln!(&mut stderr, "Error reading dump: {}", err).unwrap();
         }
     }
 }
