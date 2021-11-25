@@ -389,6 +389,17 @@ impl ProcessState {
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        self.print_internal(f, false)
+    }
+
+    /// Write a brief human-readable description of the process state to `f`.
+    ///
+    /// Only includes the summary at the top and a backtrace of the crashing thread.
+    pub fn print_brief<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        self.print_internal(f, true)
+    }
+
+    fn print_internal<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         writeln!(f, "Operating system: {}", self.system_info.os.long_name())?;
         if let Some(ref ver) = self.system_info.os_version {
             writeln!(f, "                  {}", ver)?;
@@ -486,6 +497,12 @@ Crash address: {:#x}
             stack.print(f)?;
             writeln!(f)?;
         }
+
+        // We're done if this is a brief report!
+        if brief {
+            return Ok(());
+        }
+
         for (i, stack) in self.threads.iter().enumerate() {
             if eq_some(self.requesting_thread, i) {
                 // Don't print the requesting thread again,
