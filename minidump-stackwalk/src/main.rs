@@ -388,7 +388,11 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 
                     // Print the human output if requested (always uses the "real" output).
                     if human {
-                        state.print(&mut output).unwrap();
+                        if brief {
+                            state.print_brief(&mut output).unwrap();
+                        } else {
+                            state.print(&mut output).unwrap();
+                        }
                     }
 
                     // Print the json output if requested (using "cyborg" output if available).
