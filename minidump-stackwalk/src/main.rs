@@ -376,6 +376,7 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
                 Ok(state) => {
                     let mut stdout;
                     let mut output_f;
+                    let cyborg_output_f = cyborg.map(|path| File::create(path).unwrap());
 
                     let mut output: &mut dyn Write = if let Some(output_path) = output_file {
                         output_f = File::create(output_path).unwrap();
@@ -385,10 +386,18 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
                         &mut stdout
                     };
 
+                    // Print the human output if requested (always uses the "real" output).
                     if human {
                         state.print(&mut output).unwrap();
-                    } else {
-                        state.print_json(&mut output, pretty).unwrap();
+                    }
+
+                    // Print the json output if requested (using "cyborg" output if available).
+                    if json {
+                        if let Some(mut cyborg_output_f) = cyborg_output_f {
+                            state.print_json(&mut cyborg_output_f, pretty).unwrap();
+                        } else {
+                            state.print_json(&mut output, pretty).unwrap();
+                        }
                     }
                 }
                 Err(err) => {
