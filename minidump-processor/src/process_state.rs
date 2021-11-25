@@ -611,7 +611,7 @@ Unknown streams encountered:
         let json_hex = |val: u64| -> String { self.json_hex(val) };
 
         let mut output = json!({
-            // TODO: I guess we should still produce some JSON in some failure modes?
+            // Currently unused, we either produce no output or successful output.
             // OK | ERROR_* | SYMBOL_SUPPLIER_INTERRUPTED
             "status": "OK",
             "system_info": {
@@ -622,7 +622,6 @@ Unknown streams encountered:
                 "cpu_arch": sys.cpu.to_string(),
                 "cpu_info": sys.cpu_info,
                 "cpu_count": sys.cpu_count,
-                // TODO: Issue #19
                 // optional
                 "cpu_microcode_version": sys.cpu_microcode_version,
             },
@@ -701,10 +700,6 @@ Unknown streams encountered:
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
                 "frame_count": thread.frames.len(),
-                "frames_truncated": false,
-                // optional, if truncated, this is the original total
-                "total_frames": thread.frames.len(),
-                // TODO: Issue #156
                 // optional
                 "last_error_value": thread.last_error_value.map(|error| error.to_string()),
                 // optional
