@@ -4159,6 +4159,14 @@ impl<'a> Minidump<'a, Mmap> {
     }
 }
 
+/// A stream in the minidump that this implementation can interpret,
+#[derive(Debug)]
+pub struct MinidumpImplementedStream {
+    pub stream_type: MINIDUMP_STREAM_TYPE,
+    pub location: md::MINIDUMP_LOCATION_DESCRIPTOR,
+    pub vendor: &'static str,
+}
+
 /// A stream in the minidump that this implementation has no knowledge of.
 #[derive(Debug)]
 pub struct MinidumpUnknownStream {
@@ -4245,17 +4253,81 @@ where
         })
     }
 
-    /// Get a known stream of data from the minidump.
+    /// Read and parse the specified [`MinidumpStream`][] `S` from the Minidump, if it exists.
     ///
-    /// For streams known to this module whose types implement the
-    /// [`MinidumpStream`][stream] trait, this method allows reading
-    /// the stream data as a specific type.
+    /// Because Minidump Streams can have totally different formats and meanings, the only
+    /// way to coherently access one is by specifying a static type that provides an
+    /// interpretation and interface of that format.
     ///
-    /// Note that the lifetime of the returned stream is bound to the lifetime of the this
+    /// As such, typical usage of this interface is to just statically request every
+    /// stream your care about. Depending on what analysis you're trying to perform, you may:
+    ///
+    /// * Consider it an error for a stream to be missing (using `?` or `unwrap`)
+    /// * Branch on the presence of stream to conditionally refine your analysis
+    /// * Use a stream's `Default` implementation to make progress (with `unwrap_or_default`)
+    ///
+    /// ```
+    /// use minidump::*;
+    ///
+    /// fn main() -> Result<(), Error> {
+    ///     // Read the minidump from a file
+    ///     let mut dump = minidump::Minidump::read_path("../testdata/test.dmp")?;
+    ///
+    ///     // Statically request (and require) several streams we care about:
+    ///     let system_info = dump.get_stream::<MinidumpSystemInfo>()?;
+    ///     let exception = dump.get_stream::<MinidumpException>()?;
+    ///
+    ///     // Combine the contents of the streams to perform more refined analysis
+    ///     let crash_reason = exception.get_crash_reason(system_info.os, system_info.cpu);
+    ///
+    ///     // Conditionally analyze a stream
+    ///     if let Ok(threads) = dump.get_stream::<MinidumpThreadList>() {
+    ///         // Use `Default` to try to make some progress when a stream is missing.
+    ///         // This is especially natural for MinidumpMemoryList because
+    ///         // everything needs to handle memory lookups failing anyway.
+    ///         let mem = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
+    ///
+    ///         for thread in &threads.threads {
+    ///            let stack = thread.stack_memory(&mem);
+    ///            // ...
+    ///         }
+    ///     }
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// Some streams are impossible to fully parse/interpret without the contents
+    /// of other streams (for instance, many things require [`MinidumpSystemInfo`][] to interpret
+    /// hardware-specific details). As a result, some parsing of the stream may be
+    /// further deferred to methods on the Stream type where those dependencies can be provided
+    /// (e.g. [`MinidumpException::get_crash_reason`][]).
+    ///
+    /// Note that the lifetime of the returned stream is bound to the lifetime of the
     /// `Minidump` struct itself and not to the lifetime of the data backing this minidump.
-    /// This is a consequence of how this struct relies on [Deref] to access the data.
+    /// This is a consequence of how this struct relies on [`Deref`][] to access the data.
     ///
-    /// [stream]: trait.MinidumpStream.html
+    /// ## Currently Supported Streams
+    ///
+    /// * [`MinidumpAssertion`][]
+    /// * [`MinidumpBreakpadInfo`][]
+    /// * [`MinidumpCrashpadInfo`][]
+    /// * [`MinidumpException`][]
+    /// * [`MinidumpLinuxCpuInfo`][]
+    /// * [`MinidumpLinuxEnviron`][]
+    /// * [`MinidumpLinuxLsbRelease`][]
+    /// * [`MinidumpLinuxMaps`][]
+    /// * [`MinidumpLinuxProcStatus`][]
+    /// * [`MinidumpMacCrashInfo`][]
+    /// * [`MinidumpMemoryList`][]
+    /// * [`MinidumpMemoryInfoList`][]
+    /// * [`MinidumpMiscInfo`][]
+    /// * [`MinidumpModuleList`][]
+    /// * [`MinidumpSystemInfo`][]
+    /// * [`MinidumpThreadList`][]
+    /// * [`MinidumpThreadNames`][]
+    /// * [`MinidumpUnloadedModuleList`][]
+    ///
     pub fn get_stream<S>(&'a self) -> Result<S, Error>
     where
         S: MinidumpStream<'a>,
@@ -4273,13 +4345,11 @@ where
     ///
     /// This can be used to get the contents of arbitrary minidump streams.
     /// For streams of known types you almost certainly want to use
-    /// [`get_stream`][get_stream] instead.
+    /// [`Minidump::get_stream`][] instead.
     ///
     /// Note that the lifetime of the returned stream is bound to the lifetime of the this
     /// `Minidump` struct itself and not to the lifetime of the data backing this minidump.
     /// This is a consequence of how this struct relies on [Deref] to access the data.
-    ///
-    /// [get_stream]: #get_stream
     pub fn get_raw_stream<S>(&'a self, stream_type: S) -> Result<&'a [u8], Error>
     where
         S: Into<u32>,
@@ -4293,6 +4363,11 @@ where
         }
     }
 
+    /// A listing of all the streams in the Minidump that this library is *aware* of,
+    /// but has no further analysis for.
+    ///
+    /// If there are multiple copies of the same stream type (which should not happen for
+    /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
         static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 33] = [
             // Presumably will never have an implementation:
@@ -4347,6 +4422,10 @@ where
         })
     }
 
+    /// A listing of all the streams in the Minidump that this library has no knowledge of.
+    ///
+    /// If there are multiple copies of the same stream (which should not happen for
+    /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
     pub fn unknown_streams(&self) -> impl Iterator<Item = MinidumpUnknownStream> + '_ {
         self.streams.iter().filter_map(|(_, (_, stream))| {
             if MINIDUMP_STREAM_TYPE::from_u32(stream.stream_type).is_none() {
@@ -4358,6 +4437,14 @@ where
             }
             None
         })
+    }
+
+    /// A listing of all the streams in the Minidump.
+    ///
+    /// If there are multiple copies of the same stream (which should not happen for
+    /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
+    pub fn all_streams(&self) -> impl Iterator<Item = &md::MINIDUMP_DIRECTORY> + '_ {
+        self.streams.iter().map(|(_, (_, stream))| stream)
     }
 
     /// Write a verbose description of the `Minidump` to `f`.
