@@ -15,7 +15,7 @@ edition = "2018"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
-clap = "2.33"
+clap = { version = "2.33", features=["wrap_help"] }
 log = "0.4"
 minidump = { version = "0.9.4", path = "../minidump" }
 minidump-processor = { version = "0.9.4", path = "../minidump-processor" }
