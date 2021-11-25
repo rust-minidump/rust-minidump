@@ -7,8 +7,19 @@ Bugfixes, testing, docs!
 
 Changes:
 
-None yet!
+## rust-minidump
 
+Lots more documentation.
+
+## minidump-stackwalk/minidump-processor
+
+* Fixed the fact that symbols_url is supposed to be positional
+* Cleaned up CLI help messages
+* Added "--cyborg=path/to/output/json" output option (producing both --json and --human)
+* Added --brief flag for shorter --human output
+    * Also introduces ProcessState::print_brief
+* Added dummy --json flag to hang docs off of (and to let you be explicit if you want)
+* Better feedback for corrupt minidumps
 
 
 
