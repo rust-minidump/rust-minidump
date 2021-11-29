@@ -36,14 +36,8 @@ fn main() {
                 .long("json")
                 .long_help("Emit a machine-readable JSON report (the default).
 
-Official schema TBD, but the output *is* stabilized. That said, sometimes values can't be computed \
-(e.g. because the minidump doesn't contain that information), so nearly every value \
-*can* be null. And of course, we reserve the right to introduce new fields/values \
-for new features.
-
-In general we try to emit an explicit `null` for a field that *can* appear in the JSON but \
-doesn't, so every JSON report is *kind of* reporting the current schema (but of course, \
-missing the possible values and their meanings).\n\n\n")
+The schema for this output is officially documented here:
+https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md\n\n\n")
         )
         .arg(
             Arg::with_name("human")
