@@ -22,7 +22,7 @@ The easiest way to use this is by `cargo install`ing it:
 
 # Output Formats
 
-minidump-stackwalk defaults to outputting machine-readable JSON in a [format](https://github.com/mozilla-services/minidump-stackwalk#json-output) expected by Mozilla's servers. For the sake of tooling compatibility, we generally try to only add fields, and not remove them.
+minidump-stackwalk defaults to outputting machine-readable JSON in a [format](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md) expected by Mozilla's servers. For the sake of tooling compatibility, we generally try to only add fields, and not remove them.
 
 If you pass the --human flag, minidump-stackwalk will instead output a report in a more human-friendly format with no particular structure.
 

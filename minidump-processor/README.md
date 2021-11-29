@@ -10,3 +10,5 @@ a `minidump_stackwalk` tool that is intended to function very similarly to the o
 If you want lower-level access to the minidump's contents, use the [minidump](https://crates.io/crates/minidump) crate.
 
 For a CLI application that wraps this library, see [minidump-stackwalk](https://crates.io/crates/minidump-stackwalk).
+
+The JSON Schema is [documented here](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md).
