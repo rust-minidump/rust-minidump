@@ -112,6 +112,7 @@ minidump itself.\n\n\n")
                 .long("symbols-url")
                 .multiple(true)
                 .takes_value(true)
+                .number_of_values(1)
                 .long_help("base URL from which URLs to symbol files can be constructed.
 
 If multiple symbols-url values are provided, they will each be tried in order until \
