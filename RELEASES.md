@@ -13,13 +13,31 @@ Lots more documentation.
 
 ## minidump-stackwalk/minidump-processor
 
-* Fixed the fact that symbols_url is supposed to be positional
+Breaking changes:
+
+* Fixed symbols-paths to actually be positional (wasn't supposed to be named)
+* Fixed the fact that --symbols-url accepted multiple values per instance
+    * You can still pass multiple --symbols-url flags to set multiple http sources, but each one can only have one value
+    * This prevents --symbols-url from accidentally greedily parsing the minidump path as one of its arguments
+* Legacy truncation fields have been removed from the JSON Schema
+    * `frames_truncated` removed because it was always `false`
+    * `total_frames` removed because it was always the same as `frame_count`
+    * Both were for a misfeature of a previous incarnation of minidump-stackwalk that we won't implement
+
+New features:
+
 * Cleaned up CLI help messages
 * Added "--cyborg=path/to/output/json" output option (producing both --json and --human)
 * Added --brief flag for shorter --human output
     * Also introduces ProcessState::print_brief
 * Added dummy --json flag to hang docs off of (and to let you be explicit if you want)
 * Better feedback for corrupt minidumps
+* Added JSON Schema document: https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md
+    * JSON Schema is now stabilized
+
+
+
+
 
 
 
