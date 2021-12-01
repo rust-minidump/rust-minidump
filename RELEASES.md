@@ -1,8 +1,13 @@
-# Pending Release (TBD)
+# Version 0.9.5 (2021-12-01)
 
-Commit: TBD
+Commit: this one!
 
-Bugfixes, testing, docs!
+The JSON schema and minidump-stackwalk CLI are now stabilized. They are now
+reasonable to rely on in production (only reason we would break them is if
+we ran into a nasty bug).
+
+This release also adds a ton of documentation! (But there can always be more...)
+
 
 
 Changes:
@@ -12,6 +17,7 @@ Changes:
 Lots more documentation.
 
 ## minidump-stackwalk/minidump-processor
+
 
 Breaking changes:
 
@@ -23,6 +29,7 @@ Breaking changes:
     * `frames_truncated` removed because it was always `false`
     * `total_frames` removed because it was always the same as `frame_count`
     * Both were for a misfeature of a previous incarnation of minidump-stackwalk that we won't implement
+
 
 New features:
 
