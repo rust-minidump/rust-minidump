@@ -43,40 +43,41 @@ pub enum ProcessError {
 /// use minidump::Minidump;
 /// use std::path::PathBuf;
 /// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
+/// use minidump_processor::ProcessError;
 ///
-/// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
-/// # fn foo() -> Result<(), minidump_processor::ProcessError> {
-/// let mut dump = Minidump::read_path("../testdata/test.dmp")?;
-/// let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
-/// let symbolizer = Symbolizer::new(supplier);
-/// let state = minidump_processor::process_minidump(&mut dump, &symbolizer)?;
-/// assert_eq!(state.threads.len(), 2);
-/// println!("Processed {} threads", state.threads.len());
-/// # Ok(())
-/// # }
-/// # fn main() { foo().unwrap() }
+/// #[tokio::main]
+/// async fn main() -> Result<(), ProcessError> {
+///     # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+///     let mut dump = Minidump::read_path("../testdata/test.dmp")?;
+///     let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
+///     let symbolizer = Symbolizer::new(supplier);
+///     let state = minidump_processor::process_minidump(&mut dump, &symbolizer).await?;
+///     assert_eq!(state.threads.len(), 2);
+///     println!("Processed {} threads", state.threads.len());
+///     Ok(())
+/// }
 /// ```
-pub fn process_minidump<'a, T, P>(
+pub async fn process_minidump<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     // No Evil JSON Here!
-    process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default())
+    process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default()).await
 }
 
 /// The same as [`process_minidump`] but with extra options.
-pub fn process_minidump_with_options<'a, T, P>(
+pub async fn process_minidump_with_options<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
-    options: ProcessorOptions,
+    options: ProcessorOptions<'_>,
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     // Thread list is required for processing.
     let thread_list = dump
@@ -253,9 +254,8 @@ where
         let stack = thread.stack_memory(&memory_list);
 
         let mut stack =
-            stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider);
+            stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider).await;
         stack.thread_id = id;
-
         for frame in &mut stack.frames {
             // If the frame doesn't have a loaded module, try to find an unloaded module
             // that overlaps with its address range. The may be multiple, so record all

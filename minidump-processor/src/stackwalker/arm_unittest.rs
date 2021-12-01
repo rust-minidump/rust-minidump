@@ -29,7 +29,7 @@ impl TestFixture {
         }
     }
 
-    pub fn walk_stack(&self, stack: Section) -> CallStack {
+    pub async fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::Arm(self.raw.clone()),
             valid: MinidumpContextValidity::All,
@@ -50,6 +50,7 @@ impl TestFixture {
             &self.modules,
             &symbolizer,
         )
+        .await
     }
 
     pub fn add_symbols(&mut self, name: String, symbols: String) {
@@ -57,8 +58,8 @@ impl TestFixture {
     }
 }
 
-#[test]
-fn test_simple() {
+#[tokio::test]
+async fn test_simple() {
     let mut f = TestFixture::new();
     let stack = Section::new();
     stack.start().set_const(0x80000000);
@@ -69,15 +70,15 @@ fn test_simple() {
     f.raw.set_register("pc", 0x4000c020);
     f.raw.set_register("fp", 0x80000000);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
     let f = &s.frames[0];
     let m = f.module.as_ref().unwrap();
     assert_eq!(m.code_file(), "module1");
 }
 
-#[test]
-fn test_scan_without_symbols() {
+#[tokio::test]
+async fn test_scan_without_symbols() {
     // Scanning should work without any symbols
     let mut f = TestFixture::new();
     let mut stack = Section::new();
@@ -108,7 +109,7 @@ fn test_scan_without_symbols() {
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 3);
 
     {
@@ -163,8 +164,8 @@ fn test_scan_without_symbols() {
     }
 }
 
-#[test]
-fn test_scan_first_frame() {
+#[tokio::test]
+async fn test_scan_first_frame() {
     // The first (context) frame gets extra long scans, this test checks that.
     let mut f = TestFixture::new();
     let mut stack = Section::new();
@@ -197,7 +198,7 @@ fn test_scan_first_frame() {
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -230,8 +231,8 @@ fn test_scan_first_frame() {
     }
 }
 
-#[test]
-fn test_frame_pointer() {
+#[tokio::test]
+async fn test_frame_pointer() {
     // Frame-pointer-based unwinding
     let mut f = TestFixture::new();
     let mut stack = Section::new();
@@ -272,7 +273,7 @@ fn test_frame_pointer() {
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 3);
 
     {
@@ -334,8 +335,8 @@ fn test_frame_pointer() {
     }
 }
 
-#[test]
-fn test_frame_pointer_infinite_equality() {
+#[tokio::test]
+async fn test_frame_pointer_infinite_equality() {
     // Leaf functions on Arm are allowed to not update the stack pointer, so
     // it's valid for the frame pointer analysis to conclude that the stack
     // pointer doesn't change. However we must only provide this allowance
@@ -386,7 +387,7 @@ fn test_frame_pointer_infinite_equality() {
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -492,13 +493,13 @@ fn init_cfi_state() -> (TestFixture, Section, CONTEXT_ARM, MinidumpContextValidi
     (f, stack, expected, expected_valid)
 }
 
-fn check_cfi(
+async fn check_cfi(
     f: TestFixture,
     stack: Section,
     expected: CONTEXT_ARM,
     expected_valid: MinidumpContextValidity,
 ) {
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -536,8 +537,8 @@ fn check_cfi(
     unreachable!();
 }
 
-#[test]
-fn test_cfi_at_4000() {
+#[tokio::test]
+async fn test_cfi_at_4000() {
     let (mut f, mut stack, expected, expected_valid) = init_cfi_state();
 
     stack = stack.append_repeated(0, 120);
@@ -545,11 +546,11 @@ fn test_cfi_at_4000() {
     f.raw.set_register("pc", 0x40004000);
     f.raw.set_register("lr", 0x40005510);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4001() {
+#[tokio::test]
+async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
@@ -565,11 +566,11 @@ fn test_cfi_at_4001() {
     f.raw.iregs[4] = 0x635adc9f;
     f.raw.set_register("fp", 0xbe145fc4);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4002() {
+#[tokio::test]
+async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
@@ -592,11 +593,11 @@ fn test_cfi_at_4002() {
     f.raw.iregs[7] = 0xa449829f; // distinct callee r7
     f.raw.set_register("fp", 0xbe145fc4);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4003() {
+#[tokio::test]
+async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
@@ -619,11 +620,11 @@ fn test_cfi_at_4003() {
     f.raw.set_register("pc", 0x40004003);
     f.raw.iregs[1] = 0xfb756319;
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4004() {
+#[tokio::test]
+async fn test_cfi_at_4004() {
     // Should be the same as 4003
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
@@ -647,11 +648,11 @@ fn test_cfi_at_4004() {
     f.raw.set_register("pc", 0x40004004);
     f.raw.iregs[1] = 0xfb756319;
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4005() {
+#[tokio::test]
+async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
@@ -674,11 +675,11 @@ fn test_cfi_at_4005() {
     f.raw.set_register("pc", 0x40004005);
     f.raw.iregs[1] = 0xfb756319;
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4006() {
+#[tokio::test]
+async fn test_cfi_at_4006() {
     // Here we provide an explicit rule for the PC, and have the saved .ra be
     // bogus.
 
@@ -705,11 +706,11 @@ fn test_cfi_at_4006() {
     f.raw.set_register("pc", 0x40004006);
     f.raw.iregs[1] = 0xfb756319;
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_reject_backwards() {
+#[tokio::test]
+async fn test_cfi_reject_backwards() {
     // Check that we reject rules that would cause the stack pointer to
     // move in the wrong direction.
 
@@ -721,12 +722,12 @@ fn test_cfi_reject_backwards() {
     f.raw.set_register("sp", 0x80000000);
     f.raw.set_register("lr", 0x40005510);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 }
 
-#[test]
-fn test_cfi_reject_bad_exprs() {
+#[tokio::test]
+async fn test_cfi_reject_bad_exprs() {
     // Check that we reject rules whose expressions' evaluation fails.
 
     let (mut f, mut stack, _expected, _expected_valid) = init_cfi_state();
@@ -736,12 +737,12 @@ fn test_cfi_reject_bad_exprs() {
     f.raw.set_register("pc", 0x40007000);
     f.raw.set_register("sp", 0x80000000);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 }
 
-#[test]
-fn test_frame_pointer_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_overflow() {
     // Make sure we don't explode when trying frame pointer analysis on a value
     // that will overflow.
 
@@ -765,14 +766,14 @@ fn test_frame_pointer_overflow() {
         .set_register("sp", stack.start().value().unwrap() as Pointer);
     f.raw.set_register("lr", 0x7b302000);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
 }
 
-#[test]
-fn test_frame_pointer_overflow_nonsense_32bit_stack() {
+#[tokio::test]
+async fn test_frame_pointer_overflow_nonsense_32bit_stack() {
     // same as test_frame_pointer_overflow, but we're going to abuse the fact
     // that rust-minidump prefers representing things in 64-bit to create
     // impossible stack addresses that overflow 32-bit integers but appear
@@ -801,14 +802,14 @@ fn test_frame_pointer_overflow_nonsense_32bit_stack() {
         .set_register("sp", stack.start().value().unwrap() as Pointer);
     f.raw.set_register("lr", 0x7b302000);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
 }
 
-#[test]
-fn test_frame_pointer_barely_no_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_barely_no_overflow() {
     // This is a simple frame pointer test but with the all the values pushed
     // as close to the upper memory boundary as possible, to confirm that
     // our code doesn't randomly overflow *AND* isn't overzealous in
@@ -847,7 +848,7 @@ fn test_frame_pointer_barely_no_overflow() {
         .set_register("sp", stack.start().value().unwrap() as Pointer);
     f.raw.set_register("lr", return_address);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {

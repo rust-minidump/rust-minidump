@@ -21,7 +21,8 @@
 //! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
 //! use serde_json::Value;
 //!  
-//! fn main() -> Result<(), ()> {
+//! #[tokio::main]
+//! async fn main() -> Result<(), ()> {
 //!     // Read the minidump
 //!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
 //!  
@@ -46,6 +47,7 @@
 //!     ));
 //!  
 //!     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
+//!         .await
 //!         .map_err(|_| ())?;
 //!  
 //!     // Write the JSON output to an arbitrary writer (here, a Vec).

@@ -221,7 +221,8 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
 }
 
 #[cfg_attr(test, allow(dead_code))]
-fn main() {
+#[tokio::main]
+async fn main() {
     let matches = make_app().get_matches();
 
     // This is a little hack to generate a markdown version of the --help message,
@@ -388,7 +389,8 @@ fn main() {
                 ))));
             }
 
-            match minidump_processor::process_minidump_with_options(&dump, &provider, options) {
+            match minidump_processor::process_minidump_with_options(&dump, &provider, options).await
+            {
                 Ok(state) => {
                     let mut stdout;
                     let mut output_f;

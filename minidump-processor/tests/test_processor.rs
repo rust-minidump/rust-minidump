@@ -44,13 +44,14 @@ fn testdata_symbol_path() -> PathBuf {
     path
 }
 
-#[test]
-fn test_processor() {
+#[tokio::test]
+async fn test_processor() {
     let dump = read_test_minidump().unwrap();
     let state = minidump_processor::process_minidump(
         &dump,
         &Symbolizer::new(simple_symbol_supplier(vec![])),
     )
+    .await
     .unwrap();
     assert_eq!(state.system_info.os, Os::Windows);
     assert_eq!(state.system_info.os_version.unwrap(), "5.1.2600");
@@ -114,8 +115,8 @@ fn test_processor() {
     assert_eq!(state.threads[1].frames.len(), 0);
 }
 
-#[test]
-fn test_processor_symbols() {
+#[tokio::test]
+async fn test_processor_symbols() {
     let dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
     println!("symbol path: {:?}", path);
@@ -123,6 +124,7 @@ fn test_processor_symbols() {
         &dump,
         &Symbolizer::new(simple_symbol_supplier(vec![path])),
     )
+    .await
     .unwrap();
     let f0 = &state.threads[0].frames[0];
     assert_eq!(
@@ -146,14 +148,15 @@ fn minimal_minidump() -> SynthMinidump {
         .add_memory(stack)
 }
 
-fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
+async fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
     let dump = Minidump::read(dump.finish().unwrap()).unwrap();
     minidump_processor::process_minidump(&dump, &Symbolizer::new(simple_symbol_supplier(vec![])))
+        .await
         .unwrap()
 }
 
-#[test]
-fn test_linux_cpu_info() {
+#[tokio::test]
+async fn test_linux_cpu_info() {
     // Whitespace intentionally wonky to test robustness
 
     let input = b"
@@ -161,13 +164,13 @@ microcode : 0x1e34a6789
 ";
 
     let dump = minimal_minidump().set_linux_cpu_info(input);
-    let state = read_synth_dump(dump);
+    let state = read_synth_dump(dump).await;
 
     assert_eq!(state.system_info.cpu_microcode_version, Some(0x1e34a6789));
 }
 
-#[test]
-fn test_linux_lsb_release() {
+#[tokio::test]
+async fn test_linux_lsb_release() {
     // Whitespace intentionally wonky to test robustness
     {
         let input = br#"
@@ -177,7 +180,7 @@ DISTRIB_ID="hello"
 DISTRIB_DESCRIPTION= wow long string!!!
 "#;
         let dump = minimal_minidump().set_linux_lsb_release(input);
-        let state = read_synth_dump(dump);
+        let state = read_synth_dump(dump).await;
 
         let LinuxStandardBase {
             id,
@@ -200,7 +203,7 @@ ID="hello"
 PRETTY_NAME= wow long string!!!
 "#;
         let dump = minimal_minidump().set_linux_lsb_release(input);
-        let state = read_synth_dump(dump);
+        let state = read_synth_dump(dump).await;
 
         let LinuxStandardBase {
             id,
@@ -216,24 +219,24 @@ PRETTY_NAME= wow long string!!!
     }
 }
 
-#[test]
-fn test_linux_environ() {
+#[tokio::test]
+async fn test_linux_environ() {
     // Whitespace intentionally wonky to test robustness
 
     // TODO: add tests for values we care about
     let input = b"";
 
     let dump = minimal_minidump().set_linux_environ(input);
-    let _state = read_synth_dump(dump);
+    let _state = read_synth_dump(dump).await;
 }
 
-#[test]
-fn test_linux_proc_status() {
+#[tokio::test]
+async fn test_linux_proc_status() {
     // Whitespace intentionally wonky to test robustness
 
     // TODO: add tests for values we care about
     let input = b"";
 
     let dump = minimal_minidump().set_linux_proc_status(input);
-    let _state = read_synth_dump(dump);
+    let _state = read_synth_dump(dump).await;
 }

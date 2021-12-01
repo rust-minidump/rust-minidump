@@ -90,6 +90,64 @@ impl SymbolFile {
         }
     }
 
+    /// `parse` but async
+    pub async fn parse_async(
+        mut response: reqwest::Response,
+        mut callback: impl FnMut(&[u8]),
+    ) -> Result<SymbolFile, SymbolError> {
+        let mut chunk;
+        let mut slice = &[][..];
+        let mut input_reader = &mut slice;
+        let mut buf = circular::Buffer::with_capacity(100_000);
+        let mut parser = SymbolParser::new();
+        let mut fully_consumed = false;
+        loop {
+            // Little rube-goldberg machine to stream the contents:
+            // * get a chunk (Bytes) from the Response
+            // * get its underlying slice
+            // * then get a mutable reference to that slice
+            // * then Read that mutable reference in our circular buffer
+            // * when the slice runs out, get the next chunk and repeat
+            if input_reader.is_empty() {
+                chunk = response
+                    .chunk()
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                    .unwrap_or_default();
+                slice = &chunk[..];
+                input_reader = &mut slice;
+            }
+            // Read the data in, and tell the circular buffer about the new data
+            let size = input_reader.read(buf.space())?;
+            buf.fill(size);
+
+            // If the reader returned nothing, then we're done. On the previous
+            // iteration we submitted the last bytes of the input. If the parser
+            // consumed all of those bytes, then the file perfectly parsed!
+            if size == 0 {
+                if fully_consumed {
+                    return Ok(parser.finish());
+                } else {
+                    return Err(SymbolError::ParseError(
+                        "unexpected EOF during parsing of SymbolFile (or a line was too long?) at line",
+                        parser.lines
+                    ));
+                }
+            }
+
+            // Ask the parser to parse more of the input
+            let input = buf.data();
+            let consumed = parser.parse_more(input)?;
+
+            // Give the other consumer of this Reader a chance to use this data.
+            callback(&input[..consumed]);
+
+            // Remember for the next iteration if all the input was consumed.
+            fully_consumed = input.len() == consumed;
+            buf.consume(consumed);
+        }
+    }
+
     // Parse a SymbolFile from bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
         Self::parse(bytes, |_| ())
