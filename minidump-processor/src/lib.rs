@@ -10,7 +10,7 @@ mod evil;
 mod process_state;
 mod processor;
 mod stackwalker;
-mod symbols;
+pub mod symbols;
 mod system_info;
 
 pub use crate::process_state::*;

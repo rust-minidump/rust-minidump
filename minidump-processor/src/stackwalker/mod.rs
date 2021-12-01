@@ -218,7 +218,7 @@ where
         // our symbol provider with the address we're interested in. If
         // it tries to set a non-empty function name, then we can reasonably
         // assume the instruction address is valid.
-        use breakpad_symbols::FrameSymbolizer;
+        use crate::FrameSymbolizer;
 
         struct DummyFrame {
             instruction: u64,
