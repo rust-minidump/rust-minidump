@@ -6,16 +6,17 @@ use crate::SymbolProvider;
 use minidump::{MinidumpMemory, MinidumpModuleList};
 
 /// A trait for things that can unwind to a caller.
+#[async_trait::async_trait]
 pub trait Unwind {
     /// Get the caller frame of this frame.
-    fn get_caller_frame<P>(
+    async fn get_caller_frame<P>(
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory>,
+        stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
         symbol_provider: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider;
+        P: SymbolProvider + Sync;
 }

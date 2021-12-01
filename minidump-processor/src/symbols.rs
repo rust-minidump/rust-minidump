@@ -65,7 +65,8 @@
 //! use minidump::Minidump;
 //! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
 //!
-//! fn main() -> Result<(), ()> {
+//! #[tokio::main]
+//! async fn main() -> Result<(), ()> {
 //!     // Read the minidump
 //!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
 //!
@@ -87,29 +88,37 @@
 //!     ));
 //!
 //!     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
+//!         .await
 //!         .map_err(|_| ())?;
 //!     state.print(&mut std::io::stdout()).map_err(|_| ())?;
 //!     Ok(())
 //! }
 //! ```
 //!
+
+use async_trait::async_trait;
 use minidump::Module;
 use std::collections::HashMap;
 pub use symbols_shim::*;
 
+#[async_trait]
 pub trait SymbolProvider {
-    fn fill_symbol(
+    async fn fill_symbol(
         &self,
-        module: &dyn Module,
-        frame: &mut dyn FrameSymbolizer,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError>;
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()>;
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()>;
     fn stats(&self) -> HashMap<String, SymbolStats>;
 }
 
 #[derive(Default)]
 pub struct MultiSymbolProvider {
-    providers: Vec<Box<dyn SymbolProvider>>,
+    providers: Vec<Box<dyn SymbolProvider + Send + Sync>>,
 }
 
 impl MultiSymbolProvider {
@@ -117,31 +126,36 @@ impl MultiSymbolProvider {
         Default::default()
     }
 
-    pub fn add(&mut self, provider: Box<dyn SymbolProvider>) {
+    pub fn add(&mut self, provider: Box<dyn SymbolProvider + Send + Sync>) {
         self.providers.push(provider);
     }
 }
 
+#[async_trait]
 impl SymbolProvider for MultiSymbolProvider {
-    fn fill_symbol(
+    async fn fill_symbol(
         &self,
-        module: &dyn Module,
-        frame: &mut dyn FrameSymbolizer,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
         // Return Ok if *any* symbol provider came back with Ok, so that the user can
         // distinguish between having no symbols at all and just not being able to
         // symbolize this particular frame.
         let mut best_result = Err(FillSymbolError {});
         for p in self.providers.iter() {
-            let new_result = p.fill_symbol(module, frame);
+            let new_result = p.fill_symbol(module, frame).await;
             best_result = best_result.or(new_result);
         }
         best_result
     }
 
-    fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
         for p in self.providers.iter() {
-            let result = p.walk_frame(module, walker);
+            let result = p.walk_frame(module, walker).await;
             if result.is_some() {
                 return result;
             }
@@ -163,6 +177,7 @@ impl SymbolProvider for MultiSymbolProvider {
 #[cfg(feature = "breakpad-syms")]
 mod symbols_shim {
     use super::SymbolProvider;
+    use async_trait::async_trait;
     pub use breakpad_symbols::{
         FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError, SymbolFile, SymbolStats,
         SymbolSupplier, Symbolizer,
@@ -171,16 +186,22 @@ mod symbols_shim {
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::time::Duration;
+
+    #[async_trait]
     impl SymbolProvider for Symbolizer {
-        fn fill_symbol(
+        async fn fill_symbol(
             &self,
-            module: &dyn Module,
-            frame: &mut dyn FrameSymbolizer,
+            module: &(dyn Module + Sync),
+            frame: &mut (dyn FrameSymbolizer + Send),
         ) -> Result<(), FillSymbolError> {
-            self.fill_symbol(module, frame)
+            self.fill_symbol(module, frame).await
         }
-        fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
-            self.walk_frame(module, walker)
+        async fn walk_frame(
+            &self,
+            module: &(dyn Module + Sync),
+            walker: &mut (dyn FrameWalker + Send),
+        ) -> Option<()> {
+            self.walk_frame(module, walker).await
         }
         fn stats(&self) -> HashMap<String, SymbolStats> {
             self.stats()
@@ -246,6 +267,7 @@ mod symbols_shim {
     #![allow(dead_code)]
 
     use super::SymbolProvider;
+    use async_trait::async_trait;
     use minidump::Module;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -254,12 +276,16 @@ mod symbols_shim {
     // Import symbolic here
 
     /// A trait for things that can locate symbols for a given module.
+    #[async_trait]
     pub trait SymbolSupplier {
         /// Locate and load a symbol file for `module`.
         ///
         /// Implementations may use any strategy for locating and loading
         /// symbols.
-        fn locate_symbols(&mut self, module: &dyn Module) -> Result<SymbolFile, SymbolError>;
+        async fn locate_symbols(
+            &mut self,
+            module: &(dyn Module + Sync),
+        ) -> Result<SymbolFile, SymbolError>;
     }
 
     /// A trait for setting symbol information on something like a stack frame.
@@ -315,27 +341,32 @@ mod symbols_shim {
     /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
     pub struct Symbolizer {
         /// Symbol supplier for locating symbols.
-        supplier: Box<dyn SymbolSupplier + 'static>,
+        supplier: Box<dyn SymbolSupplier + 'static + Send + Sync>,
     }
 
     impl Symbolizer {
         /// Create a `Symbolizer` that uses `supplier` to locate symbols.
-        pub fn new<T: SymbolSupplier + 'static>(supplier: T) -> Symbolizer {
+        pub fn new<T: SymbolSupplier + 'static + Send + Sync>(supplier: T) -> Symbolizer {
             Symbolizer {
                 supplier: Box::new(supplier),
             }
         }
     }
 
+    #[async_trait]
     impl SymbolProvider for Symbolizer {
-        fn fill_symbol(
+        async fn fill_symbol(
             &self,
-            _module: &dyn Module,
-            _frame: &mut dyn FrameSymbolizer,
+            _module: &(dyn Module + Sync),
+            _frame: &mut (dyn FrameSymbolizer + Send),
         ) -> Result<(), FillSymbolError> {
             unimplemented!()
         }
-        fn walk_frame(&self, _module: &dyn Module, _walker: &mut dyn FrameWalker) -> Option<()> {
+        async fn walk_frame(
+            &self,
+            _module: &(dyn Module + Sync),
+            _walker: &mut (dyn FrameWalker + Send),
+        ) -> Option<()> {
             unimplemented!()
         }
         fn stats(&self) -> HashMap<String, SymbolStats> {
@@ -454,20 +485,32 @@ mod symbols_shim {
 
     struct StringSymbolSupplier {}
 
+    #[async_trait]
     impl SymbolSupplier for HttpSymbolSupplier {
-        fn locate_symbols(&mut self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+        async fn locate_symbols(
+            &mut self,
+            _module: &(dyn Module + Sync),
+        ) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }
 
+    #[async_trait]
     impl SymbolSupplier for SimpleSymbolSupplier {
-        fn locate_symbols(&mut self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+        async fn locate_symbols(
+            &mut self,
+            _module: &(dyn Module + Sync),
+        ) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }
 
+    #[async_trait]
     impl SymbolSupplier for StringSymbolSupplier {
-        fn locate_symbols(&mut self, _module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+        async fn locate_symbols(
+            &mut self,
+            _module: &(dyn Module + Sync),
+        ) -> Result<SymbolFile, SymbolError> {
             unimplemented!()
         }
     }

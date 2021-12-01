@@ -80,15 +80,15 @@ where
     }
 }
 
-fn get_caller_frame<P>(
+async fn get_caller_frame<P>(
     callee_frame: &StackFrame,
     grand_callee_frame: Option<&StackFrame>,
-    stack_memory: Option<&MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     match callee_frame.context.raw {
         /*
@@ -97,51 +97,66 @@ where
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
-        MinidumpRawContext::Arm(ref ctx) => ctx.get_caller_frame(
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            symbol_provider,
-        ),
-        MinidumpRawContext::Arm64(ref ctx) => ctx.get_caller_frame(
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            symbol_provider,
-        ),
-        MinidumpRawContext::OldArm64(ref ctx) => ctx.get_caller_frame(
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            symbol_provider,
-        ),
-        MinidumpRawContext::Amd64(ref ctx) => ctx.get_caller_frame(
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            symbol_provider,
-        ),
-        MinidumpRawContext::X86(ref ctx) => ctx.get_caller_frame(
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            symbol_provider,
-        ),
+        MinidumpRawContext::Arm(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            )
+            .await
+        }
+        MinidumpRawContext::Arm64(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            )
+            .await
+        }
+        MinidumpRawContext::OldArm64(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            )
+            .await
+        }
+        MinidumpRawContext::Amd64(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            )
+            .await
+        }
+        MinidumpRawContext::X86(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                symbol_provider,
+            )
+            .await
+        }
         _ => None,
     }
 }
 
-fn fill_source_line_info<P>(
+async fn fill_source_line_info<P>(
     frame: &mut StackFrame,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     // Find the module whose address range covers this frame's instruction.
     if let Some(module) = modules.module_at_address(frame.instruction) {
@@ -150,18 +165,18 @@ fn fill_source_line_info<P>(
         frame.module = Some(module.clone());
 
         // This is best effort, so ignore any errors.
-        let _ = symbol_provider.fill_symbol(module, frame);
+        let _ = symbol_provider.fill_symbol(module, frame).await;
     }
 }
 
-pub fn walk_stack<P>(
+pub async fn walk_stack<P>(
     maybe_context: &Option<&MinidumpContext>,
-    stack_memory: Option<&MinidumpMemory>,
+    stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> CallStack
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     // Begin with the context frame, and keep getting callers until there are
     // no more.
@@ -172,7 +187,7 @@ where
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
-            fill_source_line_info(&mut frame, modules, symbol_provider);
+            fill_source_line_info(&mut frame, modules, symbol_provider).await;
             trace!(
                 "unwind: unwinding {}",
                 frame
@@ -189,7 +204,8 @@ where
                 stack_memory,
                 modules,
                 symbol_provider,
-            );
+            )
+            .await;
         }
         trace!("unwind: finished stack unwind\n");
     } else {
@@ -206,13 +222,13 @@ where
 
 /// Checks if we can dismiss the validity of an instruction based on our symbols,
 /// to refine the quality of each unwinder's instruction_seems_valid implementation.
-fn instruction_seems_valid_by_symbols<P>(
+async fn instruction_seems_valid_by_symbols<P>(
     instruction: u64,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     if let Some(module) = modules.module_at_address(instruction as u64) {
         // Create a dummy frame symbolizing implementation to feed into
@@ -242,7 +258,11 @@ where
             has_name: false,
         };
 
-        if symbol_provider.fill_symbol(module, &mut frame).is_ok() {
+        if symbol_provider
+            .fill_symbol(module, &mut frame)
+            .await
+            .is_ok()
+        {
             frame.has_name
         } else {
             // If the symbol provider returns an Error, this means that we

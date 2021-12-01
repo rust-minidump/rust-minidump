@@ -14,15 +14,19 @@ edition = "2018"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
+async-trait = "0.1.51"
 circular = "0.3.0"
 minidump-common = { version = "0.9.6", path = "../minidump-common" }
 range-map = "0.1.5"
 nom = "~1.2.2"
 log = "0.4.1"
-reqwest = { version = "0.11.6", features = ["blocking", "gzip"] }
+reqwest = { version = "0.11.6", features = ["gzip"] }
 tempfile = "3.3.0"
 thiserror = "1.0.30"
 
 # Private API, only here to support the fuzzer
 [features]
 fuzz = []
+
+[dev-dependencies]
+tokio =  { version = "1.12.0", features = ["full"] }

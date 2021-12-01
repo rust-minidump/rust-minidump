@@ -29,7 +29,7 @@ impl TestFixture {
         }
     }
 
-    pub fn walk_stack(&self, stack: Section) -> CallStack {
+    pub async fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::X86(self.raw.clone()),
             valid: MinidumpContextValidity::All,
@@ -50,6 +50,7 @@ impl TestFixture {
             &self.modules,
             &symbolizer,
         )
+        .await
     }
 
     pub fn add_symbols(&mut self, name: String, symbols: String) {
@@ -57,15 +58,15 @@ impl TestFixture {
     }
 }
 
-#[test]
-fn test_simple() {
+#[tokio::test]
+async fn test_simple() {
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
     stack = stack.D32(0).D32(0); // end-of-stack marker
     f.raw.eip = 0x40000200;
     f.raw.ebp = 0x80000000;
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
     let f = &s.frames[0];
     let m = f.module.as_ref().unwrap();
@@ -75,8 +76,8 @@ fn test_simple() {
 // Walk a traditional frame. A traditional frame saves the caller's
 // %ebp just below the return address, and has its own %ebp pointing
 // at the saved %ebp.
-#[test]
-fn test_traditional() {
+#[tokio::test]
+async fn test_traditional() {
     let mut f = TestFixture::new();
     let frame0_ebp = Label::new();
     let frame1_ebp = Label::new();
@@ -94,7 +95,7 @@ fn test_traditional() {
     f.raw.eip = 0x4000c7a5;
     f.raw.esp = stack.start().value().unwrap() as u32;
     f.raw.ebp = frame0_ebp.value().unwrap() as u32;
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
     {
         let f0 = &s.frames[0];
@@ -116,8 +117,8 @@ fn test_traditional() {
 
 // Walk a traditional frame, but use a bogus %ebp value, forcing a scan
 // of the stack for something that looks like a return address.
-#[test]
-fn test_traditional_scan() {
+#[tokio::test]
+async fn test_traditional_scan() {
     let mut f = TestFixture::new();
     let frame1_esp = Label::new();
     let frame1_ebp = Label::new();
@@ -144,7 +145,7 @@ fn test_traditional_scan() {
     // for something that looks like a return address.
     f.raw.ebp = 0xd43eed6e;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -187,8 +188,8 @@ fn test_traditional_scan() {
 }
 
 // Force scanning for a return address a long way down the stack
-#[test]
-fn test_traditional_scan_long_way() {
+#[tokio::test]
+async fn test_traditional_scan_long_way() {
     let mut f = TestFixture::new();
     let frame1_esp = Label::new();
     let frame1_ebp = Label::new();
@@ -217,7 +218,7 @@ fn test_traditional_scan_long_way() {
     // for something that looks like a return address.
     f.raw.ebp = 0xd43eed6e;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -306,13 +307,13 @@ fn init_cfi_state() -> (TestFixture, Section, CONTEXT_X86, MinidumpContextValidi
     (f, stack, expected, expected_valid)
 }
 
-fn check_cfi(
+async fn check_cfi(
     f: TestFixture,
     stack: Section,
     expected: CONTEXT_X86,
     expected_valid: MinidumpContextValidity,
 ) {
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -350,8 +351,8 @@ fn check_cfi(
     unreachable!();
 }
 
-#[test]
-fn test_cfi_at_4000() {
+#[tokio::test]
+async fn test_cfi_at_4000() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -363,11 +364,11 @@ fn test_cfi_at_4000() {
     expected.set_register("esp", frame1_rsp.value().unwrap() as u32);
     f.raw.set_register("eip", 0x40004000);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4001() {
+#[tokio::test]
+async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -381,11 +382,11 @@ fn test_cfi_at_4001() {
     f.raw.set_register("eip", 0x40004001);
     f.raw.set_register("ebx", 0x91aa9a8b);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4002() {
+#[tokio::test]
+async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -400,11 +401,11 @@ fn test_cfi_at_4002() {
     f.raw.set_register("ebx", 0x53d1379d);
     f.raw.set_register("esi", 0xa5c790ed);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4003() {
+#[tokio::test]
+async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -423,11 +424,11 @@ fn test_cfi_at_4003() {
     f.raw.set_register("esi", 0xa97f229d);
     f.raw.set_register("edi", 0xb05cc997);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4004() {
+#[tokio::test]
+async fn test_cfi_at_4004() {
     // Should be the same as 4003
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
@@ -447,11 +448,11 @@ fn test_cfi_at_4004() {
     f.raw.set_register("esi", 0xa97f229d);
     f.raw.set_register("edi", 0xb05cc997);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4005() {
+#[tokio::test]
+async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -470,11 +471,11 @@ fn test_cfi_at_4005() {
     f.raw.set_register("esi", 0x0fb7dc4e);
     f.raw.set_register("edi", 0x40005510);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4006() {
+#[tokio::test]
+async fn test_cfi_at_4006() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame0_ebp = Label::new();
@@ -497,12 +498,12 @@ fn test_cfi_at_4006() {
     f.raw.set_register("esi", 0x743833c9);
     f.raw.set_register("edi", 0x40005510);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
 // Totally basic STACK WIN frame data, no weird stuff.
-#[test]
-fn test_stack_win_frame_data_basic() {
+#[tokio::test]
+async fn test_stack_win_frame_data_basic() {
     let mut f = TestFixture::new();
     let symbols = [
         "STACK WIN 4 aa85 176 0 0 4 10 4 0 1",
@@ -544,7 +545,7 @@ fn test_stack_win_frame_data_basic() {
         .set_register("esp", stack.start().value().unwrap() as u32);
     f.raw.set_register("ebp", 0xf052c1de);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -591,8 +592,8 @@ fn test_stack_win_frame_data_basic() {
 }
 
 // Totally basic STACK WIN frame data, no weird stuff.
-#[test]
-fn test_stack_win_frame_data_overlapping() {
+#[tokio::test]
+async fn test_stack_win_frame_data_overlapping() {
     // Same as frame_data_basic but there are extra entries which technically overlap
     // with this one, but in a way that is easily disambiguated by preferring the
     // one with the higher base address. This happens frequently in real symbol files.
@@ -647,7 +648,7 @@ fn test_stack_win_frame_data_overlapping() {
         .set_register("esp", stack.start().value().unwrap() as u32);
     f.raw.set_register("ebp", 0xf052c1de);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -694,8 +695,8 @@ fn test_stack_win_frame_data_overlapping() {
 }
 
 // Testing that grand_callee_parameter_size is properly computed.
-#[test]
-fn test_stack_win_frame_data_parameter_size() {
+#[tokio::test]
+async fn test_stack_win_frame_data_parameter_size() {
     let mut f = TestFixture::new();
 
     let module1_symbols = ["FUNC 1000 100 c module1::wheedle\n"];
@@ -756,7 +757,7 @@ fn test_stack_win_frame_data_parameter_size() {
     f.raw
         .set_register("ebp", frame0_ebp.value().unwrap() as u32);
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 3);
 
     {
@@ -819,8 +820,8 @@ fn test_stack_win_frame_data_parameter_size() {
     }
 }
 
-#[test]
-fn test_frame_pointer_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_overflow() {
     // Make sure we don't explode when trying frame pointer analysis on a value
     // that will overflow.
 
@@ -842,14 +843,14 @@ fn test_frame_pointer_overflow() {
     f.raw.ebp = bad_frame_ptr;
     f.raw.esp = stack.start().value().unwrap() as Pointer;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
 }
 
-#[test]
-fn test_frame_pointer_overflow_nonsense_32bit_stack() {
+#[tokio::test]
+async fn test_frame_pointer_overflow_nonsense_32bit_stack() {
     // same as test_frame_pointer_overflow, but we're going to abuse the fact
     // that rust-minidump prefers representing things in 64-bit to create
     // impossible stack addresses that overflow 32-bit integers but appear
@@ -876,14 +877,14 @@ fn test_frame_pointer_overflow_nonsense_32bit_stack() {
     f.raw.ebp = bad_frame_ptr as u32;
     f.raw.esp = stack.start().value().unwrap() as Pointer;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
 }
 
-#[test]
-fn test_frame_pointer_barely_no_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_barely_no_overflow() {
     // This is test_tradition but with the all the values pushed
     // as close to the upper memory boundary as possible, to confirm that
     // our code doesn't randomly overflow *AND* isn't overzealous in
@@ -919,7 +920,7 @@ fn test_frame_pointer_barely_no_overflow() {
     f.raw.ebp = frame0_fp.value().unwrap() as Pointer;
     f.raw.esp = stack.start().value().unwrap() as Pointer;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {

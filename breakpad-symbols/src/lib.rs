@@ -17,32 +17,37 @@
 //!
 //! ```
 //! # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
-//! use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
+//! use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer, SimpleFrame, SimpleModule};
 //! use std::path::PathBuf;
-//! let paths = vec!(PathBuf::from("../testdata/symbols/"));
-//! let supplier = SimpleSymbolSupplier::new(paths);
-//! let symbolizer = Symbolizer::new(supplier);
 //!
-//! // Simple function name lookup with debug file, debug id, address.
-//! assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb",
-//!                                             "5A9832E5287241C1838ED98914E9B7FF1",
-//!                                             0x1010)
-//!               .unwrap(),
-//!               "vswprintf");
+//! #[tokio::main]
+//! async fn main() {
+//!     let paths = vec!(PathBuf::from("../testdata/symbols/"));
+//!     let supplier = SimpleSymbolSupplier::new(paths);
+//!     let symbolizer = Symbolizer::new(supplier);
+//!
+//!     // Simple function name lookup with debug file, debug id, address.
+//!     assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb",
+//!         "5A9832E5287241C1838ED98914E9B7FF1",
+//!         0x1010)
+//!         .await
+//!         .unwrap(),
+//!         "vswprintf");
+//! }
 //! ```
 
+use async_trait::async_trait;
 use log::{debug, trace, warn};
-use reqwest::blocking::Client;
-use reqwest::Url;
+use reqwest::{Client, Url};
 use tempfile::NamedTempFile;
 
 use std::borrow::Cow;
 use std::boxed::Box;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 pub use minidump_common::traits::Module;
@@ -168,7 +173,7 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 ///
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
-pub fn relative_symbol_path(module: &dyn Module, extension: &str) -> Option<String> {
+pub fn relative_symbol_path(module: &(dyn Module + Sync), extension: &str) -> Option<String> {
     module.debug_file().and_then(|debug_file| {
         module.debug_identifier().map(|debug_id| {
             // Can't use PathBuf::file_name here, it doesn't handle
@@ -250,12 +255,14 @@ impl PartialEq for SymbolError {
 }
 
 /// A trait for things that can locate symbols for a given module.
+#[async_trait]
 pub trait SymbolSupplier {
     /// Locate and load a symbol file for `module`.
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError>;
+    async fn locate_symbols(&self, module: &(dyn Module + Sync))
+        -> Result<SymbolFile, SymbolError>;
 }
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
@@ -276,8 +283,12 @@ impl SimpleSymbolSupplier {
     }
 }
 
+#[async_trait]
 impl SymbolSupplier for SimpleSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+    async fn locate_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Result<SymbolFile, SymbolError> {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
@@ -305,8 +316,12 @@ impl StringSymbolSupplier {
     }
 }
 
+#[async_trait]
 impl SymbolSupplier for StringSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+    async fn locate_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Result<SymbolFile, SymbolError> {
         if let Some(symbols) = self.modules.get(&*module.code_file()) {
             return SymbolFile::from_bytes(symbols.as_bytes());
         }
@@ -417,7 +432,7 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
 
 /// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
 /// save the file contents under `cache` + `rel_path` and also return them.
-fn fetch_symbol_file(
+async fn fetch_symbol_file(
     client: &Client,
     base_url: &Url,
     rel_path: &str,
@@ -439,6 +454,7 @@ fn fetch_symbol_file(
     let res = client
         .get(url.clone())
         .send()
+        .await
         .and_then(|res| res.error_for_status())
         .map_err(|_| SymbolError::NotFound)?;
 
@@ -451,7 +467,7 @@ fn fetch_symbol_file(
         .ok();
 
     // Now stream parse the file as it downloads.
-    let mut symbol_file = SymbolFile::parse(res, |data| {
+    let mut symbol_file = SymbolFile::parse_async(res, |data| {
         // While we're downloading+parsing, save this data to the the disk cache too
         if let Some(file) = temp.as_mut() {
             if let Err(e) = file.write_all(data) {
@@ -460,7 +476,8 @@ fn fetch_symbol_file(
                 temp = None;
             }
         }
-    })?;
+    })
+    .await?;
     // Make note of what URL this symbol file was downloaded from.
     symbol_file.url = Some(url.to_string());
 
@@ -474,10 +491,14 @@ fn fetch_symbol_file(
     Ok(symbol_file)
 }
 
+#[async_trait]
 impl SymbolSupplier for HttpSymbolSupplier {
-    fn locate_symbols(&self, module: &dyn Module) -> Result<SymbolFile, SymbolError> {
+    async fn locate_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Result<SymbolFile, SymbolError> {
         // Check local paths first.
-        let local_result = self.local.locate_symbols(module);
+        let local_result = self.local.locate_symbols(module).await;
         if !matches!(local_result, Err(SymbolError::NotFound)) {
             // Everything but NotFound prevents cascading
             return local_result;
@@ -486,7 +507,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for url in &self.urls {
                 if let Ok(file) =
-                    fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp)
+                    fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp).await
                 {
                     return Ok(file);
                 }
@@ -580,7 +601,7 @@ impl FrameSymbolizer for SimpleFrame {
 type ModuleKey = (String, String, Option<String>, Option<String>);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
-fn key(module: &dyn Module) -> ModuleKey {
+fn key(module: &(dyn Module + Sync)) -> ModuleKey {
     (
         module.code_file().to_string(),
         module.code_identifier().to_string(),
@@ -610,21 +631,21 @@ fn key(module: &dyn Module) -> ModuleKey {
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
-    supplier: Box<dyn SymbolSupplier + 'static>,
+    supplier: Box<dyn SymbolSupplier + Send + Sync + 'static>,
     /// Cache of symbol locating results.
     // TODO?: use lru-cache: https://crates.io/crates/lru-cache/
     // note that using an lru-cache would mess up the fact that we currently
     // use this for statistics collection. Splitting out statistics would be
     // way messier but not impossible.
-    symbols: RefCell<HashMap<ModuleKey, Result<SymbolFile, SymbolError>>>,
+    symbols: Mutex<HashMap<ModuleKey, Result<SymbolFile, SymbolError>>>,
 }
 
 impl Symbolizer {
     /// Create a `Symbolizer` that uses `supplier` to locate symbols.
-    pub fn new<T: SymbolSupplier + 'static>(supplier: T) -> Symbolizer {
+    pub fn new<T: SymbolSupplier + Send + Sync + 'static>(supplier: T) -> Symbolizer {
         Symbolizer {
             supplier: Box::new(supplier),
-            symbols: RefCell::new(HashMap::new()),
+            symbols: Mutex::new(HashMap::new()),
         }
     }
 
@@ -637,7 +658,7 @@ impl Symbolizer {
     /// See [the module-level documentation][module] for an example.
     ///
     /// [module]: index.html
-    pub fn get_symbol_at_address(
+    pub async fn get_symbol_at_address(
         &self,
         debug_file: &str,
         debug_id: &str,
@@ -645,7 +666,7 @@ impl Symbolizer {
     ) -> Option<String> {
         let k = (debug_file, debug_id);
         let mut frame = SimpleFrame::with_instruction(address);
-        self.fill_symbol(&k, &mut frame).ok()?;
+        self.fill_symbol(&k, &mut frame).await.ok()?;
         frame.function
     }
 
@@ -662,30 +683,35 @@ impl Symbolizer {
     /// ```
     /// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
     /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
-    /// use std::path::PathBuf;
-    /// let paths = vec!(PathBuf::from("../testdata/symbols/"));
-    /// let supplier = SimpleSymbolSupplier::new(paths);
-    /// let symbolizer = Symbolizer::new(supplier);
-    /// let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
-    /// let mut f = SimpleFrame::with_instruction(0x1010);
-    /// let _ = symbolizer.fill_symbol(&m, &mut f);
-    /// assert_eq!(f.function.unwrap(), "vswprintf");
-    /// assert_eq!(f.source_file.unwrap(), r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
-    /// assert_eq!(f.source_line.unwrap(), 51);
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     use std::path::PathBuf;
+    ///     let paths = vec!(PathBuf::from("../testdata/symbols/"));
+    ///     let supplier = SimpleSymbolSupplier::new(paths);
+    ///     let symbolizer = Symbolizer::new(supplier);
+    ///     let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
+    ///     let mut f = SimpleFrame::with_instruction(0x1010);
+    ///     let _ = symbolizer.fill_symbol(&m, &mut f).await;
+    ///     assert_eq!(f.function.unwrap(), "vswprintf");
+    ///     assert_eq!(f.source_file.unwrap(),
+    ///         r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
+    ///     assert_eq!(f.source_line.unwrap(), 51);
+    /// }
     /// ```
     ///
     /// [simplemodule]: struct.SimpleModule.html
     /// [simpleframe]: struct.SimpleFrame.html
-    pub fn fill_symbol(
+    pub async fn fill_symbol(
         &self,
-        module: &dyn Module,
-        frame: &mut dyn FrameSymbolizer,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
         let k = key(module);
-        self.ensure_module(module, &k);
+        self.ensure_module(module, &k).await;
 
         // Symbols will always contain an entry after ensure_module (though it may be an Err).
-        self.symbols.borrow()[&k]
+        self.symbols.lock().unwrap()[&k]
             .as_ref()
             .map(|sym| {
                 sym.fill_symbol(module, frame);
@@ -698,7 +724,8 @@ impl Symbolizer {
     /// Keys are the file name of the module (code_file's file name).
     pub fn stats(&self) -> HashMap<String, SymbolStats> {
         self.symbols
-            .borrow()
+            .lock()
+            .unwrap()
             .iter()
             .map(|(k, res)| {
                 let mut stats = SymbolStats::default();
@@ -727,10 +754,14 @@ impl Symbolizer {
     /// Tries to use CFI to walk the stack frame of the FrameWalker
     /// using the symbols of the given Module. Output will be written
     /// using the FrameWalker's `set_caller_*` APIs.
-    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+    pub async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
         let k = key(module);
-        self.ensure_module(module, &k);
-        if let Some(Ok(ref sym)) = self.symbols.borrow().get(&k) {
+        self.ensure_module(module, &k).await;
+        if let Some(Ok(ref sym)) = self.symbols.lock().unwrap().get(&k) {
             trace!("unwind: found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
@@ -742,10 +773,10 @@ impl Symbolizer {
     /// Ensures there is an entry in the `symbols` map for the given key
     /// (although it may be an Error). Will not change the entry if it already
     /// exists (so if they first time we look is an Error, it always will be).
-    fn ensure_module(&self, module: &dyn Module, k: &ModuleKey) {
-        if !self.symbols.borrow().contains_key(k) {
-            let res = self.supplier.locate_symbols(module);
-            self.symbols.borrow_mut().insert(k.clone(), res);
+    async fn ensure_module(&self, module: &(dyn Module + Sync), k: &ModuleKey) {
+        if !self.symbols.lock().unwrap().contains_key(k) {
+            let res = self.supplier.locate_symbols(module).await;
+            self.symbols.lock().unwrap().insert(k.clone(), res);
         }
     }
 }
@@ -787,8 +818,8 @@ mod test {
     use std::io::Write;
     use std::path::{Path, PathBuf};
 
-    #[test]
-    fn test_relative_symbol_path() {
+    #[tokio::test]
+    async fn test_relative_symbol_path() {
         let m = SimpleModule::new("foo.pdb", "abcd1234");
         assert_eq!(
             &relative_symbol_path(&m, "sym").unwrap(),
@@ -829,8 +860,8 @@ mod test {
         assert!(relative_symbol_path(&bad3, "sym").is_none());
     }
 
-    #[test]
-    fn test_relative_symbol_path_abs_paths() {
+    #[tokio::test]
+    async fn test_relative_symbol_path_abs_paths() {
         {
             let m = SimpleModule::new("/path/to/foo.bin", "abcd1234");
             assert_eq!(
@@ -883,14 +914,17 @@ mod test {
         write_symbol_file(path, b"this is not a symbol file\n");
     }
 
-    #[test]
-    fn test_simple_symbol_supplier() {
+    #[tokio::test]
+    async fn test_simple_symbol_supplier() {
         let t = tempfile::tempdir().unwrap();
         let paths = mksubdirs(t.path(), &["one", "two"]);
 
         let supplier = SimpleSymbolSupplier::new(paths.clone());
         let bad = SimpleModule::default();
-        assert_eq!(supplier.locate_symbols(&bad), Err(SymbolError::NotFound));
+        assert_eq!(
+            supplier.locate_symbols(&bad).await,
+            Err(SymbolError::NotFound)
+        );
 
         // Try loading symbols for each of two modules in each of the two
         // search paths.
@@ -902,11 +936,14 @@ mod test {
         {
             let m = SimpleModule::new(file, id);
             // No symbols present yet.
-            assert_eq!(supplier.locate_symbols(&m), Err(SymbolError::NotFound));
+            assert_eq!(
+                supplier.locate_symbols(&m).await,
+                Err(SymbolError::NotFound)
+            );
             write_good_symbol_file(&path.join(sym));
             // Should load OK now that it exists.
             assert!(
-                matches!(supplier.locate_symbols(&m), Ok(_)),
+                matches!(supplier.locate_symbols(&m).await, Ok(_)),
                 "{}",
                 format!("Located symbols for {}", sym)
             );
@@ -915,9 +952,12 @@ mod test {
         // Write a malformed symbol file, verify that it's found but fails to load.
         let mal = SimpleModule::new("baz.pdb", "ffff0000");
         let sym = "baz.pdb/ffff0000/baz.sym";
-        assert_eq!(supplier.locate_symbols(&mal), Err(SymbolError::NotFound));
+        assert_eq!(
+            supplier.locate_symbols(&mal).await,
+            Err(SymbolError::NotFound)
+        );
         write_bad_symbol_file(&paths[0].join(sym));
-        let res = supplier.locate_symbols(&mal);
+        let res = supplier.locate_symbols(&mal).await;
         assert!(
             matches!(res, Err(SymbolError::ParseError(..))),
             "{}",
@@ -925,8 +965,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_symbolizer() {
+    #[tokio::test]
+    async fn test_symbolizer() {
         let t = tempfile::tempdir().unwrap();
         let path = t.path();
 
@@ -943,7 +983,7 @@ FUNC 1000 30 10 some func
 ",
         );
         let mut f1 = SimpleFrame::with_instruction(0x1010);
-        symbolizer.fill_symbol(&m1, &mut f1).unwrap();
+        symbolizer.fill_symbol(&m1, &mut f1).await.unwrap();
         assert_eq!(f1.function.unwrap(), "some func");
         assert_eq!(f1.function_base.unwrap(), 0x1000);
         assert_eq!(f1.source_file.unwrap(), "foo.c");
@@ -953,6 +993,7 @@ FUNC 1000 30 10 some func
         assert_eq!(
             symbolizer
                 .get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
+                .await
                 .unwrap(),
             "some func"
         );
@@ -960,7 +1001,7 @@ FUNC 1000 30 10 some func
         let m2 = SimpleModule::new("bar.pdb", "ffff0000");
         let mut f2 = SimpleFrame::with_instruction(0x1010);
         // No symbols present, should not find anything.
-        assert!(symbolizer.fill_symbol(&m2, &mut f2).is_err());
+        assert!(symbolizer.fill_symbol(&m2, &mut f2).await.is_err());
         assert!(f2.function.is_none());
         assert!(f2.function_base.is_none());
         assert!(f2.source_file.is_none());
@@ -974,7 +1015,7 @@ FUNC 1000 30 10 another func
 1000 30 7 53
 ",
         );
-        assert!(symbolizer.fill_symbol(&m2, &mut f2).is_err());
+        assert!(symbolizer.fill_symbol(&m2, &mut f2).await.is_err());
         assert!(f2.function.is_none());
         assert!(f2.function_base.is_none());
         assert!(f2.source_file.is_none());
@@ -982,6 +1023,7 @@ FUNC 1000 30 10 another func
         // This should also use cached results.
         assert!(symbolizer
             .get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
+            .await
             .is_none());
     }
 }

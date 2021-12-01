@@ -29,7 +29,7 @@ impl TestFixture {
         }
     }
 
-    pub fn walk_stack(&self, stack: Section) -> CallStack {
+    pub async fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::Amd64(self.raw.clone()),
             valid: MinidumpContextValidity::All,
@@ -50,6 +50,7 @@ impl TestFixture {
             &self.modules,
             &symbolizer,
         )
+        .await
     }
 
     pub fn add_symbols(&mut self, name: String, symbols: String) {
@@ -57,8 +58,8 @@ impl TestFixture {
     }
 }
 
-#[test]
-fn test_simple() {
+#[tokio::test]
+async fn test_simple() {
     let mut f = TestFixture::new();
     let stack = Section::new();
     stack.start().set_const(0x80000000);
@@ -69,15 +70,15 @@ fn test_simple() {
     f.raw.rip = 0x00007400c0000200;
     f.raw.rbp = 0x8000000080000000;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
     let f = &s.frames[0];
     let m = f.module.as_ref().unwrap();
     assert_eq!(m.code_file(), "module1");
 }
 
-#[test]
-fn test_caller_pushed_rbp() {
+#[tokio::test]
+async fn test_caller_pushed_rbp() {
     // Functions typically push their %rbp upon entry and set %rbp pointing
     // there.  If stackwalking finds a plausible address for the next frame's
     // %rbp directly below the return address, assume that it is indeed the
@@ -112,7 +113,7 @@ fn test_caller_pushed_rbp() {
     f.raw.rbp = frame0_rbp.value().unwrap();
     f.raw.rsp = stack.start().value().unwrap();
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -148,8 +149,8 @@ fn test_caller_pushed_rbp() {
     }
 }
 
-#[test]
-fn test_scan_without_symbols() {
+#[tokio::test]
+async fn test_scan_without_symbols() {
     // When the stack walker resorts to scanning the stack,
     // only addresses located within loaded modules are
     // considered valid return addresses.
@@ -190,7 +191,7 @@ fn test_scan_without_symbols() {
     f.raw.rbp = frame1_rbp.value().unwrap();
     f.raw.rsp = stack.start().value().unwrap();
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 3);
 
     {
@@ -241,8 +242,8 @@ fn test_scan_without_symbols() {
     }
 }
 
-#[test]
-fn test_scan_with_symbols() {
+#[tokio::test]
+async fn test_scan_with_symbols() {
     // Test that we can refine our scanning using symbols. Specifically we
     // should be able to reject pointers that are in modules but don't map to
     // any FUNC/PUBLIC record.
@@ -283,7 +284,7 @@ fn test_scan_with_symbols() {
         String::from("FUNC 100 400 10 marsupial\n"),
     );
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -369,13 +370,13 @@ fn init_cfi_state() -> (TestFixture, Section, CONTEXT_AMD64, MinidumpContextVali
     (f, stack, expected, expected_valid)
 }
 
-fn check_cfi(
+async fn check_cfi(
     f: TestFixture,
     stack: Section,
     expected: CONTEXT_AMD64,
     expected_valid: MinidumpContextValidity,
 ) {
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {
@@ -413,8 +414,8 @@ fn check_cfi(
     unreachable!();
 }
 
-#[test]
-fn test_cfi_at_4000() {
+#[tokio::test]
+async fn test_cfi_at_4000() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -426,11 +427,11 @@ fn test_cfi_at_4000() {
     expected.set_register("rsp", frame1_rsp.value().unwrap());
     f.raw.set_register("rip", 0x00007400c0004000);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4001() {
+#[tokio::test]
+async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -444,11 +445,11 @@ fn test_cfi_at_4001() {
     f.raw.set_register("rip", 0x00007400c0004001);
     f.raw.set_register("rbx", 0xbe0487d2f9eafe29);
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4002() {
+#[tokio::test]
+async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -463,11 +464,11 @@ fn test_cfi_at_4002() {
     f.raw.set_register("rbx", 0xed1b02e8cc0fc79c); // saved %r12
     f.raw.set_register("r12", 0xb0118de918a4bcea); // callee's (distinct) %r12 value
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4003() {
+#[tokio::test]
+async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -486,11 +487,11 @@ fn test_cfi_at_4003() {
     f.raw.set_register("r12", 0x89d04fa804c87a43); // callee's (distinct) %r12
     f.raw.set_register("r13", 0x5118e02cbdb24b03); // callee's (distinct) %r13
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4004() {
+#[tokio::test]
+async fn test_cfi_at_4004() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -509,11 +510,11 @@ fn test_cfi_at_4004() {
     f.raw.set_register("r12", 0x46b1b8868891b34a); // callee's (distinct) %r12
     f.raw.set_register("r13", 0x5118e02cbdb24b03); // callee's (distinct) %r13
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4005() {
+#[tokio::test]
+async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
@@ -532,11 +533,11 @@ fn test_cfi_at_4005() {
     f.raw.set_register("r12", 0x46b1b8868891b34a); // callee's %r12
     f.raw.set_register("r13", 0x00007400c0005510); // return address
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_cfi_at_4006() {
+#[tokio::test]
+async fn test_cfi_at_4006() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame0_rbp = Label::new();
@@ -558,11 +559,11 @@ fn test_cfi_at_4006() {
     f.raw.set_register("r12", 0x26e007b341acfebd); // callee's %r12
     f.raw.set_register("r13", 0x00007400c0005510); // return address
 
-    check_cfi(f, stack, expected, expected_valid);
+    check_cfi(f, stack, expected, expected_valid).await;
 }
 
-#[test]
-fn test_frame_pointer_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_overflow() {
     // Make sure we don't explode when trying frame pointer analysis on a value
     // that will overflow.
 
@@ -584,14 +585,14 @@ fn test_frame_pointer_overflow() {
     f.raw.rbp = bad_frame_ptr;
     f.raw.rsp = stack.start().value().unwrap() as Pointer;
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
 }
 
-#[test]
-fn test_frame_pointer_barely_no_overflow() {
+#[tokio::test]
+async fn test_frame_pointer_barely_no_overflow() {
     // This is test_caller_pushed_rbp but with the all the values pushed
     // as close to the upper memory boundary as possible, to confirm that
     // our code doesn't randomly overflow *AND* isn't overzealous in
@@ -627,7 +628,7 @@ fn test_frame_pointer_barely_no_overflow() {
     f.raw.rbp = frame0_fp.value().unwrap() as Pointer;
     f.raw.rsp = stack.start().value().unwrap();
 
-    let s = f.walk_stack(stack);
+    let s = f.walk_stack(stack).await;
     assert_eq!(s.frames.len(), 2);
 
     {

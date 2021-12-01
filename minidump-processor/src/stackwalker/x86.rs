@@ -25,16 +25,16 @@ const STACK_POINTER_REGISTER: &str = "esp";
 const FRAME_POINTER_REGISTER: &str = "ebp";
 const CALLEE_SAVED_REGS: &[&str] = &["ebp", "ebx", "edi", "esi"];
 
-fn get_caller_by_cfi<P>(
+async fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_X86,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying cfi");
 
@@ -65,7 +65,9 @@ where
         stack_memory,
     };
 
-    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    symbol_provider
+        .walk_frame(module, &mut stack_walker)
+        .await?;
     let caller_ip = stack_walker.caller_ctx.eip;
     let caller_sp = stack_walker.caller_ctx.esp;
 
@@ -116,12 +118,12 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_X86,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     _modules: &MinidumpModuleList,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
@@ -193,15 +195,15 @@ where
     Some(StackFrame::from_context(context, FrameTrust::FramePointer))
 }
 
-fn get_caller_by_scan<P>(
+async fn get_caller_by_scan<P>(
     ctx: &CONTEXT_X86,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -241,7 +243,7 @@ where
     for i in 0..scan_range {
         let address_of_ip = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_ip = stack_memory.get_memory_at_address(address_of_ip as u64)?;
-        if instruction_seems_valid(caller_ip, modules, symbol_provider) {
+        if instruction_seems_valid(caller_ip, modules, symbol_provider).await {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
             let caller_sp = address_of_ip.checked_add(POINTER_WIDTH)?;
 
@@ -340,19 +342,19 @@ where
 /// If we applied this more rigorous validation to cfi/fp methods, we
 /// would just discard the correct register values from the known frame
 /// and immediately start doing unreliable scans.
-fn instruction_seems_valid<P>(
+async fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     if instruction == 0 {
         return false;
     }
 
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider)
+    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
 }
 
 /*
@@ -361,7 +363,7 @@ where
 fn stack_seems_valid(
     caller_sp: Pointer,
     callee_sp: Pointer,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
     if caller_sp <= callee_sp {
@@ -375,55 +377,62 @@ fn stack_seems_valid(
 }
 */
 
+#[async_trait::async_trait]
 impl Unwind for CONTEXT_X86 {
-    fn get_caller_frame<P>(
+    async fn get_caller_frame<P>(
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory>,
+        stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
         syms: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider,
+        P: SymbolProvider + Sync,
     {
-        stack_memory
-            .as_ref()
-            .and_then(|stack| {
-                get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms)
-                    .or_else(|| get_caller_by_frame_pointer(self, callee, stack, modules, syms))
-                    .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
-            })
-            .and_then(|mut frame| {
-                // We now check the frame to see if it looks like unwinding is complete,
-                // based on the frame we computed having a nonsense value. Returning
-                // None signals to the unwinder to stop unwinding.
+        let stack = stack_memory.as_ref()?;
 
-                // if the instruction is within the first ~page of memory, it's basically
-                // null, and we can assume unwinding is complete.
-                if frame.context.get_instruction_pointer() < 4096 {
-                    trace!("unwind: instruction pointer was nullish, assuming unwind complete");
-                    return None;
-                }
-                // If the new stack pointer is at a lower address than the old,
-                // then that's clearly incorrect. Treat this as end-of-stack to
-                // enforce progress and avoid infinite loops.
-                if frame.context.get_stack_pointer() <= self.esp as u64 {
-                    trace!("unwind: stack pointer went backwards, assuming unwind complete");
-                    return None;
-                }
+        // .await doesn't like closures, so don't use Option chaining
+        let mut frame = None;
+        if frame.is_none() {
+            frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
+        }
+        if frame.is_none() {
+            frame = get_caller_by_frame_pointer(self, callee, stack, modules, syms);
+        }
+        if frame.is_none() {
+            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
+        }
+        let mut frame = frame?;
 
-                // Ok, the frame now seems well and truly valid, do final cleanup.
+        // We now check the frame to see if it looks like unwinding is complete,
+        // based on the frame we computed having a nonsense value. Returning
+        // None signals to the unwinder to stop unwinding.
 
-                // A caller's ip is the return address, which is the instruction
-                // *after* the CALL that caused us to arrive at the callee. Set
-                // the value to one less than that, so it points within the
-                // CALL instruction. This is important because we use this value
-                // to lookup the CFI we need to unwind the next frame.
-                let ip = frame.context.get_instruction_pointer() as u64;
-                frame.instruction = ip - 1;
+        // if the instruction is within the first ~page of memory, it's basically
+        // null, and we can assume unwinding is complete.
+        if frame.context.get_instruction_pointer() < 4096 {
+            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            return None;
+        }
+        // If the new stack pointer is at a lower address than the old,
+        // then that's clearly incorrect. Treat this as end-of-stack to
+        // enforce progress and avoid infinite loops.
+        if frame.context.get_stack_pointer() <= self.esp as u64 {
+            trace!("unwind: stack pointer went backwards, assuming unwind complete");
+            return None;
+        }
 
-                Some(frame)
-            })
+        // Ok, the frame now seems well and truly valid, do final cleanup.
+
+        // A caller's ip is the return address, which is the instruction
+        // *after* the CALL that caused us to arrive at the callee. Set
+        // the value to one less than that, so it points within the
+        // CALL instruction. This is important because we use this value
+        // to lookup the CFI we need to unwind the next frame.
+        let ip = frame.context.get_instruction_pointer() as u64;
+        frame.instruction = ip - 1;
+
+        Some(frame)
     }
 }

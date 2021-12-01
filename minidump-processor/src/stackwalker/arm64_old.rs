@@ -28,16 +28,16 @@ const CALLEE_SAVED_REGS: &[&str] = &[
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29",
 ];
 
-fn get_caller_by_cfi<P>(
+async fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying cfi");
 
@@ -62,7 +62,9 @@ where
         stack_memory,
     };
 
-    symbol_provider.walk_frame(module, &mut stack_walker)?;
+    symbol_provider
+        .walk_frame(module, &mut stack_walker)
+        .await?;
 
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
@@ -104,12 +106,12 @@ fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying frame pointer");
     // Assume that the standard %fp-using ARM64 calling convention is in use.
@@ -202,7 +204,7 @@ where
 fn get_link_register_by_frame_pointer(
     ctx: &ArmContext,
     valid: &MinidumpContextValidity,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     grand_callee: Option<&StackFrame>,
     modules: &MinidumpModuleList,
 ) -> Option<Pointer> {
@@ -282,15 +284,15 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
     ptr
 }
 
-fn get_caller_by_scan<P>(
+async fn get_caller_by_scan<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -317,7 +319,7 @@ where
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
-        if instruction_seems_valid(caller_pc, modules, symbol_provider) {
+        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
@@ -372,19 +374,19 @@ where
 /// If we applied this more rigorous validation to cfi/fp methods, we
 /// would just discard the correct register values from the known frame
 /// and immediately start doing unreliable scans.
-fn instruction_seems_valid<P>(
+async fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider,
+    P: SymbolProvider + Sync,
 {
     if is_non_canonical(instruction) || instruction == 0 {
         return false;
     }
 
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider)
+    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
 }
 
 fn is_non_canonical(instruction: Pointer) -> bool {
@@ -398,7 +400,7 @@ fn is_non_canonical(instruction: Pointer) -> bool {
 fn stack_seems_valid(
     caller_sp: Pointer,
     callee_sp: Pointer,
-    stack_memory: &MinidumpMemory,
+    stack_memory: &MinidumpMemory<'_>,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
     if caller_sp < callee_sp {
@@ -412,76 +414,74 @@ fn stack_seems_valid(
 }
 */
 
+#[async_trait::async_trait]
 impl Unwind for ArmContext {
-    fn get_caller_frame<P>(
+    async fn get_caller_frame<P>(
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory>,
+        stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
         syms: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider,
+        P: SymbolProvider + Sync,
     {
-        stack_memory
-            .as_ref()
-            .and_then(|stack| {
-                get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms)
-                    .or_else(|| {
-                        get_caller_by_frame_pointer(
-                            self,
-                            callee,
-                            grand_callee,
-                            stack,
-                            modules,
-                            syms,
-                        )
-                    })
-                    .or_else(|| get_caller_by_scan(self, callee, stack, modules, syms))
-            })
-            .and_then(|mut frame| {
-                // We now check the frame to see if it looks like unwinding is complete,
-                // based on the frame we computed having a nonsense value. Returning
-                // None signals to the unwinder to stop unwinding.
+        let stack = stack_memory.as_ref()?;
 
-                // if the instruction is within the first ~page of memory, it's basically
-                // null, and we can assume unwinding is complete.
-                if frame.context.get_instruction_pointer() < 4096 {
-                    trace!("unwind: instruction pointer was nullish, assuming unwind complete");
-                    return None;
-                }
+        // .await doesn't like closures, so don't use Option chaining
+        let mut frame = None;
+        if frame.is_none() {
+            frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
+        }
+        if frame.is_none() {
+            frame = get_caller_by_frame_pointer(self, callee, grand_callee, stack, modules, syms);
+        }
+        if frame.is_none() {
+            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
+        }
+        let mut frame = frame?;
 
-                // If the new stack pointer is at a lower address than the old,
-                // then that's clearly incorrect. Treat this as end-of-stack to
-                // enforce progress and avoid infinite loops.
+        // We now check the frame to see if it looks like unwinding is complete,
+        // based on the frame we computed having a nonsense value. Returning
+        // None signals to the unwinder to stop unwinding.
 
-                let sp = frame.context.get_stack_pointer();
-                let last_sp = self.get_register_always("sp") as u64;
-                if sp <= last_sp {
-                    // Arm leaf functions may not actually touch the stack (thanks
-                    // to the link register allowing you to "push" the return address
-                    // to a register), so we need to permit the stack pointer to not
-                    // change for the first frame of the unwind. After that we need
-                    // more strict validation to avoid infinite loops.
-                    let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
-                    if !is_leaf {
-                        trace!("unwind: stack pointer went backwards, assuming unwind complete");
-                        return None;
-                    }
-                }
+        // if the instruction is within the first ~page of memory, it's basically
+        // null, and we can assume unwinding is complete.
+        if frame.context.get_instruction_pointer() < 4096 {
+            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            return None;
+        }
 
-                // Ok, the frame now seems well and truly valid, do final cleanup.
+        // If the new stack pointer is at a lower address than the old,
+        // then that's clearly incorrect. Treat this as end-of-stack to
+        // enforce progress and avoid infinite loops.
 
-                // A caller's ip is the return address, which is the instruction
-                // *after* the CALL that caused us to arrive at the callee. Set
-                // the value to 4 less than that, so it points to the CALL instruction
-                // (arm64 instructions are all 4 bytes wide). This is important because
-                // we use this value to lookup the CFI we need to unwind the next frame.
-                let ip = frame.context.get_instruction_pointer() as u64;
-                frame.instruction = ip - 4;
+        let sp = frame.context.get_stack_pointer();
+        let last_sp = self.get_register_always("sp") as u64;
+        if sp <= last_sp {
+            // Arm leaf functions may not actually touch the stack (thanks
+            // to the link register allowing you to "push" the return address
+            // to a register), so we need to permit the stack pointer to not
+            // change for the first frame of the unwind. After that we need
+            // more strict validation to avoid infinite loops.
+            let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+            if !is_leaf {
+                trace!("unwind: stack pointer went backwards, assuming unwind complete");
+                return None;
+            }
+        }
 
-                Some(frame)
-            })
+        // Ok, the frame now seems well and truly valid, do final cleanup.
+
+        // A caller's ip is the return address, which is the instruction
+        // *after* the CALL that caused us to arrive at the callee. Set
+        // the value to 4 less than that, so it points to the CALL instruction
+        // (arm64 instructions are all 4 bytes wide). This is important because
+        // we use this value to lookup the CFI we need to unwind the next frame.
+        let ip = frame.context.get_instruction_pointer() as u64;
+        frame.instruction = ip - 4;
+
+        Some(frame)
     }
 }
