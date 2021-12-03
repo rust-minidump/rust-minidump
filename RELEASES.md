@@ -1,6 +1,27 @@
+# Pending Release (TBD)
+
+Commit: TBD
+
+No plan for this release yet.
+
+
+Changes:
+
+**BREAKING CHANGE**: json schema's `crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
+
+This was always supposed to be the name, we just typo'd it before publishing and didn't notice.
+
+
+
+
+
+
+
+
+
 # Version 0.9.5 (2021-12-01)
 
-Commit: this one!
+Commit: 445431ce2bfe55fd85b990bb2a5c01867d2a8150
 
 The JSON schema and minidump-stackwalk CLI are now stabilized. They are now
 reasonable to rely on in production (only reason we would break them is if
