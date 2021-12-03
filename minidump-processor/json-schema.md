@@ -254,7 +254,7 @@ these notes will assume that a crash happened by default, since that's the impor
   "crashing_thread": {
 
     // Index into the `threads` array that this thread has.
-    "thread_index": <u32>,
+    "threads_index": <u32>,
 
     // The values the general purpose registers contained.
     //
@@ -444,3 +444,18 @@ these notes will assume that a crash happened by default, since that's the impor
   }
 }
 ```
+
+
+
+
+# Schema Change Notes
+
+
+
+## 0.9.6
+
+BREAKING CHANGE (really? right after claiming it's stable?)
+
+`crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
+
+This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it then eternally have two copies of the field. Sorry!

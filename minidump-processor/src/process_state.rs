@@ -753,7 +753,7 @@ Unknown streams encountered:
 
         if let Some(requesting_thread) = self.requesting_thread {
             // Copy the crashing thread into a top-level "crashing_thread" field and:
-            // * Add a "thread_index" field to indicate which thread it was
+            // * Add a "threads_index" field to indicate which thread it was
             // * Add a "registers" field to its first frame
             //
             // Note that we currently make crashing_thread a strict superset
@@ -774,7 +774,7 @@ Unknown streams encountered:
             let frame = frames[0].as_object_mut().unwrap();
 
             frame.insert(String::from("registers"), registers);
-            thread_obj.insert(String::from("thread_index"), json!(requesting_thread));
+            thread_obj.insert(String::from("threads_index"), json!(requesting_thread));
 
             output
                 .as_object_mut()
