@@ -10,3 +10,7 @@
 
 pub mod format;
 pub mod traits;
+
+mod linux_errors;
+mod mac_errors;
+mod windows_errors;
