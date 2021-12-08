@@ -71,7 +71,7 @@ If you're trying to analyze firefox minidumps, you'll want to point minidump-sta
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.9.5`
+Version: `minidump-stackwalk 0.9.6`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 

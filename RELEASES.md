@@ -1,6 +1,30 @@
+# Pending Release (TBD)
+
+Commit: TBD
+
+No specific plans for this release yet.
+
+
+Changes:
+
+None yet!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.9.6 (2021-12-08)
 
-Commit: This One!
+Commit: [564ece47dd3b46dd928318fea7ca5f4254dd99c3](https://github.com/luser/rust-minidump/commit/564ece47dd3b46dd928318fea7ca5f4254dd99c3)
 
 Breaking changes to fix integration issues found during deployment.
 
@@ -33,7 +57,7 @@ This change was made to reflect the fact that most users of other flavours of mi
 
 # Version 0.9.5 (2021-12-01)
 
-Commit: 445431ce2bfe55fd85b990bb2a5c01867d2a8150
+Commit: [445431ce2bfe55fd85b990bb2a5c01867d2a8150](https://github.com/luser/rust-minidump/commit/445431ce2bfe55fd85b990bb2a5c01867d2a8150)
 
 The JSON schema and minidump-stackwalk CLI are now stabilized. They are now
 reasonable to rely on in production (only reason we would break them is if
