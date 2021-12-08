@@ -34,7 +34,7 @@ fn main() {
         .arg(
             Arg::with_name("json")
                 .long("json")
-                .long_help("Emit a machine-readable JSON report (the default).
+                .long_help("Emit a machine-readable JSON report.
 
 The schema for this output is officially documented here:
 https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md\n\n\n")
@@ -42,10 +42,10 @@ https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schem
         .arg(
             Arg::with_name("human")
                 .long("human")
-                .long_help("Emit a human-readable report.
+                .long_help("Emit a human-readable report (the default).
 
 The human-readable report does not have a specified format, and may not have as \
-many details as the default JSON format. It is intended for quickly inspecting \
+many details as the JSON format. It is intended for quickly inspecting \
 a crash or debugging rust-minidump itself.\n\n\n")
         )
         .arg(
@@ -320,11 +320,11 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
     let minidump_path = matches.value_of_os("minidump").map(Path::new).unwrap();
 
     // Determine the kind of output we're producing -- json, human, or cyborg (both).
-    // Although we have a --json argument it's mostly just there to make the documentation
-    // more clear. json output is enabled by default, and --human disables it.
+    // Although we have a --human argument it's mostly just there to make the documentation
+    // more clear. human output is enabled by default, and --json disables it.
     // Mutual exclusion is enforced by an ArgGroup.
-    let mut human = matches.is_present("human");
-    let mut json = !human;
+    let mut json = matches.is_present("json");
+    let mut human = !json;
     let cyborg = matches.value_of_os("cyborg").map(Path::new);
 
     if cyborg.is_some() {
