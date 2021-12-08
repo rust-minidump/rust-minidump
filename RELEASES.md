@@ -2,16 +2,24 @@
 
 Commit: TBD
 
-No plan for this release yet.
+Breaking changes to fix integration issues found during deployment.
 
 
 Changes:
+
+
+## minidump-stackwalk/minidump-processor
 
 **BREAKING CHANGE**: json schema's `crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
 
 This was always supposed to be the name, we just typo'd it before publishing and didn't notice.
 
 
+**BREAKING CHANGE**: minidump-stackwalk has changed its default output format from --json
+to --human. Note that the --json flag was added in the previous version, so you can just
+unconditionally pass --json for both versions to smooth migration.
+
+This change was made to reflect the fact that most users of other flavours of minidump-stackwalk expect the breakpad human-based output more than mozilla's json-based output, minimizing workflow breakage. It's also just the more reasonable output for "casual" usage.
 
 
 
