@@ -22,9 +22,8 @@ use simplelog::{
     ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode, WriteLogger,
 };
 
-#[cfg_attr(test, allow(dead_code))]
-fn main() {
-    let matches = App::new("minidump-stackwalk")
+fn make_app() -> App<'static, 'static> {
+    App::new("minidump-stackwalk")
         .version(crate_version!())
         .about("Analyzes minidumps and produces a report (either human-readable or JSON).")
         .setting(AppSettings::NextLineHelp)
@@ -57,6 +56,12 @@ a crash or debugging rust-minidump itself.\n\n\n")
 Because this creates two output streams, you must specify a path to write the --json
 output to. The --human output will be the 'primary' output and default to stdout, which
 can be configured with --output-file as normal.\n\n\n")
+        )
+        .arg(
+            Arg::with_name("help-markdown")
+                .long("help-markdown")
+                .long_help("Print --help but formatted as markdown (used for generating docs)")
+                .hidden(true)
         )
         .group(ArgGroup::with_name("output-format")
             .args(&["json", "human", "cyborg"])
@@ -182,6 +187,7 @@ If multiple symbols-path values are provided, all symbol files will be merged \
 into minidump-stackwalk's symbol database.\n\n\n")   
         )
         .after_help("
+NOTES:
 
 Purpose of Symbols:
 
@@ -212,7 +218,19 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
     * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
 
 ")
-        .get_matches();
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn main() {
+    let matches = make_app().get_matches();
+
+    // This is a little hack to generate a markdown version of the --help message,
+    // to be used by rust-minidump devs to regenerate docs. Not officially part
+    // of our public API.
+    if matches.is_present("help-markdown") {
+        print_help_markdown();
+        return;
+    }
 
     let output_file = matches
         .value_of_os("output-file")
@@ -409,5 +427,64 @@ native debuginfo formats. We recommend using a version of dump_syms to generate 
             error!("Error reading dump: {}", err);
             std::process::exit(1);
         }
+    }
+}
+
+fn print_help_markdown() {
+    let mut help_buf = Vec::new();
+
+    // Make a new App to get the help message this time.
+    make_app().write_long_help(&mut help_buf).unwrap();
+    let help = String::from_utf8(help_buf).unwrap();
+
+    println!("# minidump-stackwalk CLI manual");
+    println!();
+    println!("> This manual can be regenerated with `minidump-stackwalk --help-markdown please`");
+    println!();
+
+    // First line is --version
+    let mut lines = help.lines();
+    println!("Version: `{}`", lines.next().unwrap());
+    println!();
+
+    for line in lines {
+        // Use a trailing colon to indicate a heading
+        if let Some(heading) = line.strip_suffix(':') {
+            if !line.starts_with(' ') {
+                // SCREAMING headers are Main headings
+                if heading.to_ascii_uppercase() == heading {
+                    println!("# {}", heading);
+                } else {
+                    println!("## {}", heading);
+                }
+                continue;
+            }
+        }
+
+        // Usage strings get wrapped in full code blocks
+        if line.starts_with("minidump-stackwalk ") {
+            println!("```");
+            println!("{}", line);
+            println!("```");
+            continue;
+        }
+
+        // The rest is indented, get rid of that
+        let line = line.trim();
+
+        // argument names are subheadings
+        if line.starts_with('-') || line.starts_with('<') {
+            println!("### `{}`", line);
+            continue;
+        }
+
+        // escape default/value strings
+        if line.starts_with('[') {
+            println!("\\{}", line);
+            continue;
+        }
+
+        // Normal paragraph text
+        println!("{}", line);
     }
 }
