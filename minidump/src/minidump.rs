@@ -2403,7 +2403,7 @@ impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
                         x86_info
                             .vendor_id
                             .iter()
-                            .flat_map(|i| std::array::IntoIter::new(i.to_le_bytes()))
+                            .flat_map(|i| IntoIterator::into_iter(i.to_le_bytes()))
                             .map(char::from),
                     );
                     cpu_info.push(' ');

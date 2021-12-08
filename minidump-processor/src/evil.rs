@@ -85,7 +85,7 @@ pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
         .unwrap_or_default()
         .split(',')
         .filter_map(|entry| {
-            entry.split_once(":").and_then(|(key, val)| {
+            entry.split_once(':').and_then(|(key, val)| {
                 let key = u32::from_str(key).ok();
                 let val = val
                     .strip_prefix('"')
