@@ -1,8 +1,10 @@
-# Pending Release (TBD)
+# Version 0.9.6 (2021-12-08)
 
-Commit: TBD
+Commit: This One!
 
 Breaking changes to fix integration issues found during deployment.
+
+More docs.
 
 
 Changes:
@@ -20,6 +22,8 @@ to --human. Note that the --json flag was added in the previous version, so you 
 unconditionally pass --json for both versions to smooth migration.
 
 This change was made to reflect the fact that most users of other flavours of minidump-stackwalk expect the breakpad human-based output more than mozilla's json-based output, minimizing workflow breakage. It's also just the more reasonable output for "casual" usage.
+
+
 
 
 
