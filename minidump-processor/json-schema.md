@@ -8,8 +8,7 @@ As of the publishing of this document, the schema is stable, but can and will ha
 
 Standard JSON types apply, which we will use as follows:
 
-* `<i32>`
-* `<u32>`
+* `<u32>` (unsigned 32-bit integer)
 * `<bool>`
 * `<string>`
 * `<array>`
@@ -17,7 +16,7 @@ Standard JSON types apply, which we will use as follows:
 
 **All of these can also be `null`**.
 
-(arrays and objects are never leaves in the schema, so they will just be represented by the appropriate kind of braces).
+(Arrays and objects are never leaves in the schema, so they will just be represented by the appropriate kind of braces.)
 
 By default, strings are *opaque* to this schema, meaning they can contain anything (including the empty string). This usually means we are just passing the string through from a symbol file or the minidump itself. There may be an underlying structure from the source, but we aren't going to try to guarantee or specify it.
 
@@ -25,7 +24,7 @@ Some strings do however have more structure:
 
 * `<hexstring>` - a string containing a hexadecimal integer that will fit into a `u64` (ex: "0x000af123"). These are usually pointers. We serialize these values as strings instead of json integers for a few reasons:
   * Although *on paper* JSON supports infinite precision integers, this is dubious because JavaScript itself (and many other languages) are built around Doubles which do not support that full range
-  * Although this format is for machine-use first and foremost, humans often have reasons to read it, and this makes those values easier to read/scan for notable details. For similar reasons we also try to 0-pad hexstring values to the crashing platform's native width.
+  * Although this format is for machine-use first and foremost, humans often have reasons to read it, and this makes those values easier to read/scan for notable details. For similar reasons we also *try* to 0-pad hexstring values to the crashing platform's native width.
   * Feeding the JSON into indexing/sorting/reporting infrastructure is easier, because at every step the values are represented in the format that humans prefer for pointers.
 
 * `"ENUM" | "Variants" | "like" | "these!"` - When there are only a limited number of values a field can contain, we will try to list them all off. However, because this schema is *descriptive* of the contents of a minidump, new features may necessitate new variants (for instance, new kinds of hardware and operating systems can happen). **Do not assume enums are exhaustive.**
@@ -35,19 +34,23 @@ Some strings do however have more structure:
 
 # Schema
 
-NOTE 1: ordering of the fields is generally arbitrary, but they are roughly ordered in decreasing
-importance/reliability. So e.g. crash_info, system_info, and threads contain the most important
-information, and basically never null.
+NOTE 1: Ordering of the fields is generally arbitrary, but they are roughly ordered in decreasing
+importance/reliability. So e.g. `crash_info`, `system_info`, and `threads` contain the most
+important information, and it would be very surprising if they were ever null.
 
-NOTE 2: if the current implementation *supports* emitting a field but doesn't have the data necessary to populate it, it will generally prefer emitting an explicit `null` over omitting the field. Although sometimes the empty string is also used for this purpose (sorry).
+NOTE 2: If the current implementation *supports* emitting a field but doesn't have the data
+necessary to populate it, it will generally prefer emitting an explicit `null` over omitting the
+field. Although sometimes the empty string is also used for this purpose (we may
+try to tighten that up in future releases if it's an issue).
 
-NOTE 3: minidumps can be generated regardless of if there's an actual crash, but for simplicity
+NOTE 3: Minidumps can be generated regardless of if there's an actual crash, but for simplicity
 these notes will assume that a crash happened by default, since that's the important case.
 
 <!-- weirdly rust syntax highlighting handles this fake-json best? -->
 ```rust,ignore
 {
-  // Either OK or an Error encountered while trying to generate this report. 
+  // Either OK or an Error encountered while trying to generate this report.
+  //
   // Currently unused by rust-minidump, as we prefer to generate no output
   // when there's an error. Error messages will be sent to the logs. Very
   // few things will cause a processing error -- it generally only happens
@@ -58,7 +61,7 @@ these notes will assume that a crash happened by default, since that's the impor
   // imply the absence of all other fields.
   "status": "OK",
 
-  // Crashing Process' id 
+  // Crashing Process' id
   "pid": <u32>,
 
 
@@ -78,7 +81,7 @@ these notes will assume that a crash happened by default, since that's the impor
     // Note that some error codes have overlapping values, so we're making
     // a best guess at the type here.
     "type": <string>,
-    
+
     // The memory address implicated in the crash.
     //
     // If the process crashed, and if the crash reason implicates memory,
@@ -87,13 +90,13 @@ these notes will assume that a crash happened by default, since that's the impor
     // errors, this will be the address of the instruction that caused the
     // fault.
     "address": <hexstring>,
-    
+
     // The thread id of the thread that caused the crash (or requested the minidump).
     "crashing_thread": <u32>,
 
     // A message describing a tripped assertion (which presumably caused the crash).
     "assertion": <string>,
-  },
+  }, // crash_info
 
 
 
@@ -105,7 +108,7 @@ these notes will assume that a crash happened by default, since that's the impor
   "system_info": {
     // The flavor of operating system
     "os": "Windows NT"
-      | "Mac OS X"
+      | "Mac OS X"  // This is also used for MacOS 11+
       | "iOS"
       | "Linux"
       | "Solaris"
@@ -113,8 +116,8 @@ these notes will assume that a crash happened by default, since that's the impor
       | "PS3"
       | "NaCl"
       | <hexstring>, // (unknown, here's the raw OS code)
-    
-    // Version of the OS 
+
+    // Version of the OS
     // Generally "<major>.<minor>.<build_number>", e.g. "10.0.19043"
     "os_ver": <string>,
 
@@ -127,14 +130,14 @@ these notes will assume that a crash happened by default, since that's the impor
       | "arm"
       | "arm64"
       | "unknown",
-    
+
     // A string describing the cpu's vendor and model
     // e.g. "family 6 model 60 stepping 3"
     "cpu_info": <string>,
 
     // Number of cpus (high level core count, probably?)
     "cpu_count": <u32>,
-    
+
     // The version number of the microcode running on the CPU
     "cpu_microcode_version": <u32>,
   }, // system_info
@@ -154,7 +157,7 @@ these notes will assume that a crash happened by default, since that's the impor
       // Name of the the thread.
       "thread_name": <string>,
 
-      // The windows GetLastError() value for this thread. 
+      // The windows GetLastError() value for this thread.
       //
       // This roughly contains the status of the last system API call this
       // thread made before the crash, although its value is not reliably
@@ -165,9 +168,9 @@ these notes will assume that a crash happened by default, since that's the impor
 
       // How many stack frames there are (redundant array length).
       "frame_count": <u32>,
-      
+
       // The stack frames of the thread, from top (the code that was currently
-      // executing) to bottom (start of the thread's execution). 
+      // executing) to bottom (start of the thread's execution).
       //
       // Stack frames are heuristically recovered. These values may be wrong,
       // especially if the "trust" is worse than "cfi" or "frame_pointer".
@@ -180,28 +183,34 @@ these notes will assume that a crash happened by default, since that's the impor
         {
           // The index of the frame in this array (redundant).
           "frame": <u32>,
-          
+
           // The technique used to recover this stack frame (enum variants
           // ordered in decreasing level of trustworthiness).
           "trust": "context"   // State explicitly saved by minidump (should be perfect)
             | "cfi"            // Used debuginfo to unwind (very reliable)
             | "frame_pointer"  // Used frame pointers to unwind (often reliable)
             | "scan",          // Searched the callee's stack memory (SKETCHY!)
-          
-          // The address of code this frame is executing.
+
+          // The address (instruction) this frame is executing.
           //
-          // For the top first frame (0), this is precise (e.g. it's the value of $rip), 
-          // but for all other frames the value is more heuristically computed from a
-          // return address, which would otherwise be the instruction *after* the one
-          // we're currently executing.
+          // For the top first frame (0), this is precise (e.g. it's the value of $rip),
+          // but for all other frames the value is more heuristically computed from the
+          // callee's return address. This is because we only *have* the return address,
+          // and that goes to the *next* instruction in this function, not the one we're
+          // currently executing.
+          //
+          // This is a bit more complicated to compute than you might imagine. For
+          // instance, `objc_msgSend` does some magic to erase itself from the stack,
+          // muddying the relationship between the return address and "current"
+          // address.
           "offset": <hexstring>
 
-          // The name of the module (library/binary) the `offset` maps to 
+          // The name of the module (library/binary) the `offset` maps to
           // (so the library/binary it's executing).
           //
           // e.g.
-          // * "libgtk-3.so.0" 
-          // * "kernel32.dll" 
+          // * "libgtk-3.so.0"
+          // * "kernel32.dll"
           // * "firefox.exe"
           "module": <string>,
 
@@ -215,7 +224,7 @@ these notes will assume that a crash happened by default, since that's the impor
 
           // The name of the function being executed.
           //
-          // e.g. 
+          // e.g.
           // * "g_thread_proxy"
           // * "nsAppShell::EventProcessorCallback(_GIOChannel*, GIOCondition, void*)"
           // * "-[NSView removeFromSuperview]"
@@ -229,9 +238,9 @@ these notes will assume that a crash happened by default, since that's the impor
           // instruction in the binary/library.
           "function_offset": <hexstring>,
 
-          // The name of the source file the function is defined in (needs symbol files)
+          // The name of the source file the function is defined in.
           //
-          // e.g. 
+          // e.g.
           // * "/home/john/my_project/src/main.h"
           // * "glib/gthread.c"
           // * "hg:hg.mozilla.org/mozilla-central:mozglue/misc/ConditionVariable_windows.cpp:524df7136a1f401f317d472f7945e6a284bd66f5"
@@ -239,11 +248,11 @@ these notes will assume that a crash happened by default, since that's the impor
 
           // The line in the source file that is roughly executing.
           "line": <u32>,
-          
+
           // Whether we had symbols for this frame (currently redundant with `function`).
           "missing_symbols": <bool>,
         }
-      ], // frames  
+      ], // frames
     }
   ], // threads
 
@@ -275,7 +284,7 @@ these notes will assume that a crash happened by default, since that's the impor
     "frames": [
       {
         "frame": <u32>,
-        "trust": "context" | "cfi" | "frame_pointer" | "scan",          
+        "trust": "context" | "cfi" | "frame_pointer" | "scan",
         "offset": <hexstring>
         "module": <string>,
         "module_offset": <hexstring>,
@@ -285,8 +294,8 @@ these notes will assume that a crash happened by default, since that's the impor
         "line": <u32>,
         "missing_symbols": <bool>,
       }
-    ],
-  } 
+    ], // frames
+  } // crashing_thread
 
 
 
@@ -303,14 +312,18 @@ these notes will assume that a crash happened by default, since that's the impor
   // Modules roughly map to libraries (both static and dynamic) and
   // executables. However on some platforms you can get Weird Things
   // like memory-mapped fds or fonts.
+  //
+  // There is no specific significance to the ordering rust-minidump
+  // emits here. It may change in the future if we decide we prefer
+  // to e.g. sort by address or name to make human reading better.
   "modules": [
     {
       // The first address that maps to this module (inclusive).
       "base_addr": <hexstring>
-      
+
       // The last address that maps to this module (exclusive).
       "end_addr": <hexstring>
-      
+
       // The name of the file containing debuginfo for this module
       // e.g.
       // * "Kernel.Appcore.pdb"
@@ -319,9 +332,9 @@ these notes will assume that a crash happened by default, since that's the impor
       // * "libasound.so.2" (so contains its own debuginfo)
       "debug_file": <string>,
 
-      // A string uniquely identifying the build. 
+      // A string uniquely identifying the build.
       //
-      // Combining this with `debug_file` gives you a very good 
+      // Combining this with `debug_file` gives you a very good
       // Primary Key for looking up symbol files (which is exactly what we
       // do for http symbol lookup).
       //
@@ -353,7 +366,7 @@ these notes will assume that a crash happened by default, since that's the impor
       // "10.0.19041.546"
       "version": <string>,
 
-      // If non-null, indicates that this module is known to be signed by 
+      // If non-null, indicates that this module is known to be signed by
       // the given party (useful for detecting unofficial DLL injection).
       //
       // e.g.
@@ -383,6 +396,22 @@ these notes will assume that a crash happened by default, since that's the impor
   // longer mapped into the process' address space when the minidump was generated.
   //
   // Fields are a subset of `modules`.
+  //
+  // Because modules can be loaded and unloaded repeatedly, `unloaded_modules`
+  // is more of a *log* of unload *events* and nota clean mapping of addresses to
+  // modules. This means:
+  //
+  // * Entries may have overlapping address ranges
+  // * A module may show up repeatedly, potentially at different addresses.
+  //
+  // Due to the way this "logging" is implemented in the minidump generator,
+  // some unload events may be lost (you wouldn't want to use up all of a
+  // system's memory just remembering that a DLL was loaded and unloaded a
+  // million times).
+  //
+  // Events are *probably* incidentally in chronological order, but this
+  // isn't guaranteed by the minidump format or its generators. We do however
+  // preserve the minidump's ordering in case that contains some useful signal.
   "unloaded_modules": [
     {
       "base_addr": <hexstring>,
@@ -400,13 +429,26 @@ these notes will assume that a crash happened by default, since that's the impor
 
   // Linux Standard Base information (Linux-specific extended system_info)
   //
-  // TODO: properly document the semantics of these values.
+  // All of these are raw dumps of specific keys in `/etc/lsb-release`.
+  // Because the same information may show up under different names on
+  // different systems (I guess?), some of these values may source their
+  // values from multiple keys. If both are present, one is chosen arbitrarily.
+  //
+  // TODO(?): properly document the semantics of these values. Unclear how
+  // consistently they're used across distros.
   "lsb_release": {
+    // DISTRIB_ID or ID
     "id": <string>,
+
+    // DISTRIB_RELEASE or VERSION_ID
     "release": <string>,
+
+    // DISTRIB_CODENAME or VERSION_CODENAME
     "codename": <string>,
+
+    // DISTRIB_DESCRIPTION or PRETTY_NAME
     "description": <string>,
-  },
+  }, // lsb_release
 
 
 
@@ -415,7 +457,10 @@ these notes will assume that a crash happened by default, since that's the impor
 
   // MacOS-specific extended crash_info
   //
-  // TODO: properly document the semantics of these values.
+  // This is a dump of the contents of a Mach-O `__DATA,__crash_info` section.
+  //
+  // TODO(?): properly document the semantics of these values. Are they even
+  // documented by Apple, or did we just reverse-engineer these?
   "mac_crash_info": {
     // The number of entries in `records` (redundant).
     "num_records": <u32>,
@@ -430,18 +475,34 @@ these notes will assume that a crash happened by default, since that's the impor
         "backtrace": <string>,
         "message2": <string>,
       }
-    ]
-  },
+    ] // records
+  }, // mac_crash_info
 
 
 
 
 
-  
-  // This feature is stubbed out and not actually implemented (IGNORE ME!)
+
+  // Ostensibly where extra-security-sensitive information should be stored,
+  // to facilitate stripping it out for users who have lower "security clearance"
+  // or whatever. It's unclear how useful this is given crash info is already
+  // prone to containing random sensitive data, but hey, it's here if you want it?
   "sensitive": {
+
+    // This feature is completely unimplemented, but remains here for historical
+    // reasons (I stubbed it out and never bothered to remove it, and now removing
+    // it would be a needless breaking change).
+    //
+    // If this **was** implemented, it would contain an enum-string describing
+    // how "exploitable" rust-minidump thinks the crash is. e.g. crashing on
+    // an assertion is no concern, crashing on a null pointer is a *little*
+    // concerning, and segfaulting the instruction pointer is a *huge* concern.
+    //
+    // This is a feature breakpad supports, but the signal-to-noise ratio isn't
+    // very good, so we found people were just ignoring it. As such, we haven't
+    // bothered to reimplement this, and may never.
     "exploitability": <string>,
-  }
+  } // sensitive
 }
 ```
 
@@ -454,7 +515,7 @@ these notes will assume that a crash happened by default, since that's the impor
 
 ## 0.9.6
 
-BREAKING CHANGE (really? right after claiming it's stable?)
+**BREAKING CHANGE** (really? right after claiming it's stable?)
 
 `crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
 
