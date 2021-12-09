@@ -4,7 +4,7 @@
 //! The state of a process.
 
 use std::borrow::{Borrow, Cow};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
 
@@ -66,7 +66,16 @@ pub struct StackFrame {
     pub module: Option<MinidumpModule>,
 
     /// Any unloaded modules which overlap with this address.
-    pub unloaded_modules: Vec<MinidumpUnloadedModule>,
+    ///
+    /// This is currently only populated if `module` is None.
+    ///
+    /// Since unloaded modules may overlap, there may be more than
+    /// one module. Since a module may be unloaded and reloaded at
+    /// multiple positions, we keep track of all the offsets that
+    /// apply. BTrees are used to produce a more stable output.
+    ///
+    /// So this is a `BTreeMap<module_name, Set<offsets>>`.
+    pub unloaded_modules: BTreeMap<String, BTreeSet<u64>>,
 
     /// The function name, may be omitted if debug symbols are not available.
     pub function_name: Option<String>,
@@ -223,7 +232,7 @@ impl StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
             module: None,
-            unloaded_modules: vec![],
+            unloaded_modules: BTreeMap::new(),
             function_name: None,
             function_base: None,
             parameter_size: None,
@@ -372,16 +381,8 @@ impl CallStack {
 
                 // First we need to collect them up by name so that we can print
                 // all the overlaps from one module together and dedupe them.
-                let mut offsets = HashMap::new();
-                for unloaded in &frame.unloaded_modules {
-                    let offset = addr - unloaded.raw.base_of_image;
-                    offsets
-                        .entry(&*unloaded.name)
-                        .or_insert_with(Vec::new)
-                        .push(offset);
-                }
 
-                for (name, offsets) in offsets {
+                for (name, offsets) in &frame.unloaded_modules {
                     write!(f, " (unloaded {}@", name)?;
                     let mut first = true;
                     for offset in offsets {
@@ -744,10 +745,10 @@ Unknown streams encountered:
                     // temporary hack: grab the first matching unloaded module
                     // and pretend it's a real module.
                     let module_info = frame.module.as_ref().map(|module| {
-                        (basename(&module.name), module.raw.base_of_image)
-                    }).or_else(|| frame.unloaded_modules.first().map(|module| {
-                        (&*module.name, module.raw.base_of_image)
-                    }));
+                        (basename(&module.name), frame.instruction - module.raw.base_of_image)
+                    }).or_else(|| frame.unloaded_modules.iter().next().and_then(|(name, offsets)| offsets.iter().next().map(|offset| {
+                        (&**name, *offset)
+                    })));
                     json!({
                         "frame": idx,
                         // optional
@@ -761,7 +762,7 @@ Unknown streams encountered:
                         "offset": json_hex(frame.instruction),
                         // optional
                         "module_offset": module_info
-                            .map(|(_, base)| frame.instruction - base)
+                            .map(|(_, offset)| offset)
                             .map(json_hex),
                         // optional
                         "function_offset": frame

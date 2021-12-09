@@ -4,6 +4,7 @@
 use chrono::{TimeZone, Utc};
 use failure::Fail;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::Path;
 
@@ -259,10 +260,21 @@ where
             stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider);
 
         for frame in &mut stack.frames {
-            frame.unloaded_modules = unloaded_modules
-                .modules_at_address(frame.instruction)
-                .cloned()
-                .collect();
+            // If the frame doesn't have a loaded module, try to find an unloaded module
+            // that overlaps with its address range. The may be multiple, so record all
+            // of them and the offsets this frame has in them.
+            if frame.module.is_none() {
+                let mut offsets = BTreeMap::new();
+                for unloaded in unloaded_modules.modules_at_address(frame.instruction) {
+                    let offset = frame.instruction - unloaded.raw.base_of_image;
+                    offsets
+                        .entry(unloaded.name.clone())
+                        .or_insert_with(BTreeSet::new)
+                        .insert(offset);
+                }
+
+                frame.unloaded_modules = offsets;
+            }
         }
 
         let name = thread_names
