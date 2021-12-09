@@ -1,0 +1,27 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: log
+
+---
+[WARN] Minidump contains multiple streams of type 0 (UnusedStream) at indices 7 (0 bytes) and 8 (0 bytes) (using 8)
+[TRACE] unwind: starting stack unwind
+[TRACE] unwind: unwinding 4211358
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: frame pointer seems valid -- caller_ip: 0x00404200, caller_sp: 0x0012fe90
+[TRACE] unwind: unwinding 4211199
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: frame pointer seems valid -- caller_ip: 0x004053ec, caller_sp: 0x0012ff78
+[TRACE] unwind: unwinding 4215787
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: frame pointer seems valid -- caller_ip: 0x7c816fd7, caller_sp: 0x0012ffc8
+[TRACE] unwind: unwinding 2088857558
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: frame pointer seems valid -- caller_ip: 0x00000000, caller_sp: 0x0012fff8
+[TRACE] unwind: instruction pointer was nullish, assuming unwind complete
+[TRACE] unwind: finished stack unwind
+
+

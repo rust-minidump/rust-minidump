@@ -27,3 +27,6 @@ vendored-openssl = ["openssl/vendored"]
 [dependencies.openssl]
 version = "0.10"
 optional = true
+
+[dev-dependencies]
+insta = "1.3.0"
