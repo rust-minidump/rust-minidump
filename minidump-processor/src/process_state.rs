@@ -39,31 +39,34 @@ pub enum FrameTrust {
 /// A single stack frame produced from unwinding a thread's stack.
 #[derive(Debug)]
 pub struct StackFrame {
-    // The program counter location as an absolute virtual address.
-    //
-    // - For the innermost called frame in a stack, this will be an exact
-    //   program counter or instruction pointer value.
-    //
-    // - For all other frames, this address is within the instruction that
-    //   caused execution to branch to this frame's callee (although it may
-    //   not point to the exact beginning of that instruction). This ensures
-    //   that, when we look up the source code location for this frame, we
-    //   get the source location of the call, not of the point at which
-    //   control will resume when the call returns, which may be on the next
-    //   line. (If the compiler knows the callee never returns, it may even
-    //   place the call instruction at the very end of the caller's machine
-    //   code, such that the "return address" (which will never be used)
-    //   immediately after the call instruction is in an entirely different
-    //   function, perhaps even from a different source file.)
-    //
-    // On some architectures, the return address as saved on the stack or in
-    // a register is fine for looking up the point of the call. On others, it
-    // requires adjustment. ReturnAddress returns the address as saved by the
-    // machine.
+    /// The program counter location as an absolute virtual address.
+    ///
+    /// - For the innermost called frame in a stack, this will be an exact
+    ///   program counter or instruction pointer value.
+    ///
+    /// - For all other frames, this address is within the instruction that
+    ///   caused execution to branch to this frame's callee (although it may
+    ///   not point to the exact beginning of that instruction). This ensures
+    ///   that, when we look up the source code location for this frame, we
+    ///   get the source location of the call, not of the point at which
+    ///   control will resume when the call returns, which may be on the next
+    ///   line. (If the compiler knows the callee never returns, it may even
+    ///   place the call instruction at the very end of the caller's machine
+    ///   code, such that the "return address" (which will never be used)
+    ///   immediately after the call instruction is in an entirely different
+    ///   function, perhaps even from a different source file.)
+    ///
+    /// On some architectures, the return address as saved on the stack or in
+    /// a register is fine for looking up the point of the call. On others, it
+    /// requires adjustment. ReturnAddress returns the address as saved by the
+    /// machine.
     pub instruction: u64,
 
-    // The module in which the instruction resides.
+    /// The module in which the instruction resides.
     pub module: Option<MinidumpModule>,
+
+    /// Any unloaded modules which overlap with this address.
+    pub unloaded_modules: Vec<MinidumpUnloadedModule>,
 
     /// The function name, may be omitted if debug symbols are not available.
     pub function_name: Option<String>,
@@ -220,6 +223,7 @@ impl StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
             module: None,
+            unloaded_modules: vec![],
             function_name: None,
             function_base: None,
             parameter_size: None,
@@ -362,7 +366,35 @@ impl CallStack {
                     write!(f, " + {:#x}", addr - module.base_address())?;
                 }
             } else {
-                writeln!(f, "{:#x}", addr)?;
+                write!(f, "{:#x}", addr)?;
+
+                // List off overlapping unloaded modules.
+
+                // First we need to collect them up by name so that we can print
+                // all the overlaps from one module together and dedupe them.
+                let mut offsets = HashMap::new();
+                for unloaded in &frame.unloaded_modules {
+                    let offset = addr - unloaded.raw.base_of_image;
+                    offsets
+                        .entry(&*unloaded.name)
+                        .or_insert_with(Vec::new)
+                        .push(offset);
+                }
+
+                for (name, offsets) in offsets {
+                    write!(f, " (unloaded {}@", name)?;
+                    let mut first = true;
+                    for offset in offsets {
+                        if first {
+                            write!(f, "0x{:#x}", offset)?;
+                        } else {
+                            // `|` is our separator for multiple entries
+                            write!(f, "|0x{:#x}", offset)?;
+                        }
+                        first = false;
+                    }
+                    write!(f, ")")?;
+                }
             }
             writeln!(f)?;
             print_registers(f, &frame.context)?;
@@ -708,32 +740,39 @@ Unknown streams encountered:
                 "last_error_value": thread.last_error_value.map(|error| error.to_string()),
                 // optional
                 "thread_name": thread.thread_name,
-                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
-                    "frame": idx,
-                    // optional
-                    "module": frame.module.as_ref().map(|module| basename(&module.name)),
-                    // optional
-                    "function": frame.function_name,
-                    // optional
-                    "file": frame.source_file_name,
-                    // optional
-                    "line": frame.source_line,
-                    "offset": json_hex(frame.instruction),
-                    // optional
-                    "module_offset": frame
-                        .module
-                        .as_ref()
-                        .map(|module| frame.instruction - module.raw.base_of_image)
-                        .map(json_hex),
-                    // optional
-                    "function_offset": frame
-                        .function_base
-                        .map(|func_base| frame.instruction - func_base)
-                        .map(json_hex),
-                    "missing_symbols": frame.function_name.is_none(),
-                    // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
-                    "trust": frame.trust.json_name(),
-                })).collect::<Vec<_>>(),
+                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| {
+                    // temporary hack: grab the first matching unloaded module
+                    // and pretend it's a real module.
+                    let module_info = frame.module.as_ref().map(|module| {
+                        (basename(&module.name), module.raw.base_of_image)
+                    }).or_else(|| frame.unloaded_modules.first().map(|module| {
+                        (&*module.name, module.raw.base_of_image)
+                    }));
+                    json!({
+                        "frame": idx,
+                        // optional
+                        "module": module_info.map(|(name, _)| name),
+                        // optional
+                        "function": frame.function_name,
+                        // optional
+                        "file": frame.source_file_name,
+                        // optional
+                        "line": frame.source_line,
+                        "offset": json_hex(frame.instruction),
+                        // optional
+                        "module_offset": module_info
+                            .map(|(_, base)| frame.instruction - base)
+                            .map(json_hex),
+                        // optional
+                        "function_offset": frame
+                            .function_base
+                            .map(|func_base| frame.instruction - func_base)
+                            .map(json_hex),
+                        "missing_symbols": frame.function_name.is_none(),
+                        // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
+                        "trust": frame.trust.json_name(),
+                    })
+                }).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
 
             "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({
