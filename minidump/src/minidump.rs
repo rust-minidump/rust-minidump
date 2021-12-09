@@ -286,8 +286,8 @@ pub struct MinidumpUnloadedModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules: Vec<MinidumpUnloadedModule>,
     /// Map from address range to index in modules.
-    /// Use `MinidumpUnloadedModuleList::module_at_address`.
-    modules_by_addr: RangeMap<u64, usize>,
+    /// Use `MinidumpUnloadedModuleList::modules_at_address`.
+    modules_by_addr: Vec<(Range<u64>, usize)>,
 }
 
 /// The state of a thread from the process when the minidump was written.
@@ -1367,27 +1367,37 @@ impl MinidumpUnloadedModuleList {
     pub fn new() -> MinidumpUnloadedModuleList {
         MinidumpUnloadedModuleList {
             modules: vec![],
-            modules_by_addr: RangeMap::new(),
+            modules_by_addr: vec![],
         }
     }
     /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
     pub fn from_modules(modules: Vec<MinidumpUnloadedModule>) -> MinidumpUnloadedModuleList {
-        let modules_by_addr = modules
-            .iter()
-            .enumerate()
-            .map(|(i, module)| (module.memory_range(), i))
-            .into_rangemap_safe();
+        let mut modules_by_addr = (0..modules.len())
+            .filter_map(|i| modules[i].memory_range().map(|r| (r, i)))
+            .collect::<Vec<_>>();
+
+        modules_by_addr.sort_by_key(|(range, _idx)| *range);
+
         MinidumpUnloadedModuleList {
             modules,
             modules_by_addr,
         }
     }
 
-    /// Return a `MinidumpUnloadedModule` whose address range covers `address`.
-    pub fn module_at_address(&self, address: u64) -> Option<&MinidumpUnloadedModule> {
+    /// Return an iterator of `MinidumpUnloadedModules` whose address range covers `address`.
+    pub fn modules_at_address(
+        &self,
+        address: u64,
+    ) -> impl Iterator<Item = &MinidumpUnloadedModule> {
+        // We have all of our modules sorted by memory range (base address being the
+        // high-order value), and we need to get the range of values that overlap
+        // with our target address. I'm a bit too tired to work out the exact
+        // combination of binary searches to do this, so let's just use `filter`
+        // for now (unloaded_modules should be a bounded list anyway).
         self.modules_by_addr
-            .get(address)
-            .map(|&index| &self.modules[index])
+            .iter()
+            .filter(move |(range, _idx)| range.contains(address))
+            .map(move |(_range, idx)| &self.modules[*idx])
     }
 
     /// Iterate over the modules in arbitrary order.
@@ -1398,7 +1408,7 @@ impl MinidumpUnloadedModuleList {
     /// Iterate over the modules in order by memory address.
     pub fn by_addr(&self) -> impl Iterator<Item = &MinidumpUnloadedModule> {
         self.modules_by_addr
-            .ranges_values()
+            .iter()
             .map(move |&(_, index)| &self.modules[index])
     }
 

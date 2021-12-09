@@ -258,6 +258,13 @@ where
         let mut stack =
             stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider);
 
+        for frame in &mut stack.frames {
+            frame.unloaded_modules = unloaded_modules
+                .modules_at_address(frame.instruction)
+                .cloned()
+                .collect();
+        }
+
         let name = thread_names
             .get_name(thread.raw.thread_id)
             .map(|cow| cow.into_owned())
