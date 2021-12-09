@@ -689,6 +689,7 @@ dependencies = [
  "breakpad-symbols",
  "chrono",
  "clap",
+ "doc-comment",
  "failure",
  "log",
  "memmap",

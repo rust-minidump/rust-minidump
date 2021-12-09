@@ -35,3 +35,4 @@ scroll = "0.10.2"
 [dev-dependencies]
 test-assembler = "0.1.6"
 synth-minidump = { path = "../synth-minidump" }
+doc-comment = "0.3.3"

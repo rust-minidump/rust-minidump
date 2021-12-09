@@ -605,7 +605,7 @@ Unknown streams encountered:
 
     /// Outputs json in a schema compatible with mozilla's Socorro crash reporting servers.
     ///
-    #[doc = include_str!("../json-schema.md")]
+    /// See the top level documentation of this library for the stable JSON schema.
     pub fn print_json<T: Write>(&self, f: &mut T, pretty: bool) -> Result<(), serde_json::Error> {
         // See ../json-schema.md for details on this format.
 
