@@ -388,7 +388,7 @@
 #![warn(missing_debug_implementations)]
 
 #[cfg(doctest)]
-doc_comment::doctest!("../../README.md");
+doc_comment::doctest!("../README.md");
 
 pub use scroll::Endian;
 

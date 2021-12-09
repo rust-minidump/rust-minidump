@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
 
-A CLI frontend for [minidump-processor](https://crates.io/crates/minidump-processor), providing both machine-readable and human-readable digests of a minidump with backtraces and symbolication.
+A CLI frontend for [minidump-processor](https://crates.io/crates/minidump-processor), providing both machine-readable and human-readable digests of a minidump, with backtraces and symbolication.
 
 This is specifically designed to provide a compatible interface to [mozilla's minidump-stackwalk](https://github.com/mozilla-services/minidump-stackwalk) which is itself similar to [google-breakpad's minidump-stackwalk](https://github.com/google/breakpad/blob/main/src/processor/minidump_stackwalk.cc).
 
@@ -12,21 +12,29 @@ The easiest way to use this is by `cargo install`ing it:
 
 ```text
 > cargo install minidump-stackwalk
-> minidump-stackwalk --human path/to/minidump.dmp
+> minidump-stackwalk path/to/minidump.dmp
 ```
 
-`minidump-stackwalk --help` will give you a listing of command line arguments.
+Full documentation of the CLI can be found in the "minidump-stackwalk CLI manual" section below
+(`--help` will produce the same output).
 
 
 
 
 # Output Formats
 
-minidump-stackwalk defaults to outputting machine-readable JSON in a [format](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md) expected by Mozilla's servers. For the sake of tooling compatibility, we generally try to only add fields, and not remove them.
+minidump-stackwalk defaults to outputting human-readable reports because this is a nicer default for casual use, but the machine-readable output is considered the "main" output format.
 
-If you pass the --human flag, minidump-stackwalk will instead output a report in a more human-friendly format with no particular structure.
+If you pass the --json flag you will get machine-readable (JSON) output. As of version 0.9.6 this format *should* be stable, [and has a fully documented schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)! (--pretty will make this output easier for a human to read.)
 
-(Either way we recommend using the --output-file argument to write the results to a file, or piping this through `more` -- minidumps contain a lot of information!)
+If you pass the --human flag, minidump-stackwalk will output a report in a more human-friendly format with no particular structure. (--brief will make this output less verbose.)
+
+By default, output is written to stdout, but `--output-file=some/file/name.txt` allows you to specify a file to write the output to instead. We will create and completely overwrite the specified file. If there is a fatal error, we will try to avoid writing anything to the output,
+which may result in `--output-file` not being created/cleared at all. 
+
+Similarly, errors and warnings are written to stderr by default, which can be configured with `--log-file=...`. `--verbose=...` can be used to set the log level (defaults to "error").
+
+If you wish to get both --human and --json output in one execution (saving lots of duplicated work), you can use `--cyborg=some/file/for/machine/output.json`. When --cyborg output is enabled, human output will still be the "primary" output that goes to stdout and can still be configured with `--output-file`.
 
 
 
@@ -42,7 +50,7 @@ minidump-stackwalk gets its symbols from [google-breakpad symbol files](https://
 
 To generate those files from your build artifacts, use either [Mozilla's dump_syms](https://github.com/mozilla/dump_syms/) (recommended) or [google-breakpad's dump_syms](https://github.com/google/breakpad/blob/main/src/tools/linux/dump_syms/dump_syms.cc).
 
-You can then either provide those symbol files directly with the `--symbols-path` flag, or indirectly by setting up a symbol server that conforms to mozilla's [Tecken protocol](https://tecken.readthedocs.io/en/latest/download.html) and passing a URL to that server with the `--symbols-url` flag.
+You can then either provide those symbol files directly as `symbols-path` values (passed positionally, see the cli manual below), or indirectly by setting up a symbol server that conforms to mozilla's [Tecken protocol](https://tecken.readthedocs.io/en/latest/download.html) and passing a URL to that server with the `--symbols-url` flag. (The protocol is basically a static file server with a specific path format.)
 
 
 
@@ -55,11 +63,105 @@ If you're trying to analyze firefox minidumps, you'll want to point minidump-sta
 > minidump-stackwalk --symbols-url=https://symbols.mozilla.org/ /path/to/minidump.dmp
 ```
 
+Alternatively, if you want to locally reprocess a crash report on https://crash-stats.mozilla.org (socorro), you may want to use [socc-pair](https://github.com/Gankra/socc-pair), which automates this process (and diffs the local result with the one that server had).
 
 
 
 
 
+
+
+# Debugging Stackwalking
+
+rust-minidump includes detailed trace-logging of its stackwalker, which you can enabled with `--verbose=trace` (we recommend against running this mode in production, it's *really* verbose, and degenerate inputs may produce enormous logs).
+
+Some tips on reading these logs:
+
+* All stackwalking lines will start with `[TRACE] unwind` (other logs may get interspersed).
+* Each thread's unwind will: 
+  * start with "starting stack unwind" 
+  * end with "finished stack unwind"
+* Each frame's unwind will: 
+  * start with "unwinding \<name\>"
+  * end with "\<unwinding method\> seems valid"
+  * include the final instruction pointer and stack pointer values at the end
+* The methods used to unwind are tried in order (decreasing in quality)
+  * cfi
+  * frame pointer
+  * scan
+
+If you see "trying scan" or "trying framepointer", this means the previous
+unwinding method failed. Sometimes the reason for failure will be logged, 
+but other times the failure is in a weird place we don't have any logging for.
+If that happens, you can still potentially infer what went wrong based on what
+usually comes after that step.
+
+For instance, a cfi trace typically looks like:
+
+```text
+[TRACE] unwind: unwinding NtGetContextThread
+[TRACE] unwind: trying cfi
+[TRACE] unwind: found symbols for address, searching for cfi entries
+```
+
+If you instead see:
+
+```text
+[TRACE] unwind: unwinding NtGetContextThread
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+```
+
+This suggests the cfi analysis couldn't *even* get to "found symbols for address". So,
+presumably, it *couldn't* find symbols for the current instruction pointer. This may 
+be because it didn't map to a known module, or because there were no symbols for that module.
+
+
+Here is an example stackwalking trace:
+
+
+```text
+[TRACE] unwind: starting stack unwind
+[TRACE] unwind: unwinding NtGetContextThread
+[TRACE] unwind: trying cfi
+[TRACE] unwind: found symbols for address, searching for cfi entries
+[TRACE] unwind: trying STACK CFI exprs
+[TRACE] unwind:   .cfa: $rsp 8 + .ra: .cfa 8 - ^
+[TRACE] unwind:   .cfa: $rsp 8 +
+[TRACE] unwind: STACK CFI parse successful
+[TRACE] unwind: STACK CFI seems reasonable, evaluating
+[TRACE] unwind: successfully evaluated .cfa (frame address)
+[TRACE] unwind: successfully evaluated .ra (return address)
+[TRACE] unwind: cfi evaluation was successful -- caller_ip: 0x000000ec00000000, caller_sp: 0x000000ec7fbfd790
+[TRACE] unwind: cfi result seems valid
+[TRACE] unwind: unwinding 1013612281855
+[TRACE] unwind: trying cfi
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: trying scan
+[TRACE] unwind: scan seems valid -- caller_ip: 0x7ffd172c2a24, caller_sp: 0xec7fbfd7f8
+[TRACE] unwind: unwinding <unknown in ntdll.dll>
+[TRACE] unwind: trying cfi
+[TRACE] unwind: found symbols for address, searching for cfi entries
+[TRACE] unwind: trying frame pointer
+[TRACE] unwind: trying scan
+[TRACE] unwind: scan seems valid -- caller_ip: 0x7ffd162b7034, caller_sp: 0xec7fbfd828
+[TRACE] unwind: unwinding BaseThreadInitThunk
+[TRACE] unwind: trying cfi
+[TRACE] unwind: found symbols for address, searching for cfi entries
+[TRACE] unwind: trying STACK CFI exprs
+[TRACE] unwind:   .cfa: $rsp 8 + .ra: .cfa 8 - ^
+[TRACE] unwind:   .cfa: $rsp 48 +
+[TRACE] unwind: STACK CFI parse successful
+[TRACE] unwind: STACK CFI seems reasonable, evaluating
+[TRACE] unwind: successfully evaluated .cfa (frame address)
+[TRACE] unwind: successfully evaluated .ra (return address)
+[TRACE] unwind: cfi evaluation was successful -- caller_ip: 0x0000000000000000, caller_sp: 0x000000ec7fbfd858
+[TRACE] unwind: cfi result seems valid
+[TRACE] unwind: instruction pointer was nullish, assuming unwind complete
+[TRACE] unwind: finished stack unwind
+```
+
+(This is a particularly nasty/useless stack to unwind, but it shows the two extreme cases of CFI unwinding in a known function and scan unwinding in a totally unknown function.)
 
 
 
