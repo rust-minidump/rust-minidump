@@ -911,10 +911,6 @@ impl From<UnloadedModule> for Section {
     fn from(module: UnloadedModule) -> Self {
         let UnloadedModule { section } = module;
         section
-            // reserved0
-            .D64(0)
-            // reserved1
-            .D64(0)
     }
 }
 

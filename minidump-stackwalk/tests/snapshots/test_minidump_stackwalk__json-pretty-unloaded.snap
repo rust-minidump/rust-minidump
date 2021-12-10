@@ -1,0 +1,97 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: stdout
+
+---
+{
+  "crash_info": {
+    "address": null,
+    "assertion": null,
+    "crashing_thread": null,
+    "type": null
+  },
+  "lsb_release": null,
+  "mac_crash_info": null,
+  "main_module": 0,
+  "modules": [],
+  "modules_contains_cert_info": false,
+  "pid": null,
+  "sensitive": {
+    "exploitability": null
+  },
+  "status": "OK",
+  "system_info": {
+    "cpu_arch": "x86",
+    "cpu_count": 0,
+    "cpu_info": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 family 0 model 0 stepping 6",
+    "cpu_microcode_version": null,
+    "os": "0x0x000000",
+    "os_ver": "1.0.0"
+  },
+  "thread_count": 1,
+  "threads": [
+    {
+      "frame_count": 1,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "many.dll",
+          "module_offset": "0x00000460",
+          "offset": "0x00f00800",
+          "trust": "context"
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": null
+    }
+  ],
+  "unloaded_modules": [
+    {
+      "base_addr": "0x00a003a0",
+      "cert_subject": null,
+      "code_id": "B1054D2A1000",
+      "end_addr": "0x00a013a0",
+      "filename": "unused.dll"
+    },
+    {
+      "base_addr": "0x00f00000",
+      "cert_subject": null,
+      "code_id": "B1054D2A1000",
+      "end_addr": "0x00f01000",
+      "filename": "many.dll"
+    },
+    {
+      "base_addr": "0x0af00220",
+      "cert_subject": null,
+      "code_id": "B1054D2A2000",
+      "end_addr": "0x0af02220",
+      "filename": "solo.dll"
+    },
+    {
+      "base_addr": "0x00f00100",
+      "cert_subject": null,
+      "code_id": "B1054D2A1000",
+      "end_addr": "0x00f01100",
+      "filename": "many.dll"
+    },
+    {
+      "base_addr": "0x00f003a0",
+      "cert_subject": null,
+      "code_id": "B1054D2A1000",
+      "end_addr": "0x00f013a0",
+      "filename": "many.dll"
+    },
+    {
+      "base_addr": "0x00f00220",
+      "cert_subject": null,
+      "code_id": "B1054D2A2000",
+      "end_addr": "0x00f02220",
+      "filename": "solo.dll"
+    }
+  ]
+}

@@ -713,6 +713,8 @@ dependencies = [
  "minidump-processor",
  "openssl",
  "simplelog",
+ "synth-minidump",
+ "test-assembler",
 ]
 
 [[package]]
