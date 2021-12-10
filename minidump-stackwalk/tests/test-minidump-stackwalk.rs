@@ -16,8 +16,10 @@
 // the env as `CARGO_BIN_EXE_<name>`.
 
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::process::{Command, Stdio};
+use synth_minidump::*;
+use test_assembler::*;
 
 #[test]
 fn test_json() {
@@ -489,4 +491,147 @@ fn test_brief_robots() {
     assert!(!output.status.success());
     assert_eq!(stdout, "");
     assert!(!stderr.is_empty());
+}
+
+fn minimal_minidump() -> SynthMinidump {
+    let context = synth_minidump::x86_context(Endian::Little, 0xf00800, 0x1010);
+    let stack = Memory::with_section(
+        Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+        0x1000,
+    );
+    let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little);
+    SynthMinidump::with_endian(Endian::Little)
+        .add_thread(thread)
+        .add_system_info(system_info)
+        .add(context)
+        .add_memory(stack)
+}
+
+fn unloaded_minidump() -> &'static str {
+    // Testing how we handle a stack frame having no module mapping, but many
+    // "hits" with unloaded modules.
+    let synth_path = "../target/tmp-unloaded-minidump.dmp";
+
+    let mod1_name = DumpString::new("many.dll", Endian::Little);
+    let mod2_name = DumpString::new("solo.dll", Endian::Little);
+    let mod3_name = DumpString::new("unused.dll", Endian::Little);
+
+    // All of these should "hit", but this one will be hacked into JSON
+    let mod1_1 = UnloadedModule::new(
+        Endian::Little,
+        0xf00000,
+        0x1000,
+        &mod1_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    let mod1_2 = UnloadedModule::new(
+        Endian::Little,
+        0xf00100,
+        0x1000,
+        &mod1_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    let mod1_3 = UnloadedModule::new(
+        Endian::Little,
+        0xf003a0,
+        0x1000,
+        &mod1_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    // This one should hit
+    let mod2_1 = UnloadedModule::new(
+        Endian::Little,
+        0xf00220,
+        0x2000,
+        &mod2_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    // This one should miss
+    let mod2_2 = UnloadedModule::new(
+        Endian::Little,
+        0xaf00220,
+        0x2000,
+        &mod2_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    // This one should miss
+    let mod3 = UnloadedModule::new(
+        Endian::Little,
+        0xa003a0,
+        0x1000,
+        &mod3_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+
+    // Vaguely randomize the module order
+    let minidump = minimal_minidump()
+        .add_unloaded_module(mod3)
+        .add_unloaded_module(mod1_1)
+        .add_unloaded_module(mod2_2)
+        .add_unloaded_module(mod1_2)
+        .add_unloaded_module(mod1_3)
+        .add_unloaded_module(mod2_1)
+        .add(mod1_name)
+        .add(mod2_name)
+        .add(mod3_name)
+        .finish()
+        .unwrap();
+
+    // Write the synth minidump to disk
+    {
+        let mut file = File::create(synth_path).unwrap();
+        file.write_all(&minidump).unwrap();
+    }
+
+    synth_path
+}
+
+#[test]
+fn test_unloaded_json() {
+    let synth_path = unloaded_minidump();
+
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("--pretty")
+        .arg(synth_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("json-pretty-unloaded", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_unloaded_human() {
+    let synth_path = unloaded_minidump();
+
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--human")
+        .arg(synth_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("human-unloaded", stdout);
+    assert_eq!(stderr, "");
 }
