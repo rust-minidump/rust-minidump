@@ -564,6 +564,15 @@ fn unloaded_minidump() -> PathBuf {
         0xb1054d2a,
         0x34571371,
     );
+    // Same as mod1_1, to check deduping
+    let mod1_4 = UnloadedModule::new(
+        Endian::Little,
+        0xf00000,
+        0x1000,
+        &mod1_name,
+        0xb1054d2a,
+        0x34571371,
+    );
     // This one should hit
     let mod2_1 = UnloadedModule::new(
         Endian::Little,
@@ -575,6 +584,15 @@ fn unloaded_minidump() -> PathBuf {
     );
     // This one should miss
     let mod2_2 = UnloadedModule::new(
+        Endian::Little,
+        0xaf00220,
+        0x2000,
+        &mod2_name,
+        0xb1054d2a,
+        0x34571371,
+    );
+    // Same as mod 2_1, to check deduping
+    let mod2_3 = UnloadedModule::new(
         Endian::Little,
         0xaf00220,
         0x2000,
@@ -600,6 +618,8 @@ fn unloaded_minidump() -> PathBuf {
         .add_unloaded_module(mod1_2)
         .add_unloaded_module(mod1_3)
         .add_unloaded_module(mod2_1)
+        .add_unloaded_module(mod2_3)
+        .add_unloaded_module(mod1_4)
         .add(mod1_name)
         .add(mod2_name)
         .add(mod3_name)

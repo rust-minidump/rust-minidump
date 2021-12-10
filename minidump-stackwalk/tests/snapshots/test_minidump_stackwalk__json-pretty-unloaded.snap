@@ -92,6 +92,20 @@ expression: stdout
       "code_id": "B1054D2A2000",
       "end_addr": "0x00f02220",
       "filename": "solo.dll"
+    },
+    {
+      "base_addr": "0x0af00220",
+      "cert_subject": null,
+      "code_id": "B1054D2A2000",
+      "end_addr": "0x0af02220",
+      "filename": "solo.dll"
+    },
+    {
+      "base_addr": "0x00f00000",
+      "cert_subject": null,
+      "code_id": "B1054D2A1000",
+      "end_addr": "0x00f01000",
+      "filename": "many.dll"
     }
   ]
 }
