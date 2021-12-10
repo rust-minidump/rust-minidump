@@ -17,9 +17,25 @@
 
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use synth_minidump::*;
 use test_assembler::*;
+
+// Some tests need to write files (and read them back).
+// To keep this tidy and hidden, we make a new directory
+// in `target`.
+const TEST_TMP: &str = "../target/testdata/";
+
+fn test_output(file_name: &str) -> PathBuf {
+    let mut res = PathBuf::from(TEST_TMP);
+    // Ensure the directory exists.
+    // Ignore failures because we don't care if the dir already exists.
+    let _ = std::fs::create_dir(&res);
+    // Now create the path
+    res.push(file_name);
+    res
+}
 
 #[test]
 fn test_json() {
@@ -209,10 +225,12 @@ fn test_default() {
 
 #[test]
 fn test_cyborg() {
+    let cyborg_out_path = test_output("mdsw-test-cyborg-out.json");
     // Should be the same as --human and --json
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)
-        .arg("--cyborg=../target/mdsw-cyborg-temp.json")
+        .arg("--cyborg")
+        .arg(&cyborg_out_path)
         .arg("../testdata/test.dmp")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -222,7 +240,7 @@ fn test_cyborg() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    let json_file = File::open("../target/mdsw-cyborg-temp.json").unwrap();
+    let json_file = File::open(cyborg_out_path).unwrap();
     let mut json_bytes = vec![];
     BufReader::new(json_file)
         .read_to_end(&mut json_bytes)
@@ -259,13 +277,17 @@ fn test_trace() {
 
 #[test]
 fn test_output_files() {
+    let out_path = test_output("mdsw-test-ouput-files-out.txt");
+    let log_path = test_output("mdsw-test-output-files-log.txt");
     // Should be the same as --human and --json
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)
         .arg("--human")
         .arg("--verbose=trace")
-        .arg("--output-file=../target/mdsw-human-out.txt")
-        .arg("--log-file=../target/mdsw-log-out.txt")
+        .arg("--output-file")
+        .arg(&out_path)
+        .arg("--log-file")
+        .arg(&log_path)
         .arg("../testdata/test.dmp")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -275,14 +297,14 @@ fn test_output_files() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    let out_file = File::open("../target/mdsw-human-out.txt").unwrap();
+    let out_file = File::open(out_path).unwrap();
     let mut out_bytes = vec![];
     BufReader::new(out_file)
         .read_to_end(&mut out_bytes)
         .unwrap();
     let out = String::from_utf8(out_bytes).unwrap();
 
-    let log_file = File::open("../target/mdsw-log-out.txt").unwrap();
+    let log_file = File::open(log_path).unwrap();
     let mut log_bytes = vec![];
     BufReader::new(log_file)
         .read_to_end(&mut log_bytes)
@@ -508,10 +530,10 @@ fn minimal_minidump() -> SynthMinidump {
         .add_memory(stack)
 }
 
-fn unloaded_minidump() -> &'static str {
+fn unloaded_minidump() -> PathBuf {
     // Testing how we handle a stack frame having no module mapping, but many
     // "hits" with unloaded modules.
-    let synth_path = "../target/tmp-unloaded-minidump.dmp";
+    let synth_path = test_output("unloaded-minidump.dmp");
 
     let mod1_name = DumpString::new("many.dll", Endian::Little);
     let mod2_name = DumpString::new("solo.dll", Endian::Little);
@@ -586,7 +608,7 @@ fn unloaded_minidump() -> &'static str {
 
     // Write the synth minidump to disk
     {
-        let mut file = File::create(synth_path).unwrap();
+        let mut file = File::create(&synth_path).unwrap();
         file.write_all(&minidump).unwrap();
     }
 
