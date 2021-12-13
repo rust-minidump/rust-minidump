@@ -295,7 +295,10 @@ fn main() {
                     .copied()
                     .unwrap_or("<cause unknown>")
             });
-        error!("A panic occurred at {}:{}: {}", filename, line, cause);
+        error!(
+            "Panic - A panic occurred at {}:{}: {}",
+            filename, line, cause
+        );
     }));
 
     let mut options = ProcessorOptions::default();
@@ -418,13 +421,13 @@ fn main() {
                     }
                 }
                 Err(err) => {
-                    error!("Error processing dump: {}", err);
+                    error!("{:?} - Error processing dump: {}", err, err);
                     std::process::exit(1);
                 }
             }
         }
         Err(err) => {
-            error!("Error reading dump: {}", err);
+            error!("{:?} - Error reading dump: {}", err, err);
             std::process::exit(1);
         }
     }
