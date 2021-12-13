@@ -29,6 +29,7 @@
 //!               "vswprintf");
 //! ```
 
+use bytes::Bytes;
 use failure::Error;
 use log::{debug, trace, warn};
 use reqwest::blocking::Client;
@@ -40,7 +41,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -419,12 +420,11 @@ fn fetch_symbol_file(
     rel_path: &str,
     cache: &Path,
     tmp: &Path,
-) -> Result<(Url, Vec<u8>), Error> {
+) -> Result<(Url, Bytes), Error> {
     let url = base_url.join(rel_path)?;
     debug!("Trying {}", url);
-    let mut res = client.get(url.clone()).send()?.error_for_status()?;
-    let mut buf = vec![];
-    res.read_to_end(&mut buf)?;
+    let res = client.get(url.clone()).send()?.error_for_status()?;
+    let buf = res.bytes()?;
     let local = cache.join(rel_path);
 
     match save_contents(&buf, &url, &local, tmp) {
