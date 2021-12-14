@@ -657,7 +657,11 @@ fn test_unloaded_json() {
     assert_eq!(stderr, "");
 }
 
+
+// Temporarily disabled because it races with the _json version
+// on creating the minidump via `unloaded_minidump`.
 #[test]
+#[ignore]
 fn test_unloaded_human() {
     let synth_path = unloaded_minidump();
 
