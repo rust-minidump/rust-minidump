@@ -1,26 +1,109 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
-
-use std::path::Path;
-
-use crate::sym_file::parser::{parse_symbol_bytes, parse_symbol_file};
 use crate::{FrameSymbolizer, FrameWalker, Module, SymbolError};
 
 pub use crate::sym_file::types::*;
+pub use parser::SymbolParser;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
+use failure::format_err;
 
 mod parser;
 mod types;
 mod walker;
 
 impl SymbolFile {
-    /// Parse a `SymbolFile` from `path`.
-    pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
-        parse_symbol_file(path)
+    /// Parse a SymbolFile from the given Reader.
+    ///
+    /// Every time a chunk of the input is parsed, that chunk will
+    /// be passed to `callback` to allow you to do something else
+    /// with the data as it's streamed in (e.g. you can save the
+    /// input to a cache).
+    ///
+    /// The reader is wrapped in a buffer reader so you shouldn't
+    /// buffer the input yourself.
+    pub fn parse<R: Read>(
+        mut input_reader: R,
+        mut callback: impl FnMut(&[u8]),
+    ) -> Result<SymbolFile, SymbolError> {
+        // This parse streams the input to avoid the need to materialize all of
+        // it into memory at once (symbol files can be a gigabyte!). As a result,
+        // we need to iteratively parse.
+        //
+        // We do this by repeatedly filling up a buffer with input and asking the
+        // parser to parse it. The parser will return how much of the input it
+        // consumed, which we can use to clear space in our buffer and to tell
+        // if it successfully consumed the whole input when the Reader runs dry.
+
+        // Having a fix-sized buffer has one fatal issue: if one atomic step
+        // of the parser needs more than this amount of data, then we won't
+        // be able to parse it.
+        //
+        // This can result in `buf` filling up and `buf.space()` becoming an
+        // empty slice. This in turn will make the reader yield 0 bytes, and
+        // we'll treat it like EOF and fail the parse. Bad error message UX,
+        // but good enough. This is also our safety-valve against bugs in the
+        // parser causing infinite loops.
+        //
+        // The "atom" of our parser is a line, and ~100kb is a pretty generous
+        // limit to have on the length of a line. However we actually only have
+        // *half* this value as our limit, as circular::Buffer will only
+        // `shift` the buffer's contents if over half of its capacity has been
+        // drained by `consume` -- and `space()` only grows when a `shift` happens.
+        //
+        // I have in fact seen 8kb function names (thanks generic combinators!), so we
+        // need a buffer size that's at least 16kb. I went with 100kb to be safe.
+        //
+        // FIXME: investigate using `Buffer::grow` to be more adaptive here?
+        let mut buf = circular::Buffer::with_capacity(100_000);
+        let mut parser = SymbolParser::new();
+        let mut fully_consumed = false;
+        loop {
+            // Read the data in, and tell the circular buffer about the new data
+            let size = input_reader.read(buf.space()).map_err(|e| {
+                SymbolError::LoadError(format_err!("couldn't read input stream {}", e))
+            })?;
+            buf.fill(size);
+
+            // If the reader returned nothing, then we're done. On the previous
+            // iteration we submitted the last bytes of the input. If the parser
+            // consumed all of those bytes, then the file perfectly parsed!
+            if size == 0 {
+                if fully_consumed {
+                    return Ok(parser.finish());
+                } else {
+                    return Err(SymbolError::ParseError(format_err!(
+                        "unexpected EOF during parsing of SymbolFile (or a line was too long?) at line {}", 
+                        parser.lines
+                    )));
+                }
+            }
+
+            // Ask the parser to parse more of the input
+            let input = buf.data();
+            let consumed = parser.parse_more(input)?;
+
+            // Give the other consumer of this Reader a chance to use this data.
+            callback(&input[..consumed]);
+
+            // Remember for the next iteration if all the input was consumed.
+            fully_consumed = input.len() == consumed;
+            buf.consume(consumed);
+        }
     }
 
-    /// Parse an in-memory `SymbolFile` from `bytes`.
+    // Parse a SymbolFile from bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
-        parse_symbol_bytes(bytes)
+        Self::parse(bytes, |_| ())
+    }
+
+    // Parse a SymbolFile from a file.
+    pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
+        let file = File::open(path)
+            .map_err(|e| SymbolError::LoadError(format_err!("Couldn't open symbol file {}", e)))?;
+        Self::parse(file, |_| ())
     }
 
     /// Fill in as much source information for `frame` as possible.
