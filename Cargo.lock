@@ -87,7 +87,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "breakpad-symbols"
 version = "0.9.6"
 dependencies = [
- "bytes",
+ "circular",
  "failure",
  "log",
  "minidump-common",
@@ -141,6 +141,12 @@ dependencies = [
  "time",
  "winapi",
 ]
+
+[[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"

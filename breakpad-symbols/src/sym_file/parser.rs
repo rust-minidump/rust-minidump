@@ -5,13 +5,10 @@ use failure::format_err;
 use log::warn;
 use nom::IResult::*;
 use nom::*;
-use range_map::Range;
+use range_map::{Range, RangeMap};
 
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use std::fmt::Debug;
 use std::str;
 use std::str::FromStr;
 
@@ -20,11 +17,13 @@ use minidump_common::traits::IntoRangeMapSafe;
 use crate::sym_file::types::*;
 use crate::SymbolError;
 
-enum Line<'a> {
+#[derive(Debug)]
+enum Line {
+    Module,
     Info(Info),
-    File(u32, &'a str),
+    File(u32, String),
     Public(PublicSymbol),
-    Function(Function),
+    Function(Function, Vec<SourceLine>),
     StackWin(WinFrameType),
     StackCfi(StackInfoCfi),
 }
@@ -35,7 +34,7 @@ named!(
     complete!(preceded!(many0!(char!('\r')), char!('\n')))
 );
 
-// Match a hex string, parse it to a u64.
+// Match a hex string, parse it t)o a u64.
 named!(hex_str_u64<&[u8], u64>,
        map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
 
@@ -87,7 +86,7 @@ named!(
 );
 
 // Matches a FILE record.
-named!(file_line<&[u8], (u32, &str)>,
+named!(file_line<&[u8], (u32, String)>,
   chain!(
     tag!("FILE") ~
     space ~
@@ -95,7 +94,7 @@ named!(file_line<&[u8], (u32, &str)>,
     space ~
     filename: map_res!(not_line_ending, str::from_utf8) ~
     my_eol ,
-      ||{ (id, filename) }
+      ||{ (id, filename.to_string()) }
 ));
 
 // Matches a PUBLIC record.
@@ -140,8 +139,8 @@ named!(func_line_data<&[u8], SourceLine>,
       }
 ));
 
-// Matches a FUNC record and any following line records.
-named!(func_lines<&[u8], Function>,
+// Matches a FUNC record.
+named!(func_line<&[u8], Function>,
 chain!(
   tag!("FUNC") ~
   preceded!(space, tag!("m"))? ~
@@ -153,25 +152,14 @@ chain!(
   parameter_size: hex_u32 ~
   space ~
   name: map_res!(not_line_ending, str::from_utf8) ~
-  my_eol ~
-  lines: many0!(func_line_data) ,
+  my_eol ,
     || {
         Function {
             address,
             size,
             parameter_size,
             name: name.to_string(),
-            lines: lines.into_iter()
-                .map(|l| {
-                    // Line data from PDB files often has a zero-size line entry, so just
-                    // filter those out.
-                    if l.size > 0 {
-                        (Some(Range::new(l.address, l.address + l.size as u64 - 1)), l)
-                    } else {
-                        (None, l)
-                    }
-                })
-                .into_rangemap_safe(),
+            lines: RangeMap::new(),
         }
     }
     ));
@@ -265,7 +253,7 @@ chain!(
     ));
 
 // Matches a STACK CFI INIT record.
-named!(stack_cfi_init<&[u8], (CfiRules, u32)>,
+named!(stack_cfi_init<&[u8], StackInfoCfi>,
   chain!(
     tag!("STACK CFI INIT") ~
     space ~
@@ -276,26 +264,13 @@ named!(stack_cfi_init<&[u8], (CfiRules, u32)>,
     rules: map_res!(not_line_ending, str::from_utf8) ~
     my_eol ,
       || {
-          (CfiRules {
-              address,
-              rules: rules.to_string(),
-          },
-           size)
-      }
-));
-
-// Match a STACK CFI INIT record followed by zero or more STACK CFI records.
-named!(stack_cfi_lines<&[u8], StackInfoCfi>,
-  chain!(
-    init: stack_cfi_init ~
-    mut add_rules: many0!(stack_cfi) ,
-      move || {
-          let (init_rules, size) = init;
-          add_rules.sort();
           StackInfoCfi {
-              init: init_rules,
+              init: CfiRules {
+                  address,
+                  rules: rules.to_string(),
+              },
               size,
-              add_rules,
+              add_rules: Default::default(),
           }
       }
 ));
@@ -307,167 +282,319 @@ named!(line<&[u8], Line>,
     info_line => { |_| Line::Info(Info::Unknown) } |
     file_line => { |(i,f)| Line::File(i, f) } |
     public_line => { Line::Public } |
-    func_lines => { Line::Function } |
+    func_line => { |f| Line::Function(f, Vec::new()) } |
     stack_win_line => { Line::StackWin } |
-    stack_cfi_lines => { Line::StackCfi }
+    stack_cfi_init => { Line::StackCfi } |
+    module_line => { |_| Line::Module }
 ));
 
-// Return a `SymbolFile` given a vec of `Line` data.
-fn symbol_file_from_lines(lines: Vec<Line<'_>>) -> SymbolFile {
-    let mut files = HashMap::new();
-    let mut publics = vec![];
-    let mut funcs = vec![];
-    let mut stack_cfi = vec![];
-    let mut stack_win_framedata: Vec<StackInfoWin> = vec![];
-    let mut stack_win_fpo: Vec<StackInfoWin> = vec![];
-    let mut url = None;
-    for line in lines {
-        match line {
-            Line::Info(Info::Url(cached_url)) => {
-                url = Some(cached_url);
+/// A parser for SymbolFiles.
+///
+/// This is basically just a SymbolFile but with some extra state
+/// to handle streaming parsing.
+///
+/// Use this by repeatedly calling [`parse_more`][] until the
+/// whole input is consumed. Then call [`finish`][].
+#[derive(Debug, Default)]
+pub struct SymbolParser {
+    files: HashMap<u32, String>,
+    publics: Vec<PublicSymbol>,
+
+    // When building a RangeMap when need to sort an array of this
+    // format anyway, so we might as well construct it directly and
+    // save a giant allocation+copy.
+    functions: Vec<(Range<u64>, Function)>,
+    cfi_stack_info: Vec<(Range<u64>, StackInfoCfi)>,
+    win_stack_framedata_info: Vec<(Range<u64>, StackInfoWin)>,
+    win_stack_fpo_info: Vec<(Range<u64>, StackInfoWin)>,
+    url: Option<String>,
+    pub lines: u64,
+    cur_item: Option<Line>,
+}
+
+impl SymbolParser {
+    /// Creates a new SymbolParser.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Parses as much of the input as it can, and then returns
+    /// how many bytes of the input was used. The *unused* portion of the
+    /// input must be resubmitted on subsequent calls to parse_more
+    /// (along with more data so we can make progress on the parse).
+    pub fn parse_more(&mut self, mut input: &[u8]) -> Result<usize, SymbolError> {
+        // We parse the input line-by-line, so trim away any part of the input
+        // that comes after the last newline (this is necessary for streaming
+        // parsing, as it can otherwise be impossible to tell if a line is
+        // truncated.)
+        input = if let Some(idx) = input.iter().rposition(|&x| x == b'\n') {
+            &input[..idx + 1]
+        } else {
+            // If there's no newline, then we can't process anything!
+            return Ok(0);
+        };
+        // Remember the (truncated) input so that we can tell how many bytes
+        // we've consumed.
+        let orig_input = input;
+
+        loop {
+            // If there's no more input, then we've consumed all of it
+            // (except for the partial line we trimmed away).
+            if input.is_empty() {
+                return Ok(orig_input.len());
             }
-            Line::Info(Info::Unknown) => {
-                // Don't care
+
+            // First check if we're currently processing sublines of a
+            // multi-line item like `FUNC` and `STACK CFI INIT`.
+            // If we are, parse the next line as its subline format.
+            //
+            // If we encounter an error, this probably means we've
+            // reached a new item (which ends this one). To handle this,
+            // we can just finish off the current item and resubmit this
+            // line to the top-level parser (below). If the line is
+            // genuinely corrupt, then the top-level parser will also
+            // fail to read it.
+            //
+            // We `take` and then reconstitute the item for borrowing/move
+            // reasons.
+            match self.cur_item.take() {
+                Some(Line::Function(cur, mut lines)) => match func_line_data(input) {
+                    Done(new_input, line) => {
+                        lines.push(line);
+                        input = new_input;
+                        self.cur_item = Some(Line::Function(cur, lines));
+                        self.lines += 1;
+                        continue;
+                    }
+                    Error(_) | Incomplete(_) => {
+                        self.finish_item(Line::Function(cur, lines));
+                        continue;
+                    }
+                },
+                Some(Line::StackCfi(mut cur)) => match stack_cfi(input) {
+                    Done(new_input, line) => {
+                        cur.add_rules.push(line);
+                        input = new_input;
+                        self.cur_item = Some(Line::StackCfi(cur));
+                        self.lines += 1;
+                        continue;
+                    }
+                    Error(_) | Incomplete(_) => {
+                        self.finish_item(Line::StackCfi(cur));
+                        continue;
+                    }
+                },
+                _ => {
+                    // We're not parsing sublines, move on to top level parser!
+                }
             }
-            Line::File(id, filename) => {
-                files.insert(id, filename.to_string());
-            }
-            Line::Public(p) => {
-                publics.push(p);
-            }
-            Line::Function(f) => {
-                funcs.push(f);
-            }
-            Line::StackWin(frame_type) => {
-                // PDB files contain lots of overlapping unwind info, so we have to filter
-                // some of it out.
-                fn insert_win_stack_info(stack_win: &mut Vec<StackInfoWin>, info: StackInfoWin) {
-                    if let Some(memory_range) = info.memory_range() {
-                        if let Some(last) = stack_win.last_mut() {
-                            if last.memory_range().unwrap().intersects(&memory_range) {
-                                if info.address > last.address {
-                                    // Sometimes we get STACK WIN directives where each line
-                                    // has an accurate starting point, but the length just
-                                    // covers the entire function, like so:
-                                    //
-                                    // addr: 0, len: 10
-                                    // addr: 1, len: 9
-                                    // addr: 4, len: 6
-                                    //
-                                    // In this case, the next instruction is the one that
-                                    // really defines the length of the previous one. So
-                                    // we need to fixup the lengths like so:
-                                    //
-                                    // addr: 0, len: 1
-                                    // addr: 1, len: 2
-                                    // addr: 4, len: 6
-                                    last.size = (info.address - last.address) as u32;
-                                } else if last.memory_range().unwrap() != memory_range {
-                                    // We silently drop identical ranges because sometimes
-                                    // duplicates happen, but we complain for non-trivial duplicates.
-                                    warn!(
-                                        "STACK WIN entry had bad intersections, dropping it {:?}",
-                                        info
-                                    );
-                                    return;
+
+            // Parse a top-level item, and first handle the Result
+            let line = match line(input) {
+                Done(new_input, line) => {
+                    // Success! Advance the input.
+                    input = new_input;
+                    line
+                }
+                Error(e) => {
+                    // The file has a completely corrupt line,
+                    // conservatively reject the entire parse.
+                    return Err(SymbolError::ParseError(format_err!(
+                        "Failed to parse file: {}",
+                        e
+                    )));
+                }
+                Incomplete(_) => {
+                    // One of our sub-parsers wants more input, which normally
+                    // would be fine for a streaming parser, bust the newline
+                    // preprocessing we do means this should never happen.
+                    // So Incomplete input is just another kind of parsing Error.
+                    return Err(SymbolError::ParseError(format_err!("Line was incomplete!")));
+                }
+            };
+
+            // Now store the item in our partial SymbolFile (or make it the cur_item
+            // if it has potential sublines we need to parse first).
+            match line {
+                Line::Module => {
+                    // We don't use this but it MUST be the first line
+                    if self.lines != 0 {
+                        return Err(SymbolError::ParseError(format_err!(
+                            "MODULE line found after the start of the file"
+                        )));
+                    }
+                }
+                Line::Info(Info::Url(cached_url)) => {
+                    self.url = Some(cached_url);
+                }
+                Line::Info(Info::Unknown) => {
+                    // Don't care
+                }
+                Line::File(id, filename) => {
+                    self.files.insert(id, filename.to_string());
+                }
+                Line::Public(p) => {
+                    self.publics.push(p);
+                }
+                Line::StackWin(frame_type) => {
+                    // PDB files contain lots of overlapping unwind info, so we have to filter
+                    // some of it out.
+                    fn insert_win_stack_info(
+                        stack_win: &mut Vec<(Range<u64>, StackInfoWin)>,
+                        info: StackInfoWin,
+                    ) {
+                        if let Some(memory_range) = info.memory_range() {
+                            if let Some((last_range, last_info)) = stack_win.last_mut() {
+                                if last_range.intersects(&memory_range) {
+                                    if info.address > last_info.address {
+                                        // Sometimes we get STACK WIN directives where each line
+                                        // has an accurate starting point, but the length just
+                                        // covers the entire function, like so:
+                                        //
+                                        // addr: 0, len: 10
+                                        // addr: 1, len: 9
+                                        // addr: 4, len: 6
+                                        //
+                                        // In this case, the next instruction is the one that
+                                        // really defines the length of the previous one. So
+                                        // we need to fixup the lengths like so:
+                                        //
+                                        // addr: 0, len: 1
+                                        // addr: 1, len: 2
+                                        // addr: 4, len: 6
+                                        last_info.size = (info.address - last_info.address) as u32;
+                                        *last_range = last_info.memory_range().unwrap();
+                                    } else if *last_range != memory_range {
+                                        // We silently drop identical ranges because sometimes
+                                        // duplicates happen, but we complain for non-trivial duplicates.
+                                        warn!(
+                                            "STACK WIN entry had bad intersections, dropping it {:?}",
+                                            info
+                                        );
+                                        return;
+                                    }
                                 }
                             }
+                            stack_win.push((memory_range, info));
+                        } else {
+                            warn!("STACK WIN entry had invalid range, dropping it {:?}", info);
                         }
-                        stack_win.push(info);
-                    } else {
-                        warn!("STACK WIN entry had invalid range, dropping it {:?}", info);
+                    }
+                    match frame_type {
+                        WinFrameType::FrameData(s) => {
+                            insert_win_stack_info(&mut self.win_stack_framedata_info, s);
+                        }
+                        WinFrameType::Fpo(s) => {
+                            insert_win_stack_info(&mut self.win_stack_fpo_info, s);
+                        }
+                        // Just ignore other types.
+                        _ => {}
                     }
                 }
-                match frame_type {
-                    WinFrameType::FrameData(s) => {
-                        insert_win_stack_info(&mut stack_win_framedata, s);
-                    }
-                    WinFrameType::Fpo(s) => {
-                        insert_win_stack_info(&mut stack_win_fpo, s);
-                    }
-                    // Just ignore other types.
-                    _ => {}
+                item @ Line::Function(_, _) => {
+                    // More sublines to parse
+                    self.cur_item = Some(item);
+                }
+                item @ Line::StackCfi(_) => {
+                    // More sublines to parse
+                    self.cur_item = Some(item);
                 }
             }
-            Line::StackCfi(s) => {
-                stack_cfi.push(s);
+
+            // Make note that we've consumed a line of input.
+            self.lines += 1;
+        }
+    }
+
+    /// Finish processing an item (cur_item) which had sublines.
+    /// We now have all the sublines, so it's complete.
+    fn finish_item(&mut self, item: Line) {
+        match item {
+            Line::Function(mut cur, lines) => {
+                cur.lines = lines
+                    .into_iter()
+                    .map(|l| {
+                        // Line data from PDB files often has a zero-size line entry, so just
+                        // filter those out.
+                        if l.size > 0 {
+                            (
+                                Some(Range::new(l.address, l.address + l.size as u64 - 1)),
+                                l,
+                            )
+                        } else {
+                            (None, l)
+                        }
+                    })
+                    .into_rangemap_safe();
+
+                if let Some(range) = cur.memory_range() {
+                    self.functions.push((range, cur));
+                }
+            }
+            Line::StackCfi(mut cur) => {
+                cur.add_rules.sort();
+                if let Some(range) = cur.memory_range() {
+                    self.cfi_stack_info.push((range, cur));
+                }
+            }
+            _ => {
+                unreachable!()
             }
         }
     }
-    publics.sort();
-    SymbolFile {
-        files,
-        publics,
-        functions: funcs
-            .into_iter()
-            .map(|f| (f.memory_range(), f))
-            .into_rangemap_safe(),
-        cfi_stack_info: stack_cfi
-            .into_iter()
-            .map(|s| (s.memory_range(), s))
-            .into_rangemap_safe(),
-        win_stack_framedata_info: stack_win_framedata
-            .into_iter()
-            .map(|s| (s.memory_range(), s))
-            .into_rangemap_safe(),
-        win_stack_fpo_info: stack_win_fpo
-            .into_iter()
-            .map(|s| (s.memory_range(), s))
-            .into_rangemap_safe(),
-        // Will get filled in by the caller
-        url,
-        // TODO
-        ambiguities_repaired: 0,
-        // TODO
-        ambiguities_discarded: 0,
-        // TODO
-        corruptions_discarded: 0,
-        // TODO
-        cfi_eval_corruptions: 0,
+
+    /// Finish the parse and create the final SymbolFile.
+    ///
+    /// Call this when the parser has consumed all the input.
+    pub fn finish(mut self) -> SymbolFile {
+        // If there's a pending multiline item, finish it now.
+        if let Some(item) = self.cur_item.take() {
+            self.finish_item(item);
+        }
+
+        // Now sort everything and bundle it up in its final format.
+        self.publics.sort();
+
+        SymbolFile {
+            files: self.files,
+            publics: self.publics,
+            functions: into_rangemap_safe(self.functions),
+            cfi_stack_info: into_rangemap_safe(self.cfi_stack_info),
+            win_stack_framedata_info: into_rangemap_safe(self.win_stack_framedata_info),
+            win_stack_fpo_info: into_rangemap_safe(self.win_stack_fpo_info),
+            // Will get filled in by the caller
+            url: self.url,
+            ambiguities_repaired: 0,
+            ambiguities_discarded: 0,
+            corruptions_discarded: 0,
+            cfi_eval_corruptions: 0,
+        }
     }
 }
 
-// Matches an entire symbol file.
-named!(symbol_file<&[u8], SymbolFile>,
-  chain!(
-    module_line? ~
-    lines: many0!(line) ,
-    || { symbol_file_from_lines(lines) })
-);
+// Copied from minidump-common, because we've preconstructed the array to sort.
+fn into_rangemap_safe<V: Clone + Eq + Debug>(mut input: Vec<(Range<u64>, V)>) -> RangeMap<u64, V> {
+    input.sort_by_key(|x| x.0);
+    let mut vec: Vec<(Range<u64>, V)> = Vec::with_capacity(input.len());
+    for (range, val) in input {
+        if let Some((last_range, last_val)) = vec.last_mut() {
+            if range.start <= last_range.end && val != *last_val {
+                continue;
+            }
 
-/// Parse a `SymbolFile` from `bytes`.
-pub fn parse_symbol_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
-    match symbol_file(bytes) {
-        Done(rest, symfile) => {
-            if rest == b"" {
-                Ok(symfile)
-            } else {
-                // Junk left over, or maybe didn't parse anything.
-                let next_line = rest
-                    .split(|b| *b == b'\r')
-                    .next()
-                    .map(String::from_utf8_lossy)
-                    .unwrap_or(Cow::Borrowed(""));
-                Err(format_err!(
-                    "Failed to parse file, next line was: `{}`",
-                    next_line
-                ))
+            if range.start <= last_range.end.saturating_add(1) && &val == last_val {
+                last_range.end = std::cmp::max(range.end, last_range.end);
+                continue;
             }
         }
-        Error(e) => Err(format_err!("Failed to parse file: {}", e)),
-        Incomplete(_) => Err(format_err!("Failed to parse file: incomplete data")),
+        vec.push((range, val));
     }
-    .map_err(SymbolError::ParseError)
+    RangeMap::from_sorted_vec(vec)
 }
 
-/// Parse a `SymbolFile` from `path`.
-pub fn parse_symbol_file(path: &Path) -> Result<SymbolFile, SymbolError> {
-    let mut f = File::open(path)
-        .map_err(|e| SymbolError::LoadError(format_err!("Failed to open file: {}", e)))?;
-    let mut bytes = vec![];
-    f.read_to_end(&mut bytes)
-        .map_err(|e| SymbolError::LoadError(format_err!("Failed to read file: {}", e)))?;
-    parse_symbol_bytes(&bytes)
+#[cfg(test)]
+fn parse_symbol_bytes(data: &[u8]) -> Result<SymbolFile, SymbolError> {
+    SymbolFile::parse(data, |_| ())
 }
 
 #[test]
@@ -521,14 +648,17 @@ fn test_info_url() {
 fn test_file_line() {
     let line = b"FILE 1 foo.c\n";
     let rest = &b""[..];
-    assert_eq!(file_line(line), Done(rest, (1, "foo.c")));
+    assert_eq!(file_line(line), Done(rest, (1, String::from("foo.c"))));
 }
 
 #[test]
 fn test_file_line_spaces() {
     let line = b"FILE  1234  foo bar.xyz\n";
     let rest = &b""[..];
-    assert_eq!(file_line(line), Done(rest, (1234, "foo bar.xyz")));
+    assert_eq!(
+        file_line(line),
+        Done(rest, (1234, String::from("foo bar.xyz")))
+    );
 }
 
 #[test]
@@ -571,7 +701,7 @@ fn test_func_lines_no_lines() {
     let line = b"FUNC c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&, void**) const\n";
     let rest = &b""[..];
     assert_eq!(
-        func_lines(line),
+        func_line(line),
         Done(
             rest,
             Function {
@@ -593,56 +723,53 @@ fn test_func_lines_and_lines() {
 1010 10 52 8
 1020 10 62 15
 ";
-    if let Done(rest, f) = func_lines(data) {
-        assert_eq!(rest, &b""[..]);
-        assert_eq!(f.address, 0x1000);
-        assert_eq!(f.size, 0x30);
-        assert_eq!(f.parameter_size, 0x10);
-        assert_eq!(f.name, "some func".to_string());
-        assert_eq!(
-            f.lines.get(0x1000).unwrap(),
-            &SourceLine {
-                address: 0x1000,
-                size: 0x10,
-                file: 7,
-                line: 42,
-            }
-        );
-        assert_eq!(
-            f.lines.ranges_values().collect::<Vec<_>>(),
-            vec![
-                &(
-                    Range::<u64>::new(0x1000, 0x100F),
-                    SourceLine {
-                        address: 0x1000,
-                        size: 0x10,
-                        file: 7,
-                        line: 42,
-                    },
-                ),
-                &(
-                    Range::<u64>::new(0x1010, 0x101F),
-                    SourceLine {
-                        address: 0x1010,
-                        size: 0x10,
-                        file: 8,
-                        line: 52,
-                    },
-                ),
-                &(
-                    Range::<u64>::new(0x1020, 0x102F),
-                    SourceLine {
-                        address: 0x1020,
-                        size: 0x10,
-                        file: 15,
-                        line: 62,
-                    },
-                ),
-            ]
-        );
-    } else {
-        panic!("Failed to parse!");
-    }
+    let file = SymbolFile::from_bytes(data).expect("failed to parse!");
+    let (_, f) = file.functions.ranges_values().next().unwrap();
+    assert_eq!(f.address, 0x1000);
+    assert_eq!(f.size, 0x30);
+    assert_eq!(f.parameter_size, 0x10);
+    assert_eq!(f.name, "some func".to_string());
+    assert_eq!(
+        f.lines.get(0x1000).unwrap(),
+        &SourceLine {
+            address: 0x1000,
+            size: 0x10,
+            file: 7,
+            line: 42,
+        }
+    );
+    assert_eq!(
+        f.lines.ranges_values().collect::<Vec<_>>(),
+        vec![
+            &(
+                Range::<u64>::new(0x1000, 0x100F),
+                SourceLine {
+                    address: 0x1000,
+                    size: 0x10,
+                    file: 7,
+                    line: 42,
+                },
+            ),
+            &(
+                Range::<u64>::new(0x1010, 0x101F),
+                SourceLine {
+                    address: 0x1010,
+                    size: 0x10,
+                    file: 8,
+                    line: 52,
+                },
+            ),
+            &(
+                Range::<u64>::new(0x1020, 0x102F),
+                SourceLine {
+                    address: 0x1020,
+                    size: 0x10,
+                    file: 15,
+                    line: 62,
+                },
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -652,11 +779,8 @@ fn test_func_with_m() {
 1010 10 52 8
 1020 10 62 15
 ";
-    if let Done(rest, _) = func_lines(data) {
-        assert_eq!(rest, &b""[..]);
-    } else {
-        panic!("Failed to parse!");
-    }
+    let file = SymbolFile::from_bytes(data).expect("failed to parse!");
+    let (_, _f) = file.functions.ranges_values().next().unwrap();
 }
 
 #[test]
@@ -736,13 +860,14 @@ fn test_stack_cfi_init() {
         stack_cfi_init(line),
         Done(
             rest,
-            (
-                CfiRules {
+            StackInfoCfi {
+                init: CfiRules {
                     address: 0xbadf00d,
                     rules: "init rules".to_string(),
                 },
-                0xabc
-            )
+                size: 0xabc,
+                add_rules: vec![],
+            }
         )
     );
 }
@@ -753,29 +878,27 @@ fn test_stack_cfi_lines() {
 STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
 ";
-    let rest = &b""[..];
+    let file = SymbolFile::from_bytes(data).expect("failed to parse!");
+    let (_, cfi) = file.cfi_stack_info.ranges_values().next().unwrap();
     assert_eq!(
-        stack_cfi_lines(data),
-        Done(
-            rest,
-            StackInfoCfi {
-                init: CfiRules {
-                    address: 0xbadf00d,
-                    rules: "init rules".to_string(),
+        cfi,
+        &StackInfoCfi {
+            init: CfiRules {
+                address: 0xbadf00d,
+                rules: "init rules".to_string(),
+            },
+            size: 0xabc,
+            add_rules: vec![
+                CfiRules {
+                    address: 0xdeadbeef,
+                    rules: "more rules".to_string(),
                 },
-                size: 0xabc,
-                add_rules: vec![
-                    CfiRules {
-                        address: 0xdeadbeef,
-                        rules: "more rules".to_string(),
-                    },
-                    CfiRules {
-                        address: 0xdeadf00d,
-                        rules: "some rules".to_string(),
-                    },
-                ],
-            }
-        )
+                CfiRules {
+                    address: 0xdeadf00d,
+                    rules: "some rules".to_string(),
+                },
+            ],
+        }
     );
 }
 

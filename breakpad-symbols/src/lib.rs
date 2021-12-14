@@ -29,11 +29,11 @@
 //!               "vswprintf");
 //! ```
 
-use bytes::Bytes;
 use failure::Error;
 use log::{debug, trace, warn};
 use reqwest::blocking::Client;
 use reqwest::Url;
+use tempfile::NamedTempFile;
 
 use std::borrow::Cow;
 use std::boxed::Box;
@@ -374,8 +374,7 @@ impl HttpSymbolSupplier {
     }
 }
 
-/// Save the data in `contents` to `path`.
-fn save_contents(contents: &[u8], url: &Url, final_path: &Path, tmp_path: &Path) -> io::Result<()> {
+fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTempFile> {
     // Use tempfile to save things to our cache to ensure proper
     // atomicity of writes. We may want multiple instances of rust-minidump
     // to be sharing a cache, and we don't want one instance to see another
@@ -394,9 +393,10 @@ fn save_contents(contents: &[u8], url: &Url, final_path: &Path, tmp_path: &Path)
     })?;
     fs::create_dir_all(&base)?;
 
-    let mut temp = tempfile::NamedTempFile::new_in(tmp_path)?;
-    temp.write_all(contents)?;
+    NamedTempFile::new_in(tmp_path)
+}
 
+fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> io::Result<()> {
     // Append any extra metadata we also want to be cached as "INFO" lines,
     // because this is an established format that parsers will ignore the
     // contents of by default.
@@ -409,6 +409,7 @@ fn save_contents(contents: &[u8], url: &Url, final_path: &Path, tmp_path: &Path)
     // If another process already wrote this entry, prefer their value to
     // avoid needless file system churn.
     temp.persist_noclobber(final_path)?;
+
     Ok(())
 }
 
@@ -420,18 +421,55 @@ fn fetch_symbol_file(
     rel_path: &str,
     cache: &Path,
     tmp: &Path,
-) -> Result<(Url, Bytes), Error> {
-    let url = base_url.join(rel_path)?;
-    debug!("Trying {}", url);
-    let res = client.get(url.clone()).send()?.error_for_status()?;
-    let buf = res.bytes()?;
-    let local = cache.join(rel_path);
+) -> Result<SymbolFile, SymbolError> {
+    // This function is a bit of a complicated mess because we want to write
+    // the input to our symbol cache, but we're a streaming parser. So we
+    // use the bare SymbolFile::parse to get access to the contents of
+    // the input stream as it's downloaded+parsed to write it to disk.
+    //
+    // Note that caching is strictly "optional" because it's more important
+    // to parse the symbols. So if at any point the caching i/o fails, we just
+    // give up on caching but let the parse+download continue.
 
-    match save_contents(&buf, &url, &local, tmp) {
-        Ok(_) => {}
-        Err(e) => warn!("Failed to save symbol file in local disk cache: {}", e),
+    // First try to GET the file from a server
+    let url = base_url.join(rel_path).map_err(|_| SymbolError::NotFound)?;
+    debug!("Trying {}", url);
+    let res = client
+        .get(url.clone())
+        .send()
+        .and_then(|res| res.error_for_status())
+        .map_err(|_| SymbolError::NotFound)?;
+
+    // Now try to create the temp cache file (not yet in the cache)
+    let final_cache_path = cache.join(rel_path);
+    let mut temp = create_cache_file(tmp, &final_cache_path)
+        .map_err(|e| {
+            warn!("Failed to save symbol file in local disk cache: {}", e);
+        })
+        .ok();
+
+    // Now stream parse the file as it downloads.
+    let mut symbol_file = SymbolFile::parse(res, |data| {
+        // While we're downloading+parsing, save this data to the the disk cache too
+        if let Some(file) = temp.as_mut() {
+            if let Err(e) = file.write_all(data) {
+                // Give up on caching this.
+                warn!("Failed to save symbol file in local disk cache: {}", e);
+                temp = None;
+            }
+        }
+    })?;
+    // Make note of what URL this symbol file was downloaded from.
+    symbol_file.url = Some(url.to_string());
+
+    // Try to finish the cache file and atomically swap it into the cache.
+    if let Some(temp) = temp {
+        let _ = commit_cache_file(temp, &final_cache_path, &url).map_err(|e| {
+            warn!("Failed to save symbol file in local disk cache: {}", e);
+        });
     }
-    Ok((url, buf))
+
+    Ok(symbol_file)
 }
 
 impl SymbolSupplier for HttpSymbolSupplier {
@@ -445,14 +483,10 @@ impl SymbolSupplier for HttpSymbolSupplier {
         // Now try urls
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for url in &self.urls {
-                if let Ok((full_url, buf)) =
+                if let Ok(file) =
                     fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp)
                 {
-                    // Parse the symbol file and set the "url" statistic
-                    return SymbolFile::from_bytes(&buf).map(|mut file| {
-                        file.url = Some(full_url.into());
-                        file
-                    });
+                    return Ok(file);
                 }
             }
         }

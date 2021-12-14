@@ -14,7 +14,7 @@ edition = "2018"
 travis-ci = { repository = "luser/rust-minidump" }
 
 [dependencies]
-bytes = "1.1.0"
+circular = "0.3.0"
 minidump-common = { version = "0.9.6", path = "../minidump-common" }
 range-map = "0.1.5"
 nom = "~1.2.2"
