@@ -3743,8 +3743,8 @@ impl<'a> MinidumpException<'a> {
     }
 
     /// Get the crash address for an exception.
-    pub fn get_crash_address(&self, os: Os) -> u64 {
-        match (
+    pub fn get_crash_address(&self, os: Os, cpu: Cpu) -> u64 {
+        let addr = match (
             os,
             md::ExceptionCodeWindows::from_u32(self.raw.exception_record.exception_code),
         ) {
@@ -3755,6 +3755,13 @@ impl<'a> MinidumpException<'a> {
                 self.raw.exception_record.exception_information[1]
             }
             _ => self.raw.exception_record.exception_address,
+        };
+
+        // Sometimes on 32-bit these values can be incorrectly sign-extended,
+        // so mask and zero-extend them here.
+        match cpu.pointer_width() {
+            Some(4) => addr as u32 as u64,
+            _ => addr,
         }
     }
 
@@ -4539,13 +4546,14 @@ fn stream_vendor(stream_type: u32) -> &'static str {
 mod test {
     use super::*;
     use md::GUID;
+    use minidump_common::format::ProcessorArchitecture;
     use std::mem;
     use synth_minidump::{
-        self, AnnotationValue, CrashpadInfo, DumpString, Memory, MemoryInfo as SynthMemoryInfo,
-        MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
-        MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
-        SynthMinidump, SystemInfo, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
-        STOCK_VERSION_INFO,
+        self, AnnotationValue, CrashpadInfo, DumpString, Exception, Memory,
+        MemoryInfo as SynthMemoryInfo, MiscFieldsBuildString, MiscFieldsPowerInfo,
+        MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields, MiscStream,
+        Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, SystemInfo, Thread,
+        ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
     };
     use test_assembler::*;
 
@@ -5755,6 +5763,57 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(
             module.annotation_objects["invalid"],
             MinidumpAnnotation::Invalid
+        );
+    }
+
+    #[test]
+    fn test_exception_x86() {
+        // Defaults to x86
+        let system_info = SystemInfo::new(Endian::Little);
+
+        let mut exception = Exception::new(Endian::Little);
+
+        // Check that we clear the erroneous high bits for 32-bit
+        exception.exception_record.exception_address = 0xf0e1_d2c3_b4a5_9687;
+        // FIXME: test other fields too
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(system_info)
+            .add_exception(exception);
+
+        let dump = read_synth_dump(dump).unwrap();
+
+        let system_stream = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let exception_stream = dump.get_stream::<MinidumpException>().unwrap();
+        assert_eq!(
+            exception_stream.get_crash_address(system_stream.os, system_stream.cpu),
+            0xb4a5_9687
+        );
+    }
+
+    #[test]
+    fn test_exception_x64() {
+        // Defaults to x86
+        let system_info = SystemInfo::new(Endian::Little)
+            .set_processor_architecture(ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16);
+
+        let mut exception = Exception::new(Endian::Little);
+
+        // Check that we don't truncate this on 64-bit
+        exception.exception_record.exception_address = 0xf0e1_d2c3_b4a5_9687;
+        // FIXME: test other fields too
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(system_info)
+            .add_exception(exception);
+
+        let dump = read_synth_dump(dump).unwrap();
+
+        let system_stream = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let exception_stream = dump.get_stream::<MinidumpException>().unwrap();
+        assert_eq!(
+            exception_stream.get_crash_address(system_stream.os, system_stream.cpu),
+            0xf0e1_d2c3_b4a5_9687
         );
     }
 }
