@@ -9,16 +9,16 @@ If you want richer analysis of the minidump (such as stackwalking and symbolicat
 
 # Usage
 
-The primary API for this library is the [`Minidump`][] struct, which can be
-instantiated by calling the [`Minidump::read`][] or [`Minidump::read_path`][] methods.
+The primary API for this library is the `Minidump` struct, which can be
+instantiated by calling the `Minidump::read` or `Minidump::read_path` methods.
 
 Succesfully parsing a Minidump struct means the minidump has a minimally valid
 header and stream directory. Individual streams are only parsed when they're
 requested.
 
 Although you may enumerate the streams in a minidump with methods like
-[`Minidump::all_streams`][], this is only really useful for debugging. Instead
-you should statically request streams with [`Minidump::get_stream`][].
+`Minidump::all_streams`, this is only really useful for debugging. Instead
+you should statically request streams with `Minidump::get_stream`.
 
 Depending on what analysis you're trying to perform, you may:
 

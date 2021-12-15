@@ -62,7 +62,7 @@ named!(module_line<&[u8], ()>,
     || {}
 ));
 
-// Matches an INFO LINE record.
+// Matches an INFO URL record.
 named!(
     info_url<&[u8], Info>,
     chain!(
