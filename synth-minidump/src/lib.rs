@@ -29,6 +29,8 @@ pub struct SynthMinidump {
     stream_directory: Section,
     /// System info (cpu arch, os, etc.)
     system_info: Option<SystemInfo>,
+    /// High level crash info (error code, crash address, assertion, ...)
+    exception: Option<Exception>,
     /// List of modules in this minidump.
     module_list: Option<ListStream<Module>>,
     /// List of unloaded modules in this minidump.
@@ -170,6 +172,7 @@ impl SynthMinidump {
             stream_directory_rva,
             stream_directory: Section::with_endian(endian),
             system_info: None,
+            exception: None,
             module_list: Some(ListStream::new(
                 md::MINIDUMP_STREAM_TYPE::ModuleListStream,
                 endian,
@@ -287,8 +290,15 @@ impl SynthMinidump {
         self
     }
 
+    /// Set the SystemInfo stream.
     pub fn add_system_info(mut self, system_info: SystemInfo) -> Self {
         self.system_info = Some(system_info);
+        self
+    }
+
+    /// Set the Exception stream.
+    pub fn add_exception(mut self, exception: Exception) -> Self {
+        self.exception = Some(exception);
         self
     }
 
@@ -395,6 +405,9 @@ impl SynthMinidump {
             self = self.add_stream(crashpad_info);
         }
         if let Some(stream) = self.system_info.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.exception.take() {
             self = self.add_stream(stream);
         }
         if let Some(stream) = self.linux_maps.take() {
@@ -1650,6 +1663,7 @@ pub struct SystemInfo {
 }
 
 pub enum CpuInfo {
+    // Note, even if you're not on x86 this is a fine default.
     X86CpuInfo {
         vendor_id: [u32; 3],
         version_information: u32,
@@ -1729,6 +1743,76 @@ impl From<SystemInfo> for Section {
 impl Stream for SystemInfo {
     fn stream_type(&self) -> u32 {
         md::MINIDUMP_STREAM_TYPE::SystemInfoStream.into()
+    }
+}
+
+pub struct Exception {
+    section: Section,
+    pub thread_id: u32,
+    // __align: u32,
+    pub exception_record: ExceptionRecord,
+    // TODO: implement this LOCATION_DESCRIPTOR properly
+    pub thread_context: (u32, u32),
+}
+
+pub struct ExceptionRecord {
+    pub exception_code: u32,
+    pub exception_flags: u32,
+    pub exception_record: u64,
+    pub exception_address: u64,
+    pub number_parameters: u32,
+    // __align: u32,
+    pub exception_information: [u64; 15],
+}
+
+impl Exception {
+    pub fn new(endian: Endian) -> Self {
+        Self {
+            section: Section::with_endian(endian),
+            thread_id: 0,
+            exception_record: ExceptionRecord {
+                exception_code: 0,
+                exception_flags: 0,
+                exception_record: 0,
+                exception_address: 0,
+                number_parameters: 0,
+                exception_information: [0; 15],
+            },
+            thread_context: (0, 0),
+        }
+    }
+}
+
+impl_dumpsection!(Exception);
+
+impl From<Exception> for Section {
+    fn from(info: Exception) -> Self {
+        let mut section = info
+            .section
+            .D32(info.thread_id)
+            .D32(0) // __align
+            .D32(info.exception_record.exception_code)
+            .D32(info.exception_record.exception_flags)
+            .D64(info.exception_record.exception_record)
+            .D64(info.exception_record.exception_address)
+            .D32(info.exception_record.number_parameters)
+            .D32(0); // __align
+
+        for &chunk in &info.exception_record.exception_information {
+            section = section.D64(chunk);
+        }
+
+        section = section
+            .D32(info.thread_context.0)
+            .D32(info.thread_context.1);
+
+        section
+    }
+}
+
+impl Stream for Exception {
+    fn stream_type(&self) -> u32 {
+        md::MINIDUMP_STREAM_TYPE::ExceptionStream.into()
     }
 }
 
