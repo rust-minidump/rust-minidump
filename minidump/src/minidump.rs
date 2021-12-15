@@ -3732,6 +3732,16 @@ impl<'a> MinidumpStream<'a> for MinidumpException<'a> {
 }
 
 impl<'a> MinidumpException<'a> {
+    /// Get the cpu context of the crashing (or otherwise minidump-requesting) thread.
+    ///
+    /// CPU contexts are a platform-specific format, so SystemInfo is required
+    /// to reliably parse them. We used to use heuristics to avoid this requirement,
+    /// but this made us too brittle to otherwise-backwards-compatible additions
+    /// to the format.
+    ///
+    /// MiscInfo can contain additional details on the cpu context's format, but
+    /// is optional because those details can be safely ignored (at the cost of
+    /// being unable to parse some very obscure cpu state).
     pub fn context(
         &self,
         system_info: &MinidumpSystemInfo,
@@ -3742,7 +3752,16 @@ impl<'a> MinidumpException<'a> {
             .map(Cow::Owned)
     }
 
-    /// Get the crash address for an exception.
+    /// Get the address that "caused" the crash.
+    ///
+    /// The meaning of this value depends on the kind of crash this was.
+    ///
+    /// By default, it's the instruction pointer at the time of the crash.
+    /// However, if the crash was caused by an illegal memory access, the
+    /// the address would be the memory address.
+    ///
+    /// So for instance, if you crashed from dereferencing a null pointer,
+    /// the crash_address will be 0 (or close to it, due to offsets).
     pub fn get_crash_address(&self, os: Os, cpu: Cpu) -> u64 {
         let addr = match (
             os,
@@ -3766,10 +3785,22 @@ impl<'a> MinidumpException<'a> {
     }
 
     /// Get the crash reason for an exception.
+    ///
+    /// The returned value reflects our best attempt to recover a
+    /// "native" error for the crashing system based on the OS and
+    /// things like raw error codes.
+    ///
+    /// This is an imperfect process, because OSes may have overlapping
+    /// error types (e.g. WinError and NTSTATUS overlap, so we have to
+    /// pick one arbirarily).
+    ///
+    /// The raw error codes can be extracted from [MinidumpException::raw][].
     pub fn get_crash_reason(&self, os: Os, cpu: Cpu) -> CrashReason {
         CrashReason::from_exception(&self.raw, os, cpu)
     }
 
+    /// The id of the thread that caused the crash (or otherwise requested
+    /// the minidump, even if there wasn't actually a crash).
     pub fn get_crashing_thread_id(&self) -> u32 {
         self.thread_id
     }
