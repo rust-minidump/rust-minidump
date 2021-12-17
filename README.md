@@ -6,7 +6,7 @@ This project provides type definitions, parsing, and analysis for the [minidump]
 
 It's fairly heavily modeled after [Google Breakpad](https://chromium.googlesource.com/breakpad/breakpad/) for historical reasons, but there is no fundamental interoperability requirement between the two beyond the fact that they fundamentally handle the same inputs.
 
-This project has no "main" crate. It is a collection of crates that are developed together. What crate you should use depends on how "low-level" in the minidump format you want to get. By default you'll probably want to use `minidump-processor` (library) or `minidump-stackwalk` (application), which provide the richest analysis.
+This project has no "main" crate. It is a collection of crates that are developed together. What crate you should use depends on how "low-level" in the minidump format you want to get. By default you'll probably want to use [minidump-processor](https://crates.io/crates/minidump-processor) (library) or [minidump-stackwalk](https://crates.io/crates/minidump-stackwalk) (application), which provide the richest analysis.
 
 
 
@@ -225,7 +225,8 @@ See the [README](minidump-stackwalk/README.md) for details.
 
 ## [minidump-dump](minidump/src/bin/minidump_dump.rs)
 
-(currently private to this project)
+(currently private to this project, may be removed in favour of just making it
+another possible output type of minidump-stackwalk.)
 
 A CLI dumper of the minidump's raw contents.
 

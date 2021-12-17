@@ -2,13 +2,96 @@
 
 Commit: TBD
 
-No specific plans for this release yet.
+Performance and quality of implementation work.
+
+For minidump-stackwalk workloads that make use of large (200MB+) symbol files (e.g. Firefox), 
+peak memory usage has been reduced by about 50%, and runtime decreased by up to 10%!
+Memory usage wins are consistent whether loading from network or disk. Runtime numbers
+depend heavily on how much of a bottleneck symbol file I/O is.
+
+And as always, more docs and tests! :D
+
 
 
 Changes:
 
-None yet!
 
+# minidump
+
+## Unloaded Modules Changes (Technically Fixes, but also Breaking)
+
+* **BREAKING CHANGE**: `UnloadedModulesList::module_at_address` is now `modules_at_address`, and returns an Iterator
+    * This properly reflects that many modules can overlap with that address
+    * Order of iterator is currently unspecified.
+* **BREAKING CHANGE**: `UnloadedModules::by_addr` now does not deduplicate or discard overlaps (as is correct)
+    * This still needs some reworking, so precise order of duplicates is unspecfied.
+
+## Crash Address Fix
+
+get_crash_address will now mask out the high bits of the return value on 32-bit platforms.
+We were seeing some minidumps where the pointer (which is always stored in a 64-bit location)
+was incorrectly sign-extended. Now you will always get a value that only ever has the low 32 bits set.
+
+
+
+
+
+# minidump-stackwalk/minidump-processor
+
+## Unloaded Modules
+
+* `process_state::StackFrame` now includes an `unloaded_modules` field that contains all
+  the overlapping unloaded modules and their offsets.
+* human output has better function signatures that only map to unloaded modules: 
+    * typical: `0x1f0800 (unloaded xul.dll@0x12)`
+    * most general: `0x1f0800 (unloaded hacker.dll@0xa080|0x10) | (unloaded xul.dll@0x12)
+* json output will now pretend the first overlapping unloaded module is loaded for the
+  purposes of module name and module offset
+  * This will probably be deprecated in favour of a more principled approach later,
+    but it accurately reproduces current behaviour.
+  * It's possible this won't even ship in this version, but mozilla needed it to 
+    get things done for now.
+
+
+## Better Errors
+
+When minidump-stackwalk encounters a fatal error (basically only happens for empty
+or Effectively Empty minidumps), it will include an error type before the message.
+
+This can be useful for aggregating and correlating failures, and also gives
+you a starting point if you want to check the docs/code for that error type.
+
+A few error types may still include payloads (via debug formatting), this should
+probably be fixed...
+
+Examples:
+
+```text
+[ERROR] HeaderMismatch - Error reading dump: Header mismatch
+[ERROR] MissingThreadList - Error processing dump: The thread list stream was not found
+[ERROR] Panic - A panic occurred at minidump-stackwalk\src\main.rs:305: oh no a panic message!!
+```
+
+
+## Snapshot Tests
+
+minidump-stackwalk now has a suite of snapshot tests, so we can detect and document
+any change to output. If you have a specific configuration/input you want to be
+monitored, we may be able to include it in our codebase.
+
+See: https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs
+
+
+
+
+
+# breakpad-symbols
+
+The symbol file parser is now streaming, so we do not need to materialize the entire
+file in memory, and we can parse+save the file as we download it or read it from disk.
+This reduces peak minidump-stackwalk memory usage by about 50% for large symbol files.
+Performance is also improved, but by how much depends on how much I/O dominates your
+runtime. I/O time should be about the same, but CPU time should be reduced.
 
 
 
