@@ -835,39 +835,41 @@ Unknown streams encountered:
                 "last_error_value": thread.last_error_value.map(|error| error.to_string()),
                 // optional
                 "thread_name": thread.thread_name,
-                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| {
-                    // temporary hack: grab the first matching unloaded module
-                    // and pretend it's a real module.
-                    let module_info = frame.module.as_ref().map(|module| {
-                        (basename(&module.name), frame.instruction - module.raw.base_of_image)
-                    }).or_else(|| frame.unloaded_modules.iter().next().and_then(|(name, offsets)| offsets.iter().next().map(|offset| {
-                        (&**name, *offset)
-                    })));
-                    json!({
-                        "frame": idx,
-                        // optional
-                        "module": module_info.map(|(name, _)| name),
-                        // optional
-                        "function": frame.function_name,
-                        // optional
-                        "file": frame.source_file_name,
-                        // optional
-                        "line": frame.source_line,
-                        "offset": json_hex(frame.instruction),
-                        // optional
-                        "module_offset": module_info
-                            .map(|(_, offset)| offset)
-                            .map(json_hex),
-                        // optional
-                        "function_offset": frame
-                            .function_base
-                            .map(|func_base| frame.instruction - func_base)
-                            .map(json_hex),
-                        "missing_symbols": frame.function_name.is_none(),
-                        // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
-                        "trust": frame.trust.json_name(),
-                    })
-                }).collect::<Vec<_>>(),
+                "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
+                    "frame": idx,
+                    // optional
+                    "module": frame.module.as_ref().map(|module| basename(&module.name)),
+                    // optional
+                    "function": frame.function_name,
+                    // optional
+                    "file": frame.source_file_name,
+                    // optional
+                    "line": frame.source_line,
+                    "offset": json_hex(frame.instruction),
+                    // optional
+                    "module_offset": frame
+                        .module
+                        .as_ref()
+                        .map(|module| frame.instruction - module.raw.base_of_image)
+                        .map(json_hex),
+                    // optional
+                    "unloaded_modules": if frame.unloaded_modules.is_empty() {
+                        None
+                    } else {
+                        Some(frame.unloaded_modules.iter().map(|(module, offsets)| json!({
+                            "module": module,
+                            "offsets": offsets.iter().copied().map(json_hex).collect::<Vec<_>>(),
+                        })).collect::<Vec<_>>())
+                    },
+                    // optional
+                    "function_offset": frame
+                        .function_base
+                        .map(|func_base| frame.instruction - func_base)
+                        .map(json_hex),
+                    "missing_symbols": frame.function_name.is_none(),
+                    // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
+                    "trust": frame.trust.json_name(),
+                })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
 
             "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({

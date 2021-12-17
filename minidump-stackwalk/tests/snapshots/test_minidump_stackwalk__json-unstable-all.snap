@@ -36,7 +36,8 @@ expression: stdout
           "esi": "0x00000002",
           "esp": "0x0012fe84"
         },
-        "trust": "context"
+        "trust": "context",
+        "unloaded_modules": null
       },
       {
         "file": null,
@@ -48,7 +49,8 @@ expression: stdout
         "module": "test_app.exe",
         "module_offset": "0x000041ff",
         "offset": "0x004041ff",
-        "trust": "frame_pointer"
+        "trust": "frame_pointer",
+        "unloaded_modules": null
       },
       {
         "file": null,
@@ -60,7 +62,8 @@ expression: stdout
         "module": "test_app.exe",
         "module_offset": "0x000053eb",
         "offset": "0x004053eb",
-        "trust": "frame_pointer"
+        "trust": "frame_pointer",
+        "unloaded_modules": null
       },
       {
         "file": null,
@@ -72,7 +75,8 @@ expression: stdout
         "module": "kernel32.dll",
         "module_offset": "0x00016fd6",
         "offset": "0x7c816fd6",
-        "trust": "frame_pointer"
+        "trust": "frame_pointer",
+        "unloaded_modules": null
       }
     ],
     "last_error_value": null,
@@ -292,7 +296,8 @@ expression: stdout
           "module": "test_app.exe",
           "module_offset": "0x0000429e",
           "offset": "0x0040429e",
-          "trust": "context"
+          "trust": "context",
+          "unloaded_modules": null
         },
         {
           "file": null,
@@ -304,7 +309,8 @@ expression: stdout
           "module": "test_app.exe",
           "module_offset": "0x000041ff",
           "offset": "0x004041ff",
-          "trust": "frame_pointer"
+          "trust": "frame_pointer",
+          "unloaded_modules": null
         },
         {
           "file": null,
@@ -316,7 +322,8 @@ expression: stdout
           "module": "test_app.exe",
           "module_offset": "0x000053eb",
           "offset": "0x004053eb",
-          "trust": "frame_pointer"
+          "trust": "frame_pointer",
+          "unloaded_modules": null
         },
         {
           "file": null,
@@ -328,7 +335,8 @@ expression: stdout
           "module": "kernel32.dll",
           "module_offset": "0x00016fd6",
           "offset": "0x7c816fd6",
-          "trust": "frame_pointer"
+          "trust": "frame_pointer",
+          "unloaded_modules": null
         }
       ],
       "last_error_value": null,
