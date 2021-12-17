@@ -247,6 +247,33 @@ anyway.
           // (redundant)
           "module_offset": <hexstring>,
 
+          // All of the unloaded modules that overlapped with this frame's `offset`.
+          //
+          // Currently only populated if `module` is null, but this may change
+          // if there is significant demand for this value to always be present.
+          //
+          // This is sorted by module name to keep the order stable.
+          "unloaded_modules": [
+            {
+              // The name of the unloaded module (see "module" above).
+              "module": <string>,
+
+              // Equivalent to "module_offset" above, but has multiple values because
+              // a module that has been unloaded (and reloaded) multiple times
+              // may have many overlapping locations.
+              //
+              // Modules *often* get reloaded in the same location,
+              // so this will usually only contain one value.
+              //
+              // This will never be empty, will never contain duplicates,
+              // and is sorted to keep the order stable.
+              //
+              // If there is desire for a more raw log of the offsets
+              // (reflecting the raw values of the top level "unloaded_modules"),
+              // then we will introduce a "raw_offsets" field.
+              "offsets": [<hexstring>],
+            }
+          ]
 
           // The following fields all require symbol files to populate:
 
@@ -317,6 +344,12 @@ anyway.
         "offset": <hexstring>
         "module": <string>,
         "module_offset": <hexstring>,
+        "unloaded_modules": [
+          {
+            "module": <string>,
+            "offsets": [<hexstring>],
+          }
+        ]
         "function": <string>,
         "function_offset": <hexstring>,
         "file": <string>,
@@ -517,6 +550,8 @@ anyway.
 
 
 
+
+
 ## 0.9.6
 
 **BREAKING CHANGE** (really? right after claiming it's stable?)
@@ -541,3 +576,29 @@ The evil_json feature has always been an "ideally temporary" hack for Mozilla's 
 The codebase also interchangeably referred to the evil_json feature as both evil_json and raw_json. It is now always evil_json to properly express that this is an evil feature that you should not use unless you are mozilla (and if you are mozilla, you should also stop using it).
 
 This changes the `--raw-json` flag of minidump-stackwalk to `--evil-json`
+
+### Unloaded Modules
+
+Stack frames (`threads.N.frames.N` and `crashing_thread.frames.N`) now have
+an "unloaded_modules" field, which provides all the unloaded modules that intersect
+with that address, and the offsets (equivalent to "module_offset").
+
+Offsets are an array because a module may be unloaded (and reloaded) many times,
+which can result in an unloaded module having several known locations. Absent
+a mechanism to pick the "right" one, we just list them all.
+
+That said, modules *often* reload in the same location, so usually "unloaded_modules"
+will just contain one module with one offset (we deduplicate the offsets).
+
+Currently "unloaded_modules" is only populated if "module" is `null` (indicating
+the frame's address didn't match any known loaded module). This is because
+the "module" signal is to be preferred (and unconditionally computing these
+values would be expensive and noisy). **In the future we may change this, if
+we find there is a significant desire for unloaded_module info even when a
+known loaded module is available.**
+
+Also note that the information we have on unloaded modules
+is fairly limited, so we can't validate them against certificates or use
+them for symbolication. All we can tell you is that a module with the given
+name was at a particular location. Whether it was a fake DLL from a hacker,
+who could say?

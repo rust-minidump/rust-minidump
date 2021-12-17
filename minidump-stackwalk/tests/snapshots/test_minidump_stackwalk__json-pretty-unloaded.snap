@@ -38,10 +38,26 @@ expression: stdout
           "function_offset": null,
           "line": null,
           "missing_symbols": true,
-          "module": "many.dll",
-          "module_offset": "0x00000460",
+          "module": null,
+          "module_offset": null,
           "offset": "0x00f00800",
-          "trust": "context"
+          "trust": "context",
+          "unloaded_modules": [
+            {
+              "module": "many.dll",
+              "offsets": [
+                "0x00000460",
+                "0x00000700",
+                "0x00000800"
+              ]
+            },
+            {
+              "module": "solo.dll",
+              "offsets": [
+                "0x000005e0"
+              ]
+            }
+          ]
         }
       ],
       "last_error_value": null,
