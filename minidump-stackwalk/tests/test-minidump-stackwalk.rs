@@ -741,12 +741,19 @@ fn unloaded_minidump() -> PathBuf {
 }
 
 #[test]
-fn test_unloaded_json() {
+fn test_unloaded() {
+    // Test that unloaded modules show up in stack frames.
+    //
+    // Unfortunately since this is testing two unique outputs
+    // via --cyborg, you will need to "fix" this test twice
+    // if you ever change both outputs. ;-;
     let synth_path = unloaded_minidump();
+    let cyborg_out_path = test_output("mdsw-test-unloaded-out.json");
 
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)
-        .arg("--json")
+        .arg("--cyborg")
+        .arg(&cyborg_out_path)
         .arg("--pretty")
         .arg(synth_path)
         .stdout(Stdio::piped())
@@ -757,31 +764,15 @@ fn test_unloaded_json() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    assert!(output.status.success());
-    insta::assert_snapshot!("json-pretty-unloaded", stdout);
-    assert_eq!(stderr, "");
-}
-
-// Temporarily disabled because it races with the _json version
-// on creating the minidump via `unloaded_minidump`.
-#[test]
-#[ignore]
-fn test_unloaded_human() {
-    let synth_path = unloaded_minidump();
-
-    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
-    let output = Command::new(bin)
-        .arg("--human")
-        .arg(synth_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
+    let json_file = File::open(cyborg_out_path).unwrap();
+    let mut json_bytes = vec![];
+    BufReader::new(json_file)
+        .read_to_end(&mut json_bytes)
         .unwrap();
-
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    let json_out = String::from_utf8(json_bytes).unwrap();
 
     assert!(output.status.success());
     insta::assert_snapshot!("human-unloaded", stdout);
+    insta::assert_snapshot!("json-pretty-unloaded", json_out);
     assert_eq!(stderr, "");
 }
