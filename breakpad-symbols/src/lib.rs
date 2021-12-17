@@ -4,6 +4,8 @@
 //! A library for working with [Google Breakpad][breakpad]'s
 //! text-format [symbol files][symbolfiles].
 //!
+//! See the [walker][] module for documentation on CFI evaluation.
+//!
 //! The highest-level API provided by this crate is to use the
 //! [`Symbolizer`][symbolizer] struct.
 //!
@@ -46,6 +48,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub use minidump_common::traits::Module;
+pub use sym_file::walker;
 
 pub use crate::sym_file::{CfiRules, SymbolFile};
 

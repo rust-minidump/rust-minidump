@@ -12,7 +12,7 @@ use failure::format_err;
 
 mod parser;
 mod types;
-mod walker;
+pub mod walker;
 
 impl SymbolFile {
     /// Parse a SymbolFile from the given Reader.
