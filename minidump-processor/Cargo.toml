@@ -22,7 +22,7 @@ symbolic-syms = []
 [dependencies]
 breakpad-symbols = { version = "0.9.6", path = "../breakpad-symbols", optional = true }
 chrono = { version = "0.4.6", features = ["serde"] }
-clap = "2.34"
+clap = "3.0"
 failure = "0.1.1"
 log = "0.4"
 memmap = "0.7.0"
