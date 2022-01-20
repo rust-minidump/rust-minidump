@@ -440,6 +440,7 @@ pub enum CrashReason {
     MacBreakpointPpc(md::ExceptionCodeMacBreakpointPpcType),
     MacBreakpointX86(md::ExceptionCodeMacBreakpointX86Type),
     MacResource(md::ExceptionCodeMacResourceType, u64, u64),
+    MacGuard(md::ExceptionCodeMacGuardType, u64, u64),
 
     /// A Linux/Android error code with no other interesting metadata.
     LinuxGeneral(md::ExceptionCodeLinux, u32),
@@ -3497,6 +3498,13 @@ impl CrashReason {
                     reason = CrashReason::MacResource(ty, info[1], info[2]);
                 }
             }
+            ExceptionCodeMac::EXC_GUARD => {
+                if let Some(ty) =
+                    md::ExceptionCodeMacGuardType::from_u32((exception_flags >> 29) & 0x7)
+                {
+                    reason = CrashReason::MacGuard(ty, info[1], info[2]);
+                }
+            }
             _ => {
                 // Do nothing
             }
@@ -3661,6 +3669,76 @@ impl fmt::Display for CrashReason {
             }
         }
 
+        fn write_exc_guard(
+            f: &mut fmt::Formatter<'_>,
+            ex: md::ExceptionCodeMacGuardType,
+            code: u64,
+            subcode: u64,
+        ) -> fmt::Result {
+            let flavor = (code >> 32) & 0x1fffffff;
+            write!(f, "EXC_GUARD / {:?}", ex)?;
+            match ex {
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_NONE => {
+                    write!(f, "")
+                }
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_MACH_PORT => {
+                    if let Some(mach_port_flavor) =
+                        md::ExceptionCodeMacGuardMachPortFlavor::from_u64(flavor)
+                    {
+                        let port_name = code & 0xfffffff;
+                        write!(
+                            f,
+                            " / {:?} port name: {} guard identifier: {}",
+                            mach_port_flavor, port_name, subcode,
+                        )
+                    } else {
+                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_FD => {
+                    if let Some(fd_flavor) = md::ExceptionCodeMacGuardFDFlavor::from_u64(flavor) {
+                        let fd = code & 0xfffffff;
+                        write!(
+                            f,
+                            " / {:?} file descriptor: {} guard identifier: {}",
+                            fd_flavor, fd, subcode,
+                        )
+                    } else {
+                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
+                    let namespace = code & 0xffffffff;
+                    write!(
+                        f,
+                        "/ namespace: {} guard identifier: {}",
+                        namespace, subcode,
+                    )
+                }
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_VN => {
+                    if let Some(vn_flavor) = md::ExceptionCodeMacGuardVNFlavor::from_u64(flavor) {
+                        let pid = code & 0xfffffff;
+                        write!(
+                            f,
+                            " / {:?} pid: {} guard identifier: {}",
+                            vn_flavor, pid, subcode,
+                        )
+                    } else {
+                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+                md::ExceptionCodeMacGuardType::GUARD_TYPE_VIRT_MEMORY => {
+                    if let Some(virt_memory_flavor) =
+                        md::ExceptionCodeMacGuardVirtMemoryFlavor::from_u64(flavor)
+                    {
+                        write!(f, " / {:?} offset: {}", virt_memory_flavor, subcode)
+                    } else {
+                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                    }
+                }
+            }
+        }
+
         // OK this is kinda a gross hack but I *really* don't want
         // to write out all these strings again, so let's just lean on Debug
         // repeating the name of the enum variant!
@@ -3686,6 +3764,7 @@ impl fmt::Display for CrashReason {
             MacBreakpointPpc(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
             MacBreakpointX86(ex) => write!(f, "EXC_BREAKPOINT / {:?}", ex),
             MacResource(ex, code, subcode) => write_exc_resource(f, ex, code, subcode),
+            MacGuard(ex, code, subcode) => write_exc_guard(f, ex, code, subcode),
 
             // ===================== Linux/Android =========================
 
