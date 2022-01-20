@@ -6604,6 +6604,7 @@ pub enum ExceptionCodeMacBadAccessKernType {
     // These are relevant kern_return_t values from mach/kern_return.h
     KERN_INVALID_ADDRESS = 1,
     KERN_PROTECTION_FAILURE = 2,
+    KERN_FAILURE = 5,
     KERN_NO_ACCESS = 8,
     KERN_MEMORY_FAILURE = 9,
     KERN_MEMORY_ERROR = 10,
