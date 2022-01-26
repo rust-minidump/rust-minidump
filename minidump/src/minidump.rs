@@ -3946,8 +3946,21 @@ fn read_string_list(
     let count: u32 = data
         .gread_with(&mut offset, endian)
         .or(Err(Error::StreamReadFailure))?;
+    let count = count as usize;
+    // NOTE: this only counts the RVA size, not the raw variable-size string data,
+    // but that should be good enough for the bounds check
+    let counted_size = match count.checked_mul(<md::RVA>::size_with(&endian)) {
+        Some(s) => s,
+        None => return Err(Error::StreamReadFailure),
+    };
+    if all.len() < counted_size {
+        return Err(Error::StreamSizeMismatch {
+            expected: counted_size,
+            actual: all.len(),
+        });
+    }
 
-    let mut strings = Vec::with_capacity(count as usize);
+    let mut strings = Vec::with_capacity(count);
     for _ in 0..count {
         let rva: md::RVA = data
             .gread_with(&mut offset, endian)
@@ -4085,7 +4098,20 @@ fn read_crashpad_module_links(
         .gread_with(&mut offset, endian)
         .or(Err(Error::StreamReadFailure))?;
 
-    let mut module_links = Vec::with_capacity(count as usize);
+    let count = count as usize;
+    let counted_size =
+        match count.checked_mul(<md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK>::size_with(&endian)) {
+            Some(s) => s,
+            None => return Err(Error::StreamReadFailure),
+        };
+    if all.len() < counted_size {
+        return Err(Error::StreamSizeMismatch {
+            expected: counted_size,
+            actual: all.len(),
+        });
+    }
+
+    let mut module_links = Vec::with_capacity(count);
     for _ in 0..count {
         let link: md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK = data
             .gread_with(&mut offset, endian)
@@ -4263,8 +4289,25 @@ where
         if (header.version & 0x0000ffff) != md::MINIDUMP_VERSION {
             return Err(Error::VersionMismatch);
         }
-        let mut streams = HashMap::with_capacity(header.stream_count as usize);
+
+        let count = header.stream_count as usize;
         offset = header.stream_directory_rva as usize;
+
+        let counted_size = match count
+            .checked_mul(<md::MINIDUMP_DIRECTORY>::size_with(&endian))
+            .and_then(|v| v.checked_add(offset))
+        {
+            Some(s) => s,
+            None => return Err(Error::StreamReadFailure),
+        };
+        if data.len() < counted_size {
+            return Err(Error::StreamSizeMismatch {
+                expected: counted_size,
+                actual: data.len(),
+            });
+        }
+
+        let mut streams = HashMap::with_capacity(count);
         for i in 0..header.stream_count {
             let dir: md::MINIDUMP_DIRECTORY = data
                 .gread_with(&mut offset, endian)
@@ -5846,5 +5889,16 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             exception_stream.get_crash_address(system_stream.os, system_stream.cpu),
             0xf0e1_d2c3_b4a5_9687
         );
+    }
+
+    #[test]
+    fn test_fuzzed_oom() {
+        // https://github.com/luser/rust-minidump/issues/381
+        let data = b"MDMP\x93\xa7\x00\x00\x00\xffffdYfffff@\n\nfp\n\xbb\xff\xff\xff\n\xff\n";
+        assert!(Minidump::read(data.as_ref()).is_err());
+
+        // https://github.com/getsentry/symbolic/issues/478
+        let data = b"MDMP\x93\xa7\x00\x00\r\x00\x00\x00 \xff\xff\xff\xff\xff\xff\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+        assert!(Minidump::read(data.as_ref()).is_err());
     }
 }

@@ -8044,7 +8044,7 @@ impl MINIDUMP_MODULE_CRASHPAD_INFO {
 /// module carried within a minidump file.
 ///
 /// See <https://crashpad.chromium.org/doxygen/structcrashpad_1_1MinidumpModuleCrashpadInfoLink.html>
-#[derive(Clone, Debug, Pread)]
+#[derive(Clone, Debug, Pread, SizeWith)]
 pub struct MINIDUMP_MODULE_CRASHPAD_INFO_LINK {
     /// A link to a MINIDUMP_MODULE structure in the module list stream.
     ///
