@@ -682,6 +682,29 @@ fn read_codeview(
     })
 }
 
+/// Checks that the buffer is large enough for the given number of items.
+///
+/// Essentially ensures that `buf.len() >= offset + (number_of_entries * size_of_entry)`.
+/// Returns `(number_of_entries, expected_size)` on success.
+fn ensure_count_in_bound(
+    buf: &[u8],
+    number_of_entries: usize,
+    size_of_entry: usize,
+    offset: usize,
+) -> Result<(usize, usize), Error> {
+    let expected_size = number_of_entries
+        .checked_mul(size_of_entry)
+        .and_then(|v| v.checked_add(offset))
+        .ok_or(Error::StreamReadFailure)?;
+    if buf.len() < expected_size {
+        return Err(Error::StreamSizeMismatch {
+            expected: expected_size,
+            actual: buf.len(),
+        });
+    }
+    Ok((number_of_entries, expected_size))
+}
+
 impl MinidumpModule {
     /// Create a `MinidumpModule` with some basic info.
     ///
@@ -1091,20 +1114,14 @@ where
     let u: u32 = bytes
         .gread_with(offset, endian)
         .or(Err(Error::StreamReadFailure))?;
-    let count = u as usize;
-    let counted_size = match count
-        .checked_mul(<T>::size_with(&endian))
-        .and_then(|v| v.checked_add(mem::size_of::<u32>()))
-    {
-        Some(s) => s,
-        None => return Err(Error::StreamReadFailure),
-    };
-    if bytes.len() < counted_size {
-        return Err(Error::StreamSizeMismatch {
-            expected: counted_size,
-            actual: bytes.len(),
-        });
-    }
+
+    let (count, counted_size) = ensure_count_in_bound(
+        bytes,
+        u as usize,
+        <T>::size_with(&endian),
+        mem::size_of::<u32>(),
+    )?;
+
     match bytes.len() - counted_size {
         0 => {}
         4 => {
@@ -1171,19 +1188,13 @@ where
         return Err(Error::StreamReadFailure);
     }
 
-    let stream_size = match number_of_entries
-        .checked_mul(size_of_entry)
-        .and_then(|v| v.checked_add(size_of_header))
-    {
-        Some(s) => s as usize,
-        None => return Err(Error::StreamReadFailure),
-    };
-    if bytes.len() < stream_size {
-        return Err(Error::StreamSizeMismatch {
-            expected: stream_size,
-            actual: bytes.len(),
-        });
-    }
+    let (number_of_entries, _) = ensure_count_in_bound(
+        bytes,
+        number_of_entries as usize,
+        size_of_entry as usize,
+        size_of_header as usize,
+    )?;
+
     let header_padding = match (size_of_header as usize).checked_sub(*offset) {
         Some(s) => s,
         None => return Err(Error::StreamReadFailure),
@@ -3946,19 +3957,8 @@ fn read_string_list(
     let count: u32 = data
         .gread_with(&mut offset, endian)
         .or(Err(Error::StreamReadFailure))?;
-    let count = count as usize;
-    // NOTE: this only counts the RVA size, not the raw variable-size string data,
-    // but that should be good enough for the bounds check
-    let counted_size = match count.checked_mul(<md::RVA>::size_with(&endian)) {
-        Some(s) => s,
-        None => return Err(Error::StreamReadFailure),
-    };
-    if all.len() < counted_size {
-        return Err(Error::StreamSizeMismatch {
-            expected: counted_size,
-            actual: all.len(),
-        });
-    }
+
+    let (count, _) = ensure_count_in_bound(all, count as usize, <md::RVA>::size_with(&endian), 0)?;
 
     let mut strings = Vec::with_capacity(count);
     for _ in 0..count {
@@ -4098,18 +4098,12 @@ fn read_crashpad_module_links(
         .gread_with(&mut offset, endian)
         .or(Err(Error::StreamReadFailure))?;
 
-    let count = count as usize;
-    let counted_size =
-        match count.checked_mul(<md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK>::size_with(&endian)) {
-            Some(s) => s,
-            None => return Err(Error::StreamReadFailure),
-        };
-    if all.len() < counted_size {
-        return Err(Error::StreamSizeMismatch {
-            expected: counted_size,
-            actual: all.len(),
-        });
-    }
+    let (count, _) = ensure_count_in_bound(
+        all,
+        count as usize,
+        <md::MINIDUMP_MODULE_CRASHPAD_INFO_LINK>::size_with(&endian),
+        0,
+    )?;
 
     let mut module_links = Vec::with_capacity(count);
     for _ in 0..count {
@@ -4290,22 +4284,14 @@ where
             return Err(Error::VersionMismatch);
         }
 
-        let count = header.stream_count as usize;
         offset = header.stream_directory_rva as usize;
 
-        let counted_size = match count
-            .checked_mul(<md::MINIDUMP_DIRECTORY>::size_with(&endian))
-            .and_then(|v| v.checked_add(offset))
-        {
-            Some(s) => s,
-            None => return Err(Error::StreamReadFailure),
-        };
-        if data.len() < counted_size {
-            return Err(Error::StreamSizeMismatch {
-                expected: counted_size,
-                actual: data.len(),
-            });
-        }
+        let (count, _) = ensure_count_in_bound(
+            &data,
+            header.stream_count as usize,
+            <md::MINIDUMP_DIRECTORY>::size_with(&endian),
+            offset,
+        )?;
 
         let mut streams = HashMap::with_capacity(count);
         for i in 0..header.stream_count {
