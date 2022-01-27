@@ -31,7 +31,6 @@
 //!               "vswprintf");
 //! ```
 
-use failure::Error;
 use log::{debug, trace, warn};
 use reqwest::blocking::Client;
 use reqwest::Url;
@@ -41,7 +40,6 @@ use std::borrow::Cow;
 use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -194,14 +192,16 @@ pub fn relative_symbol_path(module: &dyn Module, extension: &str) -> Option<Stri
 /// Since symbol files can be on the order of a gigabyte(!) and downloaded
 /// from the network, aggressive caching is pretty important. The current
 /// approach is a nice balance of simple and effective.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SymbolError {
     /// Symbol file could not be found.
     ///
     /// In this case other symbol providers may still be able to find it!
+    #[error("symbol file not found")]
     NotFound,
     /// Symbol file could not be loaded into memory.
-    LoadError(Error),
+    #[error("couldn't read input stream")]
+    LoadError(#[from] std::io::Error),
     /// Symbol file was too corrupt to be parsed at all.
     ///
     /// Because symbol files are pretty modular, many corruptions/ambiguities
@@ -209,7 +209,8 @@ pub enum SymbolError {
     /// (e.g. a bad STACK WIN line can be discarded without affecting anything
     /// else). But sometimes we can't make any sense of the symbol file, and
     /// you find yourself here.
-    ParseError(Error),
+    #[error("parse error: {0}")]
+    ParseError(String),
 }
 
 /// An error produced by fill_symbol.
@@ -237,16 +238,6 @@ impl PartialEq for SymbolError {
                 | (SymbolError::LoadError(_), SymbolError::LoadError(_))
                 | (SymbolError::ParseError(_), SymbolError::ParseError(_))
         )
-    }
-}
-
-impl fmt::Display for SymbolError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SymbolError::NotFound => write!(f, "Not found"),
-            SymbolError::LoadError(e) => write!(f, "Load error: {}", e),
-            SymbolError::ParseError(e) => write!(f, "Parse error: {}", e),
-        }
     }
 }
 

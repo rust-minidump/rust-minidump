@@ -3,7 +3,6 @@
 
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
-use failure::Fail;
 use log::warn;
 use memmap2::Mmap;
 use num_traits::FromPrimitive;
@@ -68,36 +67,33 @@ where
 }
 
 /// Errors encountered while reading a `Minidump`.
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 pub enum Error {
-    #[fail(display = "File not found")]
+    #[error("File not found")]
     FileNotFound,
-    #[fail(display = "I/O error")]
+    #[error("I/O error")]
     IoError,
-    #[fail(display = "Missing minidump header (empty minidump?)")]
+    #[error("Missing minidump header (empty minidump?)")]
     MissingHeader,
-    #[fail(display = "Header mismatch")]
+    #[error("Header mismatch")]
     HeaderMismatch,
-    #[fail(display = "Minidump version mismatch")]
+    #[error("Minidump version mismatch")]
     VersionMismatch,
-    #[fail(display = "Missing stream directory (heavily truncated minidump?)")]
+    #[error("Missing stream directory (heavily truncated minidump?)")]
     MissingDirectory,
-    #[fail(display = "Error reading stream")]
+    #[error("Error reading stream")]
     StreamReadFailure,
-    #[fail(
-        display = "Stream size mismatch: expected {} bytes, found {} bytes",
-        expected, actual
-    )]
+    #[error("Stream size mismatch: expected {expected} bytes, found {actual} bytes")]
     StreamSizeMismatch { expected: usize, actual: usize },
-    #[fail(display = "Stream not found")]
+    #[error("Stream not found")]
     StreamNotFound,
-    #[fail(display = "Module read failure")]
+    #[error("Module read failure")]
     ModuleReadFailure,
-    #[fail(display = "Memory read failure")]
+    #[error("Memory read failure")]
     MemoryReadFailure,
-    #[fail(display = "Data error")]
+    #[error("Data error")]
     DataError,
-    #[fail(display = "Error reading CodeView data")]
+    #[error("Error reading CodeView data")]
     CodeViewReadFailure,
 }
 
@@ -669,17 +665,17 @@ fn read_codeview(
     location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
     data: &[u8],
     endian: scroll::Endian,
-) -> Result<CodeView, failure::Error> {
-    let bytes = location_slice(data, location)?;
+) -> Result<CodeView, ()> {
+    let bytes = location_slice(data, location).or(Err(()))?;
     // The CodeView data can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
-    let signature: u32 = bytes.pread_with(0, endian)?;
+    let signature: u32 = bytes.pread_with(0, endian).or(Err(()))?;
     Ok(match CvSignature::from_u32(signature) {
         // PDB data has two known versions: the current 7.0 and the older 2.0 version.
-        Some(CvSignature::Pdb70) => CodeView::Pdb70(bytes.pread_with(0, endian)?),
-        Some(CvSignature::Pdb20) => CodeView::Pdb20(bytes.pread_with(0, endian)?),
+        Some(CvSignature::Pdb70) => CodeView::Pdb70(bytes.pread_with(0, endian).or(Err(()))?),
+        Some(CvSignature::Pdb20) => CodeView::Pdb20(bytes.pread_with(0, endian).or(Err(()))?),
         // Breakpad's ELF build ID format.
-        Some(CvSignature::Elf) => CodeView::Elf(bytes.pread_with(0, endian)?),
+        Some(CvSignature::Elf) => CodeView::Elf(bytes.pread_with(0, endian).or(Err(()))?),
         // Other formats aren't handled, but save the raw bytes.
         _ => CodeView::Unknown(bytes.to_owned()),
     })

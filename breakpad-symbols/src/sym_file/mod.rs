@@ -8,8 +8,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use failure::format_err;
-
 mod parser;
 mod types;
 pub mod walker;
@@ -62,9 +60,9 @@ impl SymbolFile {
         let mut fully_consumed = false;
         loop {
             // Read the data in, and tell the circular buffer about the new data
-            let size = input_reader.read(buf.space()).map_err(|e| {
-                SymbolError::LoadError(format_err!("couldn't read input stream {}", e))
-            })?;
+            let size = input_reader
+                .read(buf.space())
+                .map_err(SymbolError::LoadError)?;
             buf.fill(size);
 
             // If the reader returned nothing, then we're done. On the previous
@@ -74,10 +72,7 @@ impl SymbolFile {
                 if fully_consumed {
                     return Ok(parser.finish());
                 } else {
-                    return Err(SymbolError::ParseError(format_err!(
-                        "unexpected EOF during parsing of SymbolFile (or a line was too long?) at line {}", 
-                        parser.lines
-                    )));
+                    return Err(SymbolError::ParseError(format!("unexpected EOF during parsing of SymbolFile (or a line was too long?) at line {}", parser.lines)));
                 }
             }
 
@@ -101,8 +96,7 @@ impl SymbolFile {
 
     // Parse a SymbolFile from a file.
     pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
-        let file = File::open(path)
-            .map_err(|e| SymbolError::LoadError(format_err!("Couldn't open symbol file {}", e)))?;
+        let file = File::open(path).map_err(SymbolError::LoadError)?;
         Self::parse(file, |_| ())
     }
 
