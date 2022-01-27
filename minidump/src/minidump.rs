@@ -2857,6 +2857,8 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
         let mut prev_version = None;
         let mut infos = Vec::new();
 
+        // We use `take` here to better handle a corrupt record_count that is larger than the
+        // maximum supported size.
         let records = header.records.iter().take(header.record_count as usize);
 
         for record_location in records {
