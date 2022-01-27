@@ -2857,7 +2857,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
         let mut prev_version = None;
         let mut infos = Vec::new();
 
-        let records = header.records.get(..header.record_count as usize).ok_or(Error::DataError)?;
+        let records = header.records.iter().take(header.record_count as usize);
 
         for record_location in records {
             // Peek the V1 version to get the `version` field
