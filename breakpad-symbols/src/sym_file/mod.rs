@@ -60,9 +60,7 @@ impl SymbolFile {
         let mut fully_consumed = false;
         loop {
             // Read the data in, and tell the circular buffer about the new data
-            let size = input_reader
-                .read(buf.space())
-                .map_err(SymbolError::LoadError)?;
+            let size = input_reader.read(buf.space())?;
             buf.fill(size);
 
             // If the reader returned nothing, then we're done. On the previous
@@ -72,7 +70,10 @@ impl SymbolFile {
                 if fully_consumed {
                     return Ok(parser.finish());
                 } else {
-                    return Err(SymbolError::ParseError(format!("unexpected EOF during parsing of SymbolFile (or a line was too long?) at line {}", parser.lines)));
+                    return Err(SymbolError::ParseError(
+                        "unexpected EOF during parsing of SymbolFile (or a line was too long?)",
+                        parser.lines,
+                    ));
                 }
             }
 
@@ -96,7 +97,7 @@ impl SymbolFile {
 
     // Parse a SymbolFile from a file.
     pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
-        let file = File::open(path).map_err(SymbolError::LoadError)?;
+        let file = File::open(path)?;
         Self::parse(file, |_| ())
     }
 
