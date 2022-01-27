@@ -1,8 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use failure::Fail;
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::Path;
@@ -25,22 +23,16 @@ pub struct ProcessorOptions<'a> {
 }
 
 /// An error encountered during minidump processing.
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
-    #[fail(display = "Failed to read minidump")]
-    MinidumpReadError(minidump::Error),
-    #[fail(display = "An unknown error occurred")]
+    #[error("Failed to read minidump")]
+    MinidumpReadError(#[from] minidump::Error),
+    #[error("An unknown error occurred")]
     UnknownError,
-    #[fail(display = "The system information stream was not found")]
+    #[error("The system information stream was not found")]
     MissingSystemInfo,
-    #[fail(display = "The thread list stream was not found")]
+    #[error("The thread list stream was not found")]
     MissingThreadList,
-}
-
-impl From<minidump::Error> for ProcessError {
-    fn from(err: minidump::Error) -> ProcessError {
-        ProcessError::MinidumpReadError(err)
-    }
 }
 
 /// Unwind all threads in `dump` and return a `ProcessState`.

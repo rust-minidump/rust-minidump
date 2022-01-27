@@ -1,7 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use failure::format_err;
 use log::warn;
 use nom::IResult::*;
 use nom::*;
@@ -399,7 +398,7 @@ impl SymbolParser {
                 Error(e) => {
                     // The file has a completely corrupt line,
                     // conservatively reject the entire parse.
-                    return Err(SymbolError::ParseError(format_err!(
+                    return Err(SymbolError::ParseError(format!(
                         "Failed to parse file: {}",
                         e
                     )));
@@ -409,7 +408,9 @@ impl SymbolParser {
                     // would be fine for a streaming parser, bust the newline
                     // preprocessing we do means this should never happen.
                     // So Incomplete input is just another kind of parsing Error.
-                    return Err(SymbolError::ParseError(format_err!("Line was incomplete!")));
+                    return Err(SymbolError::ParseError(String::from(
+                        "Line was incomplete!",
+                    )));
                 }
             };
 
@@ -419,8 +420,8 @@ impl SymbolParser {
                 Line::Module => {
                     // We don't use this but it MUST be the first line
                     if self.lines != 0 {
-                        return Err(SymbolError::ParseError(format_err!(
-                            "MODULE line found after the start of the file"
+                        return Err(SymbolError::ParseError(String::from(
+                            "MODULE line found after the start of the file",
                         )));
                     }
                 }
