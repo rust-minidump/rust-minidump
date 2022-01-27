@@ -395,22 +395,17 @@ impl SymbolParser {
                     input = new_input;
                     line
                 }
-                Error(e) => {
+                Error(_) => {
                     // The file has a completely corrupt line,
                     // conservatively reject the entire parse.
-                    return Err(SymbolError::ParseError(format!(
-                        "Failed to parse file: {}",
-                        e
-                    )));
+                    return Err(SymbolError::ParseError("failed to parse file", self.lines));
                 }
                 Incomplete(_) => {
                     // One of our sub-parsers wants more input, which normally
                     // would be fine for a streaming parser, bust the newline
                     // preprocessing we do means this should never happen.
                     // So Incomplete input is just another kind of parsing Error.
-                    return Err(SymbolError::ParseError(String::from(
-                        "Line was incomplete!",
-                    )));
+                    return Err(SymbolError::ParseError("line was incomplete!", self.lines));
                 }
             };
 
@@ -420,9 +415,10 @@ impl SymbolParser {
                 Line::Module => {
                     // We don't use this but it MUST be the first line
                     if self.lines != 0 {
-                        return Err(SymbolError::ParseError(String::from(
+                        return Err(SymbolError::ParseError(
                             "MODULE line found after the start of the file",
-                        )));
+                            self.lines,
+                        ));
                     }
                 }
                 Line::Info(Info::Url(cached_url)) => {

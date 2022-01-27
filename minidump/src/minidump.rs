@@ -594,23 +594,17 @@ fn location_slice<'a>(
 }
 
 /// Read a u32 length-prefixed UTF-16 string from `bytes` at `offset`.
-fn read_string_utf16(
-    offset: &mut usize,
-    bytes: &[u8],
-    endian: scroll::Endian,
-) -> Result<String, ()> {
-    let u: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
+fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -> Option<String> {
+    let u: u32 = bytes.gread_with(offset, endian).ok()?;
     let size = u as usize;
     if size % 2 != 0 || (*offset + size) > bytes.len() {
-        return Err(());
+        return None;
     }
-    match UTF_16LE.decode(&bytes[*offset..*offset + size], DecoderTrap::Strict) {
-        Ok(s) => {
-            *offset += size;
-            Ok(s)
-        }
-        Err(_) => Err(()),
-    }
+    let s = UTF_16LE
+        .decode(&bytes[*offset..*offset + size], DecoderTrap::Strict)
+        .ok()?;
+    *offset += size;
+    Some(s)
 }
 
 #[inline]
@@ -618,35 +612,35 @@ fn read_string_utf8_unterminated<'a>(
     offset: &mut usize,
     bytes: &'a [u8],
     endian: scroll::Endian,
-) -> Result<&'a str, ()> {
-    let length: u32 = bytes.gread_with(offset, endian).or(Err(()))?;
-    let slice = bytes.gread_with(offset, length as usize).or(Err(()))?;
-    std::str::from_utf8(slice).or(Err(()))
+) -> Option<&'a str> {
+    let length: u32 = bytes.gread_with(offset, endian).ok()?;
+    let slice = bytes.gread_with(offset, length as usize).ok()?;
+    std::str::from_utf8(slice).ok()
 }
 
 fn read_string_utf8<'a>(
     offset: &mut usize,
     bytes: &'a [u8],
     endian: scroll::Endian,
-) -> Result<&'a str, ()> {
+) -> Option<&'a str> {
     let string = read_string_utf8_unterminated(offset, bytes, endian)?;
     match bytes.gread(offset) {
-        Ok(0u8) => Ok(string),
-        _ => Err(()),
+        Ok(0u8) => Some(string),
+        _ => None,
     }
 }
 
-fn read_cstring_utf8(offset: &mut usize, bytes: &[u8]) -> Result<String, ()> {
+fn read_cstring_utf8(offset: &mut usize, bytes: &[u8]) -> Option<String> {
     let initial_offset = *offset;
     loop {
-        let byte: u8 = bytes.gread(offset).or(Err(()))?;
+        let byte: u8 = bytes.gread(offset).ok()?;
         if byte == 0 {
             break;
         }
     }
     std::str::from_utf8(&bytes[initial_offset..*offset - 1])
         .map(String::from)
-        .or(Err(()))
+        .ok()
 }
 
 /// Convert `bytes` with trailing NUL characters to a string
@@ -665,17 +659,17 @@ fn read_codeview(
     location: &md::MINIDUMP_LOCATION_DESCRIPTOR,
     data: &[u8],
     endian: scroll::Endian,
-) -> Result<CodeView, ()> {
-    let bytes = location_slice(data, location).or(Err(()))?;
+) -> Option<CodeView> {
+    let bytes = location_slice(data, location).ok()?;
     // The CodeView data can be one of a few different formats. Try to read the
     // signature first to figure out what format the data is.
-    let signature: u32 = bytes.pread_with(0, endian).or(Err(()))?;
-    Ok(match CvSignature::from_u32(signature) {
+    let signature: u32 = bytes.pread_with(0, endian).ok()?;
+    Some(match CvSignature::from_u32(signature) {
         // PDB data has two known versions: the current 7.0 and the older 2.0 version.
-        Some(CvSignature::Pdb70) => CodeView::Pdb70(bytes.pread_with(0, endian).or(Err(()))?),
-        Some(CvSignature::Pdb20) => CodeView::Pdb20(bytes.pread_with(0, endian).or(Err(()))?),
+        Some(CvSignature::Pdb70) => CodeView::Pdb70(bytes.pread_with(0, endian).ok()?),
+        Some(CvSignature::Pdb20) => CodeView::Pdb20(bytes.pread_with(0, endian).ok()?),
         // Breakpad's ELF build ID format.
-        Some(CvSignature::Elf) => CodeView::Elf(bytes.pread_with(0, endian).or(Err(()))?),
+        Some(CvSignature::Elf) => CodeView::Elf(bytes.pread_with(0, endian).ok()?),
         // Other formats aren't handled, but save the raw bytes.
         _ => CodeView::Unknown(bytes.to_owned()),
     })
@@ -730,11 +724,11 @@ impl MinidumpModule {
     ) -> Result<MinidumpModule, Error> {
         let mut offset = raw.module_name_rva as usize;
         let name =
-            read_string_utf16(&mut offset, bytes, endian).or(Err(Error::CodeViewReadFailure))?;
+            read_string_utf16(&mut offset, bytes, endian).ok_or(Error::CodeViewReadFailure)?;
         let codeview_info = if raw.cv_record.data_size == 0 {
             None
         } else {
-            Some(read_codeview(&raw.cv_record, bytes, endian).or(Err(Error::CodeViewReadFailure))?)
+            Some(read_codeview(&raw.cv_record, bytes, endian).ok_or(Error::CodeViewReadFailure)?)
         };
         Ok(MinidumpModule {
             raw,
@@ -1006,7 +1000,7 @@ impl MinidumpUnloadedModule {
         endian: scroll::Endian,
     ) -> Result<MinidumpUnloadedModule, Error> {
         let mut offset = raw.module_name_rva as usize;
-        let name = read_string_utf16(&mut offset, bytes, endian).or(Err(Error::DataError))?;
+        let name = read_string_utf16(&mut offset, bytes, endian).ok_or(Error::DataError)?;
         Ok(MinidumpUnloadedModule { raw, name })
     }
 
@@ -1223,7 +1217,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
         for raw_name in raw_names {
             let mut offset = raw_name.thread_name_rva as usize;
             // Better to just drop unreadable names individually than the whole stream.
-            if let Ok(name) = read_string_utf16(&mut offset, all, endian) {
+            if let Some(name) = read_string_utf16(&mut offset, all, endian) {
                 names.insert(raw_name.thread_id, name);
             } else {
                 warn!(
@@ -2404,7 +2398,7 @@ impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
         let cpu = Cpu::from_processor_architecture(raw.processor_architecture);
 
         let mut csd_offset = raw.csd_version_rva as usize;
-        let csd_version = read_string_utf16(&mut csd_offset, all, endian).ok();
+        let csd_version = read_string_utf16(&mut csd_offset, all, endian);
 
         // self.raw.cpu.data is actually a union which we resolve here.
         let cpu_info = match cpu {
@@ -2918,7 +2912,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
                         // Read out all the strings we know about
                         for i in 0..num_strings {
                             let string = read_cstring_utf8(offset, record_slice)
-                                .or(Err(Error::StreamReadFailure))?;
+                                .ok_or(Error::StreamReadFailure)?;
                             strings.set_string(i, string);
                         }
                         // If this is a newer version, there may be some extra variable length
@@ -4048,7 +4042,7 @@ fn read_string_list(
             .or(Err(Error::StreamReadFailure))?;
 
         let string = read_string_utf8(&mut (rva as usize), all, endian)
-            .or(Err(Error::StreamReadFailure))?
+            .ok_or(Error::StreamReadFailure)?
             .to_owned();
 
         strings.push(string);
@@ -4081,9 +4075,9 @@ fn read_simple_string_dictionary(
             .or(Err(Error::StreamReadFailure))?;
 
         let key = read_string_utf8(&mut (entry.key as usize), all, endian)
-            .or(Err(Error::StreamReadFailure))?;
+            .ok_or(Error::StreamReadFailure)?;
         let value = read_string_utf8(&mut (entry.value as usize), all, endian)
-            .or(Err(Error::StreamReadFailure))?;
+            .ok_or(Error::StreamReadFailure)?;
 
         dictionary.insert(key.to_owned(), value.to_owned());
     }
@@ -4115,13 +4109,13 @@ fn read_annotation_objects(
             .or(Err(Error::StreamReadFailure))?;
 
         let key = read_string_utf8(&mut (raw.name as usize), all, endian)
-            .or(Err(Error::StreamReadFailure))?;
+            .ok_or(Error::StreamReadFailure)?;
 
         let value = match raw.ty {
             md::MINIDUMP_ANNOTATION::TYPE_INVALID => MinidumpAnnotation::Invalid,
             md::MINIDUMP_ANNOTATION::TYPE_STRING => {
                 let string = read_string_utf8_unterminated(&mut (raw.value as usize), all, endian)
-                    .or(Err(Error::StreamReadFailure))?
+                    .ok_or(Error::StreamReadFailure)?
                     .to_owned();
 
                 MinidumpAnnotation::String(string)

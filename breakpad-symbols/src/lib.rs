@@ -209,8 +209,8 @@ pub enum SymbolError {
     /// (e.g. a bad STACK WIN line can be discarded without affecting anything
     /// else). But sometimes we can't make any sense of the symbol file, and
     /// you find yourself here.
-    #[error("parse error: {0}")]
-    ParseError(String),
+    #[error("parse error: {0} at line {1}")]
+    ParseError(&'static str, u64),
 }
 
 /// An error produced by fill_symbol.
@@ -236,7 +236,7 @@ impl PartialEq for SymbolError {
             (self, other),
             (SymbolError::NotFound, SymbolError::NotFound)
                 | (SymbolError::LoadError(_), SymbolError::LoadError(_))
-                | (SymbolError::ParseError(_), SymbolError::ParseError(_))
+                | (SymbolError::ParseError(..), SymbolError::ParseError(..))
         )
     }
 }
@@ -706,7 +706,7 @@ impl Symbolizer {
                     Err(SymbolError::LoadError(_)) => {
                         stats.loaded_symbols = false;
                     }
-                    Err(SymbolError::ParseError(_)) => {
+                    Err(SymbolError::ParseError(..)) => {
                         stats.loaded_symbols = true;
                         stats.corrupt_symbols = true;
                     }
@@ -911,7 +911,7 @@ mod test {
         write_bad_symbol_file(&paths[0].join(sym));
         let res = supplier.locate_symbols(&mal);
         assert!(
-            matches!(res, Err(SymbolError::ParseError(_))),
+            matches!(res, Err(SymbolError::ParseError(..))),
             "{}",
             format!("Correctly failed to parse {}, result: {:?}", sym, res)
         );
