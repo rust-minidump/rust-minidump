@@ -1,12 +1,11 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use chrono::prelude::*;
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use failure::Fail;
 use log::warn;
-use memmap::Mmap;
+use memmap2::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{self, Pread, BE, LE};
@@ -23,6 +22,7 @@ use std::mem;
 use std::ops::Deref;
 use std::path::Path;
 use std::str;
+use std::time::{Duration, SystemTime};
 
 pub use crate::context::*;
 use crate::strings::*;
@@ -31,6 +31,7 @@ use minidump_common::format as md;
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
+use time::format_description::well_known::Rfc3339;
 
 /// An index into the contents of a minidump.
 ///
@@ -557,29 +558,30 @@ pub struct MinidumpCrashpadInfo {
 // Implementations
 
 fn format_time_t(t: u32) -> String {
-    if let Some(datetime) = NaiveDateTime::from_timestamp_opt(t as i64, 0) {
-        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-    } else {
-        String::new()
-    }
+    time::OffsetDateTime::from_unix_timestamp(t as i64)
+        .ok()
+        .and_then(|datetime| datetime.format(&Rfc3339).ok())
+        .unwrap_or_default()
 }
 
 fn format_system_time(time: &md::SYSTEMTIME) -> String {
     // Note this drops the day_of_week field on the ground -- is that fine?
-    if let Some(date) =
-        NaiveDate::from_ymd_opt(time.year as i32, time.month as u32, time.day as u32)
-    {
-        let time = NaiveTime::from_hms_milli(
-            time.hour as u32,
-            time.minute as u32,
-            time.second as u32,
-            time.milliseconds as u32,
-        );
-        let datetime = NaiveDateTime::new(date, time);
-        datetime.format("%Y-%m-%d %H:%M:%S:%f").to_string()
-    } else {
-        "<invalid date>".to_owned()
-    }
+    let format_date = || {
+        use std::convert::TryFrom;
+        let month = time::Month::try_from(time.month as u8).ok()?;
+        let date = time::Date::from_calendar_date(time.year as i32, month, time.day as u8).ok()?;
+        let datetime = date
+            .with_hms_milli(
+                time.hour as u8,
+                time.minute as u8,
+                time.second as u8,
+                time.milliseconds,
+            )
+            .ok()?
+            .assume_utc();
+        datetime.format(&Rfc3339).ok()
+    };
+    format_date().unwrap_or_else(|| "<invalid date>".to_owned())
 }
 
 /// Produce a slice of `bytes` corresponding to the offset and size in `loc`, or an
@@ -3074,11 +3076,15 @@ impl<'a> MinidumpLinuxLsbRelease<'a> {
     }
 }
 
+fn systemtime_from_timestamp(timestamp: u64) -> Option<SystemTime> {
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(timestamp))
+}
+
 impl MinidumpMiscInfo {
-    pub fn process_create_time(&self) -> Option<DateTime<Utc>> {
+    pub fn process_create_time(&self) -> Option<SystemTime> {
         self.raw
             .process_create_time()
-            .map(|t| Utc.timestamp(*t as i64, 0))
+            .and_then(|t| systemtime_from_timestamp(*t as u64))
     }
 
     /// Write a human-readable description of this `MinidumpMiscInfo` to `f`.
@@ -5435,7 +5441,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(misc.raw.process_id(), Some(&PID));
         assert_eq!(
             misc.process_create_time().unwrap(),
-            Utc.timestamp(PROCESS_TIMES.process_create_time as i64, 0)
+            systemtime_from_timestamp(PROCESS_TIMES.process_create_time as u64).unwrap()
         );
         assert_eq!(
             *misc.raw.process_user_time().unwrap(),
@@ -5466,7 +5472,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(misc.raw.process_id(), Some(&PID));
         assert_eq!(
             misc.process_create_time().unwrap(),
-            Utc.timestamp(PROCESS_TIMES.process_create_time as i64, 0)
+            systemtime_from_timestamp(PROCESS_TIMES.process_create_time as u64).unwrap(),
         );
         assert_eq!(
             *misc.raw.process_user_time().unwrap(),
@@ -5612,7 +5618,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(misc.raw.process_id(), Some(&PID));
         assert_eq!(
             misc.process_create_time().unwrap(),
-            Utc.timestamp(PROCESS_TIMES.process_create_time as i64, 0)
+            systemtime_from_timestamp(PROCESS_TIMES.process_create_time as u64).unwrap()
         );
         assert_eq!(
             *misc.raw.process_user_time().unwrap(),
