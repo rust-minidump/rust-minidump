@@ -1,12 +1,12 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use chrono::{TimeZone, Utc};
 use failure::Fail;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
 
@@ -297,7 +297,7 @@ where
 
     Ok(ProcessState {
         process_id,
-        time: Utc.timestamp(dump.header.time_date_stamp as i64, 0),
+        time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
         process_create_time,
         cert_info: evil.certs,
         crash_reason,

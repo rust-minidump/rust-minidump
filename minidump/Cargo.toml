@@ -18,9 +18,9 @@ log = "0.4.1"
 minidump-common = { version = "0.9.6", path = "../minidump-common" }
 num-traits = "0.2"
 encoding = "0.2"
-chrono = "0.4.6"
 scroll = "0.10.2"
-memmap = "0.7.0"
+memmap2 = "0.5.2"
+time = { version = "0.3.6", features = ["formatting"] }
 
 [dev-dependencies]
 synth-minidump = { path = "../synth-minidump" }

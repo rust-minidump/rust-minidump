@@ -7,10 +7,10 @@ use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
+use std::time::SystemTime;
 
 use crate::system_info::SystemInfo;
 use crate::{FrameSymbolizer, SymbolStats};
-use chrono::prelude::*;
 use minidump::system_info::Cpu;
 use minidump::*;
 use serde_json::json;
@@ -150,9 +150,9 @@ pub struct ProcessState {
     /// The PID of the process.
     pub process_id: Option<u32>,
     /// When the minidump was written.
-    pub time: DateTime<Utc>,
+    pub time: SystemTime,
     /// When the process started, if available
-    pub process_create_time: Option<DateTime<Utc>>,
+    pub process_create_time: Option<SystemTime>,
     /// Known code signing certificates (module name => cert name)
     pub cert_info: HashMap<String, String>,
     /// If the process crashed, a `CrashReason` describing the crash reason.
@@ -507,8 +507,8 @@ Crash address: {:#x}
             writeln!(f)?;
         }
         if let Some(ref time) = self.process_create_time {
-            let uptime = self.time - *time;
-            writeln!(f, "Process uptime: {} seconds", uptime.num_seconds())?;
+            let uptime = self.time.duration_since(*time).unwrap_or_default();
+            writeln!(f, "Process uptime: {} seconds", uptime.as_secs())?;
         } else {
             writeln!(f, "Process uptime: not available")?;
         }

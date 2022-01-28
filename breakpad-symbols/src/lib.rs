@@ -787,7 +787,6 @@ mod test {
     use std::fs::File;
     use std::io::Write;
     use std::path::{Path, PathBuf};
-    use tempdir::TempDir;
 
     #[test]
     fn test_relative_symbol_path() {
@@ -887,7 +886,7 @@ mod test {
 
     #[test]
     fn test_simple_symbol_supplier() {
-        let t = TempDir::new("symtest").unwrap();
+        let t = tempfile::tempdir().unwrap();
         let paths = mksubdirs(t.path(), &["one", "two"]);
 
         let supplier = SimpleSymbolSupplier::new(paths.clone());
@@ -929,7 +928,7 @@ mod test {
 
     #[test]
     fn test_symbolizer() {
-        let t = TempDir::new("symtest").unwrap();
+        let t = tempfile::tempdir().unwrap();
         let path = t.path();
 
         // TODO: This could really use a MockSupplier
