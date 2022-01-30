@@ -294,3 +294,17 @@ fn test_empty_minidump() {
         Err(e) => assert_eq!(e, Error::MissingHeader),
     }
 }
+
+#[test]
+fn backwards_range() {
+    let data = include_bytes!("../../testdata/invalid-range.dmp");
+
+    match Minidump::read(&data[..]) {
+        Ok(f) => {
+            let _ = f.get_stream::<MinidumpLinuxMaps>().unwrap();
+        }
+        Err(e) => {
+            panic!("Expected to parse the header, got {:?}", e);
+        }
+    }
+}
