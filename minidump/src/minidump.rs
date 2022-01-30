@@ -2069,7 +2069,7 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
 
     pub fn memory_range(&self) -> Option<Range<u64>> {
         // final address is inclusive afaik
-        if self.base_address < self.final_address {
+        if self.base_address > self.final_address {
             return None;
         }
         Some(Range::new(self.base_address, self.final_address))
@@ -4990,6 +4990,20 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert!(!maps[1].is_private);
         assert!(maps[1].is_shared);
         assert!(!maps[1].is_executable());
+
+        let mut unified_infos = unified_info.by_addr();
+
+        if let UnifiedMemoryInfo::Map(m) = unified_infos.next().unwrap() {
+            assert_eq!(m, maps[0]);
+        } else {
+            panic!("expected a map");
+        }
+
+        if let UnifiedMemoryInfo::Map(m) = unified_infos.next().unwrap() {
+            assert_eq!(m, maps[1]);
+        } else {
+            panic!("expected a map")
+        }
     }
 
     #[test]
@@ -5010,6 +5024,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(
                 map.kind,
                 File(Cow::Borrowed(LinuxOsStr::from_bytes(
@@ -5033,6 +5048,10 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             assert_eq!(map.base_address, 0xffffffffff600000);
             assert_eq!(map.final_address, 0xffffffffff601000);
             assert_eq!(
+                map.memory_range(),
+                Some(Range::new(0xffffffffff600000, 0xffffffffff601000))
+            );
+            assert_eq!(
                 map.kind,
                 DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
                     b"/usr/lib64/ libtdb1.so"
@@ -5054,6 +5073,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(map.kind, MainThreadStack);
 
             assert!(!map.is_read);
@@ -5071,6 +5091,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(map.kind, Stack(1234567));
 
             assert!(!map.is_read);
@@ -5088,6 +5109,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(map.kind, Heap);
 
             assert!(!map.is_read);
@@ -5105,6 +5127,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(map.kind, Vdso);
 
             assert!(map.is_read);
@@ -5122,6 +5145,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(
                 map.kind,
                 UnknownSpecial(Cow::Borrowed(LinuxOsStr::from_bytes(b"[asdfasd]")))
@@ -5142,6 +5166,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
             assert_eq!(map.kind, AnonymousMap);
 
             assert!(map.is_read);
@@ -5159,6 +5184,25 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
             assert_eq!(map.base_address, 0x10a00);
             assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.kind, AnonymousMap);
+
+            assert!(!map.is_read);
+            assert!(!map.is_write);
+            assert!(!map.is_exec);
+            assert!(!map.is_executable());
+            assert!(!map.is_private);
+            assert!(!map.is_shared);
+        }
+
+        {
+            // Reversed ranges result in None for memory_range()
+            let map = parse(b"fffff-10000");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0xfffff);
+            assert_eq!(map.final_address, 0x10000);
+            assert_eq!(map.memory_range(), None);
             assert_eq!(map.kind, AnonymousMap);
 
             assert!(!map.is_read);
