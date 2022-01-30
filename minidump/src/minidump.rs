@@ -5207,14 +5207,16 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             assert_eq!(map.base_address, 0xfffff);
             assert_eq!(map.final_address, 0x10000);
             assert_eq!(map.memory_range(), None);
-            assert_eq!(map.kind, AnonymousMap);
+        }
 
-            assert!(!map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+        {
+            // Equal ranges are valid
+            let map = parse(b"fffff-fffff");
+            let map = map.unwrap();
+
+            assert_eq!(map.base_address, 0xfffff);
+            assert_eq!(map.final_address, 0xfffff);
+            assert_eq!(map.memory_range(), Some(Range::new(0xfffff, 0xfffff)));
         }
 
         {
