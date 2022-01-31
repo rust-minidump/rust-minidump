@@ -434,7 +434,7 @@ impl ProcessState {
 
     fn print_internal<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         writeln!(f, "Operating system: {}", self.system_info.os.long_name())?;
-        if let Some(ref ver) = self.system_info.os_version {
+        if let Some(ref ver) = self.system_info.format_os_version() {
             writeln!(f, "                  {}", ver)?;
         }
         writeln!(f, "CPU: {}", self.system_info.cpu)?;
@@ -654,7 +654,7 @@ Unknown streams encountered:
             "system_info": {
                 // Linux | Windows NT | Mac OS X
                 "os": sys.os.long_name(),
-                "os_ver": sys.os_version,
+                "os_ver": sys.format_os_version(),
                 // x86 | amd64 | arm | ppc | sparc
                 "cpu_arch": sys.cpu.to_string(),
                 "cpu_info": sys.cpu_info,

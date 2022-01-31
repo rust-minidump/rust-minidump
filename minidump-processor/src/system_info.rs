@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use minidump::system_info::{Cpu, Os};
 
 /// Information about the system that produced a `Minidump`.
@@ -25,4 +27,18 @@ pub struct SystemInfo {
     ///
     /// Will be greater than one for multi-core systems.
     pub cpu_count: usize,
+}
+
+impl SystemInfo {
+    /// Returns the full available operating system version.
+    ///
+    /// Returns the version and the build, if available, otherwise just the version.
+    pub fn format_os_version(&self) -> Option<Cow<'_, str>> {
+        match (&self.os_version, &self.os_build) {
+            (Some(v), Some(b)) => Some(format!("{} {}", v, b).into()),
+            (Some(v), None) => Some(Cow::Borrowed(v)),
+            (None, Some(b)) => Some(Cow::Borrowed(b)),
+            (None, None) => None,
+        }
+    }
 }
