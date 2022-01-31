@@ -223,9 +223,11 @@ where
     let mut threads = vec![];
     let mut requesting_thread = None;
     for (i, thread) in thread_list.threads.iter().enumerate() {
+        let id = thread.raw.thread_id;
+
         // If this is the thread that wrote the dump, skip processing it.
-        if dump_thread_id.is_some() && dump_thread_id.unwrap() == thread.raw.thread_id {
-            threads.push(CallStack::with_info(CallStackInfo::DumpThreadSkipped));
+        if dump_thread_id.is_some() && dump_thread_id.unwrap() == id {
+            threads.push(CallStack::with_info(id, CallStackInfo::DumpThreadSkipped));
             continue;
         }
 
@@ -250,6 +252,7 @@ where
 
         let mut stack =
             stackwalker::walk_stack(&context, stack.as_deref(), &modules, symbol_provider);
+        stack.thread_id = id;
 
         for frame in &mut stack.frames {
             // If the frame doesn't have a loaded module, try to find an unloaded module

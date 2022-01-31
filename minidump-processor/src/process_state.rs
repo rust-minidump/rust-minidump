@@ -131,6 +131,8 @@ pub struct CallStack {
     pub frames: Vec<StackFrame>,
     /// Information about this `CallStack`.
     pub info: CallStackInfo,
+    /// The identifier of the thread.
+    pub thread_id: u32,
     /// The name of the thread, if known.
     pub thread_name: Option<String>,
     /// The GetLastError() value stored in the TEB.
@@ -326,10 +328,11 @@ fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
 
 impl CallStack {
     /// Create a `CallStack` with `info` and no frames.
-    pub fn with_info(info: CallStackInfo) -> CallStack {
+    pub fn with_info(id: u32, info: CallStackInfo) -> CallStack {
         CallStack {
             info,
             frames: vec![],
+            thread_id: id,
             thread_name: None,
             last_error_value: None,
         }
