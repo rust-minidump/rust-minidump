@@ -2856,7 +2856,10 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
         let strings_offset = header.record_start_size as usize;
         let mut prev_version = None;
         let mut infos = Vec::new();
-        for record_location in &header.records[..header.record_count as usize] {
+
+        let records = header.records.get(..header.record_count as usize).ok_or(Error::DataError)?;
+
+        for record_location in records {
             // Peek the V1 version to get the `version` field
             let record_slice = location_slice(all, record_location)?;
             let base: md::MINIDUMP_MAC_CRASH_INFO_RECORD = record_slice

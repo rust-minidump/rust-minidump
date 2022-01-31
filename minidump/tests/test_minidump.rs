@@ -313,3 +313,18 @@ fn backwards_range() {
         }
     }
 }
+
+#[test]
+fn test_record_count_mac_info() {
+    let data = include_bytes!("../../testdata/invalid-record-count.dmp");
+
+    match Minidump::read(&data[..]) {
+        Ok(f) => {
+            let e = f.get_stream::<MinidumpMacCrashInfo>().unwrap_err();
+            assert_eq!(e, Error::DataError);
+        }
+        Err(e) => {
+            panic!("Expected to parse the header, got {:?}", e);
+        }
+    }
+}
