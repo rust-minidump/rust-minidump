@@ -4,10 +4,15 @@ use minidump::system_info::{Cpu, Os};
 pub struct SystemInfo {
     /// The operating system that produced the minidump
     pub os: Os,
-    /// A string identifying the version of the operating system
+    /// A string identifying the version of the operating system.
     ///
-    /// This may look like "5.1.2600 Service Pack 2" or "10.4.8 8L2127", if present
+    /// This may look like "5.1.2600" or "10.4.8", if present
     pub os_version: Option<String>,
+    /// A string identifying the exact build of the operating system.
+    ///
+    /// This may look like "Service Pack 2" or "8L2127", if present. On Windows, this is the CSD
+    /// version, on Linux extended build information.
+    pub os_build: Option<String>,
     /// The CPU on which the dump was produced
     pub cpu: Cpu,
     /// A string further identifying the specific CPU
