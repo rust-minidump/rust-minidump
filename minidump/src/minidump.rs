@@ -4997,17 +4997,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         let mut unified_infos = unified_info.by_addr();
 
-        if let UnifiedMemoryInfo::Map(m) = unified_infos.next().unwrap() {
-            assert_eq!(m, maps[0]);
-        } else {
-            panic!("expected a map");
-        }
-
-        if let UnifiedMemoryInfo::Map(m) = unified_infos.next().unwrap() {
-            assert_eq!(m, maps[1]);
-        } else {
-            panic!("expected a map")
-        }
+        assert!(matches!(unified_infos.next(), Some(UnifiedMemoryInfo::Map(m)) if m == maps[0]));
+        assert!(matches!(unified_infos.next(), Some(UnifiedMemoryInfo::Map(m)) if m == maps[1]));
     }
 
     #[test]
