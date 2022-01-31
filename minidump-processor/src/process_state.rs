@@ -58,9 +58,13 @@ pub struct StackFrame {
     ///
     /// On some architectures, the return address as saved on the stack or in
     /// a register is fine for looking up the point of the call. On others, it
-    /// requires adjustment. ReturnAddress returns the address as saved by the
+    /// requires adjustment. `return_address` returns the address as saved by the
     /// machine.
     pub instruction: u64,
+
+    /// Return the actual return address, as saved on the stack or in a
+    /// register. See the comments for `instruction`, below, for details.
+    pub return_address: u64,
 
     /// The module in which the instruction resides.
     pub module: Option<MinidumpModule>,
@@ -233,6 +237,7 @@ impl StackFrame {
     pub fn from_context(context: MinidumpContext, trust: FrameTrust) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
+            return_address: context.get_instruction_pointer(),
             module: None,
             unloaded_modules: BTreeMap::new(),
             function_name: None,
