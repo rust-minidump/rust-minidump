@@ -36,6 +36,9 @@ pub trait CpuContext {
     /// The word size of general-purpose registers in the context.
     type Register: fmt::LowerHex;
 
+    /// General purpose registers in this context type.
+    const REGISTERS: &'static [&'static str];
+
     /// Gets whether the given register is valid
     ///
     /// This is exposed so that the context can map aliases. For instance
@@ -47,6 +50,7 @@ pub trait CpuContext {
             self.memoize_register(reg).is_some()
         }
     }
+
     /// Get a register value if it is valid.
     ///
     /// Get the value of the register named `reg` from this CPU context
@@ -69,7 +73,11 @@ pub trait CpuContext {
     fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()>;
 
     /// Gets a static version of the given register name, if possible.
-    fn memoize_register(&self, reg: &str) -> Option<&'static str>;
+    ///
+    /// Returns the default name of the register for register name aliases.
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        default_memoize_register(Self::REGISTERS, reg)
+    }
 
     /// Return a String containing the value of `reg` formatted to its natural width.
     fn format_register(&self, reg: &str) -> String {
@@ -80,14 +88,79 @@ pub trait CpuContext {
         )
     }
 
+    /// An iterator over all registers in this context.
+    ///
+    /// This iterator yields registers and values regardless of whether the register is valid. To
+    /// get valid values, use [`valid_registers`](Self::valid_registers), instead.
+    fn registers(&self) -> CpuRegisters<'_, Self> {
+        self.valid_registers(&MinidumpContextValidity::All)
+    }
+
+    /// An iterator over valid registers in this context.
+    ///
+    /// This iterator yields valid registers and their values.
+    fn valid_registers<'a>(&'a self, valid: &'a MinidumpContextValidity) -> CpuRegisters<'a, Self> {
+        let regs = match valid {
+            MinidumpContextValidity::All => CpuRegistersInner::Slice(Self::REGISTERS.iter()),
+            MinidumpContextValidity::Some(valid) => CpuRegistersInner::Set(valid.iter()),
+        };
+
+        CpuRegisters {
+            regs,
+            context: self,
+        }
+    }
+
     /// Gets the name of the stack pointer register (for use with get_register/set_register).
     fn stack_pointer_register_name(&self) -> &'static str;
+
     /// Gets the name of the instruction pointer register (for use with get_register/set_register).
     fn instruction_pointer_register_name(&self) -> &'static str;
 }
 
+/// Default implementation for `CpuContext::memoize_register`.
+fn default_memoize_register(registers: &[&'static str], reg: &str) -> Option<&'static str> {
+    let idx = registers.iter().position(|val| *val == reg)?;
+    Some(registers[idx])
+}
+
+#[derive(Debug, Clone)]
+enum CpuRegistersInner<'a> {
+    Slice(std::slice::Iter<'a, &'static str>),
+    Set(std::collections::hash_set::Iter<'a, &'static str>),
+}
+
+/// An iterator over registers and values in a [`CpuContext`].
+///
+/// Returned by [`CpuContext::registers`] and [`CpuContext::valid_registers`].
+#[derive(Clone, Debug)]
+pub struct CpuRegisters<'a, T: ?Sized> {
+    regs: CpuRegistersInner<'a>,
+    context: &'a T,
+}
+
+impl<'a, T> Iterator for CpuRegisters<'a, T>
+where
+    T: CpuContext,
+{
+    type Item = (&'static str, T::Register);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let reg = match &mut self.regs {
+            CpuRegistersInner::Slice(iter) => iter.next(),
+            CpuRegistersInner::Set(iter) => iter.next(),
+        }?;
+
+        Some((reg, self.context.get_register_always(reg)))
+    }
+}
+
 impl CpuContext for md::CONTEXT_X86 {
     type Register = u32;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl",
+    ];
 
     fn get_register_always(&self, reg: &str) -> u32 {
         match reg {
@@ -101,7 +174,7 @@ impl CpuContext for md::CONTEXT_X86 {
             "ecx" => self.ecx,
             "edx" => self.edx,
             "efl" => self.eflags,
-            _ => unreachable!("Invalid x86 register!"),
+            _ => unreachable!("Invalid x86 register! {}", reg),
         }
     }
 
@@ -122,11 +195,6 @@ impl CpuContext for md::CONTEXT_X86 {
         Some(())
     }
 
-    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
-        let idx = X86_REGS.iter().position(|val| *val == reg)?;
-        Some(X86_REGS[idx])
-    }
-
     fn stack_pointer_register_name(&self) -> &'static str {
         "esp"
     }
@@ -138,6 +206,11 @@ impl CpuContext for md::CONTEXT_X86 {
 
 impl CpuContext for md::CONTEXT_AMD64 {
     type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12",
+        "r13", "r14", "r15", "rip",
+    ];
 
     fn get_register_always(&self, reg: &str) -> u64 {
         match reg {
@@ -158,7 +231,7 @@ impl CpuContext for md::CONTEXT_AMD64 {
             "r14" => self.r14,
             "r15" => self.r15,
             "rip" => self.rip,
-            _ => unreachable!("Invalid x86-64 register!"),
+            _ => unreachable!("Invalid x86-64 register! {}", reg),
         }
     }
 
@@ -186,11 +259,6 @@ impl CpuContext for md::CONTEXT_AMD64 {
         Some(())
     }
 
-    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
-        let idx = X86_64_REGS.iter().position(|val| *val == reg)?;
-        Some(X86_64_REGS[idx])
-    }
-
     fn stack_pointer_register_name(&self) -> &'static str {
         "rsp"
     }
@@ -202,6 +270,21 @@ impl CpuContext for md::CONTEXT_AMD64 {
 
 impl CpuContext for md::CONTEXT_ARM {
     type Register = u32;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "fp", "sp", "lr",
+        "pc",
+    ];
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        match reg {
+            "r11" => Some("fp"),
+            "r13" => Some("sp"),
+            "r14" => Some("lr"),
+            "r15" => Some("pc"),
+            _ => default_memoize_register(Self::REGISTERS, reg),
+        }
+    }
 
     fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
         if let MinidumpContextValidity::Some(ref which) = valid {
@@ -270,11 +353,6 @@ impl CpuContext for md::CONTEXT_ARM {
         Some(())
     }
 
-    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
-        let idx = ARM_REGS.iter().position(|val| *val == reg)?;
-        Some(ARM_REGS[idx])
-    }
-
     fn stack_pointer_register_name(&self) -> &'static str {
         "sp"
     }
@@ -286,6 +364,20 @@ impl CpuContext for md::CONTEXT_ARM {
 
 impl CpuContext for md::CONTEXT_ARM64_OLD {
     type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13",
+        "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26",
+        "x27", "x28", "fp", "lr", "sp", "pc",
+    ];
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        match reg {
+            "x29" => Some("fp"),
+            "x30" => Some("lr"),
+            _ => default_memoize_register(Self::REGISTERS, reg),
+        }
+    }
 
     fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
         if let MinidumpContextValidity::Some(ref which) = valid {
@@ -382,11 +474,6 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
         Some(())
     }
 
-    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
-        let idx = ARM64_REGS.iter().position(|val| *val == reg)?;
-        Some(ARM64_REGS[idx])
-    }
-
     fn stack_pointer_register_name(&self) -> &'static str {
         "sp"
     }
@@ -398,6 +485,20 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
 
 impl CpuContext for md::CONTEXT_ARM64 {
     type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13",
+        "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26",
+        "x27", "x28", "fp", "lr", "sp", "pc",
+    ];
+
+    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
+        match reg {
+            "x29" => Some("fp"),
+            "x30" => Some("lr"),
+            _ => default_memoize_register(Self::REGISTERS, reg),
+        }
+    }
 
     fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
         if let MinidumpContextValidity::Some(ref which) = valid {
@@ -448,7 +549,7 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
-            _ => unreachable!("Invalid aarch64 register! {}"),
+            _ => unreachable!("Invalid aarch64 register! {}", reg),
         }
     }
 
@@ -494,13 +595,391 @@ impl CpuContext for md::CONTEXT_ARM64 {
         Some(())
     }
 
-    fn memoize_register(&self, reg: &str) -> Option<&'static str> {
-        let idx = ARM64_REGS.iter().position(|val| *val == reg)?;
-        Some(ARM64_REGS[idx])
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
+impl CpuContext for md::CONTEXT_PPC {
+    type Register = u32;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "srr0", "srr1", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+        "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24",
+        "r25", "r26", "r27", "r28", "r29", "r30", "r31", "cr", "xer", "lr", "ctr", "mq", "vrsave",
+    ];
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match reg {
+            "srr0" => self.srr0,
+            "srr1" => self.srr1,
+            "r0" => self.gpr[0],
+            "r1" => self.gpr[1],
+            "r2" => self.gpr[2],
+            "r3" => self.gpr[3],
+            "r4" => self.gpr[4],
+            "r5" => self.gpr[5],
+            "r6" => self.gpr[6],
+            "r7" => self.gpr[7],
+            "r8" => self.gpr[8],
+            "r9" => self.gpr[9],
+            "r10" => self.gpr[10],
+            "r11" => self.gpr[11],
+            "r12" => self.gpr[12],
+            "r13" => self.gpr[13],
+            "r14" => self.gpr[14],
+            "r15" => self.gpr[15],
+            "r16" => self.gpr[16],
+            "r17" => self.gpr[17],
+            "r18" => self.gpr[18],
+            "r19" => self.gpr[19],
+            "r20" => self.gpr[20],
+            "r21" => self.gpr[21],
+            "r22" => self.gpr[22],
+            "r23" => self.gpr[23],
+            "r24" => self.gpr[24],
+            "r25" => self.gpr[25],
+            "r26" => self.gpr[26],
+            "r27" => self.gpr[27],
+            "r28" => self.gpr[28],
+            "r29" => self.gpr[29],
+            "r30" => self.gpr[30],
+            "r31" => self.gpr[31],
+            "cr" => self.cr,
+            "xer" => self.xer,
+            "lr" => self.lr,
+            "ctr" => self.ctr,
+            "mq" => self.mq,
+            "vrsave" => self.vrsave,
+            _ => unreachable!("Invalid ppc register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "srr0" => self.srr0 = val,
+            "srr1" => self.srr1 = val,
+            "r0" => self.gpr[0] = val,
+            "r1" => self.gpr[1] = val,
+            "r2" => self.gpr[2] = val,
+            "r3" => self.gpr[3] = val,
+            "r4" => self.gpr[4] = val,
+            "r5" => self.gpr[5] = val,
+            "r6" => self.gpr[6] = val,
+            "r7" => self.gpr[7] = val,
+            "r8" => self.gpr[8] = val,
+            "r9" => self.gpr[9] = val,
+            "r10" => self.gpr[10] = val,
+            "r11" => self.gpr[11] = val,
+            "r12" => self.gpr[12] = val,
+            "r13" => self.gpr[13] = val,
+            "r14" => self.gpr[14] = val,
+            "r15" => self.gpr[15] = val,
+            "r16" => self.gpr[16] = val,
+            "r17" => self.gpr[17] = val,
+            "r18" => self.gpr[18] = val,
+            "r19" => self.gpr[19] = val,
+            "r20" => self.gpr[20] = val,
+            "r21" => self.gpr[21] = val,
+            "r22" => self.gpr[22] = val,
+            "r23" => self.gpr[23] = val,
+            "r24" => self.gpr[24] = val,
+            "r25" => self.gpr[25] = val,
+            "r26" => self.gpr[26] = val,
+            "r27" => self.gpr[27] = val,
+            "r28" => self.gpr[28] = val,
+            "r29" => self.gpr[29] = val,
+            "r30" => self.gpr[30] = val,
+            "r31" => self.gpr[31] = val,
+            "cr" => self.cr = val,
+            "xer" => self.xer = val,
+            "lr" => self.lr = val,
+            "ctr" => self.ctr = val,
+            "mq" => self.mq = val,
+            "vrsave" => self.vrsave = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "r1"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "srr0"
+    }
+}
+
+impl CpuContext for md::CONTEXT_PPC64 {
+    type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "srr0", "srr1", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11",
+        "r12", "r13", "r14", "r15", "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24",
+        "r25", "r26", "r27", "r28", "r29", "r30", "r31", "cr", "xer", "lr", "ctr", "vrsave",
+    ];
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match reg {
+            "srr0" => self.srr0,
+            "srr1" => self.srr1,
+            "r0" => self.gpr[0],
+            "r1" => self.gpr[1],
+            "r2" => self.gpr[2],
+            "r3" => self.gpr[3],
+            "r4" => self.gpr[4],
+            "r5" => self.gpr[5],
+            "r6" => self.gpr[6],
+            "r7" => self.gpr[7],
+            "r8" => self.gpr[8],
+            "r9" => self.gpr[9],
+            "r10" => self.gpr[10],
+            "r11" => self.gpr[11],
+            "r12" => self.gpr[12],
+            "r13" => self.gpr[13],
+            "r14" => self.gpr[14],
+            "r15" => self.gpr[15],
+            "r16" => self.gpr[16],
+            "r17" => self.gpr[17],
+            "r18" => self.gpr[18],
+            "r19" => self.gpr[19],
+            "r20" => self.gpr[20],
+            "r21" => self.gpr[21],
+            "r22" => self.gpr[22],
+            "r23" => self.gpr[23],
+            "r24" => self.gpr[24],
+            "r25" => self.gpr[25],
+            "r26" => self.gpr[26],
+            "r27" => self.gpr[27],
+            "r28" => self.gpr[28],
+            "r29" => self.gpr[29],
+            "r30" => self.gpr[30],
+            "r31" => self.gpr[31],
+            "cr" => self.cr,
+            "xer" => self.xer,
+            "lr" => self.lr,
+            "ctr" => self.ctr,
+            "vrsave" => self.vrsave,
+            _ => unreachable!("Invalid ppc64 register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "srr0" => self.srr0 = val,
+            "srr1" => self.srr1 = val,
+            "r0" => self.gpr[0] = val,
+            "r1" => self.gpr[1] = val,
+            "r2" => self.gpr[2] = val,
+            "r3" => self.gpr[3] = val,
+            "r4" => self.gpr[4] = val,
+            "r5" => self.gpr[5] = val,
+            "r6" => self.gpr[6] = val,
+            "r7" => self.gpr[7] = val,
+            "r8" => self.gpr[8] = val,
+            "r9" => self.gpr[9] = val,
+            "r10" => self.gpr[10] = val,
+            "r11" => self.gpr[11] = val,
+            "r12" => self.gpr[12] = val,
+            "r13" => self.gpr[13] = val,
+            "r14" => self.gpr[14] = val,
+            "r15" => self.gpr[15] = val,
+            "r16" => self.gpr[16] = val,
+            "r17" => self.gpr[17] = val,
+            "r18" => self.gpr[18] = val,
+            "r19" => self.gpr[19] = val,
+            "r20" => self.gpr[20] = val,
+            "r21" => self.gpr[21] = val,
+            "r22" => self.gpr[22] = val,
+            "r23" => self.gpr[23] = val,
+            "r24" => self.gpr[24] = val,
+            "r25" => self.gpr[25] = val,
+            "r26" => self.gpr[26] = val,
+            "r27" => self.gpr[27] = val,
+            "r28" => self.gpr[28] = val,
+            "r29" => self.gpr[29] = val,
+            "r30" => self.gpr[30] = val,
+            "r31" => self.gpr[31] = val,
+            "cr" => self.cr = val,
+            "xer" => self.xer = val,
+            "lr" => self.lr = val,
+            "ctr" => self.ctr = val,
+            "vrsave" => self.vrsave = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "r1"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "srr0"
+    }
+}
+
+impl CpuContext for md::CONTEXT_MIPS {
+    type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "gp", "sp", "fp", "ra", "pc", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+    ];
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match reg {
+            "gp" => self.iregs[md::MipsRegisterNumbers::GlobalPointer as usize],
+            "sp" => self.iregs[md::MipsRegisterNumbers::StackPointer as usize],
+            "fp" => self.iregs[md::MipsRegisterNumbers::FramePointer as usize],
+            "ra" => self.iregs[md::MipsRegisterNumbers::ReturnAddress as usize],
+            "pc" => self.epc,
+            "s0" => self.iregs[md::MipsRegisterNumbers::S0 as usize],
+            "s1" => self.iregs[md::MipsRegisterNumbers::S1 as usize],
+            "s2" => self.iregs[md::MipsRegisterNumbers::S2 as usize],
+            "s3" => self.iregs[md::MipsRegisterNumbers::S3 as usize],
+            "s4" => self.iregs[md::MipsRegisterNumbers::S4 as usize],
+            "s5" => self.iregs[md::MipsRegisterNumbers::S5 as usize],
+            "s6" => self.iregs[md::MipsRegisterNumbers::S6 as usize],
+            "s7" => self.iregs[md::MipsRegisterNumbers::S7 as usize],
+            _ => unreachable!("Invalid mips register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "gp" => self.iregs[md::MipsRegisterNumbers::GlobalPointer as usize] = val,
+            "sp" => self.iregs[md::MipsRegisterNumbers::StackPointer as usize] = val,
+            "fp" => self.iregs[md::MipsRegisterNumbers::FramePointer as usize] = val,
+            "ra" => self.iregs[md::MipsRegisterNumbers::ReturnAddress as usize] = val,
+            "pc" => self.epc = val,
+            "s0" => self.iregs[md::MipsRegisterNumbers::S0 as usize] = val,
+            "s1" => self.iregs[md::MipsRegisterNumbers::S1 as usize] = val,
+            "s2" => self.iregs[md::MipsRegisterNumbers::S2 as usize] = val,
+            "s3" => self.iregs[md::MipsRegisterNumbers::S3 as usize] = val,
+            "s4" => self.iregs[md::MipsRegisterNumbers::S4 as usize] = val,
+            "s5" => self.iregs[md::MipsRegisterNumbers::S5 as usize] = val,
+            "s6" => self.iregs[md::MipsRegisterNumbers::S6 as usize] = val,
+            "s7" => self.iregs[md::MipsRegisterNumbers::S7 as usize] = val,
+            _ => return None,
+        }
+        Some(())
     }
 
     fn stack_pointer_register_name(&self) -> &'static str {
         "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
+impl CpuContext for md::CONTEXT_SPARC {
+    type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "g_r0", "g_r1", "g_r2", "g_r3", "g_r4", "g_r5", "g_r6", "g_r7", "g_r8", "g_r9", "g_r10",
+        "g_r11", "g_r12", "g_r13", "g_r14", "g_r15", "g_r16", "g_r17", "g_r18", "g_r19", "g_r20",
+        "g_r21", "g_r22", "g_r23", "g_r24", "g_r25", "g_r26", "g_r27", "g_r28", "g_r29", "g_r30",
+        "g_r31", "ccr", "pc", "npc", "y", "asi", "fprs",
+    ];
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match reg {
+            "g_r0" | "g0" => self.g_r[0],
+            "g_r1" | "g1" => self.g_r[1],
+            "g_r2" | "g2" => self.g_r[2],
+            "g_r3" | "g3" => self.g_r[3],
+            "g_r4" | "g4" => self.g_r[4],
+            "g_r5" | "g5" => self.g_r[5],
+            "g_r6" | "g6" => self.g_r[6],
+            "g_r7" | "g7" => self.g_r[7],
+            "g_r8" | "o0" => self.g_r[8],
+            "g_r9" | "o1" => self.g_r[9],
+            "g_r10" | "o2" => self.g_r[10],
+            "g_r11" | "o3" => self.g_r[11],
+            "g_r12" | "o4" => self.g_r[12],
+            "g_r13" | "o5" => self.g_r[13],
+            "g_r14" | "o6" => self.g_r[14],
+            "g_r15" | "o7" => self.g_r[15],
+            "g_r16" | "l0" => self.g_r[16],
+            "g_r17" | "l1" => self.g_r[17],
+            "g_r18" | "l2" => self.g_r[18],
+            "g_r19" | "l3" => self.g_r[19],
+            "g_r20" | "l4" => self.g_r[20],
+            "g_r21" | "l5" => self.g_r[21],
+            "g_r22" | "l6" => self.g_r[22],
+            "g_r23" | "l7" => self.g_r[23],
+            "g_r24" | "i0" => self.g_r[24],
+            "g_r25" | "i1" => self.g_r[25],
+            "g_r26" | "i2" => self.g_r[26],
+            "g_r27" | "i3" => self.g_r[27],
+            "g_r28" | "i4" => self.g_r[28],
+            "g_r29" | "i5" => self.g_r[29],
+            "g_r30" | "i6" => self.g_r[30],
+            "g_r31" | "i7" => self.g_r[31],
+            "ccr" => self.ccr,
+            "pc" => self.pc,
+            "npc" => self.npc,
+            "y" => self.y,
+            "asi" => self.asi,
+            "fprs" => self.fprs,
+            _ => unreachable!("Invalid sparc register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "g_r0" | "g0" => self.g_r[0] = val,
+            "g_r1" | "g1" => self.g_r[1] = val,
+            "g_r2" | "g2" => self.g_r[2] = val,
+            "g_r3" | "g3" => self.g_r[3] = val,
+            "g_r4" | "g4" => self.g_r[4] = val,
+            "g_r5" | "g5" => self.g_r[5] = val,
+            "g_r6" | "g6" => self.g_r[6] = val,
+            "g_r7" | "g7" => self.g_r[7] = val,
+            "g_r8" | "o0" => self.g_r[8] = val,
+            "g_r9" | "o1" => self.g_r[9] = val,
+            "g_r10" | "o2" => self.g_r[10] = val,
+            "g_r11" | "o3" => self.g_r[11] = val,
+            "g_r12" | "o4" => self.g_r[12] = val,
+            "g_r13" | "o5" => self.g_r[13] = val,
+            "g_r14" | "o6" => self.g_r[14] = val,
+            "g_r15" | "o7" => self.g_r[15] = val,
+            "g_r16" | "l0" => self.g_r[16] = val,
+            "g_r17" | "l1" => self.g_r[17] = val,
+            "g_r18" | "l2" => self.g_r[18] = val,
+            "g_r19" | "l3" => self.g_r[19] = val,
+            "g_r20" | "l4" => self.g_r[20] = val,
+            "g_r21" | "l5" => self.g_r[21] = val,
+            "g_r22" | "l6" => self.g_r[22] = val,
+            "g_r23" | "l7" => self.g_r[23] = val,
+            "g_r24" | "i0" => self.g_r[24] = val,
+            "g_r25" | "i1" => self.g_r[25] = val,
+            "g_r26" | "i2" => self.g_r[26] = val,
+            "g_r27" | "i3" => self.g_r[27] = val,
+            "g_r28" | "i4" => self.g_r[28] = val,
+            "g_r29" | "i5" => self.g_r[29] = val,
+            "g_r30" | "i6" => self.g_r[30] = val,
+            "g_r31" | "i7" => self.g_r[31] = val,
+            "ccr" => self.ccr = val,
+            "pc" => self.pc = val,
+            "npc" => self.npc = val,
+            "y" => self.y = val,
+            "asi" => self.asi = val,
+            "fprs" => self.fprs = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "g_r14" // alias out register o6
     }
 
     fn instruction_pointer_register_name(&self) -> &'static str {
@@ -546,29 +1025,6 @@ pub enum ContextError {
     UnknownCpuContext,
 }
 
-/// General-purpose registers for x86.
-static X86_REGS: [&str; 10] = [
-    "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl",
-];
-
-/// General-purpose registers for x86-64.
-static X86_64_REGS: [&str; 17] = [
-    "rax", "rdx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", "r8", "r9", "r10", "r11", "r12", "r13",
-    "r14", "r15", "rip",
-];
-
-/// General-purpose registers for ARM (32-bit).
-static ARM_REGS: [&str; 20] = [
-    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14",
-    "r15", "pc", "lr", "fp", "sp",
-];
-
-/// General-purpose registers for aarch64.
-static ARM64_REGS: [&str; 35] = [
-    "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14",
-    "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27",
-    "x28", "x29", "x30", "pc", "lr", "fp", "sp",
-];
 //======================================================
 // Implementations
 
@@ -764,32 +1220,89 @@ impl MinidumpContext {
         }
     }
 
+    pub fn get_register_always(&self, reg: &str) -> u64 {
+        match self.raw {
+            MinidumpRawContext::Amd64(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::Arm(ref ctx) => ctx.get_register_always(reg).into(),
+            MinidumpRawContext::Arm64(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::OldArm64(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::Ppc(ref ctx) => ctx.get_register_always(reg).into(),
+            MinidumpRawContext::Ppc64(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::Sparc(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::X86(ref ctx) => ctx.get_register_always(reg).into(),
+            MinidumpRawContext::Mips(ref ctx) => ctx.get_register_always(reg),
+        }
+    }
+
+    pub fn get_register(&self, reg: &str) -> Option<u64> {
+        let valid = match &self.raw {
+            MinidumpRawContext::X86(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Ppc(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Ppc64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Amd64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Sparc(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Arm(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+        };
+
+        if valid {
+            Some(self.get_register_always(reg))
+        } else {
+            None
+        }
+    }
+
     pub fn format_register(&self, reg: &str) -> String {
         match self.raw {
             MinidumpRawContext::Amd64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Arm(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Arm64(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::OldArm64(ref ctx) => ctx.format_register(reg),
-            MinidumpRawContext::Ppc(_) => unimplemented!(),
-            MinidumpRawContext::Ppc64(_) => unimplemented!(),
-            MinidumpRawContext::Sparc(_) => unimplemented!(),
+            MinidumpRawContext::Ppc(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::Ppc64(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::Sparc(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::X86(ref ctx) => ctx.format_register(reg),
-            MinidumpRawContext::Mips(_) => unimplemented!(),
+            MinidumpRawContext::Mips(ref ctx) => ctx.format_register(reg),
         }
     }
 
     pub fn general_purpose_registers(&self) -> &'static [&'static str] {
         match self.raw {
-            MinidumpRawContext::Amd64(_) => &X86_64_REGS[..],
-            MinidumpRawContext::Arm(_) => &ARM_REGS[..],
-            MinidumpRawContext::Arm64(_) => &ARM64_REGS[..],
-            MinidumpRawContext::OldArm64(_) => &ARM64_REGS[..],
-            MinidumpRawContext::Ppc(_) => unimplemented!(),
-            MinidumpRawContext::Ppc64(_) => unimplemented!(),
-            MinidumpRawContext::Sparc(_) => unimplemented!(),
-            MinidumpRawContext::X86(_) => &X86_REGS[..],
-            MinidumpRawContext::Mips(_) => unimplemented!(),
+            MinidumpRawContext::Amd64(_) => md::CONTEXT_AMD64::REGISTERS,
+            MinidumpRawContext::Arm(_) => md::CONTEXT_ARM::REGISTERS,
+            MinidumpRawContext::Arm64(_) => md::CONTEXT_ARM64::REGISTERS,
+            MinidumpRawContext::OldArm64(_) => md::CONTEXT_ARM64::REGISTERS,
+            MinidumpRawContext::Ppc(_) => md::CONTEXT_PPC::REGISTERS,
+            MinidumpRawContext::Ppc64(_) => md::CONTEXT_PPC64::REGISTERS,
+            MinidumpRawContext::Sparc(_) => md::CONTEXT_SPARC::REGISTERS,
+            MinidumpRawContext::X86(_) => md::CONTEXT_X86::REGISTERS,
+            MinidumpRawContext::Mips(_) => md::CONTEXT_MIPS::REGISTERS,
         }
+    }
+
+    pub fn registers(&self) -> impl Iterator<Item = (&'static str, u64)> + '_ {
+        self.general_purpose_registers()
+            .iter()
+            .map(move |&reg| (reg, self.get_register_always(reg)))
+    }
+
+    pub fn valid_registers(&self) -> impl Iterator<Item = (&'static str, u64)> + '_ {
+        // This is suboptimal in theorey, as we could iterate over self.valid just like the original
+        // and faster `CpuRegisters` iterator does. However, this complicates code here, and the
+        // minimal gain in performance hasn't been worth the added complexity.
+        self.registers().filter(move |(reg, _)| match &self.raw {
+            MinidumpRawContext::X86(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Ppc(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Ppc64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Amd64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Sparc(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Arm(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+        })
     }
 
     /// Write a human-readable description of this `MinidumpContext` to `f`.
@@ -1049,5 +1562,36 @@ impl MinidumpContext {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// Smoke test for the default implementation of `memoize_register`.
+    fn test_memoize_amd64() {
+        let context = md::CONTEXT_AMD64::default();
+        assert_eq!(context.memoize_register("rip"), Some("rip"));
+        assert_eq!(context.memoize_register("foo"), None);
+    }
+
+    #[test]
+    /// Test ARM register aliases by example of `fp`.
+    fn test_memoize_arm_alias() {
+        let context = md::CONTEXT_ARM::default();
+        assert_eq!(context.memoize_register("r11"), Some("fp"));
+        assert_eq!(context.memoize_register("fp"), Some("fp"));
+        assert_eq!(context.memoize_register("foo"), None);
+    }
+
+    #[test]
+    /// Test ARM register aliases by example of `fp`.
+    fn test_memoize_arm64_alias() {
+        let context = md::CONTEXT_ARM64::default();
+        assert_eq!(context.memoize_register("x29"), Some("fp"));
+        assert_eq!(context.memoize_register("fp"), Some("fp"));
+        assert_eq!(context.memoize_register("foo"), None);
     }
 }
