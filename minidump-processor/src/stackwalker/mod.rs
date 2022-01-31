@@ -198,6 +198,7 @@ where
     CallStack {
         frames,
         info,
+        thread_id: 0,
         thread_name: None,
         last_error_value: None,
     }
