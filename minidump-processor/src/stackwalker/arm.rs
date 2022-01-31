@@ -24,7 +24,7 @@ const FRAME_POINTER: &str = Registers::FramePointer.name();
 const STACK_POINTER: &str = Registers::StackPointer.name();
 const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
 const LINK_REGISTER: &str = Registers::LinkRegister.name();
-const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11"];
+const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", "fp"];
 
 async fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
