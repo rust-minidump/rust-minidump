@@ -92,16 +92,17 @@ where
         .get_stream::<MinidumpSystemInfo>()
         .or(Err(ProcessError::MissingSystemInfo))?;
 
-    let mut os_version = format!(
+    let os_version = format!(
         "{}.{}.{}",
         dump_system_info.raw.major_version,
         dump_system_info.raw.minor_version,
         dump_system_info.raw.build_number
     );
-    if let Some(csd_version) = dump_system_info.csd_version() {
-        os_version.push(' ');
-        os_version.push_str(&csd_version);
-    }
+
+    let os_build = dump_system_info
+        .csd_version()
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty());
 
     let linux_standard_base = dump.get_stream::<MinidumpLinuxLsbRelease>().ok();
     let linux_cpu_info = dump
@@ -155,6 +156,7 @@ where
     let system_info = SystemInfo {
         os: dump_system_info.os,
         os_version: Some(os_version),
+        os_build,
         cpu: dump_system_info.cpu,
         cpu_info,
         cpu_microcode_version,
