@@ -515,13 +515,11 @@ impl SymbolParser {
                         // filter those out.
                         if l.size > 0 {
                             if let Some(end) = l.address.checked_add(l.size as u64 - 1) {
-                                (Some(Range::new(l.address, end)), l)
-                            } else {
-                                (None, l)
+                                return (Some(Range::new(l.address, end)), l);
                             }
-                        } else {
-                            (None, l)
                         }
+
+                        (None, l)
                     })
                     .into_rangemap_safe();
 
