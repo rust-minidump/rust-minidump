@@ -514,10 +514,11 @@ impl SymbolParser {
                         // Line data from PDB files often has a zero-size line entry, so just
                         // filter those out.
                         if l.size > 0 {
-                            (
-                                Some(Range::new(l.address, l.address + l.size as u64 - 1)),
-                                l,
-                            )
+                            if let Some(end) = l.address.checked_add(l.size as u64 - 1) {
+                                (Some(Range::new(l.address, end)), l)
+                            } else {
+                                (None, l)
+                            }
                         } else {
                             (None, l)
                         }
@@ -1281,4 +1282,13 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
             WinStackThing::AllocatesBasePointer(true)
         );
     }
+}
+
+#[test]
+fn address_size_overflow() {
+    let bytes = b"FUNC 1 2 3 x\nffffffffffffffff 2 0 0\n";
+    let sym = parse_symbol_bytes(bytes.as_slice()).unwrap();
+    let fun = sym.functions.get(1).unwrap();
+    assert!(fun.lines.is_empty());
+    assert!(fun.name == "x");
 }
