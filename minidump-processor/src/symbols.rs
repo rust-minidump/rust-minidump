@@ -68,7 +68,7 @@
 //! fn main() -> Result<(), ()> {
 //!     // Read the minidump
 //!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
-//!  
+//!
 //!     // Configure the symbolizer and processor
 //!     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
 //!     let symbols_paths = vec![];
@@ -76,7 +76,7 @@
 //!     symbols_cache.push("minidump-cache");
 //!     let symbols_tmp = std::env::temp_dir();
 //!     let timeout = std::time::Duration::from_secs(1000);
-//!  
+//!
 //!     let options = ProcessorOptions::default();
 //!     let provider = Symbolizer::new(http_symbol_supplier(
 //!         symbols_paths,
@@ -85,7 +85,7 @@
 //!         symbols_tmp,
 //!         timeout,
 //!     ));
-//!  
+//!
 //!     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
 //!         .map_err(|_| ())?;
 //!     state.print(&mut std::io::stdout()).map_err(|_| ())?;
@@ -201,7 +201,7 @@ mod symbols_shim {
     ///   This should be assumed to be a "temp" directory that another process
     ///   you don't control is garbage-collecting old files from (to provide an LRU cache).
     ///   The cache is queried before paths and urls (otherwise it wouldn't be much of a cache).
-    ///   
+    ///
     /// * `symbols_tmp` is a directory where symbol files should be downloaded to
     ///   before atomically swapping them into the cache. Has the same "temp"
     ///   assumptions as symbols_cache.
@@ -241,7 +241,7 @@ mod symbols_shim {
     }
 }
 
-#[cfg(feature = "symbolic-syms")]
+#[cfg(all(feature = "symbolic-syms", not(feature = "breakpad-syms")))]
 mod symbols_shim {
     #![allow(dead_code)]
 
@@ -357,7 +357,7 @@ mod symbols_shim {
     ///   This should be assumed to be a "temp" directory that another process
     ///   you don't control is garbage-collecting old files from (to provide an LRU cache).
     ///   The cache is queried before paths and urls (otherwise it wouldn't be much of a cache).
-    ///   
+    ///
     /// * `symbols_tmp` is a directory where symbol files should be downloaded to
     ///   before atomically swapping them into the cache. Has the same "temp"
     ///   assumptions as symbols_cache.
