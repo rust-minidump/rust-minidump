@@ -63,7 +63,7 @@ pub struct StackFrame {
     pub instruction: u64,
 
     /// Return the actual return address, as saved on the stack or in a
-    /// register. See the comments for `instruction`, below, for details.
+    /// register. See the comments for `instruction`, for details.
     pub return_address: u64,
 
     /// The module in which the instruction resides.
@@ -237,6 +237,7 @@ impl StackFrame {
     pub fn from_context(context: MinidumpContext, trust: FrameTrust) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
+            // Initialized the same as `instruction`, but left unmodified during stack walking.
             return_address: context.get_instruction_pointer(),
             module: None,
             unloaded_modules: BTreeMap::new(),
@@ -249,12 +250,6 @@ impl StackFrame {
             trust,
             context,
         }
-    }
-
-    /// Return the actual return address, as saved on the stack or in a
-    /// register. See the comments for `StackFrame::instruction` for details.
-    pub fn return_address(&self) -> u64 {
-        self.instruction
     }
 }
 
