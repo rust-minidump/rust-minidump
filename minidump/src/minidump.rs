@@ -1499,7 +1499,9 @@ impl<'a> MinidumpMemory<'a> {
         T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
         T: SizeWith<scroll::Endian>,
     {
-        let in_range = |a: u64| a >= self.base_address && a < (self.base_address + self.size);
+        let end = self.base_address.checked_add(self.size)?;
+
+        let in_range = |a: u64| a >= self.base_address && a < end;
         let size = <T>::size_with(&LE);
         if !in_range(addr) || !in_range(addr + size as u64 - 1) {
             return None;
@@ -5394,6 +5396,20 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             mem_list.iter().map(|mem| mem.bytes).collect()
         };
         assert_eq!(mem_slices[0], CONTENTS);
+    }
+
+    #[test]
+    fn test_memory_overflow() {
+        let memory1 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_repeated(0, 2),
+            u64::MAX,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory1);
+        let dump = read_synth_dump(dump).unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
+        let regions = memory_list.iter().collect::<Vec<_>>();
+        assert_eq!(regions.len(), 1);
+        assert!(regions[0].get_memory_at_address::<u8>(u64::MAX).is_none());
     }
 
     #[test]
