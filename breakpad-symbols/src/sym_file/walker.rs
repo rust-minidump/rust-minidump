@@ -763,10 +763,10 @@ pub fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalk
         // (so the caller's $ebp was pushed right after the return address,
         // and now $ebp points to that.)
         trace!("unwind: program used @ operator, using $ebp instead of $esp for return addr");
-        callee_ebp + 4
+        callee_ebp.checked_add(4)?
     } else {
         // $esp should be reasonable, get the return address from that
-        callee_esp + frame_size
+        callee_esp.checked_add(frame_size)?
     };
 
     trace!(
