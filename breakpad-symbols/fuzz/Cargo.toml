@@ -23,3 +23,9 @@ name = "symbol_file"
 path = "fuzz_targets/symbol_file.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "cfi_eval"
+path = "fuzz_targets/cfi_eval.rs"
+test = false
+doc = false
