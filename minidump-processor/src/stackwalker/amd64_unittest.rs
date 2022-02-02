@@ -562,29 +562,103 @@ fn test_cfi_at_4006() {
 }
 
 #[test]
-fn test_overflow() {
+fn test_frame_pointer_overflow() {
     // Make sure we don't explode when trying frame pointer analysis on a value
     // that will overflow.
 
-    // Functions typically push their %rbp upon entry and set %rbp pointing
-    // there.  If stackwalking finds a plausible address for the next frame's
-    // %rbp directly below the return address, assume that it is indeed the
-    // next frame's %rbp.
+    type Pointer = u64;
+    let stack_max: Pointer = Pointer::MAX;
+    let stack_size: Pointer = 1000;
+    let bad_frame_ptr: Pointer = stack_max;
+
     let mut f = TestFixture::new();
     let mut stack = Section::new();
-    let stack_start = 0x8000000080000000;
-    stack.start().set_const(stack_start);
+    let stack_start: Pointer = stack_max - stack_size;
+    stack.start().set_const(stack_start as u64);
 
     stack = stack
         // frame 0
-        .append_repeated(0, 1000); // junk, not important to the test
+        .append_repeated(0, stack_size as usize); // junk, not important to the test
 
     f.raw.rip = 0x00007400c0000200;
-    f.raw.rbp = u64::MAX;
-    f.raw.rsp = stack.start().value().unwrap();
+    f.raw.rbp = bad_frame_ptr;
+    f.raw.rsp = stack.start().value().unwrap() as Pointer;
 
     let s = f.walk_stack(stack);
     assert_eq!(s.frames.len(), 1);
 
     // As long as we don't panic, we're good!
+}
+
+#[test]
+fn test_frame_pointer_barely_no_overflow() {
+    // This is test_caller_pushed_rbp but with the all the values pushed
+    // as close to the upper memory boundary as possible, to confirm that
+    // our code doesn't randomly overflow *AND* isn't overzealous in
+    // its overflow guards.
+
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+
+    type Pointer = u64;
+    let stack_max: Pointer = Pointer::MAX;
+    let pointer_size: Pointer = std::mem::size_of::<Pointer>() as Pointer;
+    let stack_size: Pointer = pointer_size * 3;
+
+    let stack_start: Pointer = stack_max - stack_size;
+    let return_address: Pointer = 0x00007500b0000110;
+    stack.start().set_const(stack_start as u64);
+
+    let frame0_fp = Label::new();
+    let frame1_sp = Label::new();
+    let frame1_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .mark(&frame0_fp)
+        .D64(&frame1_fp) // caller-pushed %rbp
+        .D64(return_address) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .mark(&frame1_fp) // end of stack
+        .D64(0);
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = frame0_fp.value().unwrap() as Pointer;
+    f.raw.rsp = stack.start().value().unwrap();
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // To avoid reusing locals by mistake
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+        if let MinidumpRawContext::Amd64(ctx) = &f0.context.raw {
+            assert_eq!(ctx.rbp, frame0_fp.value().unwrap() as Pointer);
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        // To avoid reusing locals by mistake
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+            assert!(which.contains("rbp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::Amd64(ctx) = &f1.context.raw {
+            assert_eq!(ctx.rip, return_address);
+            assert_eq!(ctx.rsp, frame1_sp.value().unwrap() as Pointer);
+            assert_eq!(ctx.rbp, frame1_fp.value().unwrap() as Pointer);
+        } else {
+            unreachable!();
+        }
+    }
 }

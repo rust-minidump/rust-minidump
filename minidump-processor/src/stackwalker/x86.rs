@@ -154,7 +154,7 @@ where
     // %bp_new = *(%bp_old)
     // %sp_new = %bp_old + ptr*2
 
-    if last_bp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+    if last_bp as u32 >= u32::MAX - POINTER_WIDTH as u32 * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.

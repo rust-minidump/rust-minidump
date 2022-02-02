@@ -127,7 +127,7 @@ where
     // Unlike ARM64, we don't bother trying really hard to restore lr
     let last_lr = ctx.get_register(LINK_REGISTER, valid)?;
 
-    if last_fp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+    if last_fp as u32 >= u32::MAX - POINTER_WIDTH as u32 * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.

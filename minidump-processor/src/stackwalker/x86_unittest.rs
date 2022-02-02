@@ -818,3 +818,139 @@ fn test_stack_win_frame_data_parameter_size() {
         }
     }
 }
+
+#[test]
+fn test_frame_pointer_overflow() {
+    // Make sure we don't explode when trying frame pointer analysis on a value
+    // that will overflow.
+
+    type Pointer = u32;
+    let stack_max: Pointer = Pointer::MAX;
+    let stack_size: Pointer = 1000;
+    let bad_frame_ptr: Pointer = stack_max;
+
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start: Pointer = stack_max - stack_size;
+    stack.start().set_const(stack_start as u64);
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, stack_size as usize); // junk, not important to the test
+
+    f.raw.eip = 0x7a100000;
+    f.raw.ebp = bad_frame_ptr;
+    f.raw.esp = stack.start().value().unwrap() as Pointer;
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 1);
+
+    // As long as we don't panic, we're good!
+}
+
+#[test]
+fn test_frame_pointer_overflow_nonsense_32bit_stack() {
+    // same as test_frame_pointer_overflow, but we're going to abuse the fact
+    // that rust-minidump prefers representing things in 64-bit to create
+    // impossible stack addresses that overflow 32-bit integers but appear
+    // valid in 64-bit. By doing this memory reads will "succeed" but
+    // pointer math done in the native pointer width will overflow and
+    // everything will be sad.
+
+    type Pointer = u32;
+    let pointer_size: u64 = std::mem::size_of::<Pointer>() as u64;
+    let stack_max: u64 = Pointer::MAX as u64 + pointer_size * 2;
+    let stack_size: u64 = 1000;
+    let bad_frame_ptr: u64 = Pointer::MAX as u64 - pointer_size;
+
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start: u64 = stack_max - stack_size;
+    stack.start().set_const(stack_start as u64);
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 1000); // junk, not important to the test
+
+    f.raw.eip = 0x7a100000;
+    f.raw.ebp = bad_frame_ptr as u32;
+    f.raw.esp = stack.start().value().unwrap() as Pointer;
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 1);
+
+    // As long as we don't panic, we're good!
+}
+
+#[test]
+fn test_frame_pointer_barely_no_overflow() {
+    // This is test_tradition but with the all the values pushed
+    // as close to the upper memory boundary as possible, to confirm that
+    // our code doesn't randomly overflow *AND* isn't overzealous in
+    // its overflow guards.
+
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+
+    type Pointer = u32;
+    let pointer_size: Pointer = std::mem::size_of::<Pointer>() as Pointer;
+    let stack_max: Pointer = Pointer::MAX;
+    let stack_size: Pointer = pointer_size * 3;
+
+    let stack_start: Pointer = stack_max - stack_size;
+    let return_address: Pointer = 0x7b302000;
+    stack.start().set_const(stack_start as u64);
+
+    let frame0_fp = Label::new();
+    let frame1_sp = Label::new();
+    let frame1_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .mark(&frame0_fp)
+        .D32(&frame1_fp) // caller-pushed %rbp
+        .D32(return_address) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .mark(&frame1_fp) // end of stack
+        .D32(0);
+
+    f.raw.eip = 0x7a100000;
+    f.raw.ebp = frame0_fp.value().unwrap() as Pointer;
+    f.raw.esp = stack.start().value().unwrap() as Pointer;
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // To avoid reusing locals by mistake
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+        if let MinidumpRawContext::X86(ctx) = &f0.context.raw {
+            assert_eq!(ctx.ebp, frame0_fp.value().unwrap() as Pointer);
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        // To avoid reusing locals by mistake
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("eip"));
+            assert!(which.contains("esp"));
+            assert!(which.contains("ebp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::X86(ctx) = &f1.context.raw {
+            assert_eq!(ctx.eip, return_address);
+            assert_eq!(ctx.esp, frame1_sp.value().unwrap() as Pointer);
+            assert_eq!(ctx.ebp, frame1_fp.value().unwrap() as Pointer);
+        } else {
+            unreachable!();
+        }
+    }
+}
