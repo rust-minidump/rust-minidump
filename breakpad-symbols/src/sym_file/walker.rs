@@ -737,7 +737,7 @@ enum CfiReg<'a> {
     Other(&'a str),
 }
 
-fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
+pub fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
     // TODO?: do a bunch of heuristics to make this more robust.
     // So far I haven't encountered an in-the-wild example that needs the
     // extra heuristics that breakpad uses, so leaving them out until they

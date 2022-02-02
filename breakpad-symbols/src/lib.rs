@@ -52,6 +52,13 @@ pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
+// Public re-exports for the purposes of the cfi_eval fuzzer.
+#[doc(hidden)]
+pub mod fuzzing_private_exports {
+    pub use crate::sym_file::{StackInfoWin, WinStackThing};
+    pub use crate::sym_file::walker::{eval_win_expr, walk_with_stack_cfi};
+}
+
 /// Statistics on the symbols of a module.
 #[derive(Default, Debug)]
 pub struct SymbolStats {
