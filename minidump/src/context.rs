@@ -19,6 +19,7 @@ use minidump_common::format::ContextFlagsCpu;
 
 /// The CPU-specific context structure.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum MinidumpRawContext {
     X86(md::CONTEXT_X86),
     Ppc(md::CONTEXT_PPC),

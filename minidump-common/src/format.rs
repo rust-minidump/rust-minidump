@@ -6982,6 +6982,7 @@ pub struct SSE_REGISTERS {
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86-64.
 #[derive(Debug, SmartDefault, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_AMD64 {
     pub p1_home: u64,
     pub p2_home: u64,
@@ -7042,6 +7043,7 @@ pub struct CONTEXT_AMD64 {
 
 /// ARM floating point state
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_ARM {
     pub fpscr: u64,
     pub regs: [u64; 32],
@@ -7053,6 +7055,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for ARM
 /// in WinNT.h.
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
     pub iregs: [u32; 16],
@@ -7085,6 +7088,7 @@ impl ArmRegisterNumbers {
 
 /// aarch64 floating point state (old)
 #[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_ARM64_OLD {
     pub fpsr: u32,
     pub fpcr: u32,
@@ -7096,6 +7100,7 @@ pub struct FLOATING_SAVE_AREA_ARM64_OLD {
 /// This is a Breakpad extension.
 #[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
 #[repr(packed)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
     pub iregs: [u64; 32],
@@ -7106,6 +7111,7 @@ pub struct CONTEXT_ARM64_OLD {
 
 /// aarch64 floating point state
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_ARM64 {
     pub regs: [u128; 32usize],
     pub fpsr: u32,
@@ -7117,6 +7123,7 @@ pub struct FLOATING_SAVE_AREA_ARM64 {
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for aarch64
 /// in WinNT.h.
 #[derive(Debug, Default, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
     pub cpsr: u32,
@@ -7152,6 +7159,7 @@ impl Arm64RegisterNumbers {
 
 /// MIPS floating point state
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
     pub fpcsr: u32,
@@ -7162,6 +7170,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
     pub _pad0: u32,
@@ -7199,6 +7208,7 @@ pub enum MipsRegisterNumbers {
 
 /// PPC floating point state
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_PPC {
     pub fpregs: [u64; 32],
     pub fpscr_pad: u32,
@@ -7207,6 +7217,7 @@ pub struct FLOATING_SAVE_AREA_PPC {
 
 /// PPC vector state
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct VECTOR_SAVE_AREA_PPC {
     pub save_vr: [u128; 32],
     pub save_vscr: u128,
@@ -7219,6 +7230,7 @@ pub struct VECTOR_SAVE_AREA_PPC {
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC in WinNT.h.
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_PPC {
     pub context_flags: u32,
     pub srr0: u32,
@@ -7245,6 +7257,7 @@ pub enum PpcRegisterNumbers {
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for PPC64 in WinNT.h.
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_PPC64 {
     pub context_flags: u64,
     pub srr0: u64,
@@ -7268,6 +7281,7 @@ pub enum Ppc64RegisterNumbers {
 
 /// SPARC floating point state
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_SPARC {
     pub regs: [u64; 32],
     pub filler: u64,
@@ -7278,6 +7292,7 @@ pub struct FLOATING_SAVE_AREA_SPARC {
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for SPARC in WinNT.h.
 #[derive(Debug, Clone, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_SPARC {
     pub context_flags: u32,
     pub flag_pad: u32,
@@ -7302,6 +7317,7 @@ pub enum SparcRegisterNumbers {
 ///
 /// This struct matches the definition of the `FLOATING_SAVE_AREA` struct from WinNT.h.
 #[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_X86 {
     pub control_word: u32,
     pub status_word: u32,
@@ -7319,6 +7335,7 @@ pub struct FLOATING_SAVE_AREA_X86 {
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86.
 #[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_X86 {
     pub context_flags: u32,
     pub dr0: u32,

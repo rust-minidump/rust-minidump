@@ -10,9 +10,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-minidump = { path = "../../minidump" }
+minidump = { path = "../../minidump", features =["arbitrary"] }
 test-assembler = "0.1.6"
-minidump-common = { path = "../../minidump-common" }
+minidump-common = { path = "../../minidump-common", features=["arbitrary"] }
 
 [dependencies.minidump-processor]
 path = ".."
