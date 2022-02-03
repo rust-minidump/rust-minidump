@@ -22,3 +22,7 @@ log = "0.4.1"
 reqwest = { version = "0.11.6", features = ["blocking", "gzip"] }
 tempfile = "3.3.0"
 thiserror = "1.0.30"
+
+# Private API, only here to support the fuzzer
+[features]
+fuzz = []

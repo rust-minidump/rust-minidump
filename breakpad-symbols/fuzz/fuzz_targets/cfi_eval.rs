@@ -1,7 +1,7 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
-use breakpad_symbols::fuzzing_private_exports::{eval_win_expr, StackInfoWin, WinStackThing};
+use breakpad_symbols::fuzzing_private_exports::{eval_win_expr_for_fuzzer, StackInfoWin, WinStackThing};
 use breakpad_symbols::FrameWalker;
 use std::collections::HashMap;
 
@@ -144,5 +144,5 @@ fn test_stack_win_doc_example(regs: [u32; 14], expr: &str) {
     let mut walker = TestFrameWalker::new(stack, input);
     let info = whatever_win_info();
 
-    eval_win_expr(expr, &info, &mut walker);
+    eval_win_expr_for_fuzzer(expr, &info, &mut walker);
 }

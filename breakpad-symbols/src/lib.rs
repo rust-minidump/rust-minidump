@@ -52,10 +52,11 @@ pub use crate::sym_file::{CfiRules, SymbolFile};
 
 mod sym_file;
 
-// Public re-exports for the purposes of the cfi_eval fuzzer.
+// Re-exports for the purposes of the cfi_eval fuzzer. Not public API.
 #[doc(hidden)]
+#[cfg(feature = "fuzz")]
 pub mod fuzzing_private_exports {
-    pub use crate::sym_file::walker::{eval_win_expr, walk_with_stack_cfi};
+    pub use crate::sym_file::walker::{eval_win_expr_for_fuzzer, walk_with_stack_cfi};
     pub use crate::sym_file::{StackInfoWin, WinStackThing};
 }
 
