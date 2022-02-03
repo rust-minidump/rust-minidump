@@ -21,6 +21,7 @@ scroll = "0.10.2"
 memmap2 = "0.5.2"
 time = { version = "0.3.6", features = ["formatting"] }
 thiserror = "1.0.30"
+arbitrary = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 synth-minidump = { path = "../synth-minidump" }

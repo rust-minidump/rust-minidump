@@ -22,6 +22,9 @@ name = "arbitrary"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "510c76ecefdceada737ea728f4f9a84bd2e1ef29f1ba555e560940fe279954de"
+dependencies = [
+ "derive_arbitrary",
+]
 
 [[package]]
 name = "async-compression"
@@ -153,6 +156,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2209c310e29876f7f0b2721e7e26b84aff178aa3da5d091f9bfbf47669e60e3"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b24629208e87a2d8b396ff43b15c4afb0a69cea3fbbaa9ed9b92b7c02f0aed73"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -564,6 +578,7 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 name = "minidump"
 version = "0.9.6"
 dependencies = [
+ "arbitrary",
  "encoding",
  "log",
  "memmap2",
@@ -579,6 +594,7 @@ dependencies = [
 name = "minidump-common"
 version = "0.9.6"
 dependencies = [
+ "arbitrary",
  "bitflags",
  "enum-primitive-derive",
  "log",

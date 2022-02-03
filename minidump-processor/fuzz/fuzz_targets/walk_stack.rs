@@ -10,15 +10,15 @@ use std::collections::HashMap;
 use test_assembler::Section;
 
 struct TestFixture {
-    pub raw: CONTEXT_X86,
+    pub raw: minidump::MinidumpRawContext,
     pub modules: MinidumpModuleList,
     pub symbols: HashMap<String, String>,
 }
 
 impl TestFixture {
-    pub fn new() -> TestFixture {
+    pub fn new(raw: minidump::MinidumpRawContext) -> TestFixture {
         TestFixture {
-            raw: CONTEXT_X86::default(),
+            raw,
             // Give the two modules reasonable standard locations and names
             // for tests to play with.
             modules: MinidumpModuleList::from_modules(vec![
@@ -29,9 +29,9 @@ impl TestFixture {
         }
     }
 
-    pub fn walk_stack(&self, stack: Section) -> Option<CallStack> {
+    pub fn walk_stack(self, stack: Section) -> Option<CallStack> {
         let context = MinidumpContext {
-            raw: MinidumpRawContext::X86(self.raw.clone()),
+            raw: self.raw,
             valid: MinidumpContextValidity::All,
         };
 
@@ -56,12 +56,10 @@ impl TestFixture {
     }
 }
 
-fuzz_target!(|data: &[u8]| {
-    let mut f = TestFixture::new();
+fuzz_target!(|data: (&[u8], minidump::MinidumpRawContext)| {
+    let f = TestFixture::new(data.1);
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
-    stack = stack.append_bytes(data);
-    f.raw.eip = 0x40000200;
-    f.raw.ebp = 0x80000000;
+    stack = stack.append_bytes(data.0);
     f.walk_stack(stack);
 });
