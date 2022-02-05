@@ -27,3 +27,10 @@ arbitrary = { version = "1", optional = true, features = ["derive"] }
 synth-minidump = { path = "../synth-minidump" }
 test-assembler = "0.1.6"
 doc-comment = "0.3.3"
+
+[features]
+# This is a hack to get around the fact that namespaced-features aren't yet on stable
+# This can be replaced with
+# arbitrary = ["minidump-common/arbitrary", "dep:arbitrary"]
+# as soon as https://github.com/rust-lang/cargo/issues/5565 is on an old enough cargo
+arbitrary_impls = ["minidump-common/arbitrary", "arbitrary"]
