@@ -1,8 +1,16 @@
 # rust-minidump JSON Schema
 
-This document details the current JSON Schema for minidump-processor's and minidump-stackwalk's JSON output. This schema is derived from the one used by previous incarnations of minidump_stackwalk for sake of compatibility, but some things have been added or removed.
+This document details the current JSON Schema for minidump-processor's and minidump-stackwalk's JSON output.
 
-As of the publishing of this document, the schema is stable, but can and will have backwards compatible additions in the future. It should however be noted that there aren't many fields of the schema that are guaranteed to be present, because the minidump itself can be missing that information. So when we say the schema is "stable" we are really just saying that we aren't going to rename fields or change their type (int, string, object...). And of course we'll always do our best to populate an existing field when the required data is available.
+**As of the publishing of this document, the schema is stable**, but will have backwards compatible additions in the future. Stability guarantees only apply to crates.io releases, so if you build an unpublished version of rust-minidump, it may include things that can be removed before the next release. At the moment minidump-processor and minidump-stackwalk are versioned and published in lockstep (even when only one of them has been modified), so when this document refers to a particular "version" of the schema, it's the published version of these two crates.
+
+**The Most Important Rule Of This Schema:** *Assume all fields are optional, and can be null or absent.* This includes top-level Objects which define subfields (like "modules" or "threads"). Minidumps are inherently "best-effort" and very modular &mdash; Information that we would *like* to use may be corrupt or missing, and rust-minidump has to do the best with what it has. Some information may also be platform-specific (e.g. `mac_crash_info`), so we may omit it when it doesn't make sense.
+
+In the current implementation some data is always required and some fields always get populated, but we'd prefer to not specify this because in principle rust-minidump should always be trying to produce whatever it can whenever it can, which means making *more* things optional.
+
+So when we say the schema is "stable" we are really just saying that we aren't going to rename fields or change their type (int, string, object...) or semantics. And of course we'll always do our best to populate an existing field when the required data is available! While we can *technically* deprecate a field and stop emitting it completely under this definition of "stable", we will try to avoid doing this unless there is some significant issue with the field (or it never contained a useful value anyway).
+
+As we add more experimental and unreliable analyses (like trying to recover function args, trying to detect bitflips, trying to detect exploitable crashes, etc.) they may be hidden behind flags in minidump-stackwalk or [ProcessorOptions](https://docs.rs/minidump-processor/latest/minidump_processor/struct.ProcessorOptions.html). The precise details of how this will work and how this will be specified in this document still need to be hashed out (it would be *nice* if we could have "unstable" analyses that we can tentatively ship and remove later if they're a problem).
 
 # Types
 
@@ -14,9 +22,9 @@ Standard JSON types apply, which we will use as follows:
 * `<array>`
 * `<object>`
 
-**All of these can also be `null`**.
+**All of these can also be `null`, see "The Most Important Rule Of This Schema" above.**
 
-(Arrays and objects are never leaves in the schema, so they will just be represented by the appropriate kind of braces.)
+(Arrays and objects will just be represented by the appropriate kind of braces.)
 
 By default, strings are *opaque* to this schema, meaning they can contain anything (including the empty string). This usually means we are just passing the string through from a symbol file or the minidump itself. There may be an underlying structure from the source, but we aren't going to try to guarantee or specify it.
 
@@ -46,10 +54,17 @@ try to tighten that up in future releases if it's an issue).
 NOTE 3: Minidumps can be generated regardless of if there's an actual crash, but for simplicity
 these notes will assume that a crash happened by default, since that's the important case.
 
+NOTE 4: This schema isn't completely "normalized" and includes some information that *technically*
+you could compute from the other data in the schema. To make it clear that these fields aren't
+trying to capture any special situation, it will often be indicated that they're "redundant".
+Redundant data is included to make the format more human-friendly and to try to reduce the
+need for post-processing &mdash; especially when rust-minidump needs to compute that information
+anyway.
+
 <!-- weirdly rust syntax highlighting handles this fake-json best? -->
 ```rust,ignore
 {
-  // Either OK or an Error encountered while trying to generate this report.
+  // Either OK or an Error we encountered while trying to generate this report.
   //
   // Currently unused by rust-minidump, as we prefer to generate no output
   // when there's an error. Error messages will be sent to the logs. Very
@@ -206,7 +221,7 @@ these notes will assume that a crash happened by default, since that's the impor
           "offset": <hexstring>
 
           // The name of the module (library/binary) the `offset` maps to
-          // (so the library/binary it's executing).
+          // (so the library/binary it's executing). (redundant)
           //
           // e.g.
           // * "libgtk-3.so.0"
@@ -216,6 +231,7 @@ these notes will assume that a crash happened by default, since that's the impor
 
           // `offset` but translated to be relative to the `module`s start
           // (so what instruction in the library/binary is being executed`).
+          // (redundant)
           "module_offset": <hexstring>,
 
 
@@ -398,7 +414,7 @@ these notes will assume that a crash happened by default, since that's the impor
   // Fields are a subset of `modules`.
   //
   // Because modules can be loaded and unloaded repeatedly, `unloaded_modules`
-  // is more of a *log* of unload *events* and nota clean mapping of addresses to
+  // is more of a *log* of unload *events* and not a clean mapping of addresses to
   // modules. This means:
   //
   // * Entries may have overlapping address ranges
@@ -490,8 +506,8 @@ these notes will assume that a crash happened by default, since that's the impor
   "sensitive": {
 
     // This feature is completely unimplemented, but remains here for historical
-    // reasons (I stubbed it out and never bothered to remove it, and now removing
-    // it would be a needless breaking change).
+    // reasons. (I stubbed it out and never bothered to remove it. We should just
+    // deprecate this since users have to assume it's optional anyway.)
     //
     // If this **was** implemented, it would contain an enum-string describing
     // how "exploitable" rust-minidump thinks the crash is. e.g. crashing on
@@ -519,4 +535,4 @@ these notes will assume that a crash happened by default, since that's the impor
 
 `crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
 
-This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it then eternally have two copies of the field. Sorry!
+This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it rather than eternally have two copies of the field. Sorry!
