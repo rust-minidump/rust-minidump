@@ -451,16 +451,24 @@ impl Unwind for ArmContext {
                     trace!("unwind: instruction pointer was nullish, assuming unwind complete");
                     return None;
                 }
+
                 // If the new stack pointer is at a lower address than the old,
                 // then that's clearly incorrect. Treat this as end-of-stack to
                 // enforce progress and avoid infinite loops.
-                //
-                // NOTE: this check allows for equality because arm leaf functions
-                // may not actually touch the stack (thanks to the link register
-                // allowing you to "push" the return address to a register).
-                if frame.context.get_stack_pointer() < self.get_register_always("sp") {
-                    trace!("unwind: stack pointer went backwards, assuming unwind complete");
-                    return None;
+
+                let sp = frame.context.get_stack_pointer();
+                let last_sp = self.get_register_always("sp") as u64;
+                if sp <= last_sp {
+                    // Arm leaf functions may not actually touch the stack (thanks
+                    // to the link register allowing you to "push" the return address
+                    // to a register), so we need to permit the stack pointer to not
+                    // change for the first frame of the unwind. After that we need
+                    // more strict validation to avoid infinite loops.
+                    let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+                    if !is_leaf {
+                        trace!("unwind: stack pointer went backwards, assuming unwind complete");
+                        return None;
+                    }
                 }
 
                 // Ok, the frame now seems well and truly valid, do final cleanup.
