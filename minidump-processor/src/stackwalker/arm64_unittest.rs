@@ -969,3 +969,96 @@ fn test_frame_pointer_barely_no_overflow() {
         }
     }
 }
+
+#[test]
+fn test_frame_pointer_infinite_equality() {
+    // Leaf functions on Arm are allowed to not update the stack pointer, so
+    // it's valid for the frame pointer analysis to conclude that the stack
+    // pointer doesn't change. However we must only provide this allowance
+    // to the first stack frame, or else we're vulnerable to infinite loops.
+    //
+    // One of the CFI tests already checks that we allow the leaf case to work,
+    // so here we test that we don't get stuck in an infinite loop for the
+    // non-leaf case.
+    //
+    // This is just a copy-paste of test_frame_pointer except for the line
+    // "EVIL INFINITE FRAME POINTER" has been changed from frame2_fp to frame1_fp.
+
+    // Frame-pointer-based unwinding
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u64;
+    let return_address2 = 0x50000900u64;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_fp) // next fp will point to the next value
+        .D64(&frame1_fp) // <--- EVIL INFINITE FRAME POINTER
+        .D64(return_address2) // save current link register
+        .mark(&frame1_sp)
+        // frame 1
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame2_fp)
+        .D64(0)
+        .D64(0)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 64) // Whatever values on the stack.
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000); // a return address.
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1);
+    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+
+    let s = f.walk_stack(stack);
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 4);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame1_fp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    // Never get to frame 2, alas!
+}
