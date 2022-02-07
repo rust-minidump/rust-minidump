@@ -6519,8 +6519,22 @@ pub enum ExceptionCodeLinux {
 
 // These values come from asm-generic/siginfo.h
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
-pub enum ExceptionCodeLinuxSigillKind {
+#[repr(i32)]
+pub enum ExceptionCodeLinuxSicode {
     SI_USER = 0,
+    SI_KERNEL = 0x80,
+    SI_QUEUE = -1i32,
+    SI_TIMER = -2i32,
+    SI_MESGQ = -3i32,
+    SI_ASYNCIO = -4i32,
+    SI_SIGIO = -5i32,
+    SI_TKILL = -6i32,
+    SI_DETHREAD = -7i32,
+    SI_ASYNCNL = -60i32,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigillKind {
     ILL_ILLOPC = 1,
     ILL_ILLOPN = 2,
     ILL_ILLADR = 3,
@@ -6529,12 +6543,21 @@ pub enum ExceptionCodeLinuxSigillKind {
     ILL_PRVREG = 6,
     ILL_COPROC = 7,
     ILL_BADSTK = 8,
-    SI_KERNEL = 0x80,
+    ILL_BADIADDR = 9,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigtrapKind {
+    TRAP_BRKPT = 1,
+    TRAP_TRACE = 2,
+    TRAP_BRANCH = 3,
+    TRAP_HWBKPT = 4,
+    TRAP_UNK = 5,
+    TRAP_PERF = 6,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigfpeKind {
-    SI_USER = 0,
     FPE_INTDIV = 1,
     FPE_INTOVF = 2,
     FPE_FLTDIV = 3,
@@ -6543,28 +6566,29 @@ pub enum ExceptionCodeLinuxSigfpeKind {
     FPE_FLTRES = 6,
     FPE_FLTINV = 7,
     FPE_FLTSUB = 8,
-    SI_KERNEL = 0x80,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigsegvKind {
-    SI_USER = 0,
     SEGV_MAPERR = 1,
     SEGV_ACCERR = 2,
     SEGV_BNDERR = 3,
     SEGV_PKUERR = 4,
-    SI_KERNEL = 0x80,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigbusKind {
-    SI_USER = 0,
     BUS_ADRALN = 1,
     BUS_ADRERR = 2,
     BUS_OBJERR = 3,
     BUS_MCEERR_AR = 4,
     BUS_MCEERR_AO = 5,
-    SI_KERNEL = 0x80,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+pub enum ExceptionCodeLinuxSigsysKind {
+    SYS_SECCOMP = 1,
+    SYS_USER_DISPATCH = 2,
 }
 
 /// Values for [`MINIDUMP_EXCEPTION::exception_code`] for crashes on macOS
