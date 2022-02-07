@@ -26,7 +26,7 @@ use std::time::{Duration, SystemTime};
 pub use crate::context::*;
 use crate::strings::*;
 use crate::system_info::{Cpu, Os};
-use minidump_common::format as md;
+use minidump_common::format::{self as md, ExceptionCodeLinux};
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
@@ -442,9 +442,11 @@ pub enum CrashReason {
     /// A Linux/Android error code with no other interesting metadata.
     LinuxGeneral(md::ExceptionCodeLinux, u32),
     LinuxSigill(md::ExceptionCodeLinuxSigillKind),
+    LinuxSigtrap(md::ExceptionCodeLinuxSigtrapKind),
     LinuxSigbus(md::ExceptionCodeLinuxSigbusKind),
     LinuxSigfpe(md::ExceptionCodeLinuxSigfpeKind),
     LinuxSigsegv(md::ExceptionCodeLinuxSigsegvKind),
+    LinuxSigsys(md::ExceptionCodeLinuxSigsysKind),
 
     /// A Windows error code with no other interesting metadata.
     WindowsGeneral(md::ExceptionCodeWindows),
@@ -3519,8 +3521,6 @@ impl CrashReason {
         raw: &md::MINIDUMP_EXCEPTION_STREAM,
         _cpu: Cpu,
     ) -> Option<CrashReason> {
-        use md::ExceptionCodeLinux;
-
         let record = &raw.exception_record;
         let exception_code = record.exception_code;
         let exception_flags = record.exception_flags;
@@ -3532,6 +3532,11 @@ impl CrashReason {
             ExceptionCodeLinux::SIGILL => {
                 if let Some(ty) = md::ExceptionCodeLinuxSigillKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigill(ty);
+                }
+            }
+            ExceptionCodeLinux::SIGTRAP => {
+                if let Some(ty) = md::ExceptionCodeLinuxSigtrapKind::from_u32(exception_flags) {
+                    reason = CrashReason::LinuxSigtrap(ty);
                 }
             }
             ExceptionCodeLinux::SIGFPE => {
@@ -3547,6 +3552,11 @@ impl CrashReason {
             ExceptionCodeLinux::SIGBUS => {
                 if let Some(ty) = md::ExceptionCodeLinuxSigbusKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigbus(ty);
+                }
+            }
+            ExceptionCodeLinux::SIGSYS => {
+                if let Some(ty) = md::ExceptionCodeLinuxSigsysKind::from_u32(exception_flags) {
+                    reason = CrashReason::LinuxSigsys(ty);
                 }
             }
             _ => {
@@ -3742,6 +3752,22 @@ impl fmt::Display for CrashReason {
             }
         }
 
+        fn write_signal(
+            f: &mut fmt::Formatter<'_>,
+            ex: ExceptionCodeLinux,
+            flags: u32,
+        ) -> fmt::Result {
+            if let Some(si_code) = md::ExceptionCodeLinuxSicode::from_u32(flags) {
+                if si_code == md::ExceptionCodeLinuxSicode::SI_USER {
+                    write!(f, "{:?}", ex)
+                } else {
+                    write!(f, "{:?} / {:?}", ex, si_code)
+                }
+            } else {
+                write!(f, "{:?} / 0x{:08x}", ex, flags)
+            }
+        }
+
         // OK this is kinda a gross hack but I *really* don't want
         // to write out all these strings again, so let's just lean on Debug
         // repeating the name of the enum variant!
@@ -3772,11 +3798,13 @@ impl fmt::Display for CrashReason {
             // ===================== Linux/Android =========================
 
             // These codes just repeat their names
-            LinuxGeneral(ex, flags) => write!(f, "{:?} / 0x{:08x}", ex, flags),
+            LinuxGeneral(ex, flags) => write_signal(f, ex, flags),
             LinuxSigill(ex) => write!(f, "SIGILL / {:?}", ex),
+            LinuxSigtrap(ex) => write!(f, "SIGTRAP / {:?}", ex),
             LinuxSigbus(ex) => write!(f, "SIGBUS / {:?}", ex),
             LinuxSigfpe(ex) => write!(f, "SIGFPE / {:?}", ex),
             LinuxSigsegv(ex) => write!(f, "SIGSEGV / {:?}", ex),
+            LinuxSigsys(ex) => write!(f, "SIGSYS / {:?}", ex),
 
             // ======================== Windows =============================
 
