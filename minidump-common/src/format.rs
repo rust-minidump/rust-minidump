@@ -4,7 +4,7 @@
 //! some [Breakpad][breakpad] and [Crashpad][crashpad] extension types are defined here and should
 //! match the definitions from those projects.
 //!
-//! [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/
+//! [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/
 //! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/
 //! [crashpad]: https://chromium.googlesource.com/crashpad/crashpad/+/master/README.md
 #![allow(non_camel_case_types)]
@@ -34,7 +34,7 @@ pub const MINIDUMP_VERSION: u32 = 42899;
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_header
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_header
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_HEADER {
     /// This should be [`MINIDUMP_SIGNATURE`][signature].
@@ -62,7 +62,7 @@ pub struct MINIDUMP_HEADER {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_location_descriptor
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_location_descriptor
 #[derive(Debug, Copy, Default, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_LOCATION_DESCRIPTOR {
     /// The size of this data.
@@ -82,7 +82,7 @@ impl From<u8> for MINIDUMP_LOCATION_DESCRIPTOR {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_descriptor
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_descriptor
 #[derive(Debug, Copy, Clone, Default, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_DESCRIPTOR {
     /// The base address of this memory range from the process.
@@ -97,7 +97,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR {
 /// specific streams in the dump.
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_directory
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_directory
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_DIRECTORY {
     /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`][ty] for known stream types,
@@ -114,7 +114,7 @@ pub struct MINIDUMP_DIRECTORY {
 /// Most of these values are derived from the [Microsoft enum][msdn] of the same name, but
 /// the values after `LastReservedStream` are Breakpad and Crashpad extensions.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ne-minidumpapiset-_minidump_stream_type
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ne-minidumpapiset-minidump_stream_type
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Debug, Primitive)]
 pub enum MINIDUMP_STREAM_TYPE {
@@ -130,7 +130,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// of this stream, but it is a variable-length struct so no matching definition is provided
     /// in this crate.
     ///
-    /// [list]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_thread_list
+    /// [list]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_thread_list
     ThreadListStream = 3,
     /// The list of executable modules from the process
     ///
@@ -140,7 +140,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// of this stream, but it is a variable-length struct so no matching definition is provided
     /// in this crate.
     ///
-    /// [list]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_module_list
+    /// [list]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_module_list
     ModuleListStream = 4,
     /// The list of memory regions from the process contained within this dump
     ///
@@ -150,7 +150,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// of this stream, but it is a variable-length struct so no matching definition is provided
     /// in this crate.
     ///
-    /// [list]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_list
+    /// [list]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_list
     MemoryListStream = 5,
     /// Information about the exception that caused the process to exit
     ///
@@ -176,7 +176,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// Note that unlike other lists, this one has the newer "extended" header.
     ///
-    /// [list]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-minidump_unloaded_module_list
+    /// [list]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_unloaded_module_list
     UnloadedModuleListStream = 14,
     /// Miscellaneous process and system information
     ///
@@ -272,7 +272,7 @@ pub struct MINIDUMP_THREAD_NAME {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_module
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_module
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct MINIDUMP_MODULE {
     /// The base address of the executable image in memory.
@@ -330,7 +330,7 @@ pub struct MINIDUMP_UNLOADED_MODULE {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/verrsrc/ns-verrsrc-tagvs_fixedfileinfo
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/verrsrc/ns-verrsrc-vs_fixedfileinfo
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct VS_FIXEDFILEINFO {
     /// Contains the value of `VS_FFI_SIGNATURE`
@@ -574,7 +574,7 @@ pub struct IMAGE_DEBUG_MISC {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_thread
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_thread
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_THREAD {
     /// The identifier of this thread
@@ -587,7 +587,7 @@ pub struct MINIDUMP_THREAD {
     ///
     /// See [Scheduling Priorities][msdn] on MSDN.
     ///
-    /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/ProcThread/scheduling-priorities
+    /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/ProcThread/scheduling-priorities
     pub priority_class: u32,
     /// The priority level of the thread
     pub priority: u32,
@@ -603,7 +603,7 @@ pub struct MINIDUMP_THREAD {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-minidump_exception_stream
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_exception_stream
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_EXCEPTION_STREAM {
     /// The identifier of the thread that encountered the exception.
@@ -621,7 +621,7 @@ pub struct MINIDUMP_EXCEPTION_STREAM {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_exception
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_exception
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_EXCEPTION {
     /// The reason the exception occurred.
@@ -7438,7 +7438,7 @@ pub struct OtherCpuInfo {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_system_info
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_system_info
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_SYSTEM_INFO {
     /// The system's processor architecture
@@ -7550,7 +7550,7 @@ pub struct SYSTEMTIME {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/timezoneapi/ns-timezoneapi-_time_zone_information
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/timezoneapi/ns-timezoneapi-time_zone_information
 #[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct TIME_ZONE_INFORMATION {
     pub bias: i32,
@@ -7592,7 +7592,7 @@ multi_structs! {
     ///
     /// This struct matches the [Microsoft struct][msdn] of the same name.
     ///
-    /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_misc_info
+    /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_misc_info
     pub struct MINIDUMP_MISC_INFO {
         pub size_of_info: u32,
         pub flags1: u32,
@@ -7606,7 +7606,7 @@ multi_structs! {
     ///
     /// This struct matches the [Microsoft struct][msdn] of the same name.
     ///
-    /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_misc_info_2
+    /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_misc_info_2
     pub struct MINIDUMP_MISC_INFO_2 {
         pub processor_max_mhz: u32,
         pub processor_current_mhz: u32,
@@ -7819,7 +7819,7 @@ bitflags! {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_info_list
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_info_list
 #[derive(Debug, Clone, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO_LIST {
     /// The size of this header
@@ -7834,7 +7834,7 @@ pub struct MINIDUMP_MEMORY_INFO_LIST {
 ///
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
-/// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/api/minidumpapiset/ns-minidumpapiset-_minidump_memory_info
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_info
 #[derive(Debug, Clone, PartialEq, Eq, Pread, SizeWith)]
 pub struct MINIDUMP_MEMORY_INFO {
     /// The base address of the region of pages
@@ -7877,7 +7877,7 @@ bitflags! {
     ///
     /// See [Microsoft's documentation][msdn] for details.
     ///
-    /// [msdn]: https://docs.microsoft.com/en-us/windows/desktop/Memory/memory-protection-constants
+    /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/Memory/memory-protection-constants
     pub struct MemoryProtection: u32 {
         const PAGE_NOACCESS           = 0x01;
         const PAGE_READONLY           = 0x02;
