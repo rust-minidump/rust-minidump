@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use debugid::{CodeId, DebugId};
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use log::warn;
@@ -22,6 +23,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::str;
 use std::time::{Duration, SystemTime};
+use uuid::Uuid;
 
 pub use crate::context::*;
 use crate::strings::*;
@@ -880,7 +882,7 @@ impl MinidumpModule {
 
 "#,
             self.debug_file().unwrap_or(Cow::Borrowed("")),
-            self.debug_identifier().unwrap_or(Cow::Borrowed("")),
+            self.debug_identifier().unwrap_or_default(),
             self.version().unwrap_or(Cow::Borrowed("")),
         )?;
         Ok(())
@@ -907,12 +909,12 @@ impl Module for MinidumpModule {
     fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
-    fn code_identifier(&self) -> Cow<'_, str> {
+    fn code_identifier(&self) -> CodeId {
         match self.codeview_info {
-            Some(CodeView::Elf(ref raw)) => Cow::Owned(bytes_to_hex(&raw.build_id)),
+            Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
             _ => {
                 // TODO: Breakpad stubs this out on non-Windows.
-                Cow::Owned(format!(
+                CodeId::new(format!(
                     "{0:08X}{1:x}",
                     self.raw.time_date_stamp, self.raw.size_of_image
                 ))
@@ -928,15 +930,21 @@ impl Module for MinidumpModule {
             _ => None,
         }
     }
-    fn debug_identifier(&self) -> Option<Cow<'_, str>> {
+    fn debug_identifier(&self) -> Option<DebugId> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
-                let id = format!("{:#}{:x}", raw.signature, raw.age,);
-                Some(Cow::Owned(id))
+                let uuid = Uuid::from_fields(
+                    raw.signature.data1,
+                    raw.signature.data2,
+                    raw.signature.data3,
+                    &raw.signature.data4,
+                )
+                .ok()?;
+                Some(DebugId::from_parts(uuid, raw.age))
             }
             Some(CodeView::Pdb20(ref raw)) => {
-                let id = format!("{:08X}{:x}", raw.signature, raw.age);
-                Some(Cow::Owned(id))
+                let uuid = Uuid::from_fields(raw.signature, 0, 0, &[0, 0, 0, 0]).ok()?;
+                Some(DebugId::from_parts(uuid, raw.age))
             }
             Some(CodeView::Elf(ref raw)) => {
                 // For backwards-compat (Linux minidumps have historically
@@ -956,7 +964,8 @@ impl Module for MinidumpModule {
                 } else {
                     raw.build_id.pread_with::<md::GUID>(0, LE).ok()
                 };
-                guid.map(|g| Cow::Owned(format!("{:#}0", g)))
+                guid.and_then(|g| Uuid::from_fields(g.data1, g.data2, g.data3, &g.data4).ok())
+                    .map(DebugId::from_uuid)
             }
             _ => None,
         }
@@ -1055,8 +1064,8 @@ impl Module for MinidumpUnloadedModule {
     fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
-    fn code_identifier(&self) -> Cow<'_, str> {
-        Cow::Owned(format!(
+    fn code_identifier(&self) -> CodeId {
+        CodeId::new(format!(
             "{0:08X}{1:x}",
             self.raw.time_date_stamp, self.raw.size_of_image
         ))
@@ -1064,7 +1073,7 @@ impl Module for MinidumpUnloadedModule {
     fn debug_file(&self) -> Option<Cow<'_, str>> {
         None
     }
-    fn debug_identifier(&self) -> Option<Cow<'_, str>> {
+    fn debug_identifier(&self) -> Option<DebugId> {
         None
     }
     fn version(&self) -> Option<Cow<'_, str>> {
@@ -4832,11 +4841,14 @@ mod test {
         assert_eq!(modules[0].size(), 0xada542bd);
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
-        assert_eq!(modules[0].code_identifier(), "B1054D2Aada542bd");
+        assert_eq!(
+            modules[0].code_identifier(),
+            CodeId::new("B1054D2Aada542bd".to_string())
+        );
         assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
         assert_eq!(
             modules[0].debug_identifier().unwrap(),
-            "ABCD1234F00DBEEF01020304050607081"
+            DebugId::from_breakpad("ABCD1234F00DBEEF01020304050607081").unwrap()
         );
     }
 
@@ -4862,7 +4874,10 @@ mod test {
         assert_eq!(modules[0].size(), 0xada542bd);
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
-        assert_eq!(modules[0].code_identifier(), "B1054D2Aada542bd");
+        assert_eq!(
+            modules[0].code_identifier(),
+            CodeId::new("B1054D2Aada542bd".to_string())
+        );
     }
 
     #[test]
@@ -5817,25 +5832,28 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         // The full build ID.
         assert_eq!(
             modules[0].code_identifier(),
-            "000102030405060708090a0b0c0d0e0f1011121314151617"
+            CodeId::new("000102030405060708090a0b0c0d0e0f1011121314151617".to_string())
         );
         assert_eq!(modules[0].debug_file().unwrap(), "module 1");
         // The first 16 bytes of the build ID interpreted as a GUID.
         assert_eq!(
             modules[0].debug_identifier().unwrap(),
-            "030201000504070608090A0B0C0D0E0F0"
+            DebugId::from_breakpad("030201000504070608090A0B0C0D0E0F0").unwrap()
         );
 
         assert_eq!(modules[1].base_address(), 0x200000000);
         assert_eq!(modules[1].code_file(), "module 2");
         // The full build ID.
-        assert_eq!(modules[1].code_identifier(), "0001020304050607");
+        assert_eq!(
+            modules[1].code_identifier(),
+            CodeId::new("0001020304050607".to_string())
+        );
         assert_eq!(modules[1].debug_file().unwrap(), "module 2");
         // The first 16 bytes of the build ID interpreted as a GUID, padded with
         // zeroes in this case.
         assert_eq!(
             modules[1].debug_identifier().unwrap(),
-            "030201000504070600000000000000000"
+            DebugId::from_breakpad("030201000504070600000000000000000").unwrap()
         );
     }
 

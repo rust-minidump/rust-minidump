@@ -717,10 +717,10 @@ Unknown streams encountered:
                     // filename | empty string
                     "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
                     // [[:xdigit:]]{33} | empty string
-                    "debug_id": module.debug_identifier().unwrap_or(Cow::Borrowed("")),
+                    "debug_id": module.debug_identifier().unwrap_or_default().breakpad().to_string(),
                     "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                     "filename": &name,
-                    "code_id": module.code_identifier(),
+                    "code_id": module.code_identifier().as_str().to_uppercase(),
                     "version": module.version(),
                     "cert_subject": self.cert_info.get(name),
 
@@ -781,7 +781,7 @@ Unknown streams encountered:
 
             "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
-                "code_id": module.code_identifier(),
+                "code_id": module.code_identifier().as_str(),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                 "filename": module.name,
                 "cert_subject": self.cert_info.get(&module.name),

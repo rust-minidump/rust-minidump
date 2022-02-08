@@ -16,10 +16,11 @@ travis-ci = { repository = "luser/rust-minidump" }
 [dependencies]
 async-trait = "0.1.51"
 circular = "0.3.0"
-minidump-common = { version = "0.9.6", path = "../minidump-common" }
-range-map = "0.1.5"
-nom = "~1.2.2"
+debugid = "0.7"
 log = "0.4.1"
+minidump-common = { version = "0.9.6", path = "../minidump-common" }
+nom = "~1.2.2"
+range-map = "0.1.5"
 reqwest = { version = "0.11.6", features = ["gzip"] }
 tempfile = "3.3.0"
 thiserror = "1.0.30"

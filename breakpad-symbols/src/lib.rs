@@ -18,7 +18,9 @@
 //! ```
 //! # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 //! use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer, SimpleFrame, SimpleModule};
+//! use debugid::DebugId;
 //! use std::path::PathBuf;
+//! use std::str::FromStr;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -27,9 +29,8 @@
 //!     let symbolizer = Symbolizer::new(supplier);
 //!
 //!     // Simple function name lookup with debug file, debug id, address.
-//!     assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb",
-//!         "5A9832E5287241C1838ED98914E9B7FF1",
-//!         0x1010)
+//! let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
+//!     assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb", debug_id, 0x1010)
 //!         .await
 //!         .unwrap(),
 //!         "vswprintf");
@@ -37,6 +38,7 @@
 //! ```
 
 use async_trait::async_trait;
+use debugid::{CodeId, DebugId};
 use log::{debug, trace, warn};
 use reqwest::{Client, Url};
 use tempfile::NamedTempFile;
@@ -88,9 +90,9 @@ pub struct SimpleModule {
     pub base_address: Option<u64>,
     pub size: Option<u64>,
     pub code_file: Option<String>,
-    pub code_identifier: Option<String>,
+    pub code_identifier: Option<CodeId>,
     pub debug_file: Option<String>,
-    pub debug_id: Option<String>,
+    pub debug_id: Option<DebugId>,
     pub version: Option<String>,
 }
 
@@ -98,10 +100,10 @@ impl SimpleModule {
     /// Create a `SimpleModule` with the given `debug_file` and `debug_id`.
     ///
     /// Uses `default` for the remaining fields.
-    pub fn new(debug_file: &str, debug_id: &str) -> SimpleModule {
+    pub fn new(debug_file: &str, debug_id: DebugId) -> SimpleModule {
         SimpleModule {
             debug_file: Some(String::from(debug_file)),
-            debug_id: Some(String::from(debug_id)),
+            debug_id: Some(debug_id),
             ..SimpleModule::default()
         }
     }
@@ -119,16 +121,17 @@ impl Module for SimpleModule {
             .as_ref()
             .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
     }
-    fn code_identifier(&self) -> Cow<str> {
+    fn code_identifier(&self) -> CodeId {
         self.code_identifier
             .as_ref()
-            .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
+            .cloned()
+            .unwrap_or_else(CodeId::nil)
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         self.debug_file.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
-    fn debug_identifier(&self) -> Option<Cow<str>> {
-        self.debug_id.as_ref().map(|s| Cow::Borrowed(&s[..]))
+    fn debug_identifier(&self) -> Option<DebugId> {
+        self.debug_id
     }
     fn version(&self) -> Option<Cow<str>> {
         self.version.as_ref().map(|s| Cow::Borrowed(&s[..]))
@@ -180,7 +183,7 @@ pub fn relative_symbol_path(module: &(dyn Module + Sync), extension: &str) -> Op
             // Windows file paths on non-Windows.
             let leaf = leafname(&debug_file);
             let filename = replace_or_add_extension(leaf, "pdb", extension);
-            [leaf, &debug_id[..], &filename[..]].join("/")
+            [leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/")
         })
     })
 }
@@ -661,7 +664,7 @@ impl Symbolizer {
     pub async fn get_symbol_at_address(
         &self,
         debug_file: &str,
-        debug_id: &str,
+        debug_id: DebugId,
         address: u64,
     ) -> Option<String> {
         let k = (debug_file, debug_id);
@@ -682,6 +685,8 @@ impl Symbolizer {
     ///
     /// ```
     /// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+    /// use std::str::FromStr;
+    /// use debugid::DebugId;
     /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
     ///
     /// #[tokio::main]
@@ -690,7 +695,8 @@ impl Symbolizer {
     ///     let paths = vec!(PathBuf::from("../testdata/symbols/"));
     ///     let supplier = SimpleSymbolSupplier::new(paths);
     ///     let symbolizer = Symbolizer::new(supplier);
-    ///     let m = SimpleModule::new("test_app.pdb", "5A9832E5287241C1838ED98914E9B7FF1");
+    ///     let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
+    ///     let m = SimpleModule::new("test_app.pdb", debug_id);
     ///     let mut f = SimpleFrame::with_instruction(0x1010);
     ///     let _ = symbolizer.fill_symbol(&m, &mut f).await;
     ///     assert_eq!(f.function.unwrap(), "vswprintf");
@@ -817,31 +823,33 @@ mod test {
     use std::fs::File;
     use std::io::Write;
     use std::path::{Path, PathBuf};
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn test_relative_symbol_path() {
-        let m = SimpleModule::new("foo.pdb", "abcd1234");
+        let debug_id = DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap();
+        let m = SimpleModule::new("foo.pdb", debug_id);
         assert_eq!(
             &relative_symbol_path(&m, "sym").unwrap(),
-            "foo.pdb/abcd1234/foo.sym"
+            "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
         );
 
-        let m2 = SimpleModule::new("foo.pdb", "abcd1234");
+        let m2 = SimpleModule::new("foo.pdb", debug_id);
         assert_eq!(
             &relative_symbol_path(&m2, "bar").unwrap(),
-            "foo.pdb/abcd1234/foo.bar"
+            "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.bar"
         );
 
-        let m3 = SimpleModule::new("foo.xyz", "abcd1234");
+        let m3 = SimpleModule::new("foo.xyz", debug_id);
         assert_eq!(
             &relative_symbol_path(&m3, "sym").unwrap(),
-            "foo.xyz/abcd1234/foo.xyz.sym"
+            "foo.xyz/ABCD1234ABCD1234ABCDABCD12345678a/foo.xyz.sym"
         );
 
-        let m4 = SimpleModule::new("foo.xyz", "abcd1234");
+        let m4 = SimpleModule::new("foo.xyz", debug_id);
         assert_eq!(
             &relative_symbol_path(&m4, "bar").unwrap(),
-            "foo.xyz/abcd1234/foo.xyz.bar"
+            "foo.xyz/ABCD1234ABCD1234ABCDABCD12345678a/foo.xyz.bar"
         );
 
         let bad = SimpleModule::default();
@@ -854,7 +862,7 @@ mod test {
         assert!(relative_symbol_path(&bad2, "sym").is_none());
 
         let bad3 = SimpleModule {
-            debug_id: Some("foo".to_string()),
+            debug_id: Some(debug_id),
             ..SimpleModule::default()
         };
         assert!(relative_symbol_path(&bad3, "sym").is_none());
@@ -862,27 +870,28 @@ mod test {
 
     #[tokio::test]
     async fn test_relative_symbol_path_abs_paths() {
+        let debug_id = DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap();
         {
-            let m = SimpleModule::new("/path/to/foo.bin", "abcd1234");
+            let m = SimpleModule::new("/path/to/foo.bin", debug_id);
             assert_eq!(
                 &relative_symbol_path(&m, "sym").unwrap(),
-                "foo.bin/abcd1234/foo.bin.sym"
+                "foo.bin/ABCD1234ABCD1234ABCDABCD12345678a/foo.bin.sym"
             );
         }
 
         {
-            let m = SimpleModule::new("c:/path/to/foo.pdb", "abcd1234");
+            let m = SimpleModule::new("c:/path/to/foo.pdb", debug_id);
             assert_eq!(
                 &relative_symbol_path(&m, "sym").unwrap(),
-                "foo.pdb/abcd1234/foo.sym"
+                "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
             );
         }
 
         {
-            let m = SimpleModule::new("c:\\path\\to\\foo.pdb", "abcd1234");
+            let m = SimpleModule::new("c:\\path\\to\\foo.pdb", debug_id);
             assert_eq!(
                 &relative_symbol_path(&m, "sym").unwrap(),
-                "foo.pdb/abcd1234/foo.sym"
+                "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
             );
         }
     }
@@ -929,8 +938,18 @@ mod test {
         // Try loading symbols for each of two modules in each of the two
         // search paths.
         for &(path, file, id, sym) in [
-            (&paths[0], "foo.pdb", "abcd1234", "foo.pdb/abcd1234/foo.sym"),
-            (&paths[1], "bar.xyz", "ff9900", "bar.xyz/ff9900/bar.xyz.sym"),
+            (
+                &paths[0],
+                "foo.pdb",
+                DebugId::from_str("abcd1234-0000-0000-0000-abcd12345678-a").unwrap(),
+                "foo.pdb/ABCD1234000000000000ABCD12345678a/foo.sym",
+            ),
+            (
+                &paths[1],
+                "bar.xyz",
+                DebugId::from_str("ff990000-0000-0000-0000-abcd12345678-a").unwrap(),
+                "bar.xyz/FF990000000000000000ABCD12345678a/bar.xyz.sym",
+            ),
         ]
         .iter()
         {
@@ -950,8 +969,9 @@ mod test {
         }
 
         // Write a malformed symbol file, verify that it's found but fails to load.
-        let mal = SimpleModule::new("baz.pdb", "ffff0000");
-        let sym = "baz.pdb/ffff0000/baz.sym";
+        let debug_id = DebugId::from_str("ffff0000-0000-0000-0000-abcd12345678-a").unwrap();
+        let mal = SimpleModule::new("baz.pdb", debug_id);
+        let sym = "baz.pdb/ffff0000000000000000abcd12345678a/baz.sym";
         assert_eq!(
             supplier.locate_symbols(&mal).await,
             Err(SymbolError::NotFound)
@@ -973,10 +993,11 @@ mod test {
         // TODO: This could really use a MockSupplier
         let supplier = SimpleSymbolSupplier::new(vec![PathBuf::from(path)]);
         let symbolizer = Symbolizer::new(supplier);
-        let m1 = SimpleModule::new("foo.pdb", "abcd1234");
+        let debug_id = DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap();
+        let m1 = SimpleModule::new("foo.pdb", debug_id);
         write_symbol_file(
-            &path.join("foo.pdb/abcd1234/foo.sym"),
-            b"MODULE Linux x86 abcd1234 foo
+            &path.join("foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"),
+            b"MODULE Linux x86 ABCD1234ABCD1234ABCDABCD12345678a foo
 FILE 1 foo.c
 FUNC 1000 30 10 some func
 1000 30 100 1
@@ -992,13 +1013,14 @@ FUNC 1000 30 10 some func
 
         assert_eq!(
             symbolizer
-                .get_symbol_at_address("foo.pdb", "abcd1234", 0x1010)
+                .get_symbol_at_address("foo.pdb", debug_id, 0x1010)
                 .await
                 .unwrap(),
             "some func"
         );
 
-        let m2 = SimpleModule::new("bar.pdb", "ffff0000");
+        let debug_id = DebugId::from_str("ffff0000-0000-0000-0000-abcd12345678-a").unwrap();
+        let m2 = SimpleModule::new("bar.pdb", debug_id);
         let mut f2 = SimpleFrame::with_instruction(0x1010);
         // No symbols present, should not find anything.
         assert!(symbolizer.fill_symbol(&m2, &mut f2).await.is_err());
@@ -1008,8 +1030,8 @@ FUNC 1000 30 10 some func
         assert!(f2.source_line.is_none());
         // Results should be cached.
         write_symbol_file(
-            &path.join("bar.pdb/ffff0000/bar.sym"),
-            b"MODULE Linux x86 ffff0000 bar
+            &path.join("bar.pdb/ffff0000000000000000ABCD12345678a/bar.sym"),
+            b"MODULE Linux x86 ffff0000000000000000ABCD12345678a bar
 FILE 53 bar.c
 FUNC 1000 30 10 another func
 1000 30 7 53
@@ -1022,7 +1044,7 @@ FUNC 1000 30 10 another func
         assert!(f2.source_line.is_none());
         // This should also use cached results.
         assert!(symbolizer
-            .get_symbol_at_address("bar.pdb", "ffff0000", 0x1010)
+            .get_symbol_at_address("bar.pdb", debug_id, 0x1010)
             .await
             .is_none());
     }

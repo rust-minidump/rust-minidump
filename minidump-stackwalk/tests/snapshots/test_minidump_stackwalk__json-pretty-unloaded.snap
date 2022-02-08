@@ -1,5 +1,6 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+assertion_line: 656
 expression: stdout
 
 ---
@@ -54,56 +55,56 @@ expression: stdout
     {
       "base_addr": "0x00a003a0",
       "cert_subject": null,
-      "code_id": "B1054D2A1000",
+      "code_id": "b1054d2a1000",
       "end_addr": "0x00a013a0",
       "filename": "unused.dll"
     },
     {
       "base_addr": "0x00f00000",
       "cert_subject": null,
-      "code_id": "B1054D2A1000",
+      "code_id": "b1054d2a1000",
       "end_addr": "0x00f01000",
       "filename": "many.dll"
     },
     {
       "base_addr": "0x0af00220",
       "cert_subject": null,
-      "code_id": "B1054D2A2000",
+      "code_id": "b1054d2a2000",
       "end_addr": "0x0af02220",
       "filename": "solo.dll"
     },
     {
       "base_addr": "0x00f00100",
       "cert_subject": null,
-      "code_id": "B1054D2A1000",
+      "code_id": "b1054d2a1000",
       "end_addr": "0x00f01100",
       "filename": "many.dll"
     },
     {
       "base_addr": "0x00f003a0",
       "cert_subject": null,
-      "code_id": "B1054D2A1000",
+      "code_id": "b1054d2a1000",
       "end_addr": "0x00f013a0",
       "filename": "many.dll"
     },
     {
       "base_addr": "0x00f00220",
       "cert_subject": null,
-      "code_id": "B1054D2A2000",
+      "code_id": "b1054d2a2000",
       "end_addr": "0x00f02220",
       "filename": "solo.dll"
     },
     {
       "base_addr": "0x0af00220",
       "cert_subject": null,
-      "code_id": "B1054D2A2000",
+      "code_id": "b1054d2a2000",
       "end_addr": "0x0af02220",
       "filename": "solo.dll"
     },
     {
       "base_addr": "0x00f00000",
       "cert_subject": null,
-      "code_id": "B1054D2A1000",
+      "code_id": "b1054d2a1000",
       "end_addr": "0x00f01000",
       "filename": "many.dll"
     }
