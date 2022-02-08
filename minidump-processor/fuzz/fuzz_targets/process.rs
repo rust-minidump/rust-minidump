@@ -22,6 +22,9 @@ fuzz_target!(|data: (&[u8], &[u8])| {
         };
 
         let provider = minidump_processor::Symbolizer::new(supplier);
-        let _ = minidump_processor::process_minidump(&dump, &provider);
+
+        let _: Result<_, _> = minidump_processor_fuzz::fuzzing_block_on(
+            minidump_processor::process_minidump(&dump, &provider),
+        );
     }
 });
