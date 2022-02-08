@@ -13,6 +13,8 @@ libfuzzer-sys = "0.4"
 minidump = { path = "../../minidump", features = ["arbitrary_impls"] }
 test-assembler = "0.1.6"
 minidump-common = { path = "../../minidump-common", features = ["arbitrary"] }
+pin-utils = "0.1.0"
+async-trait = "0.1.52"
 
 [dependencies.minidump-processor]
 path = ".."
