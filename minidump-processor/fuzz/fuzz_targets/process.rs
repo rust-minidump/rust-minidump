@@ -5,10 +5,11 @@ struct StaticSymbolSupplier {
     file: Vec<u8>,
 }
 
+#[async_trait::async_trait]
 impl minidump_processor::SymbolSupplier for StaticSymbolSupplier {
-    fn locate_symbols(
+    async fn locate_symbols(
         &self,
-        _module: &dyn minidump_common::traits::Module,
+        _module: &(dyn minidump_common::traits::Module + Sync),
     ) -> Result<minidump_processor::SymbolFile, minidump_processor::SymbolError> {
         minidump_processor::SymbolFile::from_bytes(&self.file)
     }

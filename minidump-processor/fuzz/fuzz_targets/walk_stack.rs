@@ -1,8 +1,7 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
-use minidump::format::CONTEXT_X86;
-use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpRawContext};
+use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
 use minidump_processor::walk_stack;
 use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer};
@@ -29,7 +28,7 @@ impl TestFixture {
         }
     }
 
-    pub fn walk_stack(self, stack: Section) -> Option<CallStack> {
+    pub async fn walk_stack(self, stack: Section) -> Option<CallStack> {
         let context = MinidumpContext {
             raw: self.raw,
             valid: MinidumpContextValidity::All,
@@ -52,7 +51,7 @@ impl TestFixture {
             Some(&stack_memory),
             &self.modules,
             &symbolizer,
-        ))
+        ).await)
     }
 }
 
@@ -61,5 +60,5 @@ fuzz_target!(|data: (&[u8], minidump::MinidumpRawContext)| {
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
     stack = stack.append_bytes(data.0);
-    f.walk_stack(stack);
+    minidump_processor_fuzz::fuzzing_block_on(f.walk_stack(stack));
 });
