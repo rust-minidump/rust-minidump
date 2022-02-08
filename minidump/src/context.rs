@@ -449,7 +449,7 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
             "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
-            _ => unreachable!("Invalid aarch64 register! {}"),
+            _ => unreachable!("Invalid aarch64 register! {}", reg),
         }
     }
 
