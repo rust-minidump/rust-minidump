@@ -63,6 +63,41 @@ jobs:
           command: doc
           args: --workspace --no-deps
 
+  build-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            profile: minimal
+            override: true
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: install
+          args: cargo-fuzz
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: fuzz
+          args: build --fuzz-dir breakpad-symbols/fuzz
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: fuzz
+          args: build --fuzz-dir minidump/fuzz
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: fuzz
+          args: build --fuzz-dir minidump-processor/fuzz
+
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
