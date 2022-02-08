@@ -1,14 +1,15 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
-use breakpad_symbols::fuzzing_private_exports::{eval_win_expr_for_fuzzer, StackInfoWin, WinStackThing};
+use breakpad_symbols::fuzzing_private_exports::{
+    eval_win_expr_for_fuzzer, StackInfoWin, WinStackThing,
+};
 use breakpad_symbols::FrameWalker;
 use std::collections::HashMap;
 
 fuzz_target!(|data: ([u32; 14], &str)| {
     test_stack_win_doc_example(data.0, data.1);
 });
-
 
 // Eugh, need this to memoize register names to static
 static STATIC_REGS: [&str; 14] = [
