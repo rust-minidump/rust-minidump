@@ -971,7 +971,7 @@ mod test {
         // Write a malformed symbol file, verify that it's found but fails to load.
         let debug_id = DebugId::from_str("ffff0000-0000-0000-0000-abcd12345678-a").unwrap();
         let mal = SimpleModule::new("baz.pdb", debug_id);
-        let sym = "baz.pdb/ffff0000000000000000abcd12345678a/baz.sym";
+        let sym = "baz.pdb/FFFF0000000000000000ABCD12345678a/baz.sym";
         assert_eq!(
             supplier.locate_symbols(&mal).await,
             Err(SymbolError::NotFound)
