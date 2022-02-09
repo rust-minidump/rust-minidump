@@ -476,7 +476,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 /// assert_eq!("0000000A000B000C0102030405060708", format!("{:#}", guid));
 /// ```
 ///
-/// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/aa373931(v=vs.85).aspx
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/guiddef/ns-guiddef-guid
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Pread, SizeWith)]
 pub struct GUID {
     pub data1: u32,

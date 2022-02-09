@@ -32,6 +32,24 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
+fn read_macos_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
+    let path = locate_testdata().join("macos-mini.dmp");
+    println!("minidump: {:?}", path);
+    Minidump::read_path(&path)
+}
+
+fn read_linux_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
+    let path = locate_testdata().join("linux-mini.dmp");
+    println!("minidump: {:?}", path);
+    Minidump::read_path(&path)
+}
+
+fn read_windows_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
+    let path = locate_testdata().join("windows-mini.dmp");
+    println!("minidump: {:?}", path);
+    Minidump::read_path(&path)
+}
+
 fn read_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
     let path = locate_testdata().join("test.dmp");
     println!("minidump: {:?}", path);
@@ -42,6 +60,107 @@ fn testdata_symbol_path() -> PathBuf {
     let path = locate_testdata().join("symbols");
     println!("symbol path: {:?}", path);
     path
+}
+
+#[test]
+fn test_linux_minidump() {
+    let dump = read_linux_test_minidump().unwrap();
+    let state = minidump_processor::process_minidump(
+        &dump,
+        &Symbolizer::new(simple_symbol_supplier(vec![])),
+    )
+    .unwrap();
+    let mut module_list = state.modules.iter();
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap().into_owned(),
+        "C0BCC3F19827FE653058404B2831D9E60",
+        "debug identifier"
+    );
+    assert_eq!(
+        module.code_identifier().into_owned(),
+        "f1c3bcc0279865fe3058404b2831d9e64135386c",
+        "code identifier"
+    );
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap().into_owned(),
+        "E45DB8DFAF2D09FD640C8FE377D572DE0",
+        "debug identifier"
+    );
+    assert_eq!(
+        module.code_identifier().into_owned(),
+        "dfb85de42daffd09640c8fe377d572de3e168920",
+        "code identifier"
+    );
+}
+
+#[test]
+fn test_macos_minidump() {
+    let dump = read_macos_test_minidump().unwrap();
+    let state = minidump_processor::process_minidump(
+        &dump,
+        &Symbolizer::new(simple_symbol_supplier(vec![])),
+    )
+    .unwrap();
+    let mut module_list = state.modules.iter();
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap(),
+        "67E9247C814E392BA027DBDE6748FCBF0",
+        "debug identifier"
+    );
+    assert_eq!(
+        module.code_identifier(),
+        "67E9247C814E392BA027DBDE6748FCBF0",
+        "code identifier"
+    );
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap(),
+        "36385A3A60D332DBBF55C6D8931A7AA60",
+        "debug identifier"
+    );
+    assert_eq!(
+        module.code_identifier(),
+        "36385A3A60D332DBBF55C6D8931A7AA60",
+        "code identifier"
+    );
+}
+
+#[test]
+fn test_windows_minidump() {
+    let dump = read_windows_test_minidump().unwrap();
+    let state = minidump_processor::process_minidump(
+        &dump,
+        &Symbolizer::new(simple_symbol_supplier(vec![])),
+    )
+    .unwrap();
+    let mut module_list = state.modules.iter();
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap(),
+        "3249D99D0C4049318610F4E4FB0B69361",
+        "debug identifier"
+    );
+    assert_eq!(module.code_identifier(), "5AB380779000", "code identifier");
+
+    let module = module_list.next().unwrap();
+    assert_eq!(
+        module.debug_identifier().unwrap(),
+        "971F98E5CE6041FFB2D7235BBEB345781",
+        "debug identifier"
+    );
+    assert_eq!(
+        module.code_identifier(),
+        "59B0D8F3183000",
+        "code identifier"
+    );
 }
 
 #[tokio::test]
