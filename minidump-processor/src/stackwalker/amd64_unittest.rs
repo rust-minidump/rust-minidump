@@ -663,3 +663,65 @@ async fn test_frame_pointer_barely_no_overflow() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_scan_walk_overflow() {
+    // There's a possible overflow when address_of_ip starts out at 0.
+    //
+    // To avoid this, we only try to recover rbp when we're scanning at least
+    // 1 pointer width away from the start of the stack.
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    let stack_start = 0;
+    stack.start().set_const(stack_start);
+
+    let return_address1 = 0x00007500b0000100_u64;
+
+    let frame1_sp = Label::new();
+    let frame1_rbp = Label::new();
+
+    stack = stack
+        // frame 0
+        .D64(return_address1) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .append_repeated(0, 16) // space
+        .D64(0x00007400b0000000) // more junk
+        .D64(0x00007500d0000000)
+        .mark(&frame1_rbp);
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = frame1_rbp.value().unwrap();
+    f.raw.rsp = stack.start().value().unwrap();
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // To avoid reusing locals by mistake
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // To avoid reusing locals by mistake
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Amd64(ctx) = &f1.context.raw {
+            assert_eq!(ctx.rip, return_address1);
+            assert_eq!(ctx.rsp, frame1_sp.value().unwrap());
+            // We were unable to recover rbp, so it defaulted to 0.
+            assert_eq!(ctx.rbp, 0);
+        } else {
+            unreachable!();
+        }
+    }
+}
