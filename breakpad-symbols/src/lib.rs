@@ -29,7 +29,7 @@
 //!     let symbolizer = Symbolizer::new(supplier);
 //!
 //!     // Simple function name lookup with debug file, debug id, address.
-//! let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
+//!     let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
 //!     assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb", debug_id, 0x1010)
 //!         .await
 //!         .unwrap(),
