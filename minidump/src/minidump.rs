@@ -12,6 +12,7 @@ use scroll::{self, Pread, BE, LE};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fmt;
 use std::fs::File;
 use std::io;
@@ -330,10 +331,11 @@ pub struct MinidumpSystemInfo {
 }
 
 /// A region of memory from the process that wrote the minidump.
+/// This is the underlying generic type for [MinidumpMemory] and [MinidumpMemory64].
 #[derive(Clone, Debug)]
-pub struct MinidumpMemory<'a> {
+pub struct MinidumpMemoryBase<'a, Descriptor> {
     /// The raw `MINIDUMP_MEMORY_DESCRIPTOR` from the minidump.
-    pub desc: md::MINIDUMP_MEMORY_DESCRIPTOR,
+    pub desc: Descriptor,
     /// The starting address of this range of memory.
     pub base_address: u64,
     /// The length of this range of memory.
@@ -341,6 +343,12 @@ pub struct MinidumpMemory<'a> {
     /// The contents of the memory.
     pub bytes: &'a [u8],
 }
+
+/// A region of memory from the process that wrote the minidump.
+pub type MinidumpMemory<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR>;
+
+/// A large region of memory from the process that wrote the minidump (usually a full dump).
+pub type MinidumpMemory64<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
@@ -496,13 +504,20 @@ pub struct MinidumpException<'a> {
 }
 
 /// A list of memory regions included in a minidump.
+/// This is the underlying generic type for [MinidumpMemoryList] and [MinidumpMemory64List].
 #[derive(Debug)]
-pub struct MinidumpMemoryList<'a> {
-    /// The memory regions, in the order they were stored in the minidump.
-    regions: Vec<MinidumpMemory<'a>>,
+pub struct MinidumpMemoryListBase<'a, Descriptor> {
+    /// The memory regions, in the order they were stored in the  minidump.
+    regions: Vec<MinidumpMemoryBase<'a, Descriptor>>,
     /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
     regions_by_addr: RangeMap<u64, usize>,
 }
+
+/// A list of memory regions included in a minidump.
+pub type MinidumpMemoryList<'a> = MinidumpMemoryListBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR>;
+
+/// A list of large memory regions included in a minidump (usually a full dump).
+pub type MinidumpMemory64List<'a> = MinidumpMemoryListBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
 
 /// Information about an assertion that caused a crash.
 #[derive(Debug)]
@@ -1521,6 +1536,45 @@ impl<'a> MinidumpMemory<'a> {
         })
     }
 
+    /// Write a human-readable description of this `MinidumpMemory` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MINIDUMP_MEMORY_DESCRIPTOR
+  start_of_memory_range = {:#x}
+  memory.data_size      = {:#x}
+  memory.rva            = {:#x}
+Memory
+",
+            self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
+        )?;
+        self.print_contents(f)?;
+        writeln!(f)
+    }
+}
+
+impl<'a> MinidumpMemory64<'a> {
+    /// Write a human-readable description of this `MinidumpMemory64` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MINIDUMP_MEMORY_DESCRIPTOR64
+  start_of_memory_range = {:#x}
+  memory.data_size      = {:#x}
+Memory
+",
+            self.desc.start_of_memory_range, self.desc.data_size,
+        )?;
+        self.print_contents(f)?;
+        writeln!(f)
+    }
+}
+
+impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
     /// Get `mem::size_of::<T>()` bytes of memory at `addr` from this region.
     ///
     /// Return `None` if the requested address range falls out of the bounds
@@ -1539,24 +1593,6 @@ impl<'a> MinidumpMemory<'a> {
         }
         let start = (addr - self.base_address) as usize;
         self.bytes.pread_with::<T>(start, LE).ok()
-    }
-
-    /// Write a human-readable description of this `MinidumpMemory` to `f`.
-    ///
-    /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        write!(
-            f,
-            "MINIDUMP_MEMORY_DESCRIPTOR
-  start_of_memory_range = {:#x}
-  memory.data_size      = {:#x}
-  memory.rva            = {:#x}
-Memory
-",
-            self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
-        )?;
-        self.print_contents(f)?;
-        writeln!(f)
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
@@ -1580,30 +1616,35 @@ Memory
     }
 }
 
-impl<'mdmp> MinidumpMemoryList<'mdmp> {
-    /// Return an empty `MinidumpMemoryList`.
-    pub fn new() -> MinidumpMemoryList<'mdmp> {
-        MinidumpMemoryList {
+impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
+    /// Return an empty `MinidumpMemoryListBase`.
+    pub fn new() -> MinidumpMemoryListBase<'mdmp, Descriptor> {
+        MinidumpMemoryListBase {
             regions: vec![],
             regions_by_addr: RangeMap::new(),
         }
     }
 
-    /// Create a `MinidumpMemoryList` from a list of `MinidumpMemory`s.
-    pub fn from_regions(regions: Vec<MinidumpMemory<'mdmp>>) -> MinidumpMemoryList<'mdmp> {
+    /// Create a `MinidumpMemoryListBase` from a list of `MinidumpMemoryBase`s.
+    pub fn from_regions(
+        regions: Vec<MinidumpMemoryBase<'mdmp, Descriptor>>,
+    ) -> MinidumpMemoryListBase<'mdmp, Descriptor> {
         let regions_by_addr = regions
             .iter()
             .enumerate()
             .map(|(i, region)| (region.memory_range(), i))
             .into_rangemap_safe();
-        MinidumpMemoryList {
+        MinidumpMemoryListBase {
             regions,
             regions_by_addr,
         }
     }
 
-    /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
-    pub fn memory_at_address(&self, address: u64) -> Option<&MinidumpMemory<'mdmp>> {
+    /// Return a `MinidumpMemoryBase` containing memory at `address`, if one exists.
+    pub fn memory_at_address(
+        &self,
+        address: u64,
+    ) -> Option<&MinidumpMemoryBase<'mdmp, Descriptor>> {
         self.regions_by_addr
             .get(address)
             .map(|&index| &self.regions[index])
@@ -1611,21 +1652,27 @@ impl<'mdmp> MinidumpMemoryList<'mdmp> {
 
     /// Iterate over the memory regions in the order contained in the minidump.
     ///
-    /// The iterator returns items of [MinidumpMemory] as `&'slf MinidumpMemory<'mdmp>`.
+    /// The iterator returns items of [MinidumpMemoryBase] as `&'slf MinidumpMemoryBase<'mdmp, Descriptor>`.
     /// That is the lifetime of the item is bound to the lifetime of the iterator itself
-    /// (`'slf`), while the slice inside [MinidumpMemory] pointing at the memory itself has
+    /// (`'slf`), while the slice inside [MinidumpMemoryBase] pointing at the memory itself has
     /// the lifetime of the [Minidump] struct ('mdmp).
-    pub fn iter<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemory<'mdmp>> {
+    pub fn iter<'slf>(
+        &'slf self,
+    ) -> impl Iterator<Item = &'slf MinidumpMemoryBase<'mdmp, Descriptor>> {
         self.regions.iter()
     }
 
     /// Iterate over the memory regions in order by memory address.
-    pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemory<'mdmp>> {
+    pub fn by_addr<'slf>(
+        &'slf self,
+    ) -> impl Iterator<Item = &'slf MinidumpMemoryBase<'mdmp, Descriptor>> {
         self.regions_by_addr
             .ranges_values()
             .map(move |&(_, index)| &self.regions[index])
     }
+}
 
+impl<'mdmp> MinidumpMemoryList<'mdmp> {
     /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
@@ -1646,7 +1693,28 @@ impl<'mdmp> MinidumpMemoryList<'mdmp> {
     }
 }
 
-impl<'a> Default for MinidumpMemoryList<'a> {
+impl<'mdmp> MinidumpMemory64List<'mdmp> {
+    /// Write a human-readable description of this `MinidumpMemory64List` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpMemory64List
+  region_count = {}
+
+",
+            self.regions.len()
+        )?;
+        for (i, region) in self.regions.iter().enumerate() {
+            writeln!(f, "region[{}]", i)?;
+            region.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a, Descriptor> Default for MinidumpMemoryListBase<'a, Descriptor> {
     fn default() -> Self {
         Self::new()
     }
@@ -1674,6 +1742,68 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
             }
         }
         Ok(MinidumpMemoryList::from_regions(regions))
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpMemory64List<'a> {
+    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::Memory64ListStream;
+
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+    ) -> Result<MinidumpMemory64List<'a>, Error> {
+        let mut offset = 0;
+        let u: u64 = bytes
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let mut rva: u64 = bytes
+            .gread_with(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let (count, counted_size) = ensure_count_in_bound(
+            bytes,
+            u.try_into().map_err(|_| Error::StreamReadFailure)?,
+            md::MINIDUMP_MEMORY_DESCRIPTOR64::size_with(&endian),
+            offset,
+        )?;
+
+        if bytes.len() != counted_size {
+            return Err(Error::StreamSizeMismatch {
+                expected: counted_size,
+                actual: bytes.len(),
+            });
+        }
+
+        let mut raw_entries = Vec::with_capacity(count);
+        for _ in 0..count {
+            let raw: md::MINIDUMP_MEMORY_DESCRIPTOR64 = bytes
+                .gread_with(&mut offset, endian)
+                .or(Err(Error::StreamReadFailure))?;
+            raw_entries.push(raw);
+        }
+
+        let mut regions = Vec::with_capacity(raw_entries.len());
+        for raw in raw_entries {
+            let start = rva;
+            let end = rva
+                .checked_add(raw.data_size)
+                .ok_or(Error::StreamReadFailure)?;
+            let bytes = all
+                .get(start as usize..end as usize)
+                .ok_or(Error::StreamReadFailure)?;
+
+            regions.push(MinidumpMemory64 {
+                desc: raw,
+                base_address: raw.start_of_memory_range,
+                size: raw.data_size,
+                bytes,
+            });
+
+            rva = end;
+        }
+        Ok(MinidumpMemory64List::from_regions(regions))
     }
 }
 
@@ -4586,6 +4716,7 @@ where
     /// * [`MinidumpLinuxProcStatus`][]
     /// * [`MinidumpMacCrashInfo`][]
     /// * [`MinidumpMemoryList`][]
+    /// * [`MinidumpMemory64List`][]
     /// * [`MinidumpMemoryInfoList`][]
     /// * [`MinidumpMiscInfo`][]
     /// * [`MinidumpModuleList`][]
@@ -4635,7 +4766,7 @@ where
     /// If there are multiple copies of the same stream type (which should not happen for
     /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 33] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 32] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -4643,7 +4774,6 @@ where
             MINIDUMP_STREAM_TYPE::LastReservedStream,
             // Presumably should be implemented:
             MINIDUMP_STREAM_TYPE::ThreadExListStream,
-            MINIDUMP_STREAM_TYPE::Memory64ListStream,
             MINIDUMP_STREAM_TYPE::CommentStreamA,
             MINIDUMP_STREAM_TYPE::CommentStreamW,
             MINIDUMP_STREAM_TYPE::HandleDataStream,
@@ -5535,6 +5665,34 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
         assert_eq!(regions[0].size, CONTENTS.len() as u64);
         assert_eq!(&regions[0].bytes, &CONTENTS);
+    }
+
+    #[test]
+    fn test_memory64_list() {
+        const CONTENTS0: &[u8] = b"memory_contents";
+        const CONTENTS1: &[u8] = b"another_block";
+        let memory0 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_bytes(CONTENTS0),
+            0x309d68010bd21b2c,
+        );
+        let memory1 = Memory::with_section(
+            Section::with_endian(Endian::Little).append_bytes(CONTENTS1),
+            0x1234,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_memory64(memory0)
+            .add_memory64(memory1);
+        let dump = read_synth_dump(dump).unwrap();
+        let memory_list = dump.get_stream::<MinidumpMemory64List<'_>>().unwrap();
+        let regions = memory_list.iter().collect::<Vec<_>>();
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[0].base_address, 0x309d68010bd21b2c);
+        assert_eq!(regions[0].size, CONTENTS0.len() as u64);
+        assert_eq!(&regions[0].bytes, &CONTENTS0);
+
+        assert_eq!(regions[1].base_address, 0x1234);
+        assert_eq!(regions[1].size, CONTENTS1.len() as u64);
+        assert_eq!(&regions[1].bytes, &CONTENTS1);
     }
 
     #[test]

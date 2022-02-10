@@ -41,6 +41,8 @@ pub struct SynthMinidump {
     thread_names_list: Option<ListStream<ThreadName>>,
     /// List of memory regions in this minidump.
     memory_list: Option<ListStream<Section>>,
+    /// List of memory regions stored in `Memory64List` stream in this minidump.
+    memory64_list: Option<Memory64ListStream>,
     /// List of extra info about memory regions in this minidump.
     memory_info_list: Option<ExListStream<MemoryInfo>>,
     /// Crashpad extension containing annotations.
@@ -55,6 +57,8 @@ pub struct SynthMinidump {
     linux_environ: Option<SimpleStream>,
     /// /proc/self/status string
     linux_proc_status: Option<SimpleStream>,
+    /// Continuous memory used by `Memory64List` stream
+    memory64_section: Option<Section>,
 }
 
 /// A block of data contained in a minidump.
@@ -163,6 +167,7 @@ impl SynthMinidump {
             .D64(&flags);
         section.start().set_const(0);
         assert_eq!(section.size(), mem::size_of::<md::MINIDUMP_HEADER>() as u64);
+        let memory64_section = Section::with_endian(endian);
 
         SynthMinidump {
             section,
@@ -194,6 +199,10 @@ impl SynthMinidump {
                 md::MINIDUMP_STREAM_TYPE::MemoryListStream,
                 endian,
             )),
+            memory64_list: Some(Memory64ListStream::new(
+                endian,
+                &memory64_section.file_offset(),
+            )),
             memory_info_list: Some(ExListStream::new(
                 md::MINIDUMP_STREAM_TYPE::MemoryInfoListStream,
                 mem::size_of::<md::MINIDUMP_MEMORY_INFO>(),
@@ -205,6 +214,7 @@ impl SynthMinidump {
             linux_cpu_info: None,
             linux_proc_status: None,
             crashpad_info: None,
+            memory64_section: Some(memory64_section),
         }
     }
 
@@ -255,6 +265,19 @@ impl SynthMinidump {
             .map(|memory_list| memory_list.add(descriptor));
         // Add the memory region itself.
         self.add(memory)
+    }
+
+    /// Add `memory` to `self`'s memory64 list
+    pub fn add_memory64(mut self, memory: Memory) -> SynthMinidump {
+        self.memory64_list = self
+            .memory64_list
+            .take()
+            .map(|memory64_list| memory64_list.add_memory(&memory));
+        self.memory64_section = self
+            .memory64_section
+            .take()
+            .map(|memory64_section| memory64_section.append_section(memory.section));
+        self
     }
 
     /// Add `info` to `self`, adding it to the memory info list stream as well.
@@ -391,6 +414,12 @@ impl SynthMinidump {
         // Add memory list stream if any memory regions were added.
         let memories = self.memory_list.take();
         self = self.finish_list(memories);
+        // Add memory64 list stream if any memory regions were added.
+        if let Some(memories64) = self.memory64_list.take() {
+            if !memories64.is_empty() {
+                self = self.add_stream(memories64);
+            }
+        }
         // Add memory info list stream if any memory infos were added.
         let memory_infos = self.memory_info_list.take();
         self = self.finish_ex_list(memory_infos);
@@ -424,6 +453,9 @@ impl SynthMinidump {
         }
         if let Some(stream) = self.linux_environ.take() {
             self = self.add_stream(stream);
+        }
+        if let Some(memory64_section) = self.memory64_section.take() {
+            self = self.add(memory64_section);
         }
 
         let SynthMinidump {
@@ -617,6 +649,60 @@ impl<T: ListItem> DumpSection for ListStream<T> {
 impl<T: ListItem> Stream for ListStream<T> {
     fn stream_type(&self) -> u32 {
         self.stream_type
+    }
+}
+
+pub struct Memory64ListStream {
+    section: Section,
+    count: u64,
+    count_label: Label,
+}
+
+impl Memory64ListStream {
+    pub fn new(endian: Endian, memory64_rva: &Label) -> Self {
+        let count_label = Label::new();
+        let section = Section::with_endian(endian)
+            .D64(&count_label)
+            .D64(memory64_rva);
+        Self {
+            section,
+            count: 0,
+            count_label,
+        }
+    }
+
+    pub fn add_memory(mut self, memory: &Memory) -> Self {
+        self.count += 1;
+        self.section = self.section.D64(memory.address).D64(memory.section.size());
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
+impl From<Memory64ListStream> for Section {
+    fn from(list: Memory64ListStream) -> Self {
+        // Finalize the entry count.
+        list.count_label.set_const(list.count as u64);
+        list.section
+    }
+}
+
+impl DumpSection for Memory64ListStream {
+    fn file_offset(&self) -> Label {
+        self.section.file_offset()
+    }
+
+    fn file_size(&self) -> Label {
+        self.section.file_size()
+    }
+}
+
+impl Stream for Memory64ListStream {
+    fn stream_type(&self) -> u32 {
+        md::MINIDUMP_STREAM_TYPE::Memory64ListStream as u32
     }
 }
 
