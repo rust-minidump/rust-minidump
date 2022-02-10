@@ -523,6 +523,7 @@ where
     // Other streams depend on these, so load them upfront.
     let system_info = dump.get_stream::<MinidumpSystemInfo>().ok();
     let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().ok();
+    let memory64_list = dump.get_stream::<MinidumpMemory64List<'_>>().ok();
     let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
 
     if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
@@ -541,6 +542,9 @@ where
     }
     if let Some(memory_list) = memory_list {
         memory_list.print(output)?;
+    }
+    if let Some(memory64_list) = memory64_list {
+        memory64_list.print(output)?;
     }
     if let Ok(memory_info_list) = dump.get_stream::<MinidumpMemoryInfoList<'_>>() {
         memory_info_list.print(output)?;

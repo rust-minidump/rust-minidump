@@ -91,6 +91,20 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR {
     pub memory: MINIDUMP_LOCATION_DESCRIPTOR,
 }
 
+/// A large range of memory contained within a minidump (usually a full dump)
+/// consisting of a base address and a size.
+///
+/// This struct matches the [Microsoft struct][msdn] of the same name.
+///
+/// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_descriptor64
+#[derive(Debug, Copy, Clone, Default, Pread, SizeWith)]
+pub struct MINIDUMP_MEMORY_DESCRIPTOR64 {
+    /// The base address of this memory range from the process.
+    pub start_of_memory_range: u64,
+    /// The size of this data.
+    pub data_size: u64,
+}
+
 /// Information about a data stream contained in a minidump file.
 ///
 /// The minidump header contains a pointer to a list of these structs which allows locating
@@ -161,6 +175,15 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// See [`MINIDUMP_SYSTEM_INFO`].
     SystemInfoStream = 7,
     ThreadExListStream = 8,
+    /// The list of large memory regions from the process contained within this dump
+    ///
+    /// See [`MINIDUMP_MEMORY_DESCRIPTOR64`].
+    ///
+    /// Microsoft declares a [`MINIDUMP_MEMORY64_LIST`][list] struct which is the actual format
+    /// of this stream, but it is a variable-length struct so no matching definition is provided
+    /// in this crate.
+    ///
+    /// [list]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory64_list
     Memory64ListStream = 9,
     CommentStreamA = 10,
     CommentStreamW = 11,

@@ -351,3 +351,21 @@ fn test_linux_os_version() {
         "#1 SMP Mon Nov 6 16:00:12 UTC 2017",
     );
 }
+
+#[test]
+fn test_full_dump_memory() {
+    let path = get_test_minidump_path("full-dump.dmp");
+    let dump = Minidump::read_path(&path).unwrap();
+    let memory_list = dump.get_stream::<MinidumpMemory64List<'_>>().unwrap();
+    assert_eq!(memory_list.iter().count(), 54);
+    let blocks: Vec<_> = memory_list.iter().take(3).collect();
+    assert_eq!(blocks[0].base_address, 0x007FFE0000);
+    assert_eq!(blocks[0].size, 0x1000);
+    assert_eq!(blocks[0].bytes[0..8], [0, 0, 0, 0, 0, 0, 0xA0, 0x0F]);
+    assert_eq!(blocks[1].base_address, 0x007FFE9000);
+    assert_eq!(blocks[1].size, 0x1000);
+    assert_eq!(blocks[1].bytes[0..8], [0x48, 0x61, 0x6C, 0x54, 0, 0, 0, 0]);
+    assert_eq!(blocks[2].base_address, 0x9897D0D000);
+    assert_eq!(blocks[2].size, 0x3000);
+    assert_eq!(blocks[2].bytes[0..8], [0, 0, 0, 0, 0, 0, 0, 0]);
+}

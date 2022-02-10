@@ -322,6 +322,9 @@
 //! * `MINIDUMP_THREAD_EX_LIST` (yes, the stream with "EX_LIST" in the name isn't an
 //!   EX list, names are hard.)
 //!
+//! The stream [`MinidumpMemory64List`] is a variant of list stream. It starts with
+//! a `u64` count of entries, a 64-bit shared RVA for all entries, then followed by
+//! an array of entires [`MINIDUMP_MEMORY_DESCRIPTOR64`][format::MINIDUMP_MEMORY_DESCRIPTOR64].
 //!
 //!
 //! ### EX List Streams
