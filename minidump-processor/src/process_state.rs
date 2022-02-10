@@ -720,7 +720,7 @@ Unknown streams encountered:
                     "debug_id": module.debug_identifier().unwrap_or_default().breakpad().to_string(),
                     "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                     "filename": &name,
-                    "code_id": module.code_identifier().as_str().to_uppercase(),
+                    "code_id": module.code_identifier().as_str(),
                     "version": module.version(),
                     "cert_subject": self.cert_info.get(name),
 
