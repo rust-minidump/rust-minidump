@@ -235,7 +235,12 @@ where
     //
     // See the corresponding commit in Breakpad:
     // https://github.com/google/breakpad/commit/087795c851d269a49baf6cd0fb886c2990729f44
-    let instruction = instruction - 1;
+    let instruction = instruction.saturating_sub(1);
+
+    // NULL pointer is definitely not valid
+    if instruction == 0 {
+        return false;
+    }
 
     if let Some(module) = modules.module_at_address(instruction as u64) {
         // Create a dummy frame symbolizing implementation to feed into
