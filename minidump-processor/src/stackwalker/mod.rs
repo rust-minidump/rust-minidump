@@ -230,6 +230,27 @@ async fn instruction_seems_valid_by_symbols<P>(
 where
     P: SymbolProvider + Sync,
 {
+    // Our input is a candidate return address, but we *really* want to validate the address
+    // of the call instruction *before* the return address. In theory this symbol-based
+    // analysis shouldn't *care* whether we're looking at the call or the instruction
+    // after it, but there is one corner case where the return address can be invalid
+    // but the instruction before it isn't: noreturn.
+    //
+    // If the *callee* is noreturn, then the caller has no obligation to have any instructions
+    // after the call! So e.g. on x86 if you CALL a noreturn function, the return address
+    // that's implicitly pushed *could* be one-past-the-end of the "function".
+    //
+    // This has been observed in practice with `+[NSThread exit]`!
+    //
+    // We don't otherwise need the instruction pointer to be terribly precise, so
+    // subtracting 1 from the address should be sufficient to handle this corner case.
+    let instruction = instruction.saturating_sub(1);
+
+    // NULL pointer is definitely not valid
+    if instruction == 0 {
+        return false;
+    }
+
     if let Some(module) = modules.module_at_address(instruction as u64) {
         // Create a dummy frame symbolizing implementation to feed into
         // our symbol provider with the address we're interested in. If
