@@ -230,6 +230,13 @@ async fn instruction_seems_valid_by_symbols<P>(
 where
     P: SymbolProvider + Sync,
 {
+    // We want to validate the address of the call instruction, not the return address. Usually the
+    // return address is one after the call, so we subtract 1 here.
+    //
+    // See the corresponding commit in Breakpad:
+    // https://github.com/google/breakpad/commit/087795c851d269a49baf6cd0fb886c2990729f44
+    let instruction = instruction - 1;
+
     if let Some(module) = modules.module_at_address(instruction as u64) {
         // Create a dummy frame symbolizing implementation to feed into
         // our symbol provider with the address we're interested in. If
