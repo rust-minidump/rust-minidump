@@ -233,7 +233,7 @@ where
     // Our input is a candidate return address, but we *really* want to validate the address
     // of the call instruction *before* the return address. In theory this symbol-based
     // analysis shouldn't *care* whether we're looking at the call or the instruction
-    // after it, but there is one corner case where the return address can be invalid 
+    // after it, but there is one corner case where the return address can be invalid
     // but the instruction before it isn't: noreturn.
     //
     // If the *callee* is noreturn, then the caller has no obligation to have any instructions
