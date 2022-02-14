@@ -803,26 +803,30 @@ Unknown streams encountered:
             // of a normal "threads" entry, while the original schema strips
             // many of the fields here. We don't to keep things more uniform.
 
-            let registers = json_registers(&self.threads[requesting_thread].frames[0].context);
+            // We can't do any of this work if we don't have at least one frame.
+            if let Some(f) = self.threads[requesting_thread].frames.get(0) {
+                let registers = json_registers(&f.context);
 
-            // Yuck, spidering through json...
-            let mut thread =
-                output.get_mut("threads").unwrap().as_array().unwrap()[requesting_thread].clone();
-            let thread_obj = thread.as_object_mut().unwrap();
-            let frames = thread_obj
-                .get_mut("frames")
-                .unwrap()
-                .as_array_mut()
-                .unwrap();
-            let frame = frames[0].as_object_mut().unwrap();
+                // Yuck, spidering through json...
+                let mut thread = output.get_mut("threads").unwrap().as_array().unwrap()
+                    [requesting_thread]
+                    .clone();
+                let thread_obj = thread.as_object_mut().unwrap();
+                let frames = thread_obj
+                    .get_mut("frames")
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap();
+                let frame = frames[0].as_object_mut().unwrap();
 
-            frame.insert(String::from("registers"), registers);
-            thread_obj.insert(String::from("threads_index"), json!(requesting_thread));
+                frame.insert(String::from("registers"), registers);
+                thread_obj.insert(String::from("threads_index"), json!(requesting_thread));
 
-            output
-                .as_object_mut()
-                .unwrap()
-                .insert(String::from("crashing_thread"), thread);
+                output
+                    .as_object_mut()
+                    .unwrap()
+                    .insert(String::from("crashing_thread"), thread);
+            }
         }
 
         if pretty {
