@@ -240,3 +240,31 @@ async fn test_linux_proc_status() {
     let dump = minimal_minidump().set_linux_proc_status(input);
     let _state = read_synth_dump(dump).await;
 }
+
+#[tokio::test]
+async fn test_no_frames() {
+    let context = synth_minidump::x86_context(Endian::Little, 0, 0);
+
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
+
+    let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 0x1234;
+
+    let dump = SynthMinidump::with_endian(Endian::Little)
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add(context)
+        .add_memory(stack);
+
+    let mut state = read_synth_dump(dump).await;
+
+    // I'm not sure if this is really a valid move in a test.
+    // But I can't figure out *how* to get the frames to be clear in a valid dump.
+    state.threads[0].frames.clear();
+
+    state.print_json(&mut std::io::sink(), true).unwrap();
+}
