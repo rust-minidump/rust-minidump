@@ -23,8 +23,12 @@ fuzz_target!(|data: (&[u8], &[u8])| {
 
         let provider = minidump_processor::Symbolizer::new(supplier);
 
-        let _: Result<_, _> = minidump_processor_fuzz::fuzzing_block_on(
+        let val: Result<_, _> = minidump_processor_fuzz::fuzzing_block_on(
             minidump_processor::process_minidump(&dump, &provider),
         );
+
+        if let Ok(v) = val {
+            let _: Result<(), _> = v.print_json(&mut std::io::sink(), true);
+        }
     }
 });
