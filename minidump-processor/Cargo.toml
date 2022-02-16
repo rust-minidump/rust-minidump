@@ -22,7 +22,7 @@ symbolic-syms = []
 [dependencies]
 async-trait = "0.1.51"
 breakpad-symbols = { version = "0.9.6", path = "../breakpad-symbols", optional = true }
-clap = "2.34"
+clap = "3.0"
 debugid = "0.7"
 log = "0.4"
 memmap2 = "0.5.2"
