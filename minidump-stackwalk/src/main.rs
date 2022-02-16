@@ -53,9 +53,19 @@ a crash or debugging rust-minidump itself.\n\n\n")
                 .takes_value(true)
                 .long_help("Combine --human and --json
 
-Because this creates two output streams, you must specify a path to write the --json
-output to. The --human output will be the 'primary' output and default to stdout, which
+Because this creates two output streams, you must specify a path to write the --json \
+output to. The --human output will be the 'primary' output and default to stdout, which \
 can be configured with --output-file as normal.\n\n\n")
+        )
+        .arg(
+            Arg::with_name("dump")
+                .long("dump")
+                .long_help("Dump the 'raw' contents of the minidump.
+
+This is an implementation of the functionality of the old minidump_dump tool. \
+It minimally parses and interprets the minidump in an attempt to produce a \
+fairly 'raw' dump of the minidump's contents. This is most useful for debugging \
+minidump-stackwalk itself, or a misbehaving minidump generator.\n\n\n")
         )
         .arg(
             Arg::with_name("help-markdown")
@@ -64,7 +74,7 @@ can be configured with --output-file as normal.\n\n\n")
                 .hidden(true)
         )
         .group(ArgGroup::with_name("output-format")
-            .args(&["json", "human", "cyborg"])
+            .args(&["json", "human", "cyborg", "dump"])
         )
         .arg(
             Arg::with_name("output-file")
@@ -347,6 +357,7 @@ async fn main() {
     // Mutual exclusion is enforced by an ArgGroup.
     let mut json = matches.is_present("json");
     let mut human = !json;
+    let raw_dump = matches.is_present("dump");
     let cyborg = matches.value_of_os("cyborg").map(Path::new);
 
     if cyborg.is_some() {
@@ -373,6 +384,23 @@ async fn main() {
 
     match Minidump::read_path(minidump_path) {
         Ok(dump) => {
+            let mut stdout;
+            let mut output_f;
+            let cyborg_output_f = cyborg.map(|path| File::create(path).unwrap());
+
+            let mut output: &mut dyn Write = if let Some(output_path) = output_file {
+                output_f = File::create(output_path).unwrap();
+                &mut output_f
+            } else {
+                stdout = std::io::stdout();
+                &mut stdout
+            };
+
+            // minidump_dump mode
+            if raw_dump {
+                return print_minidump_dump(&dump, &mut output).unwrap();
+            }
+
             let mut provider = MultiSymbolProvider::new();
 
             if !symbols_urls.is_empty() {
@@ -392,18 +420,6 @@ async fn main() {
             match minidump_processor::process_minidump_with_options(&dump, &provider, options).await
             {
                 Ok(state) => {
-                    let mut stdout;
-                    let mut output_f;
-                    let cyborg_output_f = cyborg.map(|path| File::create(path).unwrap());
-
-                    let mut output: &mut dyn Write = if let Some(output_path) = output_file {
-                        output_f = File::create(output_path).unwrap();
-                        &mut output_f
-                    } else {
-                        stdout = std::io::stdout();
-                        &mut stdout
-                    };
-
                     // Print the human output if requested (always uses the "real" output).
                     if human {
                         if brief {
@@ -492,4 +508,92 @@ fn print_help_markdown() {
         // Normal paragraph text
         println!("{}", line);
     }
+}
+
+fn print_minidump_dump<'a, T, W>(dump: &Minidump<'a, T>, output: &mut W) -> std::io::Result<()>
+where
+    T: Deref<Target = [u8]> + 'a,
+    W: Write,
+{
+    dump.print(output)?;
+
+    // Other streams depend on these, so load them upfront.
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().ok();
+    let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().ok();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+
+    if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
+        thread_list.print(
+            output,
+            memory_list.as_ref(),
+            system_info.as_ref(),
+            misc_info.as_ref(),
+        )?;
+    }
+    if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
+        module_list.print(output)?;
+    }
+    if let Ok(module_list) = dump.get_stream::<MinidumpUnloadedModuleList>() {
+        module_list.print(output)?;
+    }
+    if let Some(memory_list) = memory_list {
+        memory_list.print(output)?;
+    }
+    if let Ok(memory_info_list) = dump.get_stream::<MinidumpMemoryInfoList<'_>>() {
+        memory_info_list.print(output)?;
+    }
+    if let Ok(exception) = dump.get_stream::<MinidumpException>() {
+        exception.print(output, system_info.as_ref(), misc_info.as_ref())?;
+    }
+    if let Ok(assertion) = dump.get_stream::<MinidumpAssertion>() {
+        assertion.print(output)?;
+    }
+    if let Some(system_info) = system_info {
+        system_info.print(output)?;
+    }
+    if let Some(misc_info) = misc_info {
+        misc_info.print(output)?;
+    }
+    if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {
+        breakpad_info.print(output)?;
+    }
+    if let Ok(thread_names) = dump.get_stream::<MinidumpThreadNames>() {
+        thread_names.print(output)?;
+    }
+    match dump.get_stream::<MinidumpCrashpadInfo>() {
+        Ok(crashpad_info) => crashpad_info.print(output)?,
+        Err(Error::StreamNotFound) => (),
+        Err(_) => write!(output, "MinidumpCrashpadInfo cannot print invalid data")?,
+    }
+
+    // Handle Linux streams that are just a dump of some system "file".
+    macro_rules! streams {
+        ( $( $x:ident ),* ) => {
+            &[$( ( minidump_common::format::MINIDUMP_STREAM_TYPE::$x, stringify!($x) ) ),*]
+        };
+    }
+    fn print_raw_stream<T: Write>(name: &str, contents: &[u8], out: &mut T) -> std::io::Result<()> {
+        writeln!(out, "Stream {}:", name)?;
+        let s = contents
+            .split(|&v| v == 0)
+            .map(String::from_utf8_lossy)
+            .collect::<Vec<_>>()
+            .join("\\0\n");
+        write!(out, "{}\n\n", s)
+    }
+
+    for &(stream, name) in streams!(
+        LinuxCmdLine,
+        LinuxEnviron,
+        LinuxLsbRelease,
+        LinuxProcStatus,
+        LinuxCpuInfo,
+        LinuxMaps
+    ) {
+        if let Ok(contents) = dump.get_raw_stream(stream) {
+            print_raw_stream(name, contents, output)?;
+        }
+    }
+
+    Ok(())
 }

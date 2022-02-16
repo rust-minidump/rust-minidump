@@ -220,19 +220,9 @@ Provides a simple interface for mocking minidumps for unit tests.
 A CLI frontend for `minidump-processor`, providing both machine-readable and human-readable
 digests of a minidump with backtraces and symbolication.
 
+Also includes the functionality of the old minidump_dump tool (see the --dump flag).
+
 See the [README](minidump-stackwalk/README.md) for details.
-
-
-
-
-## [minidump-dump](minidump/src/bin/minidump_dump.rs)
-
-(currently private to this project, may be removed in favour of just making it
-another possible output type of minidump-stackwalk.)
-
-A CLI dumper of the minidump's raw contents.
-
-Although minidump-stackwalk is generally much better and more useful, minidump-dump can help debug strange minidumps, as it more explicitly exposes raw values and the stream directory's layout. This is *mostly* only really useful for developing rust-minidump itself.
 
 
 
