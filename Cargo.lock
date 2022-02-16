@@ -85,6 +85,7 @@ version = "0.9.6"
 dependencies = [
  "async-trait",
  "circular",
+ "debugid",
  "log",
  "minidump-common",
  "nom",
@@ -196,6 +197,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2209c310e29876f7f0b2721e7e26b84aff178aa3da5d091f9bfbf47669e60e3"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "debugid"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f91cf5a8c2f2097e2a32627123508635d47ce10563d999ec1a95addf08b502ba"
+dependencies = [
+ "uuid",
 ]
 
 [[package]]
@@ -640,6 +650,7 @@ name = "minidump"
 version = "0.9.6"
 dependencies = [
  "arbitrary",
+ "debugid",
  "doc-comment",
  "encoding",
  "log",
@@ -652,6 +663,7 @@ dependencies = [
  "test-assembler",
  "thiserror",
  "time 0.3.7",
+ "uuid",
 ]
 
 [[package]]
@@ -660,6 +672,7 @@ version = "0.9.6"
 dependencies = [
  "arbitrary",
  "bitflags",
+ "debugid",
  "enum-primitive-derive",
  "log",
  "num-traits 0.2.14",
@@ -675,6 +688,7 @@ dependencies = [
  "async-trait",
  "breakpad-symbols",
  "clap",
+ "debugid",
  "doc-comment",
  "log",
  "memmap2",
@@ -1446,6 +1460,12 @@ dependencies = [
  "matches",
  "percent-encoding",
 ]
+
+[[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 
 [[package]]
 name = "vcpkg"

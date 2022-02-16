@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use debugid::{CodeId, DebugId};
 use memmap2::Mmap;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
@@ -57,22 +58,28 @@ fn test_module_list() {
     assert_eq!(modules[0].base_address(), 0x400000);
     assert_eq!(modules[0].size(), 0x2d000);
     assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
-    assert_eq!(modules[0].code_identifier(), "45D35F6C2d000");
+    assert_eq!(
+        modules[0].code_identifier(),
+        CodeId::new("45D35F6C2d000".to_string())
+    );
     assert_eq!(modules[0].debug_file().unwrap(), "c:\\test_app.pdb");
     assert_eq!(
         modules[0].debug_identifier().unwrap(),
-        "5A9832E5287241C1838ED98914E9B7FF1"
+        DebugId::from_breakpad("5A9832E5287241C1838ED98914E9B7FF1").unwrap()
     );
     assert!(modules[0].version().is_none());
 
     assert_eq!(modules[12].base_address(), 0x76bf0000);
     assert_eq!(modules[12].size(), 0xb000);
     assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
-    assert_eq!(modules[12].code_identifier(), "411096CAb000");
+    assert_eq!(
+        modules[12].code_identifier(),
+        CodeId::new("411096CAb000".to_string())
+    );
     assert_eq!(modules[12].debug_file().unwrap(), "psapi.pdb");
     assert_eq!(
         modules[12].debug_identifier().unwrap(),
-        "A5C3A1F9689F43D8AD228A09293889702"
+        DebugId::from_breakpad("A5C3A1F9689F43D8AD228A09293889702").unwrap()
     );
     assert_eq!(modules[12].version().unwrap(), "5.1.2600.2180");
 
