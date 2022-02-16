@@ -1,19 +1,112 @@
-# Pending Release (TBD)
+# Pending Release (TBD -- 0.10.0?)
 
 Commit: TBD
 
-Performance and quality of implementation work.
+This release is a mix of substantial quality improvements, one major breaking change (making some things async), and several smaller changes to APIs. It's a bit of a big release because some major experimentation was going on and we didn't want to release something that we might immediately revert.
+
+
+
+## CURRENT BLOCKERS FOR THIS RELEASE
+
+
+### How unloaded modules are handled in JSON output 
+
+A change to how we handle unloaded modules was introduced in #348, reimplementing a hack in tools that predate rust-minidump. But #367 wants to introduce a more complete and prinicipled design. Cutting the release before resolving #367 would be a forward-compat hazard.
+
+
+
+### Do we really want to be async?
+
+The async branch (#329) was landed to just force us to try it out and see what it's like, but we may still conclude it's a bad idea and revert it. Best not to cut a release until it has had some time to bake.
+
+
+
+### debugid/codeid churn
+
+Many changes have been made to how we handle codeids/debugids, and some are still in the process of review, it would be good to let those patches all land and bake before cutting a release and "comitting" to those changes.
+
+
+### audit error types
+
+In #356, error strings now include the "type" of the error, but this is done slopily with Debug, so if the error types have payloads those may get dumped into the error message, which is probably undesirable. We should probably be more principled before cutting a release.
+
+
+
+
+
+## **Major Breaking Change: Symbolication Is Now `async`(!)**
+
+Making rust-minidump async is in some sense pointless, because it's a single-threaded design that is architected to scale by deploying multiple *processes*. The primary bottleneck on minidump processing is loading and parsing *symbol files*, which rust-minidump already maintains a system-global temporary cache for. This cache is designed specifically for the multi-process workflow.
+
+The motivation for introducing `async` is more of an interoperation concern. For instance, compiling to wasm generally requires I/O to be converted to `async`. Users of `minidump-stackwalk` should be unaffected.
+
+Because symbolication is core functionality for `minidump-processor`, this infects its entire API and means anyone using it will need to run in an async executor. If this proves to be too unpleasant to our users, we may look into making this async-ness configurable with a feature flag (but that would be a lot of work and have a very nasty maintenance burden, so that option isn't to be taken lightly).
+
+---
+
+If you are building an application, making it work with `async` may be as simple as adding the following to your Cargo.toml:
+
+```
+tokio =  { version = "*", features = ["full"] }
+```
+
+changing `main` to the following:
+
+```
+#[tokio::main]
+async fn main() {
+    ...
+```
+
+and adding `.await` to the end of your `process_minidump` call.
+
+---
+
+If you are building a library, the upgrade story is more complicated: you can either expose the `async`-ness in your own APIs, or try to hide it with APIs like `block_on`. Alternatively, you can depend on the `minidump-stackwalk` binary which behaves the same as it did before.
+
+
+
+
+## Major Performance Improvements!
 
 For minidump-stackwalk workloads that make use of large (200MB+) symbol files (e.g. Firefox), 
 peak memory usage has been reduced by about 50%, and runtime decreased by up to 10%!
 Memory usage wins are consistent whether loading from network or disk. Runtime numbers
 depend heavily on how much of a bottleneck symbol file I/O is.
 
-And as always, more docs and tests! :D
 
 
 
-Changes:
+
+## Major Reliability Improvements! (Fuzzing!)
+
+Thanks to @5225225, rust-minidump has had a ton of fuzzing infrastructure added. The fuzzers found many subtle bugs in the code *and* @5225225 fixed most of them too! Thank you so much!! 😭
+
+To the best of our knowledge, none of the bugs found were security issues more serious than: 
+
+* denial of service through long loops.
+* denial of service through large allocations. 
+* denial of service through crashes (tripping safe assertions).
+* heuristic analyses producing worse results.
+* validation steps accidentally discarding valid values.
+
+Thanks to their work, rust-minidump is significantly more robust to "absurd" inputs that could result from either a malicious attacker or random memory corruption (which a crashreporting tool is of course obligated to deal with).
+
+The primary strategy for taming "denial of service" inputs is to realize that although *in principle* a minidump can specify enormous amounts of work to do or enormous amounts of memory to allocate, a *well-formed* input will be linearly bounded by the size of the minidump itself. **This allows the user of rust-minidump to limit resource usage by setting file-size limits on the inputs they will accept.**
+
+For instance, if a minidump reports "I have a list of 10 billion threads" but the minidump itself is only 2MB, we can reject this list length based on our knowledge of how large an entry is in that list (either by rejecting the stream entirely, or by truncating to the maximum possible value for the minidump's size).
+
+Similarly, our stackwalkers have strict "forward progress of the stack pointer" requirements. Although *in principle* the "language" of stackwalking can tell us to go backwards or loop infinitely in place, we terminate stackwalking whenever this happens. CFI (call frame information) evaluation is similarly bounded by supporting no control flow mechanisms, guaranteeing linear forward progress.
+
+Hardening rust-minidump in this manner is an ongoing project.
+
+(Note however that debuginfo is orders of magnitude larger than a minidump (~2MB vs ~200MB), **so it's still quite easy to DOS a rust-minidump instance by just having a stackwalk traverse through a ton of different modules**, necessitating an enormous amount of debuginfo to be downloaded, loaded into memory, and parsed -- if a symbol server is made available to rust-minidump. There is no obvious solution to this at the moment.)
+
+
+
+
+
+Detailed Changes:
 
 
 # minidump
@@ -31,6 +124,16 @@ Changes:
 get_crash_address will now mask out the high bits of the return value on 32-bit platforms.
 We were seeing some minidumps where the pointer (which is always stored in a 64-bit location)
 was incorrectly sign-extended. Now you will always get a value that only ever has the low 32 bits set.
+
+## LinuxMaps Now Properly Implements Address Queries
+
+The initial implementation had a reversed comparison, so valid memory ranges were discarded, and invalid ranges accepted (tripping an assertion later in the code). This has been fixed and better tests to cover this were added.
+
+This didn't affect minidump-processor/minidump-stackwalk because we don't currently have analyses based on MemoryInfo or LinuxMaps (which tell you things like "what memory was executable?").
+
+## Input Validation Hardening
+
+As discussed in the top-level notes, allocations are generally bounded by the size of the minidump now, so a rogue list length shouldn't cause you to instantly OOM and die. Allocations and runtime should generally be linearly bounded by the size of the minidump. (But minidump-processor can be made to do a lot more work than this when given a symbol server.)
 
 
 
@@ -53,18 +156,39 @@ was incorrectly sign-extended. Now you will always get a value that only ever ha
     get things done for now.
 
 
+## Better Stackwalking
+
+* We now handle noreturn callees properly in the stack scanning heuristics
+    * When you call a noreturn function you are not obligated to have any code following the CALL instruction, so the implicitly pushed return pointer may be "one-past-the-end" of the function's code. Subtracting 1 from the return pointer is sufficient to handle this.
+* We no longer \~infinite loop when the stackpointer doesn't change on ARM64
+    * Same issue we had on ARM but we forgot to port the fix to the ARM64 backend
+* Many fixed overflows that were \~benign but would assert and crash debug builds
+
+
+## More information in ProcessState
+
+* **BREAKING CHANGE**:`SystemInfo::os_version` has been split into two fields.
+    * `os_version`: "5.1.2600"
+    * `os_build`: "Service Pack 2"
+    * system_info.os_ver in the JSON schema still contains the combined value.
+    * The combined value can be obtained with `SystemInfo::format_os_version`
+
+* Threads (CallStacks) now include their original thread_id
+
+
+
 ## Better Errors
 
-When minidump-stackwalk encounters a fatal error (basically only happens for empty
-or Effectively Empty minidumps), it will include an error type before the message.
+* More detailed formatting of OS-specific errors 
+    * macOS EXC_GUARD
+    * macOS KERN_FAILURE
 
-This can be useful for aggregating and correlating failures, and also gives
-you a starting point if you want to check the docs/code for that error type.
+* Errors now use `thiserror` instead of `failure`, making the interop with std better.
 
-A few error types may still include payloads (via debug formatting), this should
-probably be fixed...
+* Fatal error messages are now prefixed with the "type" of error.
+    * This can be useful for aggregating and correlating failures, and also gives you a starting point if you want to check the docs/code for that error type.
 
-Examples:
+Examples of new fatal errors:
 
 ```text
 [ERROR] HeaderMismatch - Error reading dump: Header mismatch
@@ -92,6 +216,22 @@ file in memory, and we can parse+save the file as we download it or read it from
 This reduces peak minidump-stackwalk memory usage by about 50% for large symbol files.
 Performance is also improved, but by how much depends on how much I/O dominates your
 runtime. I/O time should be about the same, but CPU time should be reduced.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
