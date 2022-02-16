@@ -2618,6 +2618,10 @@ impl MinidumpSystemInfo {
         Ok(())
     }
 
+    /// If the minidump was generated on:
+    /// - Windows: Returns the the name of the Service Pack.
+    /// - macOS: Returns the product build number.
+    /// - Linux: Returns the contents of `uname -srvmo`.
     pub fn csd_version(&self) -> Option<Cow<str>> {
         self.csd_version.as_deref().map(Cow::Borrowed)
     }
@@ -2625,6 +2629,51 @@ impl MinidumpSystemInfo {
     /// Returns a string describing the cpu's vendor and model.
     pub fn cpu_info(&self) -> Option<Cow<str>> {
         self.cpu_info.as_deref().map(Cow::Borrowed)
+    }
+
+    /// Strings identifying the version and build number of the operating
+    /// system.
+    ///
+    /// Tries to parse the version number from the build if it cannot be found
+    /// in the version string. If the stream already contains a valid version
+    /// number or parsing from the build string fails, this will return what's
+    /// directly stored in the stream.
+    pub fn os_parts(&self) -> (String, Option<String>) {
+        let os_version = format!(
+            "{}.{}.{}",
+            self.raw.major_version, self.raw.minor_version, self.raw.build_number
+        );
+
+        let os_build = self
+            .csd_version()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+
+        if md::PlatformId::from_u32(self.raw.platform_id) != Some(md::PlatformId::Linux)
+            || os_version != "0.0.0"
+        {
+            return (os_version, os_build);
+        }
+
+        // Try to parse the Linux build string. Breakpad and Crashpad run
+        // `uname -srvmo` to generate it. This roughtly resembles:
+        // "Linux [version] [build...] [arch] Linux/GNU"
+        let raw_build = self.csd_version().unwrap_or(Cow::Borrowed(""));
+        let mut parts = raw_build.split(' ');
+        // Skip past "Linux", grab uname -r portion
+        let version = parts.nth(1).unwrap_or("0.0.0");
+        // Start from the end and pull out everything until only the build is left
+        if parts.next_back().unwrap_or_default() == "Linux/GNU" {
+            parts.next_back();
+        }
+        // uname -v portion
+        let build = parts.collect::<Vec<&str>>().join(" ");
+
+        if version == "0.0.0" {
+            (os_version, os_build)
+        } else {
+            (version.into(), Some(build))
+        }
     }
 }
 

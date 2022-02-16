@@ -30,6 +30,11 @@ fn read_test_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
     Minidump::read_path(&path)
 }
 
+fn read_linux_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
+    let path = get_test_minidump_path("linux-mini.dmp");
+    Minidump::read_path(&path)
+}
+
 #[test]
 fn test_minidump_read_path() {
     read_test_minidump().unwrap();
@@ -333,4 +338,16 @@ fn test_record_count_mac_info() {
             panic!("Expected to parse the header, got {:?}", e);
         }
     }
+}
+
+#[test]
+fn test_linux_os_version() {
+    let dump = read_linux_minidump().unwrap();
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+
+    assert_eq!(system_info.os_parts().0, "4.9.60-linuxkit-aufs");
+    assert_eq!(
+        system_info.os_parts().1.unwrap(),
+        "#1 SMP Mon Nov 6 16:00:12 UTC 2017",
+    );
 }
