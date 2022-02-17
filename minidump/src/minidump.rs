@@ -909,9 +909,22 @@ impl Module for MinidumpModule {
     fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
+
     fn code_identifier(&self) -> CodeId {
         match self.codeview_info {
             Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
+            Some(CodeView::Pdb70(ref raw)) if raw.age == 0 => {
+                // This is a macOS minidump. It looks like the age is typically
+                // >0 for Windows minidumps, and Breakpad sets it to 0 on macOS.
+                // We're relying on this observation in order to distinguish
+                // between these two platforms since macOS uses PDB70 instead of
+                // its own dedicated format.
+                // See the following linked comment in a Windows PDB writer:
+                // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
+                // TODO: Figure out a way to get access to `MinidumpSystemInfo`
+                // here instead of relying on `age`.
+                CodeId::new(format!("{:#}", raw.signature))
+            }
             _ => {
                 // TODO: Breakpad stubs this out on non-Windows.
                 CodeId::new(format!(
@@ -933,6 +946,10 @@ impl Module for MinidumpModule {
     fn debug_identifier(&self) -> Option<DebugId> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
+                // For macOS, this should be its code ID with the age (0)
+                // appended to the end of it. This makes it identical to debug
+                // IDs for Windows, and is why it doesn't have a special case
+                // here.
                 let uuid = Uuid::from_fields(
                     raw.signature.data1,
                     raw.signature.data2,
@@ -5855,6 +5872,53 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             modules[1].debug_identifier().unwrap(),
             DebugId::from_breakpad("030201000504070600000000000000000").unwrap()
         );
+    }
+
+    #[test]
+    fn test_macos_ids() {
+        let name = DumpString::new("macos module", Endian::Little);
+        let cv_record = Section::with_endian(Endian::Little)
+            // signature
+            .D32(md::CvSignature::Pdb70 as u32)
+            // signature, a GUID
+            .D32(0xaabbccdd)
+            .D16(0xeeff)
+            .D16(0x0011)
+            .append_bytes(b"\x22\x33\x44\x55\x66\x77\x88\x99")
+            // age, breakpad writes 0
+            .D32(0)
+            // pdb_file_name
+            .append_bytes(b"helpivecrashed.dylib\0");
+        let module = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        )
+        .cv_record(&cv_record);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module)
+            .add(name)
+            .add(cv_record);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        // should be the uuid stored in cv record
+        assert_eq!(
+            modules[0].code_identifier(),
+            CodeId::new("AABBCCDDEEFF00112233445566778899".to_owned())
+        );
+        // should match code identifier, but with the age appended to it
+        assert_eq!(
+            modules[0].debug_identifier().unwrap(),
+            DebugId::from_breakpad("AABBCCDDEEFF001122334455667788990").unwrap()
+        );
+        assert_eq!(modules[0].code_file(), "macos module");
+        assert_eq!(modules[0].debug_file().unwrap(), "helpivecrashed.dylib");
     }
 
     #[test]
