@@ -1290,7 +1290,7 @@ impl MinidumpContext {
     }
 
     pub fn valid_registers(&self) -> impl Iterator<Item = (&'static str, u64)> + '_ {
-        // This is suboptimal in theorey, as we could iterate over self.valid just like the original
+        // This is suboptimal in theory, as we could iterate over self.valid just like the original
         // and faster `CpuRegisters` iterator does. However, this complicates code here, and the
         // minimal gain in performance hasn't been worth the added complexity.
         self.registers().filter(move |(reg, _)| match &self.raw {
