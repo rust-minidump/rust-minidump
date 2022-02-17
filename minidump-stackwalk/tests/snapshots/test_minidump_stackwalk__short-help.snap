@@ -1,5 +1,6 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+assertion_line: 398
 expression: stdout
 
 ---
@@ -22,6 +23,13 @@ FLAGS:
             The human-readable report does not have a specified format, and may not have as many details as the JSON
             format. It is intended for quickly inspecting a crash or debugging rust-minidump itself.
             
+        --dump
+            Dump the 'raw' contents of the minidump.
+            
+            This is an implementation of the functionality of the old minidump_dump tool. It minimally parses and
+            interprets the minidump in an attempt to produce a fairly 'raw' dump of the minidump's contents. This is
+            most useful for debugging minidump-stackwalk itself, or a misbehaving minidump generator.
+            
         --pretty
             Pretty-print --json output.
 
@@ -40,9 +48,9 @@ OPTIONS:
         --cyborg <cyborg>
             Combine --human and --json
             
-            Because this creates two output streams, you must specify a path to write the --json
-            output to. The --human output will be the 'primary' output and default to stdout, which
-            can be configured with --output-file as normal.
+            Because this creates two output streams, you must specify a path to write the --json output to. The --human
+            output will be the 'primary' output and default to stdout, which can be configured with --output-file as
+            normal.
             
         --output-file <output-file>
             Where to write the output to (if unspecified, stdout is used)

@@ -710,6 +710,7 @@ dependencies = [
  "insta",
  "log",
  "minidump",
+ "minidump-common",
  "minidump-processor",
  "openssl",
  "simplelog",

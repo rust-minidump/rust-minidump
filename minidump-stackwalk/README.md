@@ -23,19 +23,27 @@ Full documentation of the CLI can be found in the "minidump-stackwalk CLI manual
 
 # Output Formats
 
+Quick Reference:
+
+* `--human` (default) - human friendly output, modified by `--brief`
+* `--json` - machine friendly output, modified by `--pretty`
+* `--cyborg=some/file/for/machine/output.json` - both human and machine!
+* `--dump` - "raw" output of the minidump's contents (for debugging)
+
 minidump-stackwalk defaults to outputting human-readable reports because this is a nicer default for casual use, but the machine-readable output is considered the "main" output format.
 
-If you pass the --json flag you will get machine-readable (JSON) output. As of version 0.9.6 this format *should* be stable, [and has a fully documented schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)! (--pretty will make this output easier for a human to read.)
+If you pass **the --json flag** you will get machine-readable (JSON) output. As of version 0.9.6 this format *should* be stable, [and has a fully documented schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)! (--pretty will make this output easier for a human to read.)
 
-If you pass the --human flag, minidump-stackwalk will output a report in a more human-friendly format with no particular structure. (--brief will make this output less verbose.)
+If you pass **the --human flag**, minidump-stackwalk will output a report in a more human-friendly format with no particular structure. (--brief will make this output less verbose.)
 
 By default, output is written to stdout, but `--output-file=some/file/name.txt` allows you to specify a file to write the output to instead. We will create and completely overwrite the specified file. If there is a fatal error, we will try to avoid writing anything to the output,
 which may result in `--output-file` not being created/cleared at all. 
 
 Similarly, errors and warnings are written to stderr by default, which can be configured with `--log-file=...`. `--verbose=...` can be used to set the log level (defaults to "error").
 
-If you wish to get both --human and --json output in one execution (saving lots of duplicated work), you can use `--cyborg=some/file/for/machine/output.json`. When --cyborg output is enabled, human output will still be the "primary" output that goes to stdout and can still be configured with `--output-file`.
+If pass **the --cyborg flag** you will get both --human and --json output in one execution (saving lots of duplicated work), specifically you must pass `--cyborg=some/file/for/machine/output.json`. When cyborg mode is enabled, human output will still be the "primary" output that goes to stdout and can still be configured with `--output-file`.
 
+Finally, **the --dump flag** will get you "raw" output of the minidump, for debugging its contents. The precise meaning of this is purposefully vague; the output will contain whatever we find useful to include for debugging. Most other flags will be fairly irrelevant in this mode, because `minidump_processor` will not be invoked (we only use the `minidump` crate for basic parsing of each stream). This is equivalent to the old minidump_dump tool.
 
 
 
@@ -193,6 +201,13 @@ Emit a human-readable report (the default).
 The human-readable report does not have a specified format, and may not have as many details as the JSON
 format. It is intended for quickly inspecting a crash or debugging rust-minidump itself.
 
+### `--dump`
+Dump the 'raw' contents of the minidump.
+
+This is an implementation of the functionality of the old minidump_dump tool. It minimally parses and
+interprets the minidump in an attempt to produce a fairly 'raw' dump of the minidump's contents. This is
+most useful for debugging minidump-stackwalk itself, or a misbehaving minidump generator.
+
 ### `--pretty`
 Pretty-print --json output.
 
@@ -211,9 +226,9 @@ Prints version information
 ### `--cyborg <cyborg>`
 Combine --human and --json
 
-Because this creates two output streams, you must specify a path to write the --json
-output to. The --human output will be the 'primary' output and default to stdout, which
-can be configured with --output-file as normal.
+Because this creates two output streams, you must specify a path to write the --json output to. The --human
+output will be the 'primary' output and default to stdout, which can be configured with --output-file as
+normal.
 
 ### `--output-file <output-file>`
 Where to write the output to (if unspecified, stdout is used)

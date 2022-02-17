@@ -38,6 +38,25 @@ fn test_output(file_name: &str) -> PathBuf {
 }
 
 #[test]
+fn test_dump() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--dump")
+        .arg("../testdata/test.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("dump", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn test_json() {
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)
