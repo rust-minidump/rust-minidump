@@ -74,7 +74,7 @@ minidump-stackwalk itself, or a misbehaving minidump generator.\n\n\n")
                 .hidden(true)
         )
         .group(ArgGroup::with_name("output-format")
-            .args(&["json", "human", "cyborg", "dump"])
+            .args(&["json", "human", "cyborg", "dump", "help-markdown"])
         )
         .arg(
             Arg::with_name("output-file")
@@ -351,13 +351,16 @@ async fn main() {
 
     let minidump_path = matches.value_of_os("minidump").map(Path::new).unwrap();
 
-    // Determine the kind of output we're producing -- json, human, or cyborg (both).
+    // Determine the kind of output we're producing -- dump, json, human, or cyborg (both).
     // Although we have a --human argument it's mostly just there to make the documentation
     // more clear. human output is enabled by default, and --json disables it.
-    // Mutual exclusion is enforced by an ArgGroup.
-    let mut json = matches.is_present("json");
-    let mut human = !json;
+    // Mutual exclusion is enforced by an ArgGroup, but it doesn't understand that "human"
+    // is the implicit default, so we have to do some munging here.
     let raw_dump = matches.is_present("dump");
+    let mut json = matches.is_present("json");
+    // Human is just enabled if nothing else is
+    let mut human = !json && !raw_dump;
+    // Cyborg is just "desugarred" to --json --human
     let cyborg = matches.value_of_os("cyborg").map(Path::new);
 
     if cyborg.is_some() {
