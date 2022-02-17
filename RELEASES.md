@@ -119,11 +119,13 @@ Detailed Changes:
 * **BREAKING CHANGE**: `UnloadedModules::by_addr` now does not deduplicate or discard overlaps (as is correct)
     * This still needs some reworking, so precise order of duplicates is unspecfied.
 
+
 ## Crash Address Fix
 
 get_crash_address will now mask out the high bits of the return value on 32-bit platforms.
 We were seeing some minidumps where the pointer (which is always stored in a 64-bit location)
 was incorrectly sign-extended. Now you will always get a value that only ever has the low 32 bits set.
+
 
 ## LinuxMaps Now Properly Implements Address Queries
 
@@ -131,15 +133,39 @@ The initial implementation had a reversed comparison, so valid memory ranges wer
 
 This didn't affect minidump-processor/minidump-stackwalk because we don't currently have analyses based on MemoryInfo or LinuxMaps (which tell you things like "what memory was executable?").
 
+
+## Better Codeid and Debugid handling
+
+Codeids/Debugids are the "primary keys" for looking up binaries and symbols for different modules. There is a fair amount of complexity in handling this because over the years microsoft has introduced new versions of the format, and breakpad has hacked in variants for other platforms.
+
+We now use the debugid crate and strongly type these ids to better handle the various corner cases.
+As a result, we should more reliably handle the various types of id for each platform, especially for MacOS.
+
+
 ## Input Validation Hardening
 
 As discussed in the top-level notes, allocations are generally bounded by the size of the minidump now, so a rogue list length shouldn't cause you to instantly OOM and die. Allocations and runtime should generally be linearly bounded by the size of the minidump. (But minidump-processor can be made to do a lot more work than this when given a symbol server.)
 
 
 
-
-
 # minidump-stackwalk/minidump-processor
+
+## minidump_dump is now minidump-stackwalk --dump
+
+The old minidump_dump binary that was hidden away in the `minidump` crate has
+had its functionality merged into minidump-stackwalk with a new output format,
+--dump. This simplifies many workflows, because more detailed investigation isn't
+"oh so there's this other tool you need...".
+
+This provides a more "raw" dump of the minidump's contents, which is useful for
+debugging unexpected or strange results. This is a fairly separate
+path that doesn't really use minidump-processor at all, so many flags of
+minidump-stackwalk are useless in this mode.
+
+Technically a **BREAKING CHANGE** because `cargo install minidump` would actually
+install minidump_dump but this was more of an accident than an intentional
+feature of the crate.
+
 
 ## Unloaded Modules
 
@@ -176,12 +202,12 @@ As discussed in the top-level notes, allocations are generally bounded by the si
 * Threads (CallStacks) now include their original thread_id
 
 
-
 ## Better Errors
 
 * More detailed formatting of OS-specific errors 
     * macOS EXC_GUARD
     * macOS KERN_FAILURE
+    * Better handling of Linux si_code values
 
 * Errors now use `thiserror` instead of `failure`, making the interop with std better.
 
