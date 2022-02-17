@@ -942,10 +942,7 @@ impl Module for MinidumpModule {
                 .ok()?;
                 Some(DebugId::from_parts(uuid, raw.age))
             }
-            Some(CodeView::Pdb20(ref raw)) => {
-                let uuid = Uuid::from_fields(raw.signature, 0, 0, &[0, 0, 0, 0]).ok()?;
-                Some(DebugId::from_parts(uuid, raw.age))
-            }
+            Some(CodeView::Pdb20(ref raw)) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
             Some(CodeView::Elf(ref raw)) => {
                 // For backwards-compat (Linux minidumps have historically
                 // been written using PDB70 CodeView info), treat build_id
