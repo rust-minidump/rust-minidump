@@ -4605,7 +4605,8 @@ where
             MINIDUMP_STREAM_TYPE::SystemMemoryInfoStream,
             MINIDUMP_STREAM_TYPE::ProcessVmCountersStream,
             MINIDUMP_STREAM_TYPE::IptTraceStream,
-            // What on earth is all this "ce" stuff?
+            // Windows CE streams, very unlikely to be found in the wild.
+            // Their contents are documented here: https://docs.microsoft.com/en-us/previous-versions/windows/embedded/ms939618(v=msdn.10)
             MINIDUMP_STREAM_TYPE::ceStreamNull,
             MINIDUMP_STREAM_TYPE::ceStreamSystemInfo,
             MINIDUMP_STREAM_TYPE::ceStreamException,

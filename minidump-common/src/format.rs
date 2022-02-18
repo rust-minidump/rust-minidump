@@ -197,19 +197,34 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// See ['MINIDUMP_THREAD_NAME'].
     ThreadNamesStream = 24,
-    ceStreamNull = 25,
-    ceStreamSystemInfo = 26,
-    ceStreamException = 27,
-    ceStreamModuleList = 28,
-    ceStreamProcessList = 29,
-    ceStreamThreadList = 30,
-    ceStreamThreadContextList = 31,
-    ceStreamThreadCallStackList = 32,
-    ceStreamMemoryVirtualList = 33,
-    ceStreamMemoryPhysicalList = 34,
-    ceStreamBucketParameters = 35,
-    ceStreamProcessModuleMap = 36,
-    ceStreamDiagnosisList = 37,
+    /* Windows CE types, the list  is available here https://docs.microsoft.com/en-us/previous-versions/windows/embedded/ms939649(v=msdn.10) */
+    /// Start of the Windows CE enumerated list, unused.
+    ceStreamNull = 0x00008000,
+    /// System-wide information about the device and operating system where the fault occurred. Windows CE-specific.
+    ceStreamSystemInfo = 0x00008001,
+    /// Exception record and context for the exception that caused the dump file creation. Windows CE-specific.
+    ceStreamException = 0x00008002,
+    /// Modules that were active on the device at the time the dump file was created. Windows CE-specific.
+    ceStreamModuleList = 0x00008003,
+    /// Processes that were active on the device at the time the dump file was created. Windows CE-specific.
+    ceStreamProcessList = 0x00008004,
+    /// Threads that were active on the device at the time the dump file was created. Windows CE-specific.
+    ceStreamThreadList = 0x00008005,
+    /// List of thread context records. Windows CE-specific.
+    ceStreamThreadContextList = 0x00008006,
+    /// List of thread callstack records. Windows CE-specific.
+    ceStreamThreadCallStackList = 0x00008007,
+    /// List of virtual memory dumps. Windows CE-specific.
+    ceStreamMemoryVirtualList = 0x00008008,
+    /// List of physical memory dumps. Windows CE-specific.
+    ceStreamMemoryPhysicalList = 0x00008009,
+    /// Bucketing parameters for Watson server. Windows CE-specific.
+    ceStreamBucketParameters = 0x0000800a,
+    /// Undocumented Windows CE-specific stream.
+    ceStreamProcessModuleMap = 0x0000800b,
+    /// Undocumented Windows CE-specific stream.
+    ceStreamDiagnosisList = 0x0000800c,
+    /// Last stream reserved for use by Windows Operating Systems.
     LastReservedStream = 0x0000ffff,
     /* Breakpad extension types.  0x4767 = "Gg" */
     /// Additional process information (Breakpad extension)
