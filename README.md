@@ -236,3 +236,8 @@ This software is provided under the MIT license. See [LICENSE](LICENSE).
 # Release Notes
 
 See [RELEASES.md](RELEASES.md) for release notes, commits, and details on the upcoming release.
+
+
+# Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for what is expected of patches, and detailed discussion of testing/documenting rust-minidump.
