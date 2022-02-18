@@ -142,6 +142,26 @@ We now use the debugid crate and strongly type these ids to better handle the va
 As a result, we should more reliably handle the various types of id for each platform, especially for MacOS.
 
 
+## Improved General Purpose Register Handling
+
+rust-minidump supports many architectures to various levels of usefulness. One very baseline level of support is understanding the CpuContext (CONTEXT_X86, CONTEXT_ARM64, CONTEXT_SPARC, ...). With this release, this baseline support is now significantly improved. CpuContext now includes:
+
+* An associated `REGISTERS` constant, containing the canonical names of a platform's general purpose registers (use memoize_register to canonicalize your register names when there are aliases!).
+
+* A `valid_registers` iterator which yields the value of every known-valid general purpose register.
+
+* A `registers` iterator which yields the value of every geneeral purpose register *regardless of whether they contain unknown garbage*.
+
+In addition, all known `CONTEXT_*` types now implement this trait and are supported by operations which work on contexts. Newly implemented:
+
+* CONTEXT_SPARC
+* CONTEXT_MIPS
+* CONTEXT_PPC
+* CONTEXT_PPC64
+
+MinidumpContext has similarly been extended and had some long-standing `unimplemented!()` paths filled in!
+
+
 ## Input Validation Hardening
 
 As discussed in the top-level notes, allocations are generally bounded by the size of the minidump now, so a rogue list length shouldn't cause you to instantly OOM and die. Allocations and runtime should generally be linearly bounded by the size of the minidump. (But minidump-processor can be made to do a lot more work than this when given a symbol server.)
@@ -210,6 +230,8 @@ feature of the crate.
     * Better handling of Linux si_code values
 
 * Errors now use `thiserror` instead of `failure`, making the interop with std better.
+
+* We no longer panic when the crashing thread has 0 frames (we instead omit it from the output).
 
 * Fatal error messages are now prefixed with the "type" of error.
     * This can be useful for aggregating and correlating failures, and also gives you a starting point if you want to check the docs/code for that error type.
