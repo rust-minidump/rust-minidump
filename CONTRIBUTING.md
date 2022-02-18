@@ -91,7 +91,7 @@ Major locations for tests include:
 * [minidump-processor integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-processor/tests/test_processor.rs) (see the `synth-minidump` section)
 * [minidump-stackwalk integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (see the `insta` section)
 * [breakpad-symbols symbol file parser tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/breakpad-symbols/src/lib.rs#L819)
-* [breakpad-symbols cfi interpretter tests](https://github.com/luser/rust-minidump/blob/master/breakpad-symbols/src/sym_file/walker.rs#L1032)
+* [breakpad-symbols cfi interpreter tests](https://github.com/luser/rust-minidump/blob/master/breakpad-symbols/src/sym_file/walker.rs#L1032)
 
 minidump-processor stackwalker tests (see `test_assembler` section):
 
@@ -287,7 +287,7 @@ fn test_evil_json() {
 }
 ```
 
-Part of the motivation for this is to ensure we don't break the the JSON output, which has [very detailed schema document](https://github.com/luser/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-processor/json-schema.md), which we'retrying to keep stable so people can actually rely on it while the actual implementation details are still in flux.
+Part of the motivation for this is to ensure we don't break the the JSON output, which has [very detailed schema document](https://github.com/luser/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-processor/json-schema.md), which we're trying to keep stable so people can actually rely on it while the actual implementation details are still in flux.
 
 Yes, [minidump-stackwalk](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk) is supposed to be stable and reasonable to use in production!
 
@@ -300,7 +300,7 @@ Oh also if **test_minidump_stackwalk__markdown-help.snap changes, use the new co
 
 Many of the crates have fuzzing tests. These tests aren't run in CI, but CI does check that they continue to compile. As of this writing, the fuzzer used does not work on Windows (sorry!).
 
-You can each fuzzer with `cargo fuzz`, but sadly this command is not workspace aware, so you will have to `cd` into the particular project you want to fuzz.
+You can run each fuzzer with `cargo fuzz`, but sadly this command is not workspace aware, so you will have to `cd` into the particular project you want to fuzz.
 
 See [the Rust Fuzz Book](https://rust-fuzz.github.io/book/introduction.html) for more details on using `cargo fuzz`.
 
