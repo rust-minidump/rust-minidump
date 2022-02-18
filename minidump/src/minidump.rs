@@ -2632,7 +2632,7 @@ impl MinidumpSystemInfo {
     }
 
     /// Strings identifying the version and build number of the operating
-    /// system.
+    /// system. Returns a tuple in the format of (version, build number).
     ///
     /// Tries to parse the version number from the build if it cannot be found
     /// in the version string. If the stream already contains a valid version
@@ -2656,17 +2656,16 @@ impl MinidumpSystemInfo {
         }
 
         // Try to parse the Linux build string. Breakpad and Crashpad run
-        // `uname -srvmo` to generate it. This roughtly resembles:
-        // "Linux [version] [build...] [arch] Linux/GNU"
+        // `uname -srvmo` to generate it. The string follows this structure:
+        // "Linux [version] [build...] [arch] Linux/GNU" where the Linux/GNU
+        // bit may not always be present.
         let raw_build = self.csd_version().unwrap_or(Cow::Borrowed(""));
         let mut parts = raw_build.split(' ');
-        // Skip past "Linux", grab uname -r portion
         let version = parts.nth(1).unwrap_or("0.0.0");
-        // Start from the end and pull out everything until only the build is left
-        if parts.next_back().unwrap_or_default() == "Linux/GNU" {
-            parts.next_back();
+        let _arch_or_os = parts.next_back().unwrap_or_default();
+        if _arch_or_os == "Linux/GNU" {
+            let _arch = parts.next_back();
         }
-        // uname -v portion
         let build = parts.collect::<Vec<&str>>().join(" ");
 
         if version == "0.0.0" {
