@@ -5928,6 +5928,35 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     }
 
     #[test]
+    fn test_null_id() {
+        // Add a module with an ELF build id of nothing but zeros
+        let name1 = DumpString::new("module 1", Endian::Little);
+        const MODULE1_BUILD_ID: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let cv_record1 = Section::with_endian(Endian::Little)
+            .D32(md::CvSignature::Elf as u32) // signature
+            .append_bytes(MODULE1_BUILD_ID);
+        let module1 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name1,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        )
+        .cv_record(&cv_record1);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module1)
+            .add(name1)
+            .add(cv_record1);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+
+        assert!(modules[0].debug_identifier().is_none());
+    }
+
+    #[test]
     fn test_thread_list_x86() {
         let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
         let stack = Memory::with_section(
