@@ -961,6 +961,12 @@ impl Module for MinidumpModule {
             }
             Some(CodeView::Pdb20(ref raw)) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
             Some(CodeView::Elf(ref raw)) => {
+                // For empty or trivial `build_id`s, we don't want to return a `DebugId`.
+                // This can happen for mapped files that aren't executable, like fonts or .jar files.
+                if raw.build_id.iter().all(|byte| *byte == 0) {
+                    return None;
+                }
+
                 // For backwards-compat (Linux minidumps have historically
                 // been written using PDB70 CodeView info), treat build_id
                 // as if the first 16 bytes were a GUID.
