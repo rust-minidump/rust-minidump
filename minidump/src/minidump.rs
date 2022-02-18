@@ -4867,6 +4867,48 @@ mod test {
     }
 
     #[test]
+    fn test_module_list_pdb20() {
+        let name = DumpString::new("single module", Endian::Little);
+        let cv_record = Section::with_endian(Endian::Little)
+            .D32(md::CvSignature::Pdb20 as u32) // cv_signature
+            .D32(0x0) // cv_offset
+            .D32(0xabcd1234) // signature
+            .D32(1) // age
+            .append_bytes(b"c:\\foo\\file.pdb\0"); // pdb_file_name
+        let module = SynthModule::new(
+            Endian::Little,
+            0xa90206ca83eb2852,
+            0xada542bd,
+            &name,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        )
+        .cv_record(&cv_record);
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module)
+            .add(name)
+            .add(cv_record);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].base_address(), 0xa90206ca83eb2852);
+        assert_eq!(modules[0].size(), 0xada542bd);
+        assert_eq!(modules[0].code_file(), "single module");
+        // time_date_stamp and size_of_image concatenated
+        assert_eq!(
+            modules[0].code_identifier(),
+            CodeId::new("B1054D2Aada542bd".to_string())
+        );
+        assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
+        assert_eq!(
+            modules[0].debug_identifier().unwrap(),
+            DebugId::from_pdb20(0xabcd1234, 1)
+        );
+    }
+
+    #[test]
     fn test_unloaded_module_list() {
         let name = DumpString::new("single module", Endian::Little);
         let module = SynthUnloadedModule::new(
