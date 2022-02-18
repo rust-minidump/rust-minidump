@@ -281,24 +281,31 @@ where
             // It's unclear why, perhaps the test is buggy, but for now we
             // preserve that behaviour.
             if let Some(last_bp) = last_bp {
-                let address_of_bp = address_of_ip - POINTER_WIDTH;
-                // Can assume this resolves because we already walked over it when
-                // checking address_of_ip values.
-                let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
-                if last_bp == address_of_bp
-                    && bp > address_of_ip
-                    && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
-                {
-                    // Final sanity check that resulting bp is still inside stack memory.
-                    if stack_memory
-                        .get_memory_at_address::<Pointer>(bp as u64)
-                        .is_some()
+                // If we're on the first iteration of the scan, there can't possibly be a
+                // frame pointer, because the entire stack frame is taken up by the return
+                // pointer. And if we're not on the first iteration, then the last iteration
+                // already loaded the location we expect the frame pointer to be in, so we can
+                // unconditionally load it here.
+                if i > 0 {
+                    let address_of_bp = address_of_ip - POINTER_WIDTH;
+                    // Can assume this resolves because we already walked over it when
+                    // checking address_of_ip values.
+                    let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+                    if last_bp == address_of_bp
+                        && bp > address_of_ip
+                        && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
                     {
-                        caller_bp = Some(bp);
+                        // Final sanity check that resulting bp is still inside stack memory.
+                        if stack_memory
+                            .get_memory_at_address::<Pointer>(bp as u64)
+                            .is_some()
+                        {
+                            caller_bp = Some(bp);
+                        }
+                    } else if last_bp >= caller_sp {
+                        // Don't sanity check that the address is inside the stack? Hmm.
+                        caller_bp = Some(last_bp);
                     }
-                } else if last_bp >= caller_sp {
-                    // Don't sanity check that the address is inside the stack? Hmm.
-                    caller_bp = Some(last_bp);
                 }
             }
 
