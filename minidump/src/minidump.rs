@@ -2632,7 +2632,9 @@ impl MinidumpSystemInfo {
     }
 
     /// Strings identifying the version and build number of the operating
-    /// system. Returns a tuple in the format of (version, build number).
+    /// system. Returns a tuple in the format of (version, build number). This
+    /// may be useful to use if the minidump was created on a Linux machine and
+    /// is an producing empty-ish version number (0.0.0).
     ///
     /// Tries to parse the version number from the build if it cannot be found
     /// in the version string. If the stream already contains a valid version
