@@ -5877,8 +5877,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     #[test]
     fn test_macos_ids() {
         let name = DumpString::new("macos module", Endian::Little);
-        let cv_record = Section::with_endian(Endian::Little)
-            // signature
+        let mut cv_record = Section::with_endian(Endian::Little);
+        cv_record // signature
             .D32(md::CvSignature::Pdb70 as u32)
             // signature, a GUID
             .D32(0xaabbccdd)
@@ -5962,11 +5962,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let context =
             synth_minidump::amd64_context(Endian::Little, 0x1234abcd1234abcd, 0x1000000010000000);
         let mut section = Section::with_endian(Endian::Little);
-            section.append_repeated(0, 0x1000);
-        let stack = Memory::with_section(
-        section,
-            0x1000000010000000,
-        );
+        section.append_repeated(0, 0x1000);
+        let stack = Memory::with_section(section, 0x1000000010000000);
         let arch = md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16;
         let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(arch);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
