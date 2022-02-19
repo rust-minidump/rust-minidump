@@ -149,7 +149,7 @@ fn minimal_minidump() -> SynthMinidump {
 }
 
 async fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
-    let dump = Minidump::read(dump.finish().unwrap()).unwrap();
+    let dump = Minidump::read(dump.finish()).unwrap();
     minidump_processor::process_minidump(&dump, &Symbolizer::new(simple_symbol_supplier(vec![])))
         .await
         .unwrap()
@@ -268,3 +268,28 @@ async fn test_no_frames() {
 
     state.print_json(&mut std::io::sink(), true).unwrap();
 }
+
+#[tokio::test]
+async fn test_lol() {
+    let context = synth_minidump::x86_context(Endian::Little, 0, 0);
+
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
+
+    let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 0x1234;
+
+    let dump = SynthMinidump::with_endian(Endian::Little)
+        .add_thread(Thread::new(Endian::Little, 0x1234, &stack, &context))
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add_memory(stack)
+        .add_thread(Thread::new(Endian::Little, 0x1234, &Memory::with_section(Section::new(), 0), &context));
+
+    let state = read_synth_dump(dump).await;
+
+    state.print_json(&mut std::io::sink(), true);
+}
+

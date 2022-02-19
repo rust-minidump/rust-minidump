@@ -381,7 +381,7 @@ impl SynthMinidump {
     }
 
     /// Finish generating the minidump and return the contents.
-    pub fn finish(mut self) -> Option<Vec<u8>> {
+    pub fn finish(mut self) -> Vec<u8> {
         // Add module list stream if any modules were added.
         let modules = self.module_list.take();
         self = self.finish_list(modules);
@@ -443,7 +443,7 @@ impl SynthMinidump {
         section
             .mark(&stream_directory_rva)
             .append_section(stream_directory)
-            .get_contents()
+            .get_contents_unwrap()
     }
 }
 
@@ -1321,6 +1321,7 @@ impl Stream for MiscStream {
 }
 
 /// Populate a `CONTEXT_X86` struct with the given `endian`, `eip`, and `esp`.
+#[track_caller]
 pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
     let section = Section::with_endian(endian)
         .D32(0x1007f) // context_flags: CONTEXT_ALL
@@ -1820,7 +1821,7 @@ impl Stream for Exception {
 fn test_dump_header() {
     let dump = SynthMinidump::with_endian(Endian::Little).flags(0x9f738b33685cc84c);
     assert_eq!(
-        dump.finish().unwrap(),
+        dump.finish(),
         vec![
             0x4d, 0x44, 0x4d, 0x50, // signature
             0x93, 0xa7, 0x00, 0x00, // version
@@ -1838,7 +1839,7 @@ fn test_dump_header() {
 fn test_dump_header_bigendian() {
     let dump = SynthMinidump::with_endian(Endian::Big).flags(0x9f738b33685cc84c);
     assert_eq!(
-        dump.finish().unwrap(),
+        dump.finish(),
         vec![
             0x50, 0x4d, 0x44, 0x4d, // signature
             0x00, 0x00, 0xa7, 0x93, // version
@@ -1869,7 +1870,7 @@ fn test_section_cite() {
 fn test_dump_string() {
     let dump = SynthMinidump::with_endian(Endian::Little);
     let s = DumpString::new("hello", Endian::Little);
-    let contents = dump.add(s).finish().unwrap();
+    let contents = dump.add(s).finish();
     // Skip over the header
     assert_eq!(
         &contents[mem::size_of::<md::MINIDUMP_HEADER>()..],
@@ -1941,7 +1942,7 @@ fn test_simple_stream() {
             section,
         });
     assert_eq!(
-        dump.finish().unwrap(),
+        dump.finish(),
         vec![
             0x4d,
             0x44,
@@ -2009,7 +2010,7 @@ fn test_simple_stream_bigendian() {
             section,
         });
     assert_eq!(
-        dump.finish().unwrap(),
+        dump.finish(),
         vec![
             0x50,
             0x4d,

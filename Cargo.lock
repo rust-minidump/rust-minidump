@@ -660,7 +660,7 @@ dependencies = [
  "range-map",
  "scroll",
  "synth-minidump",
- "test-assembler",
+ "test-assembler 0.1.6",
  "thiserror",
  "time 0.3.7",
  "uuid",
@@ -697,7 +697,7 @@ dependencies = [
  "serde",
  "serde_json",
  "synth-minidump",
- "test-assembler",
+ "test-assembler 0.1.7-alpha.0",
  "thiserror",
  "tokio",
 ]
@@ -715,7 +715,7 @@ dependencies = [
  "openssl",
  "simplelog",
  "synth-minidump",
- "test-assembler",
+ "test-assembler 0.1.6",
  "tokio",
 ]
 
@@ -1215,7 +1215,7 @@ dependencies = [
  "encoding",
  "minidump-common",
  "scroll",
- "test-assembler",
+ "test-assembler 0.1.7-alpha.0",
 ]
 
 [[package]]
@@ -1266,6 +1266,13 @@ name = "test-assembler"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a6da51de149453f5c43fa67d5e73cccd75b3c5727a38a2f18c5f3c47f2db582"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
+name = "test-assembler"
+version = "0.1.7-alpha.0"
 dependencies = [
  "byteorder",
 ]
