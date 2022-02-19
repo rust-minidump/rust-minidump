@@ -135,10 +135,9 @@ async fn test_processor_symbols() {
 
 fn minimal_minidump() -> SynthMinidump {
     let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
-    let stack = Memory::with_section(
-        Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
-        0x1000,
-    );
+    let mut section = Section::with_endian(Endian::Little);
+    section.append_repeated(0, 0x1000);
+    let stack = Memory::with_section(section, 0x1000);
     let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
     let system_info = SystemInfo::new(Endian::Little);
     SynthMinidump::with_endian(Endian::Little)
@@ -149,7 +148,7 @@ fn minimal_minidump() -> SynthMinidump {
 }
 
 async fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
-    let dump = Minidump::read(dump.finish()).unwrap();
+    let dump = Minidump::read(dump.finish().unwrap()).unwrap();
     minidump_processor::process_minidump(&dump, &Symbolizer::new(simple_symbol_supplier(vec![])))
         .await
         .unwrap()
@@ -286,10 +285,14 @@ async fn test_lol() {
         .add_exception(ex)
         .add_system_info(system_info)
         .add_memory(stack)
-        .add_thread(Thread::new(Endian::Little, 0x1234, &Memory::with_section(Section::new(), 0), &context));
+        .add_thread(Thread::new(
+            Endian::Little,
+            0x1234,
+            &Memory::with_section(Section::new(), 0),
+            &context,
+        ));
 
     let state = read_synth_dump(dump).await;
 
     state.print_json(&mut std::io::sink(), true);
 }
-

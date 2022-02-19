@@ -90,24 +90,24 @@ where
 
 pub trait CiteLocation {
     /// Append an `MINIDUMP_LOCATION_DESCRIPTOR` to `section` referring to this section.
-    fn cite_location_in(&self, section: Section) -> Section;
+    fn cite_location_in<'a>(&self, section: &'a mut Section) -> &'a mut Section;
 }
 
 impl<T: DumpSection> CiteLocation for T {
-    fn cite_location_in(&self, section: Section) -> Section {
+    fn cite_location_in<'a>(&self, section: &'a mut Section) -> &'a mut Section {
         // An MINIDUMP_LOCATION_DESCRIPTOR is just a 32-bit size + 32-bit offset.
         section.D32(&self.file_size()).D32(&self.file_offset())
     }
 }
 
 impl CiteLocation for (Label, Label) {
-    fn cite_location_in(&self, section: Section) -> Section {
+    fn cite_location_in<'a>(&self, section: &'a mut Section) -> &'a mut Section {
         section.D32(&self.0).D32(&self.1)
     }
 }
 
 impl<T: CiteLocation> CiteLocation for Option<T> {
-    fn cite_location_in(&self, section: Section) -> Section {
+    fn cite_location_in<'a>(&self, section: &'a mut Section) -> &'a mut Section {
         match *self {
             Some(ref inner) => inner.cite_location_in(section),
             None => section.D32(0).D32(0),
@@ -118,16 +118,16 @@ impl<T: CiteLocation> CiteLocation for Option<T> {
 /// Additional methods to make working with `Section`s simpler
 pub trait SectionExtra {
     /// A chainable version of `CiteLocation::cite_location_in`
-    fn cite_location<T: CiteLocation>(self, thing: &T) -> Self;
+    fn cite_location<'a, T: CiteLocation>(&'a mut self, thing: &T) -> &'a mut Self;
     /// A chainable version of `Memory::cite_memory_in`
-    fn cite_memory(self, memory: &Memory) -> Self;
+    fn cite_memory<'a>(&'a mut self, memory: &Memory) -> &'a mut Self;
 }
 
 impl SectionExtra for Section {
-    fn cite_location<T: CiteLocation>(self, thing: &T) -> Self {
+    fn cite_location<'a, T: CiteLocation>(&'a mut self, thing: &T) -> &'a mut Self {
         thing.cite_location_in(self)
     }
-    fn cite_memory(self, memory: &Memory) -> Self {
+    fn cite_memory<'a>(&'a mut self, memory: &Memory) -> &'a mut Self {
         memory.cite_memory_in(self)
     }
 }
@@ -137,23 +137,26 @@ pub trait Stream: DumpSection + Into<Section> {
     /// The stream type, used in the stream directory.
     fn stream_type(&self) -> u32;
     /// Append an `MDRawDirectory` referring to this stream to `section`.
-    fn cite_stream_in(&self, section: Section) -> Section {
+    fn cite_stream_in<'a>(&self, section: &'a mut Section) -> &'a mut Section {
         section.D32(self.stream_type()).cite_location(self)
     }
 }
 
 impl SynthMinidump {
     /// Create a `SynthMinidump` with default endianness.
+    #[track_caller]
     pub fn new() -> SynthMinidump {
         SynthMinidump::with_endian(DEFAULT_ENDIAN)
     }
 
     /// Create a `SynthMinidump` with `endian` endianness.
+    #[track_caller]
     pub fn with_endian(endian: Endian) -> SynthMinidump {
         let flags = Label::new();
         let stream_count_label = Label::new();
         let stream_directory_rva = Label::new();
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D32(md::MINIDUMP_SIGNATURE)
             .D32(md::MINIDUMP_VERSION)
             .D32(&stream_count_label)
@@ -222,7 +225,7 @@ impl SynthMinidump {
         T: DumpSection + Into<Section>,
     {
         let offset = section.file_offset();
-        self.section = self.section.mark(&offset).append_section(section);
+        self.section.mark(&offset).append_section(section);
         self
     }
 
@@ -246,13 +249,14 @@ impl SynthMinidump {
 
     /// Add `memory` to `self`, adding it to the memory list stream as well.
     pub fn add_memory(mut self, memory: Memory) -> SynthMinidump {
+        let mut section = Section::with_endian(self.section.endian);
         // The memory list contains `MINIDUMP_MEMORY_DESCRIPTOR`s, so create one here.
-        let descriptor = memory.cite_memory_in(Section::with_endian(self.section.endian));
+        memory.cite_memory_in(&mut section);
         // And append that descriptor to the memory list.
         self.memory_list = self
             .memory_list
             .take()
-            .map(|memory_list| memory_list.add(descriptor));
+            .map(|memory_list| memory_list.add(section));
         // Add the memory region itself.
         self.add(memory)
     }
@@ -304,52 +308,62 @@ impl SynthMinidump {
 
     /// Set the contents of the `LinuxMaps` stream.
     pub fn set_linux_maps(mut self, maps: &[u8]) -> SynthMinidump {
+        let mut section = Section::new();
+        section.append_bytes(maps);
         self.linux_maps = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxMaps as u32,
-            section: Section::new().append_bytes(maps),
+            section,
         });
         self
     }
 
     /// Set the contents of the `LinuxLsbRelease` stream.
     pub fn set_linux_lsb_release(mut self, lsb: &[u8]) -> SynthMinidump {
+        let mut section = Section::new();
+        section.append_bytes(lsb);
         self.linux_lsb_release = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32,
-            section: Section::new().append_bytes(lsb),
+            section,
         });
         self
     }
 
     /// Set the contents of the `LinuxProcStatus` stream.
     pub fn set_linux_proc_status(mut self, proc_status: &[u8]) -> SynthMinidump {
+        let mut section = Section::new();
+        section.append_bytes(proc_status);
         self.linux_proc_status = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32,
-            section: Section::new().append_bytes(proc_status),
+            section,
         });
         self
     }
 
     /// Set the contents of the `LinuxCpuInfo` stream.
     pub fn set_linux_cpu_info(mut self, cpu_info: &[u8]) -> SynthMinidump {
+        let mut section = Section::new();
+        section.append_bytes(cpu_info);
         self.linux_cpu_info = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32,
-            section: Section::new().append_bytes(cpu_info),
+            section,
         });
         self
     }
 
     /// Set the contents of the `LinuxEnviron` stream.
     pub fn set_linux_environ(mut self, environ: &[u8]) -> SynthMinidump {
+        let mut section = Section::new();
+        section.append_bytes(environ);
         self.linux_environ = Some(SimpleStream {
             stream_type: md::MINIDUMP_STREAM_TYPE::LinuxEnviron as u32,
-            section: Section::new().append_bytes(environ),
+            section,
         });
         self
     }
 
     /// Append `stream` to `self`, setting its location appropriately and adding it to the stream directory.
     pub fn add_stream<T: Stream>(mut self, stream: T) -> SynthMinidump {
-        self.stream_directory = stream.cite_stream_in(self.stream_directory);
+        stream.cite_stream_in(&mut self.stream_directory);
         self.stream_count += 1;
         self.add(stream)
     }
@@ -381,7 +395,7 @@ impl SynthMinidump {
     }
 
     /// Finish generating the minidump and return the contents.
-    pub fn finish(mut self) -> Vec<u8> {
+    pub fn finish(mut self) -> Result<Vec<u8>, UndefinedLabelsError> {
         // Add module list stream if any modules were added.
         let modules = self.module_list.take();
         self = self.finish_list(modules);
@@ -427,7 +441,7 @@ impl SynthMinidump {
         }
 
         let SynthMinidump {
-            section,
+            mut section,
             flags,
             stream_count,
             stream_count_label,
@@ -435,15 +449,15 @@ impl SynthMinidump {
             stream_directory,
             ..
         } = self;
-        if flags.value().is_none() {
+        if flags.value().is_ok() {
             flags.set_const(0);
         }
         // Create the stream directory.
         stream_count_label.set_const(stream_count as u64);
         section
             .mark(&stream_directory_rva)
-            .append_section(stream_directory)
-            .get_contents_unwrap()
+            .append_section(stream_directory);
+        section.get_contents()
     }
 }
 
@@ -514,8 +528,10 @@ pub struct List<T: ListItem> {
 impl<T: ListItem> List<T> {
     pub fn new(endian: Endian) -> Self {
         let count_label = Label::new();
+        let mut section = Section::with_endian(endian);
+        section.D32(&count_label);
         List {
-            section: Section::with_endian(endian).D32(&count_label),
+            section,
             count_label,
             count: 0,
             out_of_band: Section::with_endian(endian),
@@ -530,14 +546,12 @@ impl<T: ListItem> List<T> {
 
         let (section, out_of_band_opt) = entry.into_sections();
 
-        self.section = self
-            .section
+        self.section
             .mark(&section.file_offset())
             .append_section(section);
 
         if let Some(out_of_band) = out_of_band_opt {
-            self.out_of_band = self
-                .out_of_band
+            self.out_of_band
                 .mark(&out_of_band.file_offset())
                 .append_section(out_of_band);
         }
@@ -551,14 +565,15 @@ impl<T: ListItem> List<T> {
 }
 
 impl<T: ListItem> From<List<T>> for Section {
-    fn from(list: List<T>) -> Self {
+    fn from(mut list: List<T>) -> Self {
         // Finalize the entry count.
         list.count_label.set_const(list.count as u64);
 
         // Serialize all (transitive) out-of-band data after the dense list of entry records.
         list.section
             .mark(&list.out_of_band.file_offset())
-            .append_section(list.out_of_band)
+            .append_section(list.out_of_band);
+        list.section
     }
 }
 
@@ -644,10 +659,8 @@ impl<T: ListItem> ExList<T> {
         // number_of_entries: u32,
         // ...entries
 
-        let section = Section::with_endian(endian)
-            .D32(12)
-            .D32(size_of_entry as u32)
-            .D32(&count_label);
+        let mut section = Section::with_endian(endian);
+        section.D32(12).D32(size_of_entry as u32).D32(&count_label);
 
         ExList {
             section,
@@ -665,14 +678,12 @@ impl<T: ListItem> ExList<T> {
 
         let (section, out_of_band_opt) = entry.into_sections();
 
-        self.section = self
-            .section
+        self.section
             .mark(&section.file_offset())
             .append_section(section);
 
         if let Some(out_of_band) = out_of_band_opt {
-            self.out_of_band = self
-                .out_of_band
+            self.out_of_band
                 .mark(&out_of_band.file_offset())
                 .append_section(out_of_band);
         }
@@ -686,14 +697,16 @@ impl<T: ListItem> ExList<T> {
 }
 
 impl<T: ListItem> From<ExList<T>> for Section {
-    fn from(list: ExList<T>) -> Self {
+    fn from(mut list: ExList<T>) -> Self {
         // Finalize the entry count.
         list.count_label.set_const(list.count as u64);
 
         // Serialize all (transitive) out-of-band data after the dense list of entry records.
         list.section
             .mark(&list.out_of_band.file_offset())
-            .append_section(list.out_of_band)
+            .append_section(list.out_of_band);
+
+        list.section
     }
 }
 
@@ -764,9 +777,8 @@ impl DumpString {
     /// Create a new `DumpString` with `s` as its contents, using `endian` endianness.
     pub fn new(s: &str, endian: Endian) -> DumpString {
         let u16_s = UTF_16LE.encode(s, EncoderTrap::Strict).unwrap();
-        let section = Section::with_endian(endian)
-            .D32(u16_s.len() as u32)
-            .append_bytes(&u16_s);
+        let mut section = Section::with_endian(endian);
+        section.D32(u16_s.len() as u32).append_bytes(&u16_s);
         DumpString { section }
     }
 }
@@ -785,10 +797,8 @@ pub struct DumpUtf8String {
 
 impl DumpUtf8String {
     pub fn new(s: &str, endian: Endian) -> Self {
-        let section = Section::with_endian(endian)
-            .D32(s.len() as u32)
-            .append_bytes(s.as_bytes())
-            .D8(0);
+        let mut section = Section::with_endian(endian);
+        section.D32(s.len() as u32).append_bytes(s.as_bytes()).D8(0);
 
         Self { section }
     }
@@ -838,7 +848,8 @@ impl Module {
     ) -> Module {
         let stock_version = &STOCK_VERSION_INFO;
         let version_info = version_info.into().unwrap_or(stock_version);
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D64(base_of_image)
             .D32(size_of_image)
             .D32(checksum)
@@ -880,7 +891,7 @@ impl_dumpsection!(Module);
 impl From<Module> for Section {
     fn from(module: Module) -> Self {
         let Module {
-            section,
+            mut section,
             cv_record,
             misc_record,
         } = module;
@@ -890,7 +901,8 @@ impl From<Module> for Section {
             // reserved0
             .D64(0)
             // reserved1
-            .D64(0)
+            .D64(0);
+        section
     }
 }
 
@@ -908,7 +920,8 @@ impl UnloadedModule {
         time_date_stamp: u32,
         checksum: u32,
     ) -> UnloadedModule {
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D64(base_of_image)
             .D32(size_of_image)
             .D32(checksum)
@@ -937,7 +950,8 @@ impl Thread {
     where
         T: DumpSection,
     {
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D32(id)
             .D32(0) // suspend_count
             .D32(0) // priority_class
@@ -964,9 +978,10 @@ pub struct ThreadName {
 
 impl ThreadName {
     pub fn new(endian: Endian, id: u32, name: Option<&DumpString>) -> Self {
-        let section = Section::with_endian(endian).D32(id);
+        let mut section = Section::with_endian(endian);
+        section.D32(id);
         // Name is optional to test corrupt handles easily
-        let section = if let Some(name) = name {
+        if let Some(name) = name {
             section.D64(name.file_offset())
         } else {
             section.D64(0xFFFF_FFFF_FFFF_FFFF)
@@ -997,7 +1012,7 @@ impl Memory {
     }
 
     // Append an `MINIDUMP_MEMORY_DESCRIPTOR` referring to this memory range to `section`.
-    pub fn cite_memory_in(&self, section: Section) -> Section {
+    pub fn cite_memory_in<'a>(&self, section: &'a mut Section) -> &'a mut Section {
         section.D64(self.address).cite_location(self)
     }
 }
@@ -1027,7 +1042,8 @@ impl MemoryInfo {
         protection: u32,
         ty: u32,
     ) -> MemoryInfo {
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D64(base_address)
             .D64(allocation_base)
             .D32(allocation_protection)
@@ -1133,10 +1149,11 @@ pub struct MiscInfo5Fields {
 
 impl MiscStream {
     pub fn new(endian: Endian) -> MiscStream {
-        let section = Section::with_endian(endian);
+        let mut section = Section::with_endian(endian);
         let size = section.final_size();
+        section.D32(size);
         MiscStream {
-            section: section.D32(size),
+            section,
             process_id: None,
             process_times: None,
             power_info: None,
@@ -1154,7 +1171,7 @@ impl MiscStream {
 impl From<MiscStream> for Section {
     fn from(stream: MiscStream) -> Self {
         let MiscStream {
-            section,
+            mut section,
 
             process_id,
             process_times,
@@ -1220,19 +1237,19 @@ impl From<MiscStream> for Section {
 
         // Now that we know what version we are, emit all the fields necessary
         // for that version, leaning on Default to fill in values that are None.
-        let mut section = section.D32(flags.bits() as u64 as u32);
+        section.D32(flags.bits() as u64 as u32);
 
         let process_id = process_id.unwrap_or_default();
         let process_times = process_times.unwrap_or_default();
-        section = section.D32(process_id);
-        section = section
+        section.D32(process_id);
+        section
             .D32(process_times.process_create_time)
             .D32(process_times.process_user_time)
             .D32(process_times.process_kernel_time);
 
         if misc_info_version >= 2 {
             let power_info = power_info.unwrap_or_default();
-            section = section
+            section
                 .D32(power_info.processor_max_mhz)
                 .D32(power_info.processor_current_mhz)
                 .D32(power_info.processor_mhz_limit)
@@ -1246,11 +1263,14 @@ impl From<MiscStream> for Section {
             let protected_process = protected_process.unwrap_or_default();
             let time_zone = time_zone.unwrap_or_default();
 
-            section = section.D32(process_integrity_level);
-            section = section.D32(process_execute_flags);
-            section = section.D32(protected_process);
+            section.D32(process_integrity_level);
+            section.D32(process_execute_flags);
+            section.D32(protected_process);
 
-            fn write_system_time(section: Section, time: &md::SYSTEMTIME) -> Section {
+            fn write_system_time<'a>(
+                section: &'a mut Section,
+                time: &md::SYSTEMTIME,
+            ) -> &'a mut Section {
                 section
                     .D16(time.year)
                     .D16(time.month)
@@ -1262,28 +1282,28 @@ impl From<MiscStream> for Section {
                     .D16(time.milliseconds)
             }
 
-            section = section.D32(time_zone.time_zone_id);
+            section.D32(time_zone.time_zone_id);
             let time_zone = time_zone.time_zone;
-            section = section.D32(time_zone.bias as u32);
+            section.D32(time_zone.bias as u32);
             for &val in &time_zone.standard_name {
-                section = section.D16(val);
+                section.D16(val);
             }
-            section = write_system_time(section, &time_zone.standard_date);
-            section = section.D32(time_zone.standard_bias as u32);
+            write_system_time(&mut section, &time_zone.standard_date);
+            section.D32(time_zone.standard_bias as u32);
             for &val in &time_zone.daylight_name {
-                section = section.D16(val);
+                section.D16(val);
             }
-            section = write_system_time(section, &time_zone.daylight_date);
-            section = section.D32(time_zone.daylight_bias as u32);
+            write_system_time(&mut section, &time_zone.daylight_date);
+            section.D32(time_zone.daylight_bias as u32);
         }
 
         if misc_info_version >= 4 {
             let build_strings = build_strings.unwrap_or_default();
             for &val in &build_strings.build_string {
-                section = section.D16(val);
+                section.D16(val);
             }
             for &val in &build_strings.dbg_bld_str {
-                section = section.D16(val);
+                section.D16(val);
             }
         }
 
@@ -1291,24 +1311,24 @@ impl From<MiscStream> for Section {
             let misc_5 = misc_5.unwrap_or_default();
             let process_cookie = misc_5.process_cookie.unwrap_or_default();
             let xstate = misc_5.xstate_data;
-            section = section
+            section
                 .D32(xstate.size_of_info)
                 .D32(xstate.context_size)
                 .D64(xstate.enabled_features);
 
             for feature in &xstate.features {
-                section = section.D32(feature.offset).D32(feature.size);
+                section.D32(feature.offset).D32(feature.size);
             }
-            section = section.D32(process_cookie);
+            section.D32(process_cookie);
         }
 
         // Pad to final size, if necessary.
         if let Some(size) = pad_to_size {
             let size = (size as u64 - section.size()) as usize;
-            section.append_repeated(0, size)
-        } else {
-            section
+            section.append_repeated(0, size);
         }
+
+        section
     }
 }
 
@@ -1323,7 +1343,8 @@ impl Stream for MiscStream {
 /// Populate a `CONTEXT_X86` struct with the given `endian`, `eip`, and `esp`.
 #[track_caller]
 pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
-    let section = Section::with_endian(endian)
+    let mut section = Section::with_endian(endian);
+    section
         .D32(0x1007f) // context_flags: CONTEXT_ALL
         .append_repeated(0, 4 * 6) // dr0,1,2,3,6,7, 4 bytes each
         .append_repeated(0, md::FLOATING_SAVE_AREA_X86::size_with(&LE)) // float_save
@@ -1340,7 +1361,8 @@ pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
 
 /// Populate a `CONTEXT_AMD64` struct with the given `endian`, `rip`, and `rsp`.
 pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
-    let section = Section::with_endian(endian)
+    let mut section = Section::with_endian(endian);
+    section
         .append_repeated(0, mem::size_of::<u64>() * 6) // p[1-6]_home
         .D32(0x10001f) // context_flags: CONTEXT_ALL
         .D32(0) // mx_csr
@@ -1366,7 +1388,8 @@ pub struct SectionRef {
 impl SectionRef {
     pub fn new(data_section: impl Into<Section>, endian: Endian) -> Self {
         let data_section = data_section.into();
-        let section = Section::with_endian(endian).D32(data_section.file_offset());
+        let mut section = Section::with_endian(endian);
+        section.D32(data_section.file_offset());
         Self {
             section,
             data_section,
@@ -1403,19 +1426,19 @@ impl SimpleStringDictionaryEntry {
 impl_dumpsection!(SimpleStringDictionaryEntry);
 
 impl ListItem for SimpleStringDictionaryEntry {
-    fn into_sections(self) -> (Section, Option<Section>) {
-        let section = self
-            .section
+    fn into_sections(mut self) -> (Section, Option<Section>) {
+        self.section
             .D32(self.key.file_offset())
             .D32(self.value.file_offset());
 
-        let out_of_band = Section::with_endian(self.endian)
+        let mut out_of_band = Section::with_endian(self.endian);
+        out_of_band
             .mark(&self.key.file_offset())
             .append_section(self.key)
             .mark(&self.value.file_offset())
             .append_section(self.value);
 
-        (section, Some(out_of_band))
+        (self.section, Some(out_of_band))
     }
 }
 
@@ -1443,25 +1466,26 @@ impl AnnotationObject {
                 md::MINIDUMP_ANNOTATION::TYPE_STRING,
                 Some(DumpUtf8String::new(&s, endian).into()),
             ),
-            AnnotationValue::Custom(ty, bytes) => (ty, Some(Section::new().append_bytes(&bytes))),
+            AnnotationValue::Custom(ty, bytes) => {
+                let mut section = Section::new();
+                section.append_bytes(&bytes);
+                (ty, Some(section))
+            }
         };
 
-        let mut section = Section::with_endian(endian)
-            .D32(name.file_offset())
-            .D16(ty)
-            .D16(0); // reserved, always 0
+        let mut section = Section::with_endian(endian);
+        section.D32(name.file_offset()).D16(ty).D16(0); // reserved, always 0
 
-        section = match value {
+        match value {
             Some(ref value) => section.D32(value.file_offset()),
             None => section.D32(0),
         };
 
-        let mut out_of_band = Section::with_endian(endian)
-            .mark(&name.file_offset())
-            .append_section(name);
+        let mut out_of_band = Section::with_endian(endian);
+        out_of_band.mark(&name.file_offset()).append_section(name);
 
         if let Some(value) = value {
-            out_of_band = out_of_band.mark(&value.file_offset()).append_section(value);
+            out_of_band.mark(&value.file_offset()).append_section(value);
         }
 
         Self {
@@ -1492,9 +1516,12 @@ pub struct ModuleCrashpadInfo {
 
 impl ModuleCrashpadInfo {
     pub fn new(index: u32, endian: Endian) -> Self {
+        let mut section = Section::with_endian(endian);
+        section.D32(index);
+
         Self {
             endian,
-            section: Section::with_endian(endian).D32(index),
+            section,
             list_annotations: List::new(endian),
             simple_annotations: SimpleStringDictionary::new(endian),
             annotation_objects: AnnotationObjects::new(endian),
@@ -1523,9 +1550,9 @@ impl ModuleCrashpadInfo {
 impl_dumpsection!(ModuleCrashpadInfo);
 
 impl ListItem for ModuleCrashpadInfo {
-    fn into_sections(self) -> (Section, Option<Section>) {
-        let info = Section::with_endian(self.endian)
-            .D32(md::MINIDUMP_MODULE_CRASHPAD_INFO::VERSION)
+    fn into_sections(mut self) -> (Section, Option<Section>) {
+        let mut info = Section::with_endian(self.endian);
+        info.D32(md::MINIDUMP_MODULE_CRASHPAD_INFO::VERSION)
             .cite_location(&self.list_annotations)
             .cite_location(&self.simple_annotations)
             .cite_location(&self.annotation_objects)
@@ -1536,9 +1563,9 @@ impl ListItem for ModuleCrashpadInfo {
             .mark(&self.annotation_objects.file_offset())
             .append_section(self.annotation_objects);
 
-        let link = self.section.cite_location(&info);
+        self.section.cite_location(&info);
 
-        (link, Some(info))
+        (self.section, Some(info))
     }
 }
 
@@ -1550,7 +1577,8 @@ pub struct Guid {
 
 impl Guid {
     pub fn new(guid: md::GUID, endian: Endian) -> Self {
-        let section = Section::with_endian(endian)
+        let mut section = Section::with_endian(endian);
+        section
             .D32(guid.data1)
             .D16(guid.data2)
             .D16(guid.data3)
@@ -1625,7 +1653,7 @@ impl CrashpadInfo {
 impl_dumpsection!(CrashpadInfo);
 
 impl From<CrashpadInfo> for Section {
-    fn from(info: CrashpadInfo) -> Self {
+    fn from(mut info: CrashpadInfo) -> Self {
         info.section
             .D32(md::MINIDUMP_CRASHPAD_INFO::VERSION)
             .append_section(info.report_id)
@@ -1635,7 +1663,8 @@ impl From<CrashpadInfo> for Section {
             .mark(&info.simple_annotations.file_offset())
             .append_section(info.simple_annotations)
             .mark(&info.module_list.file_offset())
-            .append_section(info.module_list)
+            .append_section(info.module_list);
+        info.section
     }
 }
 
@@ -1707,9 +1736,8 @@ impl SystemInfo {
 impl_dumpsection!(SystemInfo);
 
 impl From<SystemInfo> for Section {
-    fn from(info: SystemInfo) -> Self {
-        let section = info
-            .section
+    fn from(mut info: SystemInfo) -> Self {
+        info.section
             .D16(info.processor_architecture)
             .D16(info.processor_architecture)
             .D16(info.processor_level)
@@ -1730,14 +1758,18 @@ impl From<SystemInfo> for Section {
                 version_information,
                 feature_information,
                 amd_extended_cpu_features,
-            } => section
-                .D32(vendor_id[0])
-                .D32(vendor_id[1])
-                .D32(vendor_id[2])
-                .D32(version_information)
-                .D32(feature_information)
-                .D32(amd_extended_cpu_features),
+            } => {
+                info.section
+                    .D32(vendor_id[0])
+                    .D32(vendor_id[1])
+                    .D32(vendor_id[2])
+                    .D32(version_information)
+                    .D32(feature_information)
+                    .D32(amd_extended_cpu_features);
+            }
         }
+
+        info.section
     }
 }
 
@@ -1787,9 +1819,8 @@ impl Exception {
 impl_dumpsection!(Exception);
 
 impl From<Exception> for Section {
-    fn from(info: Exception) -> Self {
-        let mut section = info
-            .section
+    fn from(mut info: Exception) -> Self {
+        info.section
             .D32(info.thread_id)
             .D32(0) // __align
             .D32(info.exception_record.exception_code)
@@ -1800,14 +1831,14 @@ impl From<Exception> for Section {
             .D32(0); // __align
 
         for &chunk in &info.exception_record.exception_information {
-            section = section.D64(chunk);
+            info.section.D64(chunk);
         }
 
-        section = section
+        info.section
             .D32(info.thread_context.0)
             .D32(info.thread_context.1);
 
-        section
+        info.section
     }
 }
 
@@ -1821,7 +1852,7 @@ impl Stream for Exception {
 fn test_dump_header() {
     let dump = SynthMinidump::with_endian(Endian::Little).flags(0x9f738b33685cc84c);
     assert_eq!(
-        dump.finish(),
+        dump.finish().unwrap(),
         vec![
             0x4d, 0x44, 0x4d, 0x50, // signature
             0x93, 0xa7, 0x00, 0x00, // version
@@ -1839,7 +1870,7 @@ fn test_dump_header() {
 fn test_dump_header_bigendian() {
     let dump = SynthMinidump::with_endian(Endian::Big).flags(0x9f738b33685cc84c);
     assert_eq!(
-        dump.finish(),
+        dump.finish().unwrap(),
         vec![
             0x50, 0x4d, 0x44, 0x4d, // signature
             0x00, 0x00, 0xa7, 0x93, // version
@@ -1855,10 +1886,11 @@ fn test_dump_header_bigendian() {
 
 #[test]
 fn test_section_cite() {
-    let s1 = Section::with_endian(Endian::Little).append_repeated(0, 0x0a);
+    let mut s1 = Section::with_endian(Endian::Little);
+    s1.append_repeated(0, 0x0a);
     s1.start().set_const(0xff00ee11);
-    let s2 = Section::with_endian(Endian::Little);
-    let s2 = s1.cite_location_in(s2);
+    let mut s2 = Section::with_endian(Endian::Little);
+    s1.cite_location_in(&mut s2);
     s1.get_contents().unwrap();
     assert_eq!(
         s2.get_contents().unwrap(),
@@ -1870,7 +1902,7 @@ fn test_section_cite() {
 fn test_dump_string() {
     let dump = SynthMinidump::with_endian(Endian::Little);
     let s = DumpString::new("hello", Endian::Little);
-    let contents = dump.add(s).finish();
+    let contents = dump.add(s).finish().unwrap();
     // Skip over the header
     assert_eq!(
         &contents[mem::size_of::<md::MINIDUMP_HEADER>()..],
@@ -1891,9 +1923,10 @@ fn test_list_out_of_band() {
 
     let a = SectionRef::new(DumpUtf8String::new("foo", Endian::Little), Endian::Little);
     let b = SectionRef::new(DumpUtf8String::new("bar", Endian::Little), Endian::Little);
-    let section: Section = List::new(Endian::Little).add(a).add(b).into();
+    let mut section: Section = List::new(Endian::Little).add(a).add(b).into();
+    section.set_start_const(0);
     assert_eq!(
-        section.set_start_const(0).get_contents().unwrap(),
+        section.get_contents().unwrap(),
         vec![
             2, 0, 0, 0, // entry count
             12, 0, 0, 0, // first RVA
@@ -1932,7 +1965,8 @@ fn test_list_stream() {
 
 #[test]
 fn test_simple_stream() {
-    let section = Section::with_endian(Endian::Little).D32(0x55667788);
+    let mut section = Section::with_endian(Endian::Little);
+    section.D32(0x55667788);
     let stream_rva = mem::size_of::<md::MINIDUMP_HEADER>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
     let dump = SynthMinidump::with_endian(Endian::Little)
@@ -1942,7 +1976,7 @@ fn test_simple_stream() {
             section,
         });
     assert_eq!(
-        dump.finish(),
+        dump.finish().unwrap(),
         vec![
             0x4d,
             0x44,
@@ -2000,7 +2034,8 @@ fn test_simple_stream() {
 
 #[test]
 fn test_simple_stream_bigendian() {
-    let section = Section::with_endian(Endian::Big).D32(0x55667788);
+    let mut section = Section::with_endian(Endian::Big);
+    section.D32(0x55667788);
     let stream_rva = mem::size_of::<md::MINIDUMP_HEADER>() as u8;
     let directory_rva = stream_rva + section.size() as u8;
     let dump = SynthMinidump::with_endian(Endian::Big)
@@ -2010,7 +2045,7 @@ fn test_simple_stream_bigendian() {
             section,
         });
     assert_eq!(
-        dump.finish(),
+        dump.finish().unwrap(),
         vec![
             0x50,
             0x4d,

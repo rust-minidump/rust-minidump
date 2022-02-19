@@ -93,7 +93,7 @@ async fn test_scan_without_symbols() {
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x40090000) // junk that's not
@@ -180,7 +180,7 @@ async fn test_scan_with_symbols() {
     let return_address = 0x50000200;
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x40090000) // junk that's not
@@ -251,7 +251,7 @@ async fn test_scan_first_frame() {
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x40090000) // junk that's not
@@ -319,7 +319,7 @@ async fn test_frame_pointer() {
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
@@ -429,7 +429,7 @@ async fn test_ptr_auth_strip() {
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
@@ -639,7 +639,7 @@ async fn check_cfi(
 async fn test_cfi_at_4000() {
     let (mut f, mut stack, expected, expected_valid) = init_cfi_state();
 
-    stack = stack.append_repeated(0, 120);
+    stack.append_repeated(0, 120);
 
     f.raw.set_register("pc", 0x0000000040004000);
     f.raw.set_register("lr", 0x0000000040005510);
@@ -652,7 +652,7 @@ async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0x5e68b5d5b5d55e68) // saved x19
         .D64(0x34f3ebd1ebd134f3) // saved x20
         .D64(0xe11081128112e110) // saved fp
@@ -674,7 +674,7 @@ async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
         .D64(0xe11081128112e110) // saved fp
@@ -702,7 +702,7 @@ async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
@@ -733,7 +733,7 @@ async fn test_cfi_at_4004() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
@@ -765,7 +765,7 @@ async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
@@ -796,7 +796,7 @@ async fn test_cfi_at_4006() {
     let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
 
     let frame1_sp = Label::new();
-    stack = stack
+    stack
         .D64(0x0000000040005510) // saved pc
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
@@ -827,7 +827,7 @@ async fn test_cfi_reject_backwards() {
 
     let (mut f, mut stack, _expected, _expected_valid) = init_cfi_state();
 
-    stack = stack.append_repeated(0, 120);
+    stack.append_repeated(0, 120);
 
     f.raw.set_register("pc", 0x0000000040006000);
     f.raw.set_register("sp", 0x0000000080000000);
@@ -843,7 +843,7 @@ async fn test_cfi_reject_bad_exprs() {
 
     let (mut f, mut stack, _expected, _expected_valid) = init_cfi_state();
 
-    stack = stack.append_repeated(0, 120);
+    stack.append_repeated(0, 120);
 
     f.raw.set_register("pc", 0x0000000040007000);
     f.raw.set_register("sp", 0x0000000080000000);
@@ -867,7 +867,7 @@ async fn test_frame_pointer_overflow() {
     let stack_start: Pointer = stack_max - stack_size;
     stack.start().set_const(stack_start as u64);
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, stack_size as usize); // junk, not important to the test
 
@@ -906,7 +906,7 @@ async fn test_frame_pointer_barely_no_overflow() {
     let frame1_sp = Label::new();
     let frame1_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .mark(&frame0_fp)
         .D64(&frame1_fp) // caller-pushed %rbp
@@ -997,7 +997,7 @@ async fn test_frame_pointer_infinite_equality() {
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not

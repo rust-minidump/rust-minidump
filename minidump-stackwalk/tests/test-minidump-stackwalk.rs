@@ -536,10 +536,9 @@ fn test_brief_robots() {
 
 fn minimal_minidump() -> SynthMinidump {
     let context = synth_minidump::x86_context(Endian::Little, 0xf00800, 0x1010);
-    let stack = Memory::with_section(
-        Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
-        0x1000,
-    );
+    let mut section = Section::with_endian(Endian::Little);
+    section.append_repeated(0, 0x1000);
+    let stack = Memory::with_section(section, 0x1000);
     let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
     let system_info = SystemInfo::new(Endian::Little);
     SynthMinidump::with_endian(Endian::Little)

@@ -33,4 +33,4 @@ optional = true
 [dev-dependencies]
 insta = "1.10.0"
 synth-minidump = { version = "0.9.6", path = "../synth-minidump" }
-test-assembler = "0.1.6"
+test-assembler = { path = "../../rust-test-assembler" }

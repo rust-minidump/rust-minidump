@@ -93,7 +93,7 @@ async fn test_caller_pushed_rbp() {
     let frame1_sp = Label::new();
     let frame1_rbp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x00007400b0000000) // junk that's not
@@ -167,7 +167,7 @@ async fn test_scan_without_symbols() {
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
     let frame1_rbp = Label::new();
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x00007400b0000000) // junk that's not
@@ -256,7 +256,7 @@ async fn test_scan_with_symbols() {
 
     let frame1_rsp = Label::new();
     let frame1_rbp = Label::new();
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 16) // space
         .D64(0x00007400b0000000u64) // junk that's not
@@ -419,7 +419,7 @@ async fn test_cfi_at_4000() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x00007400c0005510)
         .mark(&frame1_rsp)
         .append_repeated(0, 1000);
@@ -435,7 +435,7 @@ async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x5a5beeb38de23be8) // saved %rbx
         .D64(0x00007400c0005510) // return address
         .mark(&frame1_rsp)
@@ -453,7 +453,7 @@ async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x5a5beeb38de23be8) // saved %rbx
         .D64(0x00007400c0005510) // return address
         .mark(&frame1_rsp)
@@ -472,7 +472,7 @@ async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x0e023828dffd4d81) // garbage
         .D64(0x1d20ad8acacbe930) // saved %r13
         .D64(0x319e68b49e3ace0f) // garbage
@@ -495,7 +495,7 @@ async fn test_cfi_at_4004() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x0e023828dffd4d81) // garbage
         .D64(0x1d20ad8acacbe930) // saved %r13
         .D64(0x319e68b49e3ace0f) // garbage
@@ -518,7 +518,7 @@ async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x4b516dd035745953) // garbage
         .D64(0x1d20ad8acacbe930) // saved %r13
         .D64(0xa6d445e16ae3d872) // garbage
@@ -542,7 +542,7 @@ async fn test_cfi_at_4006() {
 
     let frame0_rbp = Label::new();
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D64(0x043c6dfceb91aa34) // garbage
         .D64(0x1d20ad8acacbe930) // saved %r13
         .D64(0x68995b1de4700266) // saved %rbp
@@ -577,7 +577,7 @@ async fn test_frame_pointer_overflow() {
     let stack_start: Pointer = stack_max - stack_size;
     stack.start().set_const(stack_start as u64);
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, stack_size as usize); // junk, not important to the test
 
@@ -614,7 +614,7 @@ async fn test_frame_pointer_barely_no_overflow() {
     let frame1_sp = Label::new();
     let frame1_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .mark(&frame0_fp)
         .D64(&frame1_fp) // caller-pushed %rbp

@@ -63,7 +63,7 @@ async fn test_simple() {
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
-    stack = stack.D32(0).D32(0); // end-of-stack marker
+    stack.D32(0).D32(0); // end-of-stack marker
     f.raw.eip = 0x40000200;
     f.raw.ebp = 0x80000000;
     let s = f.walk_stack(stack).await;
@@ -83,7 +83,7 @@ async fn test_traditional() {
     let frame1_ebp = Label::new();
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
-    stack = stack
+    stack
         .append_repeated(12, 0) // frame 0: space
         .mark(&frame0_ebp) // frame 0 %ebp points here
         .D32(&frame1_ebp) // frame 0: saved %ebp
@@ -125,7 +125,7 @@ async fn test_traditional_scan() {
     let mut stack = Section::new();
     let stack_start = 0x80000000;
     stack.start().set_const(stack_start);
-    stack = stack
+    stack
         // frame 0
         .D32(0xf065dc76) // locals area:
         .D32(0x46ee2167) // garbage that doesn't look like
@@ -197,7 +197,7 @@ async fn test_traditional_scan_long_way() {
     let stack_start = 0x80000000;
     stack.start().set_const(stack_start);
 
-    stack = stack
+    stack
         // frame 0
         .D32(0xf065dc76) // locals area:
         .D32(0x46ee2167) // garbage that doesn't look like
@@ -356,7 +356,7 @@ async fn test_cfi_at_4000() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0x40005510) // return address
         .mark(&frame1_rsp)
         .append_repeated(0, 1000);
@@ -372,7 +372,7 @@ async fn test_cfi_at_4001() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0x60f20ce6) // saved %ebx
         .D32(0x40005510) // return address
         .mark(&frame1_rsp)
@@ -390,7 +390,7 @@ async fn test_cfi_at_4002() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0x60f20ce6) // saved %ebx
         .D32(0x40005510) // return address
         .mark(&frame1_rsp)
@@ -409,7 +409,7 @@ async fn test_cfi_at_4003() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0x56ec3db7) // garbage
         .D32(0xafbae234) // saved %edi
         .D32(0x53d67131) // garbage
@@ -433,7 +433,7 @@ async fn test_cfi_at_4004() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0x56ec3db7) // garbage
         .D32(0xafbae234) // saved %edi
         .D32(0x53d67131) // garbage
@@ -456,7 +456,7 @@ async fn test_cfi_at_4005() {
     let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
 
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0xe29782c2) // garbage
         .D32(0xafbae234) // saved %edi
         .D32(0x5ba29ce9) // garbage
@@ -480,7 +480,7 @@ async fn test_cfi_at_4006() {
 
     let frame0_ebp = Label::new();
     let frame1_rsp = Label::new();
-    stack = stack
+    stack
         .D32(0xdcdd25cd) // garbage
         .D32(0xafbae234) // saved %edi
         .D32(0xc0d4aab9) // saved %ebp
@@ -525,7 +525,7 @@ async fn test_stack_win_frame_data_basic() {
     let stack_start = 0x80000000;
     stack.start().set_const(stack_start);
 
-    stack = stack
+    stack
         // frame 0
         .D32(&frame1_ebp) // saved regs: %ebp
         .D32(0xa7120d1a) //             %esi
@@ -628,7 +628,7 @@ async fn test_stack_win_frame_data_overlapping() {
     let stack_start = 0x80000000;
     stack.start().set_const(stack_start);
 
-    stack = stack
+    stack
         // frame 0
         .D32(&frame1_ebp) // saved regs: %ebp
         .D32(0xa7120d1a) //             %esi
@@ -726,7 +726,7 @@ async fn test_stack_win_frame_data_parameter_size() {
     let stack_start = 0x80000000;
     stack.start().set_const(stack_start);
 
-    stack = stack
+    stack
         // frame 0, in module1::wheedle.  Traditional frame.
         .mark(&frame0_esp)
         .append_repeated(0, 16) // frame space
@@ -835,7 +835,7 @@ async fn test_frame_pointer_overflow() {
     let stack_start: Pointer = stack_max - stack_size;
     stack.start().set_const(stack_start as u64);
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, stack_size as usize); // junk, not important to the test
 
@@ -869,7 +869,7 @@ async fn test_frame_pointer_overflow_nonsense_32bit_stack() {
     let stack_start: u64 = stack_max - stack_size;
     stack.start().set_const(stack_start as u64);
 
-    stack = stack
+    stack
         // frame 0
         .append_repeated(0, 1000); // junk, not important to the test
 
@@ -906,7 +906,7 @@ async fn test_frame_pointer_barely_no_overflow() {
     let frame1_sp = Label::new();
     let frame1_fp = Label::new();
 
-    stack = stack
+    stack
         // frame 0
         .mark(&frame0_fp)
         .D32(&frame1_fp) // caller-pushed %rbp

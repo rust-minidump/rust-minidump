@@ -4760,9 +4760,11 @@ mod test {
     #[test]
     fn test_simple_synth_dump() {
         const STREAM_TYPE: u32 = 0x11223344;
+        let mut section = Section::with_endian(Endian::Little);
+        section.D32(0x55667788);
         let dump = SynthMinidump::with_endian(Endian::Little).add_stream(SimpleStream {
             stream_type: STREAM_TYPE,
-            section: Section::with_endian(Endian::Little).D32(0x55667788),
+            section,
         });
         let dump = read_synth_dump(dump).unwrap();
         assert_eq!(dump.endian, LE);
@@ -4780,9 +4782,11 @@ mod test {
     #[test]
     fn test_simple_synth_dump_bigendian() {
         const STREAM_TYPE: u32 = 0x11223344;
+        let mut section = Section::with_endian(Endian::Big);
+        section.D32(0x55667788);
         let dump = SynthMinidump::with_endian(Endian::Big).add_stream(SimpleStream {
             stream_type: STREAM_TYPE,
-            section: Section::with_endian(Endian::Big).D32(0x55667788),
+            section,
         });
         let dump = read_synth_dump(dump).unwrap();
         assert_eq!(dump.endian, BE);
@@ -4827,7 +4831,8 @@ mod test {
     #[test]
     fn test_module_list() {
         let name = DumpString::new("single module", Endian::Little);
-        let cv_record = Section::with_endian(Endian::Little)
+        let mut cv_record = Section::with_endian(Endian::Little);
+        cv_record
             .D32(md::CvSignature::Pdb70 as u32) // signature
             // signature, a GUID
             .D32(0xabcd1234)
@@ -5311,7 +5316,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let name3 = DumpString::new("module 3", Endian::Little);
         let name4 = DumpString::new("module 4", Endian::Little);
         let name5 = DumpString::new("module 5", Endian::Little);
-        let cv_record = Section::with_endian(Endian::Little)
+        let mut cv_record = Section::with_endian(Endian::Little);
+        cv_record
             .D32(md::CvSignature::Pdb70 as u32) // signature
             // signature, a GUID
             .D32(0xabcd1234)
@@ -5427,10 +5433,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     #[test]
     fn test_memory_list() {
         const CONTENTS: &[u8] = b"memory_contents";
-        let memory = Memory::with_section(
-            Section::with_endian(Endian::Little).append_bytes(CONTENTS),
-            0x309d68010bd21b2c,
-        );
+        let mut section = Section::with_endian(Endian::Little);
+        section.append_bytes(CONTENTS);
+        let memory = Memory::with_section(section, 0x309d68010bd21b2c);
         let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory);
         let dump = read_synth_dump(dump).unwrap();
         let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
@@ -5445,10 +5450,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     fn test_memory_list_lifetimes() {
         // A memory list should not own any of the minidump data.
         const CONTENTS: &[u8] = b"memory_contents";
-        let memory = Memory::with_section(
-            Section::with_endian(Endian::Little).append_bytes(CONTENTS),
-            0x309d68010bd21b2c,
-        );
+        let mut section = Section::with_endian(Endian::Little);
+        section.append_bytes(CONTENTS);
+        let memory = Memory::with_section(section, 0x309d68010bd21b2c);
         let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory);
         let dump = read_synth_dump(dump).unwrap();
         let mem_slices: Vec<&[u8]> = {
@@ -5460,10 +5464,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
     #[test]
     fn test_memory_overflow() {
-        let memory1 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(0, 2),
-            u64::MAX,
-        );
+        let mut section = Section::with_endian(Endian::Little);
+        section.append_repeated(0, 2);
+        let memory1 = Memory::with_section(section, u64::MAX);
         let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory1);
         let dump = read_synth_dump(dump).unwrap();
         let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
@@ -5474,30 +5477,25 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
     #[test]
     fn test_memory_list_overlap() {
-        let memory1 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
-            0x1000,
-        );
+        let mut section1 = Section::with_endian(Endian::Little);
+        section1.append_repeated(0, 0x1000);
+        let memory1 = Memory::with_section(section1, 0x1000);
         // memory2 overlaps memory1 exactly
-        let memory2 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(1, 0x1000),
-            0x1000,
-        );
+        let mut section2 = Section::with_endian(Endian::Little);
+        section2.append_repeated(1, 0x1000);
+        let memory2 = Memory::with_section(section2, 0x1000);
         // memory3 overlaps memory1 partially
-        let memory3 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(2, 0x1000),
-            0x1001,
-        );
+        let mut section3 = Section::with_endian(Endian::Little);
+        section3.append_repeated(2, 0x1000);
+        let memory3 = Memory::with_section(section3, 0x1001);
         // memory4 is fully contained within memory1
-        let memory4 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(3, 0x100),
-            0x1001,
-        );
+        let mut section4 = Section::with_endian(Endian::Little);
+        section4.append_repeated(3, 0x100);
+        let memory4 = Memory::with_section(section4, 0x1001);
         // memory5 is cool, though.
-        let memory5 = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(4, 0x1000),
-            0x2000,
-        );
+        let mut section5 = Section::with_endian(Endian::Little);
+        section5.append_repeated(4, 0x1000);
+        let memory5 = Memory::with_section(section5, 0x2000);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_memory(memory1)
             .add_memory(memory2)
@@ -5804,7 +5802,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
             0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
         ];
-        let cv_record1 = Section::with_endian(Endian::Little)
+        let mut cv_record1 = Section::with_endian(Endian::Little);
+        cv_record1
             .D32(md::CvSignature::Elf as u32) // signature
             .append_bytes(MODULE1_BUILD_ID);
         let module1 = SynthModule::new(
@@ -5820,7 +5819,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         // Add a module with a short ELF build id
         let name2 = DumpString::new("module 2", Endian::Little);
         const MODULE2_BUILD_ID: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
-        let cv_record2 = Section::with_endian(Endian::Little)
+        let mut cv_record2 = Section::with_endian(Endian::Little);
+        cv_record2
             .D32(md::CvSignature::Elf as u32) // signature
             .append_bytes(MODULE2_BUILD_ID);
         let module2 = SynthModule::new(
@@ -5924,10 +5924,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     #[test]
     fn test_thread_list_x86() {
         let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
-        let stack = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
-            0x1000,
-        );
+        let mut section = Section::with_endian(Endian::Little);
+        section.append_repeated(0, 0x1000);
+        let stack = Memory::with_section(section, 0x1000);
         let arch = md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_INTEL as u16;
         let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(arch);
         let thread = Thread::new(Endian::Little, 0x1234, &stack, &context);
@@ -5962,8 +5961,10 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     fn test_thread_list_amd64() {
         let context =
             synth_minidump::amd64_context(Endian::Little, 0x1234abcd1234abcd, 0x1000000010000000);
+        let mut section = Section::with_endian(Endian::Little);
+            section.append_repeated(0, 0x1000);
         let stack = Memory::with_section(
-            Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
+        section,
             0x1000000010000000,
         );
         let arch = md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16;
