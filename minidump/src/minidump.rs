@@ -2070,7 +2070,7 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
   base_address          = {:#x}
   final_address         = {:#x}
   kind                  = {:#?}
-  permissions           = 
+  permissions           =\x20
 ",
             self.base_address, self.final_address, self.kind,
         )?;
@@ -5043,7 +5043,7 @@ mod test {
         // Whitespace intentionally wonky to test robustness
         let input = b"
 
- a90206ca83eb2852-b90206ca83eb3852 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  
+ a90206ca83eb2852-b90206ca83eb3852 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so\x20\x20
 c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libtdb2.so  (deleted)
 
 
