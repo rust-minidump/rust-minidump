@@ -36,6 +36,4 @@ thiserror = "1.0.30"
 test-assembler = { path = "../../rust-test-assembler" }
 synth-minidump = { path = "../synth-minidump" }
 doc-comment = "0.3.3"
-synth-minidump = { path = "../synth-minidump" }
-test-assembler = "0.1.6"
 tokio =  { version = "1.12.0", features = ["full"] }
