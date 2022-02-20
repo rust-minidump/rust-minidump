@@ -449,7 +449,7 @@ impl SynthMinidump {
             stream_directory,
             ..
         } = self;
-        if flags.value().is_ok() {
+        if flags.value().is_err() {
             flags.set_const(0);
         }
         // Create the stream directory.
