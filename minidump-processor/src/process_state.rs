@@ -61,15 +61,36 @@ pub struct StackFrame {
     /// requires adjustment.
     pub instruction: u64,
 
-    /// The address from which the program counter would resume.
+   /// The instruction address (program counter) that execution of this function
+    /// would resume at, if the callee returns.
     ///
-    /// This is the address which contains the next instruction to be executed in the
-    /// caller, once the callee has completed.  This is sometimes called the
-    /// `return_address`, e.g. in breakpad, as it is where the callee will return to once
-    /// finished, so this is really the *callee's return address*.
+    /// This is exactly **the return address of the of the callee**. We use this
+    /// nonstandard terminology because just calling this "return address"
+    /// would be ambiguous and too easy to mix up.
     ///
-    /// For the address from which the caller called the callee, see
-    /// [`StackFrame::instruction`].
+    /// **Note:** you should strongly prefer using [`instruction`][], which should
+    /// be the address of the instruction before this one which called the callee.
+    /// That is the instruction that this function was logically "executing" when the
+    /// program's state was captured, and therefore what people expect from
+    /// backtraces.
+    ///
+    /// This is more than a matter of user expections: **there are situations
+    /// where this value is nonsensical but the [`instruction`][] is valid.**
+    ///
+    /// Specifically, if the callee is "noreturn" then *this function should
+    /// never resume execution*. The compiler has no obligation to emit any
+    /// instructions after such a CALL, but CALL still implicitly pushes the
+    /// instruction after itself to the stack. Such a return address may
+    /// therefore be outside the "bounds" of this function!!!
+    ///
+    /// Yes, compilers *can* just immediately jump into the callee for
+    /// noreturn calls, but it's genuinely very helpful for them to emit a
+    /// CALL because it keeps the stack reasonable for backtraces and
+    /// debuggers, which are more interested in [`instruction`][] anyway!
+    ///
+    /// (If this is the top frame of the call stack, then `resume_address`
+    /// and `instruction` are exactly equal and should reflect the actual
+    /// program counter of this thread.)
     pub resume_address: u64,
 
     /// The module in which the instruction resides.
