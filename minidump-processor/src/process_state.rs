@@ -61,21 +61,21 @@ pub struct StackFrame {
     /// requires adjustment.
     pub instruction: u64,
 
-   /// The instruction address (program counter) that execution of this function
+    /// The instruction address (program counter) that execution of this function
     /// would resume at, if the callee returns.
     ///
     /// This is exactly **the return address of the of the callee**. We use this
     /// nonstandard terminology because just calling this "return address"
     /// would be ambiguous and too easy to mix up.
     ///
-    /// **Note:** you should strongly prefer using [`instruction`][], which should
+    /// **Note:** you should strongly prefer using [`StackFrame::instruction`][], which should
     /// be the address of the instruction before this one which called the callee.
     /// That is the instruction that this function was logically "executing" when the
     /// program's state was captured, and therefore what people expect from
     /// backtraces.
     ///
     /// This is more than a matter of user expections: **there are situations
-    /// where this value is nonsensical but the [`instruction`][] is valid.**
+    /// where this value is nonsensical but the [`StackFrame::instruction`][] is valid.**
     ///
     /// Specifically, if the callee is "noreturn" then *this function should
     /// never resume execution*. The compiler has no obligation to emit any
@@ -86,7 +86,7 @@ pub struct StackFrame {
     /// Yes, compilers *can* just immediately jump into the callee for
     /// noreturn calls, but it's genuinely very helpful for them to emit a
     /// CALL because it keeps the stack reasonable for backtraces and
-    /// debuggers, which are more interested in [`instruction`][] anyway!
+    /// debuggers, which are more interested in [`StackFrame::instruction`][] anyway!
     ///
     /// (If this is the top frame of the call stack, then `resume_address`
     /// and `instruction` are exactly equal and should reflect the actual
