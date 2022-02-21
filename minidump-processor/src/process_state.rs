@@ -58,13 +58,17 @@ pub struct StackFrame {
     ///
     /// On some architectures, the return address as saved on the stack or in
     /// a register is fine for looking up the point of the call. On others, it
-    /// requires adjustment. `return_address` returns the address as saved by the
-    /// machine.
+    /// requires adjustment.
     pub instruction: u64,
 
-    /// Return the actual return address, as saved on the stack or in a
-    /// register. See the comments for `instruction`, for details.
-    pub return_address: u64,
+    /// The address from which the program counter would resume.
+    ///
+    /// This is the address which contains the next instruction to be executed in the
+    /// caller, once the callee has completed.
+    ///
+    /// For the address from which the caller called the callee, see
+    /// [`StackFrame::instruction`].
+    pub resume_address: u64,
 
     /// The module in which the instruction resides.
     pub module: Option<MinidumpModule>,
@@ -238,7 +242,7 @@ impl StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
             // Initialized the same as `instruction`, but left unmodified during stack walking.
-            return_address: context.get_instruction_pointer(),
+            resume_address: context.get_instruction_pointer(),
             module: None,
             unloaded_modules: BTreeMap::new(),
             function_name: None,
