@@ -58,9 +58,40 @@ pub struct StackFrame {
     ///
     /// On some architectures, the return address as saved on the stack or in
     /// a register is fine for looking up the point of the call. On others, it
-    /// requires adjustment. ReturnAddress returns the address as saved by the
-    /// machine.
+    /// requires adjustment.
     pub instruction: u64,
+
+    /// The instruction address (program counter) that execution of this function
+    /// would resume at, if the callee returns.
+    ///
+    /// This is exactly **the return address of the of the callee**. We use this
+    /// nonstandard terminology because just calling this "return address"
+    /// would be ambiguous and too easy to mix up.
+    ///
+    /// **Note:** you should strongly prefer using [`StackFrame::instruction`][], which should
+    /// be the address of the instruction before this one which called the callee.
+    /// That is the instruction that this function was logically "executing" when the
+    /// program's state was captured, and therefore what people expect from
+    /// backtraces.
+    ///
+    /// This is more than a matter of user expections: **there are situations
+    /// where this value is nonsensical but the [`StackFrame::instruction`][] is valid.**
+    ///
+    /// Specifically, if the callee is "noreturn" then *this function should
+    /// never resume execution*. The compiler has no obligation to emit any
+    /// instructions after such a CALL, but CALL still implicitly pushes the
+    /// instruction after itself to the stack. Such a return address may
+    /// therefore be outside the "bounds" of this function!!!
+    ///
+    /// Yes, compilers *can* just immediately jump into the callee for
+    /// noreturn calls, but it's genuinely very helpful for them to emit a
+    /// CALL because it keeps the stack reasonable for backtraces and
+    /// debuggers, which are more interested in [`StackFrame::instruction`][] anyway!
+    ///
+    /// (If this is the top frame of the call stack, then `resume_address`
+    /// and `instruction` are exactly equal and should reflect the actual
+    /// program counter of this thread.)
+    pub resume_address: u64,
 
     /// The module in which the instruction resides.
     pub module: Option<MinidumpModule>,
@@ -233,6 +264,8 @@ impl StackFrame {
     pub fn from_context(context: MinidumpContext, trust: FrameTrust) -> StackFrame {
         StackFrame {
             instruction: context.get_instruction_pointer(),
+            // Initialized the same as `instruction`, but left unmodified during stack walking.
+            resume_address: context.get_instruction_pointer(),
             module: None,
             unloaded_modules: BTreeMap::new(),
             function_name: None,
@@ -244,12 +277,6 @@ impl StackFrame {
             trust,
             context,
         }
-    }
-
-    /// Return the actual return address, as saved on the stack or in a
-    /// register. See the comments for `StackFrame::instruction` for details.
-    pub fn return_address(&self) -> u64 {
-        self.instruction
     }
 }
 

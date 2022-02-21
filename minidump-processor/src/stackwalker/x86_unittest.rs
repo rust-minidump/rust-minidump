@@ -87,7 +87,7 @@ async fn test_traditional() {
         .append_repeated(12, 0) // frame 0: space
         .mark(&frame0_ebp) // frame 0 %ebp points here
         .D32(&frame1_ebp) // frame 0: saved %ebp
-        .D32(0x40008679) // frame 0: return address
+        .D32(0x40008679) // frame 0: resume address
         .append_repeated(8, 0) // frame 1: space
         .mark(&frame1_ebp) // frame 1 %ebp points here
         .D32(0) // frame 1: saved %ebp (stack end)
@@ -102,6 +102,7 @@ async fn test_traditional() {
         assert_eq!(f0.trust, FrameTrust::Context);
         assert_eq!(f0.context.valid, MinidumpContextValidity::All);
         assert_eq!(f0.instruction, 0x4000c7a5);
+        assert_eq!(f0.resume_address, 0x4000c7a5);
         // eip
         // ebp
     }
@@ -110,6 +111,7 @@ async fn test_traditional() {
         assert_eq!(f1.trust, FrameTrust::FramePointer);
         // ContextValidity
         assert_eq!(f1.instruction, 0x40008678);
+        assert_eq!(f1.resume_address, 0x40008679);
         // eip
         // ebp
     }
@@ -154,6 +156,7 @@ async fn test_traditional_scan() {
         assert_eq!(f0.trust, FrameTrust::Context);
         assert_eq!(f0.context.valid, MinidumpContextValidity::All);
         assert_eq!(f0.instruction, 0x4000f49d);
+        assert_eq!(f0.resume_address, 0x4000f49d);
 
         if let MinidumpRawContext::X86(ctx) = &f0.context.raw {
             assert_eq!(ctx.eip, 0x4000f49d);
@@ -176,6 +179,7 @@ async fn test_traditional_scan() {
             unreachable!();
         }
         assert_eq!(f1.instruction + 1, 0x4000129d);
+        assert_eq!(f1.resume_address, 0x4000129d);
 
         if let MinidumpRawContext::X86(ctx) = &f1.context.raw {
             assert_eq!(ctx.eip, 0x4000129d);
