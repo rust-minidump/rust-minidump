@@ -64,7 +64,9 @@ pub struct StackFrame {
     /// The address from which the program counter would resume.
     ///
     /// This is the address which contains the next instruction to be executed in the
-    /// caller, once the callee has completed.
+    /// caller, once the callee has completed.  This is sometimes called the
+    /// `return_address`, e.g. in breakpad, as it is where the callee will return to once
+    /// finished, so this is really the *callee's return address*.
     ///
     /// For the address from which the caller called the callee, see
     /// [`StackFrame::instruction`].
