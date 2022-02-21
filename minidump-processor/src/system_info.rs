@@ -12,8 +12,9 @@ pub struct SystemInfo {
     pub os_version: Option<String>,
     /// A string identifying the exact build of the operating system.
     ///
-    /// This may look like "Service Pack 2" or "8L2127", if present. On Windows, this is the CSD
-    /// version, on Linux extended build information.
+    /// This may look like "Service Pack 2" or "8L2127", if present. On Windows,
+    /// this is the CSD version, on Linux, extended build information and macOS,
+    /// the product build version.
     pub os_build: Option<String>,
     /// The CPU on which the dump was produced
     pub cpu: Cpu,
