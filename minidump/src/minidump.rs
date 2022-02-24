@@ -4121,9 +4121,9 @@ impl MinidumpAssertion {
   type                                       = {}
 
 ",
-            self.expression().unwrap_or_else(String::new),
-            self.function().unwrap_or_else(String::new),
-            self.file().unwrap_or_else(String::new),
+            self.expression().unwrap_or_default(),
+            self.function().unwrap_or_default(),
+            self.file().unwrap_or_default(),
             self.raw.line,
             self.raw._type,
         )?;

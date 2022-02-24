@@ -363,9 +363,7 @@ where
             .unwrap_or(false)
         {
             requesting_thread = Some(i);
-            exception_context
-                .as_deref()
-                .or_else(|| thread_context.as_deref())
+            exception_context.as_deref().or(thread_context.as_deref())
         } else {
             thread_context.as_deref()
         };
