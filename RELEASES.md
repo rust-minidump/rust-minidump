@@ -170,6 +170,28 @@ As discussed in the top-level notes, allocations are generally bounded by the si
 
 # minidump-stackwalk/minidump-processor
 
+## Feature families (and --recover-function-args)
+
+You can now opt into enabling extra families of features with
+ProcessorOptions (minidump-processor) or `--features` (minidump-stackwalk).
+
+This allows us to introduce new/experimental things without messing up
+anyone with harder stability requirements.
+
+The major families are:
+
+* stable-basic (default)
+* stable-all (extra stuff)
+* unstable-all (experimental stuff)
+
+A new --recover-function-args (recover_function_args) feature has been
+added under the unstable-all category, which tries to guess the ABI
+and recover function arguments. This is currently very limited and only
+kind of works for x86 minidumps where the ABIs tend to be simpler and
+pass things on the stack.
+
+
+
 ## minidump_dump is now minidump-stackwalk --dump
 
 The old minidump_dump binary that was hidden away in the `minidump` crate has
