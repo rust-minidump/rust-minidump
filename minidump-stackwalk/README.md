@@ -217,7 +217,7 @@ Provide a briefer --human report.
 Only provides the top-level summary and a backtrace of the crashing thread.
 
 ### `--recover-function-args`
-Heuristically recover function arguments
+**[UNSTABLE]** Heuristically recover function arguments
 
 This is an experimental feature, which currently only shows up in --human output.
 
@@ -236,6 +236,33 @@ Because this creates two output streams, you must specify a path to write the --
 output will be the 'primary' output and default to stdout, which can be configured with --output-file as
 normal.
 
+### `--features <features>`
+Specify at a high-level how much analysis to perform.
+
+This flag provides a way to more blindly opt into Extra Analysis without having to know about the specific
+features of minidump-stackwalk. This is equivalent to ProcessorOptions in minidump-processor. The current
+supported values are:
+
+* stable-basic (default): give me solid detailed analysis that most people would want.
+* stable-all: turn on extra detailed analysis.
+* (currently identical to stable-basic, but may grow in the future)
+* unstable-all: turn on the weird and experimental stuff.
+* `--recover-function-args`
+
+minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to introduce new
+features which may be experimental or expensive. To balance these two concerns, new features will usually be
+disabled by default and given a specific flag, but still more easily 'discovered' by anyone who uses this
+flag.
+
+Anyone using minidump-stackwalk who is *really* worried about the output being stable should probably not
+use this flag in production, but its use is recommended for casual
+human usage or for checking "what's new".
+
+Features under unstable-all may be deprecated and become noops. Features which require additional input
+(such as `--raw-json`) cannot be affected by this, and must still be manually 'discovered'.
+
+
+\[default: stable-basic]  [possible values: stable-basic, stable-all, unstable-all]
 ### `--output-file <output-file>`
 Where to write the output to (if unspecified, stdout is used)
 
@@ -252,7 +279,7 @@ happened the way it did, --verbose=trace is very useful (all unwinder logging wi
 
 \[default: error]  [possible values: off, error, warn, info, debug, trace]
 ### `--raw-json <raw-json>`
-An input JSON file with the extra information.
+**[UNSTABLE]** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will hopefully be phased
 out and deprecated in favour of just using custom streams in the minidump itself.
@@ -340,3 +367,4 @@ recommend using a version of dump_syms to generate them.
 See:
 * symbol file docs: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
 * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
+
