@@ -746,6 +746,7 @@ pub fn eval_win_expr_for_fuzzer(
     eval_win_expr(expr, info, walker)
 }
 
+#[allow(clippy::map_flatten)]
 fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
     // TODO?: do a bunch of heuristics to make this more robust.
     // So far I haven't encountered an in-the-wild example that needs the
