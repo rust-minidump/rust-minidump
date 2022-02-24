@@ -927,27 +927,35 @@ impl Module for MinidumpModule {
 
     fn code_identifier(&self) -> CodeId {
         match self.codeview_info {
-            Some(CodeView::Pdb70(ref raw)) if raw.age == 0 => {
-                // This is a macOS minidump. It looks like the age is typically
-                // >0 for Windows minidumps, and Breakpad sets it to 0 on macOS.
-                // We're relying on this observation in order to distinguish
-                // between these two platforms since macOS uses PDB70 instead of
-                // its own dedicated format.
-                // See the following linked comment in a Windows PDB writer:
-                // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
-                // TODO: Figure out a way to get access to `MinidumpSystemInfo`
-                // here instead of relying on `age`.
-                CodeId::new(format!("{:#}", raw.signature))
+            Some(CodeView::Pdb70(ref raw)) => {
+                if raw.age == 0 {
+                    // This is a macOS minidump. It looks like the age is
+                    // typically >0 for Windows minidumps, and Breakpad sets it
+                    // to 0 on macOS. We're relying on this observation in order
+                    // to distinguish between these two platforms since macOS
+                    // uses PDB70 instead of its own dedicated format.
+                    // See the following linked comment in a Windows PDB writer:
+                    // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
+                    // TODO: Figure out a way to get access to
+                    // `MinidumpSystemInfo` here instead of relying on `age`.
+                    CodeId::new(format!("{:#}", raw.signature))
+                } else {
+                    CodeId::new(format!(
+                        "{0:08X}{1:x}",
+                        self.raw.time_date_stamp, self.raw.size_of_image
+                    ))
+                }
             }
             Some(CodeView::Pdb20(_)) => CodeId::new(format!(
                 "{0:08X}{1:x}",
                 self.raw.time_date_stamp, self.raw.size_of_image
             )),
             Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
-            _ => CodeId::new(format!(
-                "{0:08X}{1:x}",
-                self.raw.time_date_stamp, self.raw.size_of_image
-            )),
+            // Occasionally things will make it into the module stream that
+            // shouldn't be there, and so no meaningful CodeId can be found from
+            // those. One of those things are SysV shared memory segments which
+            // have no CodeView record.
+            _ => CodeId::nil(),
         }
     }
     fn debug_file(&self) -> Option<Cow<'_, str>> {
@@ -6413,5 +6421,47 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         // https://github.com/getsentry/symbolic/issues/478
         let data = b"MDMP\x93\xa7\x00\x00\r\x00\x00\x00 \xff\xff\xff\xff\xff\xff\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
         assert!(Minidump::read(data.as_ref()).is_err());
+    }
+
+    #[test]
+    fn test_empty_module() {
+        let name = DumpString::new("/SYSV00000000 (deleted)", Endian::Little);
+        let module = SynthModule::new(
+            Endian::Little,
+            0x7f602915e000,
+            0x26000,
+            &name,
+            0x0,
+            0x0,
+            // All of these are completely zeroed out in the wild.
+            Some(&md::VS_FIXEDFILEINFO {
+                signature: 0,
+                struct_version: 0,
+                file_version_hi: 0,
+                file_version_lo: 0,
+                product_version_hi: 0,
+                product_version_lo: 0,
+                file_flags_mask: 0,
+                file_flags: 0,
+                file_os: 0,
+                file_type: 0,
+                file_subtype: 0,
+                file_date_hi: 0,
+                file_date_lo: 0,
+            }),
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_module(module)
+            .add(name);
+        let dump = read_synth_dump(dump).unwrap();
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].code_identifier(), CodeId::new("".to_owned()));
+        assert_eq!(modules[0].debug_identifier(), None);
+        assert_eq!(modules[0].code_file(), "/SYSV00000000 (deleted)");
+        assert_eq!(modules[0].debug_file(), None);
+        assert_eq!(modules[0].raw.base_of_image, 0x7f602915e000);
+        assert_eq!(modules[0].raw.size_of_image, 0x26000);
     }
 }
