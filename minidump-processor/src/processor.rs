@@ -15,15 +15,132 @@ use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
 
-/// Various advanced options for the processor.
-#[derive(Default, Debug, Clone)]
+/// Configuration of the processor's exact behaviour.
+///
+/// This can be used to either:
+///
+/// * enable extra features that are disabled by default
+/// * lock in the features you want enabled to minimize future changes
+///
+/// All fields are `pub`, but the type is `non_exhaustive`.
+/// Recommended usage is to call one of the constructors to get a baseline
+/// set of features, and then manually set any values you particularly care about.
+///
+/// If we decide an unstable feature exposed by these flags is a bad idea,
+/// we may remove its functionality and turn it into a noop, but the flag
+/// will remain to avoid breaking code. Similarly, if a feature seems to be
+/// too bloated, its implementation may be hidden behind a cargo feature
+/// flag, producing a similar result if that feature is statically disabled.
+///
+/// In either of these cases, a `warn` diagnostic will be emitted if you
+/// try to use request a feature whose implementation does not exist.
+///
+/// [`process_minidump`][] uses [`ProcessorOptions::stable_basic`][], which
+/// is also exposed as [`Default::default`].
+///
+/// ## Example:
+///
+/// ```
+/// use minidump_processor::ProcessorOptions;
+///
+/// // Happy with the default-enabled features
+/// let mut options = ProcessorOptions::stable_basic();
+/// // But specifically want this cool unstable feature
+/// options.recover_function_args = true;
+/// ```
+///
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ProcessorOptions<'a> {
-    /// The evil "raw json" mozilla's legacy infrastructure relies on (to be phased out).
+    /// **\[UNSTABLE\]** The evil "raw json" mozilla's legacy infrastructure relies on.
+    ///
+    /// Please don't use this. If you have to use this, you know who you are.
     pub evil_json: Option<&'a Path>,
 
-    /// Whether to try to heuristically recover function arguments in backtraces.
+    /// **\[UNSTABLE\]** Whether to try to heuristically recover function arguments in backtraces.
+    ///
+    /// Currently this only work for x86, and assumes everything is either cdecl or thiscall
+    /// (inferred from whether the symbol name looks like a static function or a method).
     pub recover_function_args: bool,
+}
+
+impl ProcessorOptions<'_> {
+    /// "Do the normal stuff everyone should want"
+    ///
+    /// * `evil_json: None`
+    /// * `recover_function_args: false`
+    ///
+    /// Unlike stable_all, you shouldn't expect this to change its results much.
+    ///
+    /// It will specifically always try to:
+    ///
+    /// * Perform full backtraces and symbolication of every thread.
+    /// * Produce detailed system info (OS, Cpu, Versions...)
+    /// * Produce detailed crash info (Crashing thread, crash address, formatted error...)
+    /// * List loaded and unloaded modules
+    pub fn stable_basic() -> Self {
+        ProcessorOptions {
+            evil_json: None,
+            recover_function_args: false,
+        }
+    }
+
+    /// "Turn all the stable features on"
+    ///
+    /// * `evil_json: None`
+    /// * `recover_function_args: false`
+    ///
+    /// (At this precise moment this is identical to stable_basic, but may diverge
+    /// as we introduce more features.)
+    ///
+    /// Everything included by stable_basic, but willing to enable more interesting
+    /// features and spend extra time trying to find extra insights. This is the default
+    /// place that unstable features will "graduate" to when they're deemed good enough.
+    pub fn stable_all() -> Self {
+        ProcessorOptions {
+            evil_json: None,
+            recover_function_args: false,
+        }
+    }
+
+    /// "Turn EVERYTHING on, even the experimental stuff!"
+    ///
+    /// * `evil_json: None`
+    /// * `recover_function_args: true`
+    ///
+    /// (evil_json is still "disabled" because you need to give it needs a path.)
+    ///
+    /// Some of this stuff can be really jank, use at your own risk!
+    pub fn unstable_all() -> Self {
+        ProcessorOptions {
+            evil_json: None,
+            recover_function_args: true,
+        }
+    }
+
+    /// Check if any of the enabled features are deprecated or disabled
+    /// and emit warnings if they are.
+    fn check_deprecated_and_disabled(&self) {
+        // Currently nothing is deprecated / disableable, but here's the template.
+
+        /*
+        use log::warn;
+
+        if self.my_bad_feature {
+            warn!("Deprecated ProcessorOption my_bad_feature has been removed and does nothing.")
+        }
+
+        if !cfg!(feature = "my-optional-feature") && self.my_optional_feature {
+            warn!("Disabled ProcessorOption my_optional_feature must be enabled via cargo.")
+        }
+        */
+    }
+}
+
+impl Default for ProcessorOptions<'_> {
+    fn default() -> Self {
+        Self::stable_basic()
+    }
 }
 
 /// An error encountered during minidump processing.
@@ -39,7 +156,10 @@ pub enum ProcessError {
     MissingThreadList,
 }
 
-/// Unwind all threads in `dump` and return a `ProcessState`.
+/// Unwind all threads in `dump` and return a report as a `ProcessState`.
+///
+/// This is equivalent to [`process_minidump_with_options`] with
+/// [`ProcessorOptions::stable_basic`][].
 ///
 /// # Examples
 ///
@@ -73,7 +193,10 @@ where
     process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default()).await
 }
 
-/// The same as [`process_minidump`] but with extra options.
+/// Process `dump` with the given options and return a report as a `ProcessState`.
+///
+/// See [`ProcessorOptions`][] for details on the specific features that can be
+/// enabled and how to choose them.
 pub async fn process_minidump_with_options<'a, T, P>(
     dump: &Minidump<'a, T>,
     symbol_provider: &P,
@@ -83,6 +206,8 @@ where
     T: Deref<Target = [u8]> + 'a,
     P: SymbolProvider + Sync,
 {
+    options.check_deprecated_and_disabled();
+
     // Thread list is required for processing.
     let thread_list = dump
         .get_stream::<MinidumpThreadList>()

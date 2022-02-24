@@ -77,6 +77,37 @@ minidump-stackwalk itself, or a misbehaving minidump generator.\n\n\n")
             .args(&["json", "human", "cyborg", "dump", "help-markdown"])
         )
         .arg(
+            Arg::with_name("features")
+                .long("features")
+                .possible_values(&["stable-basic", "stable-all", "unstable-all"])
+                .default_value("stable-basic")
+                .takes_value(true)
+                .long_help("Specify at a high-level how much analysis to perform.
+
+This flag provides a way to more blindly opt into Extra Analysis without having to know about \
+the specific features of minidump-stackwalk. This is equivalent to ProcessorOptions in \
+minidump-processor. The current supported values are:
+
+* stable-basic (default): give me solid detailed analysis that most people would want.
+* stable-all: turn on extra detailed analysis.
+    * (currently identical to stable-basic, but may grow in the future)
+* unstable-all: turn on the weird and experimental stuff.
+    * `--recover-function-args`
+
+minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to \
+introduce new features which may be experimental or expensive. To balance these two concerns, \
+new features will usually be disabled by default and given a specific flag, but still more \
+easily 'discovered' by anyone who uses this flag.
+
+Anyone using minidump-stackwalk who is *really* worried about the output being stable \
+should probably not use this flag in production, but its use is recommended for casual
+human usage or for checking \"what's new\".
+
+Features under unstable-all may be deprecated and become noops. Features which require \
+additional input (such as `--raw-json`) cannot be affected by this, and must still be \
+manually 'discovered'.\n\n\n")
+        )
+        .arg(
             Arg::with_name("output-file")
                 .long("output-file")
                 .takes_value(true)
@@ -116,7 +147,7 @@ Only provides the top-level summary and a backtrace of the crashing thread.\n\n\
             Arg::with_name("raw-json")
                 .long("raw-json")
                 .takes_value(true)
-                .long_help("An input JSON file with the extra information.
+                .long_help("**[UNSTABLE]** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will \
 hopefully be phased out and deprecated in favour of just using custom streams in the \
@@ -125,7 +156,7 @@ minidump itself.\n\n\n")
         .arg(
             Arg::with_name("recover-function-args")
                 .long("recover-function-args")
-                .help("Heuristically recover function arguments
+                .help("**[UNSTABLE]** Heuristically recover function arguments
 
 This is an experimental feature, which currently only shows up in --human output.\n\n\n")
         )
@@ -319,10 +350,19 @@ async fn main() {
         );
     }));
 
-    let mut options = ProcessorOptions::default();
+    // Pick the default options
+    let mut options = match matches.value_of("features").unwrap() {
+        "stable-basic" => ProcessorOptions::stable_basic(),
+        "stable-all" => ProcessorOptions::stable_all(),
+        "unstable-all" => ProcessorOptions::unstable_all(),
+        _ => unimplemented!("unknown --features value"),
+    };
 
+    // Now overload the defaults
     options.evil_json = matches.value_of_os("raw-json").map(Path::new);
-    options.recover_function_args = matches.is_present("recover-function-args");
+    if matches.is_present("recover-function-args") {
+        options.recover_function_args = true;
+    }
 
     let temp_dir = std::env::temp_dir();
 
