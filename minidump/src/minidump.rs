@@ -927,7 +927,6 @@ impl Module for MinidumpModule {
 
     fn code_identifier(&self) -> CodeId {
         match self.codeview_info {
-            Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
             Some(CodeView::Pdb70(ref raw)) if raw.age == 0 => {
                 // This is a macOS minidump. It looks like the age is typically
                 // >0 for Windows minidumps, and Breakpad sets it to 0 on macOS.
@@ -940,13 +939,15 @@ impl Module for MinidumpModule {
                 // here instead of relying on `age`.
                 CodeId::new(format!("{:#}", raw.signature))
             }
-            _ => {
-                // TODO: Breakpad stubs this out on non-Windows.
-                CodeId::new(format!(
-                    "{0:08X}{1:x}",
-                    self.raw.time_date_stamp, self.raw.size_of_image
-                ))
-            }
+            Some(CodeView::Pdb20(_)) => CodeId::new(format!(
+                "{0:08X}{1:x}",
+                self.raw.time_date_stamp, self.raw.size_of_image
+            )),
+            Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
+            _ => CodeId::new(format!(
+                "{0:08X}{1:x}",
+                self.raw.time_date_stamp, self.raw.size_of_image
+            )),
         }
     }
     fn debug_file(&self) -> Option<Cow<'_, str>> {
