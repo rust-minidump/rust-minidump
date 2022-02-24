@@ -19,6 +19,11 @@ Full documentation of the CLI can be found in the "minidump-stackwalk CLI manual
 (`--help` will produce the same output).
 
 
+# Enabling Extra Analysis
+
+The [--features](#--features-features) flag can be used to blindly opt into "more analysis". See that
+entry in the CLI docs for more details on choosing an appropriate value, but the tl;dr is that you can
+turn everything on and checkout "what's new" with `--features=unstable-all`.
 
 
 # Output Formats
@@ -245,9 +250,11 @@ supported values are:
 
 * stable-basic (default): give me solid detailed analysis that most people would want.
 * stable-all: turn on extra detailed analysis.
-* (currently identical to stable-basic, but may grow in the future)
 * unstable-all: turn on the weird and experimental stuff.
-* `--recover-function-args`
+
+stable-all enables: nothing (currently identical to stable-basic)
+
+unstable-all enables: `--recover-function-args`
 
 minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to introduce new
 features which may be experimental or expensive. To balance these two concerns, new features will usually be

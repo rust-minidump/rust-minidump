@@ -96,6 +96,50 @@ fn test_json_pretty() {
 }
 
 #[test]
+fn test_json_stable_all() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("--pretty")
+        .arg("--features")
+        .arg("stable-all")
+        .arg("../testdata/test.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("json-stable-all", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_json_unstable_all() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("--pretty")
+        .arg("--features")
+        .arg("unstable-all")
+        .arg("../testdata/test.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("json-unstable-all", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn test_json_symbols() {
     // For a while this didn't parse right
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
@@ -157,6 +201,48 @@ fn test_human() {
 
     assert!(output.status.success());
     insta::assert_snapshot!("human", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_human_stable_all() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--human")
+        .arg("--features")
+        .arg("stable-all")
+        .arg("../testdata/test.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("human-stable-all", stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_human_unstable_all() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--human")
+        .arg("--features")
+        .arg("unstable-all")
+        .arg("../testdata/test.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!("human-unstable-all", stdout);
     assert_eq!(stderr, "");
 }
 

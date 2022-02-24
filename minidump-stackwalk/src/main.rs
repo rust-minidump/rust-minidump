@@ -90,9 +90,11 @@ minidump-processor. The current supported values are:
 
 * stable-basic (default): give me solid detailed analysis that most people would want.
 * stable-all: turn on extra detailed analysis.
-    * (currently identical to stable-basic, but may grow in the future)
 * unstable-all: turn on the weird and experimental stuff.
-    * `--recover-function-args`
+
+stable-all enables: nothing (currently identical to stable-basic)
+
+unstable-all enables: `--recover-function-args`
 
 minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to \
 introduce new features which may be experimental or expensive. To balance these two concerns, \
