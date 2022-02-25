@@ -10,7 +10,20 @@ In the current implementation some data is always required and some fields alway
 
 So when we say the schema is "stable" we are really just saying that we aren't going to rename fields or change their type (int, string, object...) or semantics. And of course we'll always do our best to populate an existing field when the required data is available! While we can *technically* deprecate a field and stop emitting it completely under this definition of "stable", we will try to avoid doing this unless there is some significant issue with the field (or it never contained a useful value anyway).
 
-As we add more experimental and unreliable analyses (like trying to recover function args, trying to detect bitflips, trying to detect exploitable crashes, etc.) they may be hidden behind flags in minidump-stackwalk or [ProcessorOptions](https://docs.rs/minidump-processor/latest/minidump_processor/struct.ProcessorOptions.html). The precise details of how this will work and how this will be specified in this document still need to be hashed out (it would be *nice* if we could have "unstable" analyses that we can tentatively ship and remove later if they're a problem).
+# Optional Analyses
+
+As we add more experimental and unreliable analyses (like trying to recover function args, trying to detect bitflips, trying to detect exploitable crashes, etc.) they may be hidden behind flags in minidump-stackwalk or [ProcessorOptions](https://docs.rs/minidump-processor/latest/minidump_processor/struct.ProcessorOptions.html).
+
+The default configuration will be fairly conservative, and our strictest stability guarantees can only be given for that configuation. If you opt into a feature that's marked **\[UNSTABLE\]**, its presence and representation in the schema is also unstable. These fields will be marked as `[UNSTABLE:my_feature_name]` in the schema, where `my_feature_name` is the name of the option in ProcessorOptions, and `--my-feature-name` is the name of the feature in minidump-stackwalk.
+
+Features are grouped under three families which can be used for bulk enabling:
+
+* stable_basic (`--features=stable-basic`): the default configuration, guaranteed stable, always there. All fields in the schema are stable_basic unless otherwise stated (In the future some stable-basic features may be made optional, but they will still be enabled by default.)
+
+* stable_all (`--features=stable-all`): also guaranteed stable, but disabled by default.
+
+* unstable_all (`--features=unstable-all`): unstable, may change or be removed.
+
 
 # Types
 
@@ -321,7 +334,7 @@ anyway.
   "main_module": <u32>,
 
   // Whether any modules have code signing information (redundant).
-  "modules_contains_cert_info": <bool>,
+  [UNSTABLE:evil_json] "modules_contains_cert_info": <bool>,
 
   // All the known modules that are currently mapped into the process.
   //
@@ -388,7 +401,7 @@ anyway.
       // e.g.
       // * "Microsoft Windows"
       // * "Mozilla Corporation"
-      "cert_subject": <string>,
+      [UNSTABLE:evil_json] "cert_subject": <string>,
 
 
 
@@ -434,7 +447,7 @@ anyway.
       "end_addr": <hexstring>,
       "code_id": <string>,
       "filename": <string>,
-      "cert_subject": <string>,
+      [UNSTABLE:evil_json] "cert_subject": <string>,
     }
   ], // unloaded_modules
 
