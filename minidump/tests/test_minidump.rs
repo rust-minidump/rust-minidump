@@ -64,7 +64,7 @@ fn test_module_list() {
     assert_eq!(modules[0].size(), 0x2d000);
     assert_eq!(modules[0].code_file(), "c:\\test_app.exe");
     assert_eq!(
-        modules[0].code_identifier(),
+        modules[0].code_identifier().unwrap(),
         CodeId::new("45D35F6C2d000".to_string())
     );
     assert_eq!(modules[0].debug_file().unwrap(), "c:\\test_app.pdb");
@@ -78,7 +78,7 @@ fn test_module_list() {
     assert_eq!(modules[12].size(), 0xb000);
     assert_eq!(modules[12].code_file(), "C:\\WINDOWS\\system32\\psapi.dll");
     assert_eq!(
-        modules[12].code_identifier(),
+        modules[12].code_identifier().unwrap(),
         CodeId::new("411096CAb000".to_string())
     );
     assert_eq!(modules[12].debug_file().unwrap(), "psapi.pdb");
