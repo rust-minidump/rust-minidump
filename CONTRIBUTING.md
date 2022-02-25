@@ -78,6 +78,32 @@ Wow that's a lot!
 Since streams are rarely perfectly unique, you can usually fill in this stuff by basing it (read: copy-pasting) the code for similar streams. For instance, if you're implementing something similar to MemoryList, then CTRL+Fing for "memory_list" in synth-minidump will generally show you what needs to be added.
 
 
+# Adding a New Analysis to minidump-processor/minidump-stackwalk
+
+Many potential analyses of minidumps can be done fairly modularly (e.g. argument recovery, exploitability estimation, disassembling the crash address, ...). For these kinds of analyses, there is some established infrastructure for adding them.
+
+New features should be added to minidump-processor (minidump-stackwalk) as unstable_all (--unstable-all) features, and the code should be given its own module. Places to modify:
+
+(FIXME: update the SHA for these links after the PR lands this message is part of lands!)
+
+* Add [a module for the feature to lib.rs](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/lib.rs#L79)
+* Add [the feature to ProcessorOptions](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/processor.rs#L20)
+* Fill in the values for [all of ProcessorOptions's ctors](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/processor.rs#L26) (disabled for everything but unstable_all) 
+* Add fields for the data [to ProcessState](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/process_state.rs#L182) (or one of its subfields)
+* Run your analysis in [process_minidump_with_options](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/processor.rs#L73) (if the flag is set in `options`) and populate its ProcessState fields.
+* Add synthetic tests for your feature [in test_processor](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/tests/test_processor.rs)
+* (Please) List your new feature in the pending release [in RELEASES.md](https://github.com/luser/rust-minidump/blob/master/RELEASES.md)
+
+* (Optional) Add support for this data to [ProcessState::print_internal](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/process_state.rs#L465) (--human output)
+* (Optional) Add support for this data to [ProcessState::print_json](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-processor/src/process_state.rs#L672) (--json output)
+  * Update [the JSON Schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)
+* If added to either output, then add [a flag to minidump-stackwalk](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-stackwalk/src/main.rs#L25)
+  * List it under the [--features flag](https://github.com/luser/rust-minidump/blob/d77b26b2e0d10e8f8fe5f8b944c0f142cde3a705/minidump-stackwalk/src/main.rs#L25)
+  * Update [the CLI docs in minidump-stackwalk's README.md](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk#minidump-stackwalk-cli-manual) with the output of --help-markdown
+  * Ensure your feature is tested [in test-minidump-stackwalk](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (may be picked up automatically)
+  * See the section below on `insta` for how to update the snapshots of these tests
+
+It's ok to not have *everything* here ready to go in your initial PR if you're concerned we might not want the feature at all. But if we do accept the feature, all of this should ideally be filled out.
 
 
 
