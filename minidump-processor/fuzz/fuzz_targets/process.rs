@@ -22,9 +22,11 @@ fuzz_target!(|data: (&[u8], &[u8])| {
         };
 
         let provider = minidump_processor::Symbolizer::new(supplier);
+        // Fuzz every possible feature
+        let options = minidump_processor::ProcessorOptions::unstable_all();
 
         let val: Result<_, _> = minidump_processor_fuzz::fuzzing_block_on(
-            minidump_processor::process_minidump(&dump, &provider),
+            minidump_processor::process_minidump_with_options(&dump, &provider, options),
         );
 
         if let Ok(v) = val {
