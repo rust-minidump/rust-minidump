@@ -209,6 +209,7 @@ install minidump_dump but this was more of an accident than an intentional
 feature of the crate.
 
 
+
 ## Unloaded Modules
 
 * `process_state::StackFrame` now includes an `unloaded_modules` field that contains all
@@ -276,7 +277,11 @@ monitored, we may be able to include it in our codebase.
 See: https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs
 
 
+## --raw-json is now --evil-json
 
+**BREAKING CHANGE (TO AN UNSTABLE FEATURE)**
+
+Mozilla's --raw-json flag has been renamed to --evil-json for consistency. It has now also been properly marked as unstable.
 
 
 # breakpad-symbols

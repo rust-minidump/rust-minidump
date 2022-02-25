@@ -293,7 +293,7 @@ fn test_evil_json() {
     let output = Command::new(bin)
         .arg("--json")
         .arg("--pretty")
-        .arg("--raw-json")
+        .arg("--evil-json")
         .arg("../testdata/evil.json")
         .arg("../testdata/test.dmp")
         .arg("../testdata/symbols/")

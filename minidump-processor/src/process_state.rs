@@ -787,6 +787,7 @@ Unknown streams encountered:
 
             // the first module is always the main one
             "main_module": 0,
+            // [UNSTABLE:evil_json]
             "modules_contains_cert_info": !self.cert_info.is_empty(),
             "modules": self.modules.iter().map(|module| {
                 let full_name = module.code_file();
@@ -811,6 +812,7 @@ Unknown streams encountered:
                     "filename": &name,
                     "code_id": module.code_identifier().as_str(),
                     "version": module.version(),
+                    // [UNSTABLE:evil_json]
                     "cert_subject": self.cert_info.get(name),
 
                     // These are all just metrics for debugging minidump-processor's execution

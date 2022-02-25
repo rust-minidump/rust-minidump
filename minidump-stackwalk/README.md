@@ -266,7 +266,7 @@ use this flag in production, but its use is recommended for casual
 human usage or for checking "what's new".
 
 Features under unstable-all may be deprecated and become noops. Features which require additional input
-(such as `--raw-json`) cannot be affected by this, and must still be manually 'discovered'.
+(such as `--evil-json`) cannot be affected by this, and must still be manually 'discovered'.
 
 
 \[default: stable-basic]  [possible values: stable-basic, stable-all, unstable-all]
@@ -285,7 +285,7 @@ happened the way it did, --verbose=trace is very useful (all unwinder logging wi
 
 
 \[default: error]  [possible values: off, error, warn, info, debug, trace]
-### `--raw-json <raw-json>`
+### `--evil-json <evil-json>`
 **[UNSTABLE]** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will hopefully be phased

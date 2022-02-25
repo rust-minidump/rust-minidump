@@ -526,10 +526,18 @@ anyway.
 This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it rather than eternally have two copies of the field. Sorry!
 
 
-## 0.10.0
+## 0.10.0 (Upcoming Release)
 
 ### sensitive and exploitability fully removed
 
 The top level `sensitive` field and its child `exploitability` field have been removed from the schema since they were already optional and never contained any real output. These features were never implemented, but they were stubbed out and made it into the schema simply because we were emitting these dummy fields.
 
 While the idea of a "sensitive" section that can be stripped for data-security purposes is appealing, in reality it isn't really useful because *lots* of information in this report potentially contains sensitive user information. It's up to your organization to decide who can see which fields.
+
+### evil-json now used uniformly and properly indicated as unstable
+
+The evil_json feature has always been an "ideally temporary" hack for Mozilla's workflow, and has therefore always been defacto unstable, but we didn't have the terminology to refer to this. Now it's properly marked as unstable. Mozilla is free to mess with it however it wants.
+
+The codebase also interchangeably referred to the evil_json feature as both evil_json and raw_json. It is now always evil_json to properly express that this is an evil feature that you should not use unless you are mozilla (and if you are mozilla, you should also stop using it).
+
+This changes the `--raw-json` flag of minidump-stackwalk to `--evil-json`

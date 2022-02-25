@@ -106,7 +106,7 @@ should probably not use this flag in production, but its use is recommended for 
 human usage or for checking \"what's new\".
 
 Features under unstable-all may be deprecated and become noops. Features which require \
-additional input (such as `--raw-json`) cannot be affected by this, and must still be \
+additional input (such as `--evil-json`) cannot be affected by this, and must still be \
 manually 'discovered'.\n\n\n")
         )
         .arg(
@@ -146,8 +146,8 @@ be prefixed with `unwind:`).\n\n\n")
 Only provides the top-level summary and a backtrace of the crashing thread.\n\n\n")
         )
         .arg(
-            Arg::with_name("raw-json")
-                .long("raw-json")
+            Arg::with_name("evil-json")
+                .long("evil-json")
                 .takes_value(true)
                 .long_help("**[UNSTABLE]** An input JSON file with the extra information.
 
@@ -361,7 +361,7 @@ async fn main() {
     };
 
     // Now overload the defaults
-    options.evil_json = matches.value_of_os("raw-json").map(Path::new);
+    options.evil_json = matches.value_of_os("evil-json").map(Path::new);
     if matches.is_present("recover-function-args") {
         options.recover_function_args = true;
     }
