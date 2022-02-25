@@ -810,7 +810,7 @@ Unknown streams encountered:
                     "debug_id": module.debug_identifier().unwrap_or_default().breakpad().to_string(),
                     "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                     "filename": &name,
-                    "code_id": module.code_identifier().as_str(),
+                    "code_id": module.code_identifier().unwrap_or_default().as_str(),
                     "version": module.version(),
                     // [UNSTABLE:evil_json]
                     "cert_subject": self.cert_info.get(name),
@@ -872,7 +872,7 @@ Unknown streams encountered:
 
             "unloaded_modules": self.unloaded_modules.iter().map(|module| json!({
                 "base_addr": json_hex(module.raw.base_of_image),
-                "code_id": module.code_identifier().as_str(),
+                "code_id": module.code_identifier().unwrap_or_default().as_str(),
                 "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                 "filename": module.name,
                 "cert_subject": self.cert_info.get(&module.name),

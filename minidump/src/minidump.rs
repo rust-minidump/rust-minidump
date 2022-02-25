@@ -810,7 +810,7 @@ impl MinidumpModule {
             self.raw.misc_record.data_size,
             self.raw.misc_record.rva,
             self.code_file(),
-            self.code_identifier(),
+            self.code_identifier().unwrap_or_default(),
         )?;
         // Print CodeView data.
         match self.codeview_info {
@@ -925,7 +925,7 @@ impl Module for MinidumpModule {
         Cow::Borrowed(&self.name)
     }
 
-    fn code_identifier(&self) -> CodeId {
+    fn code_identifier(&self) -> Option<CodeId> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
                 if raw.age == 0 {
@@ -938,24 +938,33 @@ impl Module for MinidumpModule {
                     // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
                     // TODO: Figure out a way to get access to
                     // `MinidumpSystemInfo` here instead of relying on `age`.
-                    CodeId::new(format!("{:#}", raw.signature))
+                    Some(CodeId::new(format!("{:#}", raw.signature)))
                 } else {
-                    CodeId::new(format!(
+                    Some(CodeId::new(format!(
                         "{0:08X}{1:x}",
                         self.raw.time_date_stamp, self.raw.size_of_image
-                    ))
+                    )))
                 }
             }
-            Some(CodeView::Pdb20(_)) => CodeId::new(format!(
+            Some(CodeView::Pdb20(_)) => Some(CodeId::new(format!(
                 "{0:08X}{1:x}",
                 self.raw.time_date_stamp, self.raw.size_of_image
-            )),
-            Some(CodeView::Elf(ref raw)) => CodeId::from_binary(&raw.build_id),
+            ))),
+            Some(CodeView::Elf(ref raw)) => {
+                // Return None instead of sentinel CodeIds for empty
+                // `build_id`s. Non-executable mapped files like fonts or .jar
+                // files will usually fall under this case.
+                if raw.build_id.iter().all(|byte| *byte == 0) {
+                    None
+                } else {
+                    Some(CodeId::from_binary(&raw.build_id))
+                }
+            }
             // Occasionally things will make it into the module stream that
             // shouldn't be there, and so no meaningful CodeId can be found from
             // those. One of those things are SysV shared memory segments which
             // have no CodeView record.
-            _ => CodeId::nil(),
+            _ => None,
         }
     }
     fn debug_file(&self) -> Option<Cow<'_, str>> {
@@ -1081,7 +1090,7 @@ impl MinidumpUnloadedModule {
             format_time_t(self.raw.time_date_stamp),
             self.raw.module_name_rva,
             self.code_file(),
-            self.code_identifier(),
+            self.code_identifier().unwrap_or_default(),
         )?;
 
         Ok(())
@@ -1108,11 +1117,14 @@ impl Module for MinidumpUnloadedModule {
     fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed(&self.name)
     }
-    fn code_identifier(&self) -> CodeId {
-        CodeId::new(format!(
+    fn code_identifier(&self) -> Option<CodeId> {
+        // TODO: This should be returning None if the unloaded module is coming
+        // from a non-Windows minidump. We'll need info about the operating
+        // system, ideally sourced from the SystemInfo to be able to do this.
+        Some(CodeId::new(format!(
             "{0:08X}{1:x}",
             self.raw.time_date_stamp, self.raw.size_of_image
-        ))
+        )))
     }
     fn debug_file(&self) -> Option<Cow<'_, str>> {
         None
@@ -5052,7 +5064,7 @@ mod test {
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
         assert_eq!(
-            modules[0].code_identifier(),
+            modules[0].code_identifier().unwrap(),
             CodeId::new("B1054D2Aada542bd".to_string())
         );
         assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
@@ -5094,7 +5106,7 @@ mod test {
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
         assert_eq!(
-            modules[0].code_identifier(),
+            modules[0].code_identifier().unwrap(),
             CodeId::new("B1054D2Aada542bd".to_string())
         );
         assert_eq!(modules[0].debug_file().unwrap(), "c:\\foo\\file.pdb");
@@ -5127,7 +5139,7 @@ mod test {
         assert_eq!(modules[0].code_file(), "single module");
         // time_date_stamp and size_of_image concatenated
         assert_eq!(
-            modules[0].code_identifier(),
+            modules[0].code_identifier().unwrap(),
             CodeId::new("B1054D2Aada542bd".to_string())
         );
     }
@@ -6111,7 +6123,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules[0].code_file(), "module 1");
         // The full build ID.
         assert_eq!(
-            modules[0].code_identifier(),
+            modules[0].code_identifier().unwrap(),
             CodeId::new("000102030405060708090a0b0c0d0e0f1011121314151617".to_string())
         );
         assert_eq!(modules[0].debug_file().unwrap(), "module 1");
@@ -6125,7 +6137,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules[1].code_file(), "module 2");
         // The full build ID.
         assert_eq!(
-            modules[1].code_identifier(),
+            modules[1].code_identifier().unwrap(),
             CodeId::new("0001020304050607".to_string())
         );
         assert_eq!(modules[1].debug_file().unwrap(), "module 2");
@@ -6172,7 +6184,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules.len(), 1);
         // should be the uuid stored in cv record
         assert_eq!(
-            modules[0].code_identifier(),
+            modules[0].code_identifier().unwrap(),
             CodeId::new("AABBCCDDEEFF00112233445566778899".to_owned())
         );
         // should match code identifier, but with the age appended to it
@@ -6457,7 +6469,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.iter().collect::<Vec<_>>();
         assert_eq!(modules.len(), 1);
-        assert_eq!(modules[0].code_identifier(), CodeId::new("".to_owned()));
+        assert_eq!(modules[0].code_identifier(), None);
         assert_eq!(modules[0].debug_identifier(), None);
         assert_eq!(modules[0].code_file(), "/SYSV00000000 (deleted)");
         assert_eq!(modules[0].debug_file(), None);

@@ -121,11 +121,8 @@ impl Module for SimpleModule {
             .as_ref()
             .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
     }
-    fn code_identifier(&self) -> CodeId {
-        self.code_identifier
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(CodeId::nil)
+    fn code_identifier(&self) -> Option<CodeId> {
+        self.code_identifier.as_ref().cloned()
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         self.debug_file.as_ref().map(|s| Cow::Borrowed(&s[..]))
@@ -601,13 +598,13 @@ impl FrameSymbolizer for SimpleFrame {
 
 // Can't make Module derive Hash, since then it can't be used as a trait
 // object (because the hash method is generic), so this is a hacky workaround.
-type ModuleKey = (String, String, Option<String>, Option<String>);
+type ModuleKey = (String, Option<String>, Option<String>, Option<String>);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
 fn key(module: &(dyn Module + Sync)) -> ModuleKey {
     (
         module.code_file().to_string(),
-        module.code_identifier().to_string(),
+        module.code_identifier().map(|s| s.to_string()),
         module.debug_file().map(|s| s.to_string()),
         module.debug_identifier().map(|s| s.to_string()),
     )

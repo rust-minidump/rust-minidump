@@ -19,7 +19,7 @@ pub trait Module {
     /// builds of the same code module.  This may contain a uuid, timestamp,
     /// version number, or any combination of this or other information, in an
     /// implementation-defined format.
-    fn code_identifier(&self) -> CodeId;
+    fn code_identifier(&self) -> Option<CodeId>;
     /// The filename containing debugging information associated with the code
     /// module.  If debugging information is stored in a file separate from the
     /// code module itself (as is the case when .pdb or .dSYM files are used),
@@ -49,8 +49,8 @@ impl<'a> Module for (&'a str, DebugId) {
     fn code_file(&self) -> Cow<str> {
         Cow::Borrowed("")
     }
-    fn code_identifier(&self) -> CodeId {
-        CodeId::nil()
+    fn code_identifier(&self) -> Option<CodeId> {
+        None
     }
     fn debug_file(&self) -> Option<Cow<str>> {
         let &(file, _id) = self;
