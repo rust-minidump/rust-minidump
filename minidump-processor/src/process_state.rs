@@ -875,12 +875,6 @@ Unknown streams encountered:
                 "filename": module.name,
                 "cert_subject": self.cert_info.get(&module.name),
             })).collect::<Vec<_>>(),
-
-            "sensitive": {
-                // TODO: Issue #25
-                // low | medium | high | interesting | none | ERROR: *
-                "exploitability": null,
-            }
         });
 
         if let Some(requesting_thread) = self.requesting_thread {
