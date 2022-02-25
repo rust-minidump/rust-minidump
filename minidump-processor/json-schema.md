@@ -507,31 +507,6 @@ anyway.
     ] // records
   }, // mac_crash_info
 
-
-
-
-
-
-  // Ostensibly where extra-security-sensitive information should be stored,
-  // to facilitate stripping it out for users who have lower "security clearance"
-  // or whatever. It's unclear how useful this is given crash info is already
-  // prone to containing random sensitive data, but hey, it's here if you want it?
-  "sensitive": {
-
-    // This feature is completely unimplemented, but remains here for historical
-    // reasons. (I stubbed it out and never bothered to remove it. We should just
-    // deprecate this since users have to assume it's optional anyway.)
-    //
-    // If this **was** implemented, it would contain an enum-string describing
-    // how "exploitable" rust-minidump thinks the crash is. e.g. crashing on
-    // an assertion is no concern, crashing on a null pointer is a *little*
-    // concerning, and segfaulting the instruction pointer is a *huge* concern.
-    //
-    // This is a feature breakpad supports, but the signal-to-noise ratio isn't
-    // very good, so we found people were just ignoring it. As such, we haven't
-    // bothered to reimplement this, and may never.
-    "exploitability": <string>,
-  } // sensitive
 }
 ```
 
@@ -549,3 +524,12 @@ anyway.
 `crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
 
 This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it rather than eternally have two copies of the field. Sorry!
+
+
+## 0.10.0
+
+### sensitive and exploitability fully removed
+
+The top level `sensitive` field and its child `exploitability` field have been removed from the schema since they were already optional and never contained any real output. These features were never implemented, but they were stubbed out and made it into the schema simply because we were emitting these dummy fields.
+
+While the idea of a "sensitive" section that can be stripped for data-security purposes is appealing, in reality it isn't really useful because *lots* of information in this report potentially contains sensitive user information. It's up to your organization to decide who can see which fields.
