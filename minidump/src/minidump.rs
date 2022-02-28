@@ -972,7 +972,7 @@ impl Module for MinidumpModule {
                     &raw.signature.data4,
                 )
                 .ok()?;
-                Some(DebugId::from_parts(uuid, raw.age))
+                (!uuid.is_nil()).then(|| DebugId::from_parts(uuid, raw.age))
             }
             Some(CodeView::Pdb20(ref raw)) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
             Some(CodeView::Elf(ref raw)) => {
