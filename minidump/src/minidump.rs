@@ -990,7 +990,7 @@ impl Module for MinidumpModule {
                     &raw.signature.data4,
                 )
                 .ok()?;
-                Some(DebugId::from_parts(uuid, raw.age))
+                (!uuid.is_nil()).then(|| DebugId::from_parts(uuid, raw.age))
             }
             Some(CodeView::Pdb20(ref raw)) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
             Some(CodeView::Elf(ref raw)) => {
@@ -6214,15 +6214,45 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Some(&STOCK_VERSION_INFO),
         )
         .cv_record(&cv_record1);
+
+        // Add a module with a PDB70 build id of nothing but zeros
+        let name2 = DumpString::new("module 2", Endian::Little);
+        let cv_record2 = Section::with_endian(Endian::Little)
+            // signature
+            .D32(md::CvSignature::Pdb70 as u32)
+            // signature, a GUID
+            .D32(0x0)
+            .D16(0x0)
+            .D16(0x0)
+            .append_bytes(b"\0\0\0\0\0\0\0\0")
+            // age, breakpad writes 0
+            .D32(0)
+            // pdb_file_name
+            .append_bytes(b"\0");
+        let module2 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name2,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        )
+        .cv_record(&cv_record2);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_module(module1)
+            .add_module(module2)
             .add(name1)
-            .add(cv_record1);
+            .add(cv_record1)
+            .add(name2)
+            .add(cv_record2);
+
         let dump = read_synth_dump(dump).unwrap();
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.iter().collect::<Vec<_>>();
 
         assert!(modules[0].debug_identifier().is_none());
+        assert!(modules[1].debug_identifier().is_none());
     }
 
     #[test]
