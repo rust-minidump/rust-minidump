@@ -6196,10 +6196,18 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
         // Add a module with a PDB70 build id of nothing but zeros
         let name2 = DumpString::new("module 2", Endian::Little);
-        const MODULE2_BUILD_ID: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let cv_record2 = Section::with_endian(Endian::Little)
-            .D32(md::CvSignature::Pdb70 as u32) // signature
-            .append_bytes(MODULE2_BUILD_ID);
+            // signature
+            .D32(md::CvSignature::Pdb70 as u32)
+            // signature, a GUID
+            .D32(0x0)
+            .D16(0x0)
+            .D16(0x0)
+            .append_bytes(b"\0\0\0\0\0\0\0\0")
+            // age, breakpad writes 0
+            .D32(0)
+            // pdb_file_name
+            .append_bytes(b"\0");
         let module2 = SynthModule::new(
             Endian::Little,
             0x100000000,
