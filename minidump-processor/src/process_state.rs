@@ -447,10 +447,10 @@ impl CallStack {
                     let mut first = true;
                     for offset in offsets {
                         if first {
-                            write!(f, "0x{:#x}", offset)?;
+                            write!(f, "{:#x}", offset)?;
                         } else {
                             // `|` is our separator for multiple entries
-                            write!(f, "|0x{:#x}", offset)?;
+                            write!(f, "|{:#x}", offset)?;
                         }
                         first = false;
                     }
