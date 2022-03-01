@@ -6193,15 +6193,37 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Some(&STOCK_VERSION_INFO),
         )
         .cv_record(&cv_record1);
+
+        // Add a module with a PDB70 build id of nothing but zeros
+        let name2 = DumpString::new("module 2", Endian::Little);
+        const MODULE2_BUILD_ID: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let cv_record2 = Section::with_endian(Endian::Little)
+            .D32(md::CvSignature::Pdb70 as u32) // signature
+            .append_bytes(MODULE2_BUILD_ID);
+        let module2 = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000,
+            &name2,
+            0xb1054d2a,
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        )
+        .cv_record(&cv_record2);
         let dump = SynthMinidump::with_endian(Endian::Little)
             .add_module(module1)
+            .add_module(module2)
             .add(name1)
-            .add(cv_record1);
+            .add(cv_record1)
+            .add(name2)
+            .add(cv_record2);
+
         let dump = read_synth_dump(dump).unwrap();
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.iter().collect::<Vec<_>>();
 
         assert!(modules[0].debug_identifier().is_none());
+        assert!(modules[1].debug_identifier().is_none());
     }
 
     #[test]
