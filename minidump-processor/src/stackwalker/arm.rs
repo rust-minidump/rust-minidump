@@ -135,16 +135,18 @@ where
         // drowning the rest of the code in checked_add.
         return None;
     }
-    let caller_fp = stack_memory.get_memory_at_address(last_fp as u64)?;
-    let caller_lr = stack_memory.get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?;
-    let caller_pc = last_lr;
-
-    // TODO: why does breakpad do this? how can fp be null by here?
-    let caller_sp = if last_fp == 0 {
-        last_sp
+    let (caller_fp, caller_lr, caller_sp) = if last_fp == 0 {
+        // In this case we want unwinding to stop. One of the termination conditions in get_caller_frame
+        // is that caller_sp <= last_sp. Therefore we can force termination by setting caller_sp = last_sp.
+        (0, 0, last_sp)
     } else {
-        last_fp + POINTER_WIDTH * 2
+        (
+            stack_memory.get_memory_at_address(last_fp as u64)?,
+            stack_memory.get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
+            last_fp + POINTER_WIDTH * 2,
+        )
     };
+    let caller_pc = last_lr;
 
     // Don't do any more validation, just assume it worked.
 
