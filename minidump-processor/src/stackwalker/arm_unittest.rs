@@ -106,6 +106,9 @@ async fn test_scan_without_symbols() {
         .append_repeated(0, 32); // end of stack
 
     f.raw.set_register("pc", 0x40005510);
+    // set an invalid non-zero value for the frame pointer
+    // to force stack scanning
+    f.raw.set_register("fp", 0x00000001);
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
@@ -195,6 +198,9 @@ async fn test_scan_first_frame() {
         .append_repeated(0, 64); // end of stack
 
     f.raw.set_register("pc", 0x40005510);
+    // set an invalid non-zero value for the frame pointer
+    // to force stack scanning
+    f.raw.set_register("fp", 0x00000001);
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
