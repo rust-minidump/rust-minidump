@@ -212,6 +212,10 @@ pub enum SymbolError {
     /// In this case other symbol providers may still be able to find it!
     #[error("symbol file not found")]
     NotFound,
+    /// The module was lacking either the debug file or debug id, as such the
+    /// path of the symbol could not be generated.
+    #[error("the debug file or id were missing")]
+    MissingDebugFileOrId,
     /// Symbol file could not be loaded into memory.
     #[error("couldn't read input stream")]
     LoadError(#[from] std::io::Error),
@@ -435,7 +439,7 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
 async fn fetch_symbol_file(
     client: &Client,
     base_url: &Url,
-    rel_path: &str,
+    module: &(dyn Module + Sync),
     cache: &Path,
     tmp: &Path,
 ) -> Result<SymbolFile, SymbolError> {
@@ -449,7 +453,14 @@ async fn fetch_symbol_file(
     // give up on caching but let the parse+download continue.
 
     // First try to GET the file from a server
-    let url = base_url.join(rel_path).map_err(|_| SymbolError::NotFound)?;
+    let rel_path = relative_symbol_path(module, "sym").ok_or(SymbolError::MissingDebugFileOrId)?;
+    let mut url = base_url
+        .join(&rel_path)
+        .map_err(|_| SymbolError::NotFound)?;
+    let code_id = module.code_identifier().unwrap_or_default();
+    url.query_pairs_mut()
+        .append_pair("code_id", code_id.as_str())
+        .append_pair("code_file", &module.code_file());
     debug!("Trying {}", url);
     let res = client
         .get(url.clone())
@@ -504,13 +515,11 @@ impl SymbolSupplier for HttpSymbolSupplier {
             return local_result;
         }
         // Now try urls
-        if let Some(rel_path) = relative_symbol_path(module, "sym") {
-            for url in &self.urls {
-                if let Ok(file) =
-                    fetch_symbol_file(&self.client, url, &rel_path, &self.cache, &self.tmp).await
-                {
-                    return Ok(file);
-                }
+        for url in &self.urls {
+            if let Ok(file) =
+                fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await
+            {
+                return Ok(file);
             }
         }
         // If we get this far, we have failed to find anything
@@ -739,6 +748,9 @@ impl Symbolizer {
                         stats.corrupt_symbols = false;
                     }
                     Err(SymbolError::NotFound) => {
+                        stats.loaded_symbols = false;
+                    }
+                    Err(SymbolError::MissingDebugFileOrId) => {
                         stats.loaded_symbols = false;
                     }
                     Err(SymbolError::LoadError(_)) => {
