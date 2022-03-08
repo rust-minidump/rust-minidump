@@ -112,7 +112,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR64 {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_directory
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, SizeWith)]
 pub struct MINIDUMP_DIRECTORY {
     /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`][ty] for known stream types,
     /// but user streams can have arbitrary values.
