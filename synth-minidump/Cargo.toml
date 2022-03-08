@@ -10,4 +10,4 @@ readme = "README.md"
 test-assembler = "0.1.5"
 minidump-common = { version = "0.9.6", path = "../minidump-common" }
 encoding = "0.2"
-scroll = "0.10.2"
+scroll = "0.11.0"
