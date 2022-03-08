@@ -16,22 +16,21 @@ use minidump_processor::{
     http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
 };
 
-use clap::{crate_version, App, AppSettings, Arg, ArgGroup};
+use clap::{AppSettings, Arg, ArgGroup, Command};
 use log::error;
 use simplelog::{
     ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode, WriteLogger,
 };
 
-fn make_app() -> App<'static, 'static> {
-    App::new("minidump-stackwalk")
-        .version(crate_version!())
+fn make_app() -> Command<'static> {
+    Command::new("minidump-stackwalk")
+        .version(clap::crate_version!())
         .about("Analyzes minidumps and produces a report (either human-readable or JSON).")
-        .setting(AppSettings::NextLineHelp)
-        .setting(AppSettings::ColoredHelp)
+        .next_line_help(true)
         .setting(AppSettings::DeriveDisplayOrder)
-        .usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...")
+        .override_usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...")
         .arg(
-            Arg::with_name("json")
+            Arg::new("json")
                 .long("json")
                 .long_help("Emit a machine-readable JSON report.
 
@@ -39,7 +38,7 @@ The schema for this output is officially documented here:
 https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md\n\n\n")
         )
         .arg(
-            Arg::with_name("human")
+            Arg::new("human")
                 .long("human")
                 .long_help("Emit a human-readable report (the default).
 
@@ -48,7 +47,7 @@ many details as the JSON format. It is intended for quickly inspecting \
 a crash or debugging rust-minidump itself.\n\n\n")
         )
         .arg(
-            Arg::with_name("cyborg")
+            Arg::new("cyborg")
                 .long("cyborg")
                 .takes_value(true)
                 .long_help("Combine --human and --json
@@ -58,7 +57,7 @@ output to. The --human output will be the 'primary' output and default to stdout
 can be configured with --output-file as normal.\n\n\n")
         )
         .arg(
-            Arg::with_name("dump")
+            Arg::new("dump")
                 .long("dump")
                 .long_help("Dump the 'raw' contents of the minidump.
 
@@ -68,16 +67,16 @@ fairly 'raw' dump of the minidump's contents. This is most useful for debugging 
 minidump-stackwalk itself, or a misbehaving minidump generator.\n\n\n")
         )
         .arg(
-            Arg::with_name("help-markdown")
+            Arg::new("help-markdown")
                 .long("help-markdown")
                 .long_help("Print --help but formatted as markdown (used for generating docs)")
-                .hidden(true)
+                .hide(true)
         )
-        .group(ArgGroup::with_name("output-format")
+        .group(ArgGroup::new("output-format")
             .args(&["json", "human", "cyborg", "dump", "help-markdown"])
         )
         .arg(
-            Arg::with_name("features")
+            Arg::new("features")
                 .long("features")
                 .possible_values(&["stable-basic", "stable-all", "unstable-all"])
                 .default_value("stable-basic")
@@ -110,19 +109,19 @@ additional input (such as `--evil-json`) cannot be affected by this, and must st
 manually 'discovered'.\n\n\n")
         )
         .arg(
-            Arg::with_name("output-file")
+            Arg::new("output-file")
                 .long("output-file")
                 .takes_value(true)
                 .help("Where to write the output to (if unspecified, stdout is used)")
         )
         .arg(
-            Arg::with_name("log-file")
+            Arg::new("log-file")
                 .long("log-file")
                 .takes_value(true)
                 .help("Where to write logs to (if unspecified, stderr is used)")
         )
         .arg(
-            Arg::with_name("verbose")
+            Arg::new("verbose")
                 .long("verbose")
                 .possible_values(&["off", "error", "warn", "info", "debug", "trace"])
                 .default_value("error")
@@ -134,19 +133,19 @@ an unwind happened the way it did, --verbose=trace is very useful (all unwinder 
 be prefixed with `unwind:`).\n\n\n")
         )
         .arg(
-            Arg::with_name("pretty")
+            Arg::new("pretty")
                 .long("pretty")
                 .help("Pretty-print --json output.")
         )
         .arg(
-            Arg::with_name("brief")
+            Arg::new("brief")
                 .long("brief")
                 .help("Provide a briefer --human report.
 
 Only provides the top-level summary and a backtrace of the crashing thread.\n\n\n")
         )
         .arg(
-            Arg::with_name("evil-json")
+            Arg::new("evil-json")
                 .long("evil-json")
                 .takes_value(true)
                 .long_help("**[UNSTABLE]** An input JSON file with the extra information.
@@ -156,16 +155,16 @@ hopefully be phased out and deprecated in favour of just using custom streams in
 minidump itself.\n\n\n")
         )
         .arg(
-            Arg::with_name("recover-function-args")
+            Arg::new("recover-function-args")
                 .long("recover-function-args")
                 .help("**[UNSTABLE]** Heuristically recover function arguments
 
 This is an experimental feature, which currently only shows up in --human output.\n\n\n")
         )
         .arg(
-            Arg::with_name("symbols-url")
+            Arg::new("symbols-url")
                 .long("symbols-url")
-                .multiple(true)
+                .multiple_values(true)
                 .takes_value(true)
                 .number_of_values(1)
                 .long_help("base URL from which URLs to symbol files can be constructed.
@@ -181,7 +180,7 @@ https://tecken.readthedocs.io/en/latest/
 Example symbols-url value: https://symbols.mozilla.org/\n\n\n")
         )
         .arg(
-            Arg::with_name("symbols-cache")
+            Arg::new("symbols-cache")
                 .long("symbols-cache")
                 .takes_value(true)
                 .long_help("A directory in which downloaded symbols can be stored.
@@ -195,7 +194,7 @@ symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mea
 you, don't worry about it, you're probably not doing something that will run afoul of it).\n\n\n")
         )
         .arg(
-            Arg::with_name("symbols-tmp")
+            Arg::new("symbols-tmp")
                 .long("symbols-tmp")
                 .takes_value(true)
                 .long_help("A directory to use as temp space for downloading symbols.
@@ -212,7 +211,7 @@ symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mea
 you, don't worry about it, you're probably not doing something that will run afoul of it).\n\n\n")
         )
         .arg(
-            Arg::with_name("symbol-download-timeout-secs")
+            Arg::new("symbol-download-timeout-secs")
                 .long("symbol-download-timeout-secs")
                 .default_value("1000")
                 .takes_value(true)
@@ -222,19 +221,19 @@ to take.
 This is necessary to enforce forward progress on misbehaving http responses.\n\n")
         )
         .arg(
-            Arg::with_name("minidump")
+            Arg::new("minidump")
                 .required(true)
                 .takes_value(true)
                 .help("Path to the minidump file to analyze.")
         )
         .arg(
-            Arg::with_name("symbols-path")
-                .multiple(true)
+            Arg::new("symbols-path")
+                .multiple_values(true)
                 .takes_value(true)
                 .long_help("Path to a symbol file.
 
 If multiple symbols-path values are provided, all symbol files will be merged \
-into minidump-stackwalk's symbol database.\n\n\n")   
+into minidump-stackwalk's symbol database.\n\n\n")
         )
         .after_help("
 NOTES:

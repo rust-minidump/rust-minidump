@@ -1,6 +1,6 @@
 [package]
 name = "minidump-processor"
-description = "A library and tool for producing stack traces and other useful information from minidump files."
+description = "A library for producing stack traces and other useful information from minidump files."
 version = "0.9.6"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
@@ -22,7 +22,6 @@ symbolic-syms = []
 [dependencies]
 async-trait = "0.1.51"
 breakpad-symbols = { version = "0.9.6", path = "../breakpad-symbols", optional = true }
-clap = "2.34"
 debugid = "0.7.3"
 log = "0.4"
 memmap2 = "0.5.3"
