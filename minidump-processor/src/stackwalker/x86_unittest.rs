@@ -3,8 +3,9 @@
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use crate::{string_symbol_supplier, Symbolizer};
+use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
 use minidump::format::CONTEXT_X86;
+use minidump::system_info::{Cpu, Os};
 use minidump::*;
 use std::collections::HashMap;
 use test_assembler::*;
@@ -43,11 +44,21 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
+        let system_info = SystemInfo {
+            os: Os::Windows,
+            os_version: None,
+            os_build: None,
+            cpu: Cpu::X86,
+            cpu_info: None,
+            cpu_microcode_version: None,
+            cpu_count: 1,
+        };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
+            &system_info,
             &symbolizer,
         )
         .await

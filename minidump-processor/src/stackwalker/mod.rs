@@ -11,7 +11,7 @@ mod unwind;
 mod x86;
 
 use crate::process_state::*;
-use crate::{FrameWalker, SymbolProvider};
+use crate::{FrameWalker, SymbolProvider, SystemInfo};
 use log::trace;
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -85,6 +85,7 @@ async fn get_caller_frame<P>(
     grand_callee_frame: Option<&StackFrame>,
     stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
@@ -103,6 +104,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await
@@ -113,6 +115,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await
@@ -123,6 +126,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await
@@ -133,6 +137,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await
@@ -143,6 +148,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await
@@ -173,6 +179,7 @@ pub async fn walk_stack<P>(
     maybe_context: &Option<&MinidumpContext>,
     stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
     symbol_provider: &P,
 ) -> CallStack
 where
@@ -203,6 +210,7 @@ where
                 grand_callee_frame,
                 stack_memory,
                 modules,
+                system_info,
                 symbol_provider,
             )
             .await;
