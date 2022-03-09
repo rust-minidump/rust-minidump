@@ -1,6 +1,7 @@
 # minidump-stackwalk
 
-[![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
+[![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk)
+[![docs.rs](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
 
 A CLI frontend for [minidump-processor](https://crates.io/crates/minidump-processor), providing both machine-readable and human-readable digests of a minidump, with backtraces and symbolication.
 
@@ -18,15 +19,11 @@ The easiest way to use this is by `cargo install`ing it:
 Full documentation of the CLI can be found in the "minidump-stackwalk CLI manual" section below
 (`--help` will produce the same output).
 
+## Enabling Extra Analysis
 
-# Enabling Extra Analysis
+The [--features](#--features-features) flag can be used to blindly opt into "more analysis". See that entry in the CLI docs for more details on choosing an appropriate value, but the tl;dr is that you can turn everything on and checkout "what's new" with `--features=unstable-all`.
 
-The [--features](#--features-features) flag can be used to blindly opt into "more analysis". See that
-entry in the CLI docs for more details on choosing an appropriate value, but the tl;dr is that you can
-turn everything on and checkout "what's new" with `--features=unstable-all`.
-
-
-# Output Formats
+## Output Formats
 
 Quick Reference:
 
@@ -42,7 +39,7 @@ If you pass **the --json flag** you will get machine-readable (JSON) output. As 
 If you pass **the --human flag**, minidump-stackwalk will output a report in a more human-friendly format with no particular structure. (--brief will make this output less verbose.)
 
 By default, output is written to stdout, but `--output-file=some/file/name.txt` allows you to specify a file to write the output to instead. We will create and completely overwrite the specified file. If there is a fatal error, we will try to avoid writing anything to the output,
-which may result in `--output-file` not being created/cleared at all. 
+which may result in `--output-file` not being created/cleared at all.
 
 Similarly, errors and warnings are written to stderr by default, which can be configured with `--log-file=...`. `--verbose=...` can be used to set the log level (defaults to "error").
 
@@ -50,9 +47,7 @@ If pass **the --cyborg flag** you will get both --human and --json output in one
 
 Finally, **the --dump flag** will get you "raw" output of the minidump, for debugging its contents. The precise meaning of this is purposefully vague; the output will contain whatever we find useful to include for debugging. Most other flags will be fairly irrelevant in this mode, because `minidump_processor` will not be invoked (we only use the `minidump` crate for basic parsing of each stream). This is equivalent to the old minidump_dump tool.
 
-
-
-# Getting Symbols
+## Getting Symbols
 
 minidump-stackwalk can operate without any symbols, but if you provide them you will get richer output in two ways:
 
@@ -65,36 +60,27 @@ To generate those files from your build artifacts, use either [Mozilla's dump_sy
 
 You can then either provide those symbol files directly as `symbols-path` values (passed positionally, see the cli manual below), or indirectly by setting up a symbol server that conforms to mozilla's [Tecken protocol](https://tecken.readthedocs.io/en/latest/download.html) and passing a URL to that server with the `--symbols-url` flag. (The protocol is basically a static file server with a specific path format.)
 
-
-
-
-# Analyzing Firefox Minidumps
+## Analyzing Firefox Minidumps
 
 If you're trying to analyze firefox minidumps, you'll want to point minidump-stackwalk to [Mozilla's Tecken server](https://symbols.mozilla.org/).
 
+```sh
+minidump-stackwalk --symbols-url=https://symbols.mozilla.org/ /path/to/minidump.dmp
 ```
-> minidump-stackwalk --symbols-url=https://symbols.mozilla.org/ /path/to/minidump.dmp
-```
 
-Alternatively, if you want to locally reprocess a crash report on https://crash-stats.mozilla.org (socorro), you may want to use [socc-pair](https://github.com/Gankra/socc-pair), which automates this process (and diffs the local result with the one that server had).
+Alternatively, if you want to locally reprocess a crash report on <https://crash-stats.mozilla.org> (socorro), you may want to use [socc-pair](https://github.com/Gankra/socc-pair), which automates this process (and diffs the local result with the one that server had).
 
-
-
-
-
-
-
-# Debugging Stackwalking
+## Debugging Stackwalking
 
 rust-minidump includes detailed trace-logging of its stackwalker, which you can enabled with `--verbose=trace` (we recommend against running this mode in production, it's *really* verbose, and degenerate inputs may produce enormous logs).
 
 Some tips on reading these logs:
 
 * All stackwalking lines will start with `[TRACE] unwind` (other logs may get interspersed).
-* Each thread's unwind will: 
-  * start with "starting stack unwind" 
+* Each thread's unwind will:
+  * start with "starting stack unwind"
   * end with "finished stack unwind"
-* Each frame's unwind will: 
+* Each frame's unwind will:
   * start with "unwinding \<name\>"
   * end with "\<unwinding method\> seems valid"
   * include the final instruction pointer and stack pointer values at the end
@@ -104,7 +90,7 @@ Some tips on reading these logs:
   * scan
 
 If you see "trying scan" or "trying framepointer", this means the previous
-unwinding method failed. Sometimes the reason for failure will be logged, 
+unwinding method failed. Sometimes the reason for failure will be logged,
 but other times the failure is in a weird place we don't have any logging for.
 If that happens, you can still potentially infer what went wrong based on what
 usually comes after that step.
@@ -126,12 +112,10 @@ If you instead see:
 ```
 
 This suggests the cfi analysis couldn't *even* get to "found symbols for address". So,
-presumably, it *couldn't* find symbols for the current instruction pointer. This may 
+presumably, it *couldn't* find symbols for the current instruction pointer. This may
 be because it didn't map to a known module, or because there were no symbols for that module.
 
-
 Here is an example stackwalking trace:
-
 
 ```text
 [TRACE] unwind: starting stack unwind
@@ -176,12 +160,7 @@ Here is an example stackwalking trace:
 
 (This is a particularly nasty/useless stack to unwind, but it shows the two extreme cases of CFI unwinding in a known function and scan unwinding in a totally unknown function.)
 
-
-
-
-
-
-
+<!-- markdownlint-disable -->
 # minidump-stackwalk CLI manual
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
@@ -193,7 +172,17 @@ Analyzes minidumps and produces a report (either human-readable or JSON).
 # USAGE
 minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
 
-# FLAGS
+# ARGS
+### `<minidump>`
+Path to the minidump file to analyze.
+
+### `<symbols-path>...`
+Path to a symbol file.
+
+If multiple symbols-path values are provided, all symbol files will be merged into
+minidump-stackwalk's symbol database.
+
+# OPTIONS
 ### `--json`
 Emit a machine-readable JSON report.
 
@@ -203,52 +192,33 @@ https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schem
 ### `--human`
 Emit a human-readable report (the default).
 
-The human-readable report does not have a specified format, and may not have as many details as the JSON
-format. It is intended for quickly inspecting a crash or debugging rust-minidump itself.
+The human-readable report does not have a specified format, and may not have as many
+details as the JSON format. It is intended for quickly inspecting a crash or debugging
+rust-minidump itself.
+
+### `--cyborg <cyborg>`
+Combine --human and --json
+
+Because this creates two output streams, you must specify a path to write the --json
+output to. The --human output will be the 'primary' output and default to stdout, which
+can be configured with --output-file as normal.
 
 ### `--dump`
 Dump the 'raw' contents of the minidump.
 
-This is an implementation of the functionality of the old minidump_dump tool. It minimally parses and
-interprets the minidump in an attempt to produce a fairly 'raw' dump of the minidump's contents. This is
-most useful for debugging minidump-stackwalk itself, or a misbehaving minidump generator.
-
-### `--pretty`
-Pretty-print --json output.
-
-### `--brief`
-Provide a briefer --human report.
-
-Only provides the top-level summary and a backtrace of the crashing thread.
-
-### `--recover-function-args`
-**[UNSTABLE]** Heuristically recover function arguments
-
-This is an experimental feature, which currently only shows up in --human output.
-
-### `-h, --help`
-Prints help information
-
-### `-V, --version`
-Prints version information
-
-
-# OPTIONS
-### `--cyborg <cyborg>`
-Combine --human and --json
-
-Because this creates two output streams, you must specify a path to write the --json output to. The --human
-output will be the 'primary' output and default to stdout, which can be configured with --output-file as
-normal.
+This is an implementation of the functionality of the old minidump_dump tool. It
+minimally parses and interprets the minidump in an attempt to produce a fairly 'raw'
+dump of the minidump's contents. This is most useful for debugging minidump-stackwalk
+itself, or a misbehaving minidump generator.
 
 ### `--features <features>`
 Specify at a high-level how much analysis to perform.
 
-This flag provides a way to more blindly opt into Extra Analysis without having to know about the specific
-features of minidump-stackwalk. This is equivalent to ProcessorOptions in minidump-processor. The current
-supported values are:
+This flag provides a way to more blindly opt into Extra Analysis without having to know
+about the specific features of minidump-stackwalk. This is equivalent to
+ProcessorOptions in minidump-processor. The current supported values are:
 
-* stable-basic (default): give me solid detailed analysis that most people would want.
+* stable-basic (default): give me solid detailed analysis that most people would want
 * stable-all: turn on extra detailed analysis.
 * unstable-all: turn on the weird and experimental stuff.
 
@@ -256,20 +226,20 @@ stable-all enables: nothing (currently identical to stable-basic)
 
 unstable-all enables: `--recover-function-args`
 
-minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to introduce new
-features which may be experimental or expensive. To balance these two concerns, new features will usually be
-disabled by default and given a specific flag, but still more easily 'discovered' by anyone who uses this
-flag.
+minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able
+to introduce new features which may be experimental or expensive. To balance these two
+concerns, new features will usually be disabled by default and given a specific flag,
+but still more easily 'discovered' by anyone who uses this flag.
 
-Anyone using minidump-stackwalk who is *really* worried about the output being stable should probably not
-use this flag in production, but its use is recommended for casual
+Anyone using minidump-stackwalk who is *really* worried about the output being stable
+should probably not use this flag in production, but its use is recommended for casual
 human usage or for checking "what's new".
 
-Features under unstable-all may be deprecated and become noops. Features which require additional input
-(such as `--evil-json`) cannot be affected by this, and must still be manually 'discovered'.
+Features under unstable-all may be deprecated and become noops. Features which require
+additional input (such as `--evil-json`) cannot be affected by this, and must still be
+manually 'discovered'.[default: stable-basic]
+\[possible values: stable-basic, stable-all, unstable-all]
 
-
-\[default: stable-basic]  [possible values: stable-basic, stable-all, unstable-all]
 ### `--output-file <output-file>`
 Where to write the output to (if unspecified, stdout is used)
 
@@ -279,25 +249,39 @@ Where to write logs to (if unspecified, stderr is used)
 ### `--verbose <verbose>`
 Set the logging level.
 
-The unwinder has been heavily instrumented with `trace` logging, so if you want to debug why an unwind
-happened the way it did, --verbose=trace is very useful (all unwinder logging will be prefixed with
-`unwind:`).
+The unwinder has been heavily instrumented with `trace` logging, so if you want to debug
+why an unwind happened the way it did, --verbose=trace is very useful (all unwinder
+logging will be prefixed with `unwind:`).[default: error]
+\[possible values: off, error, warn, info, debug, trace]
 
+### `--pretty`
+Pretty-print --json output.
 
-\[default: error]  [possible values: off, error, warn, info, debug, trace]
+### `--brief`
+Provide a briefer --human report.
+
+Only provides the top-level summary and a backtrace of the crashing thread.
+
 ### `--evil-json <evil-json>`
 **[UNSTABLE]** An input JSON file with the extra information.
 
-This is a gross hack for some legacy side-channel information that mozilla uses. It will hopefully be phased
-out and deprecated in favour of just using custom streams in the minidump itself.
+This is a gross hack for some legacy side-channel information that mozilla uses. It will
+hopefully be phased out and deprecated in favour of just using custom streams in the
+minidump itself.
 
-### `--symbols-url <symbols-url>...`
+### `--recover-function-args`
+**[UNSTABLE]** Heuristically recover function arguments
+
+This is an experimental feature, which currently only shows up in --human output.
+
+### `--symbols-url <symbols-url>`
 base URL from which URLs to symbol files can be constructed.
 
-If multiple symbols-url values are provided, they will each be tried in order until one resolves.
+If multiple symbols-url values are provided, they will each be tried in order until one
+resolves.
 
-The server the base URL points to is expected to conform to the Tecken symbol server protocol. For more
-details, see the Tecken docs:
+The server the base URL points to is expected to conform to the Tecken symbol server
+protocol. For more details, see the Tecken docs:
 
 https://tecken.readthedocs.io/en/latest/
 
@@ -306,26 +290,29 @@ Example symbols-url value: https://symbols.mozilla.org/
 ### `--symbols-cache <symbols-cache>`
 A directory in which downloaded symbols can be stored.
 
-Symbol files can be very large, so we recommend placing cached files in your system's temp directory so that
-it can garbage collect unused ones for you. To this end, the default value for this flag is a `rust-
-minidump-cache` subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
+Symbol files can be very large, so we recommend placing cached files in your system's
+temp directory so that it can garbage collect unused ones for you. To this end, the
+default value for this flag is a `rust-minidump-cache` subdirectory of
+`std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
 
-symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean anything to you, don't
-worry about it, you're probably not doing something that will run afoul of it).
+symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean
+anything to you, don't worry about it, you're probably not doing something that will run
+afoul of it).
 
 ### `--symbols-tmp <symbols-tmp>`
 A directory to use as temp space for downloading symbols.
 
-A temp dir is necessary to allow for multiple rust-minidump instances to share a cache without race
-conditions. Files to be added to the cache will be constructed in this location before being atomically
-moved to the cache.
+A temp dir is necessary to allow for multiple rust-minidump instances to share a cache
+without race conditions. Files to be added to the cache will be constructed in this
+location before being atomically moved to the cache.
 
-If no path is specified, `std::env::temp_dir()` will be used to improve portability. See the rust
-documentation for how to set that value if you wish to use something other than your system's default temp
-directory.
+If no path is specified, `std::env::temp_dir()` will be used to improve portability. See
+the rust documentation for how to set that value if you wish to use something other than
+your system's default temp directory.
 
-symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean anything to you, don't
-worry about it, you're probably not doing something that will run afoul of it).
+symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean
+anything to you, don't worry about it, you're probably not doing something that will run
+afoul of it).
 
 ### `--symbol-download-timeout-secs <symbol-download-timeout-secs>`
 The maximum amount of time (in seconds) a symbol file download is allowed to take.
@@ -334,16 +321,11 @@ This is necessary to enforce forward progress on misbehaving http responses.
 
 \[default: 1000]
 
-# ARGS
-### `<minidump>`
-Path to the minidump file to analyze.
+### `-h, --help`
+Print help information
 
-### `<symbols-path>...`
-Path to a symbol file.
-
-If multiple symbols-path values are provided, all symbol files will be merged into minidump-stackwalk's
-symbol database.
-
+### `-V, --version`
+Print version information
 
 
 # NOTES
@@ -354,24 +336,20 @@ Symbols are used for two purposes:
 
 1. To fill in more information about each frame of the backtraces. (function names, lines, etc.)
 
-2. To do produce a more *accurate* backtrace. This is primarily accomplished with call frame information (CFI), but
-just knowing what parts of a module maps to actual code is also useful!
-
-
+2. To do produce a more *accurate* backtrace. This is primarily accomplished with call frame
+information (CFI), but just knowing what parts of a module maps to actual code is also useful!
 
 ## Supported Symbol Formats
 
-Currently only breakpad text symbol files are supported, although we hope to eventually support native formats like
-PDB and DWARF as well.
-
-
+Currently only breakpad text symbol files are supported, although we hope to eventually support
+native formats like PDB and DWARF as well.
 
 ## Breakpad Symbol Files
 
-Breakpad symbol files are basically a simplified version of the information found in native debuginfo formats. We
-recommend using a version of dump_syms to generate them.
+Breakpad symbol files are basically a simplified version of the information found in native
+debuginfo formats. We recommend using a version of dump_syms to generate them.
 
 See:
-* symbol file docs: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
+* https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
 * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
 

@@ -29,65 +29,67 @@ fn make_app() -> Command<'static> {
         .next_line_help(true)
         .setting(AppSettings::DeriveDisplayOrder)
         .override_usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...")
-        .arg(
-            Arg::new("json")
-                .long("json")
-                .long_help("Emit a machine-readable JSON report.
+        .arg(Arg::new("json").long("json").long_help(
+            "Emit a machine-readable JSON report.
 
 The schema for this output is officially documented here:
-https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md\n\n\n")
-        )
-        .arg(
-            Arg::new("human")
-                .long("human")
-                .long_help("Emit a human-readable report (the default).
+https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md",
+        ))
+        .arg(Arg::new("human").long("human").long_help(
+            "Emit a human-readable report (the default).
 
 The human-readable report does not have a specified format, and may not have as \
 many details as the JSON format. It is intended for quickly inspecting \
-a crash or debugging rust-minidump itself.\n\n\n")
-        )
+a crash or debugging rust-minidump itself.",
+        ))
         .arg(
             Arg::new("cyborg")
                 .long("cyborg")
                 .takes_value(true)
-                .long_help("Combine --human and --json
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "Combine --human and --json
 
 Because this creates two output streams, you must specify a path to write the --json \
 output to. The --human output will be the 'primary' output and default to stdout, which \
-can be configured with --output-file as normal.\n\n\n")
+can be configured with --output-file as normal.",
+                ),
         )
-        .arg(
-            Arg::new("dump")
-                .long("dump")
-                .long_help("Dump the 'raw' contents of the minidump.
+        .arg(Arg::new("dump").long("dump").long_help(
+            "Dump the 'raw' contents of the minidump.
 
 This is an implementation of the functionality of the old minidump_dump tool. \
 It minimally parses and interprets the minidump in an attempt to produce a \
 fairly 'raw' dump of the minidump's contents. This is most useful for debugging \
-minidump-stackwalk itself, or a misbehaving minidump generator.\n\n\n")
-        )
+minidump-stackwalk itself, or a misbehaving minidump generator.",
+        ))
         .arg(
             Arg::new("help-markdown")
                 .long("help-markdown")
                 .long_help("Print --help but formatted as markdown (used for generating docs)")
-                .hide(true)
+                .hide(true),
         )
-        .group(ArgGroup::new("output-format")
-            .args(&["json", "human", "cyborg", "dump", "help-markdown"])
-        )
+        .group(ArgGroup::new("output-format").args(&[
+            "json",
+            "human",
+            "cyborg",
+            "dump",
+            "help-markdown",
+        ]))
         .arg(
             Arg::new("features")
                 .long("features")
                 .possible_values(&["stable-basic", "stable-all", "unstable-all"])
                 .default_value("stable-basic")
                 .takes_value(true)
-                .long_help("Specify at a high-level how much analysis to perform.
+                .long_help(
+                    "Specify at a high-level how much analysis to perform.
 
 This flag provides a way to more blindly opt into Extra Analysis without having to know about \
 the specific features of minidump-stackwalk. This is equivalent to ProcessorOptions in \
 minidump-processor. The current supported values are:
 
-* stable-basic (default): give me solid detailed analysis that most people would want.
+* stable-basic (default): give me solid detailed analysis that most people would want
 * stable-all: turn on extra detailed analysis.
 * unstable-all: turn on the weird and experimental stuff.
 
@@ -106,19 +108,22 @@ human usage or for checking \"what's new\".
 
 Features under unstable-all may be deprecated and become noops. Features which require \
 additional input (such as `--evil-json`) cannot be affected by this, and must still be \
-manually 'discovered'.\n\n\n")
+manually 'discovered'.",
+                ),
         )
         .arg(
             Arg::new("output-file")
                 .long("output-file")
                 .takes_value(true)
-                .help("Where to write the output to (if unspecified, stdout is used)")
+                .allow_invalid_utf8(true)
+                .help("Where to write the output to (if unspecified, stdout is used)"),
         )
         .arg(
             Arg::new("log-file")
                 .long("log-file")
                 .takes_value(true)
-                .help("Where to write logs to (if unspecified, stderr is used)")
+                .allow_invalid_utf8(true)
+                .help("Where to write logs to (if unspecified, stderr is used)"),
         )
         .arg(
             Arg::new("verbose")
@@ -126,40 +131,45 @@ manually 'discovered'.\n\n\n")
                 .possible_values(&["off", "error", "warn", "info", "debug", "trace"])
                 .default_value("error")
                 .takes_value(true)
-                .long_help("Set the logging level.
+                .long_help(
+                    "Set the logging level.
 
 The unwinder has been heavily instrumented with `trace` logging, so if you want to debug why \
 an unwind happened the way it did, --verbose=trace is very useful (all unwinder logging will \
-be prefixed with `unwind:`).\n\n\n")
+be prefixed with `unwind:`).",
+                ),
         )
         .arg(
             Arg::new("pretty")
                 .long("pretty")
-                .help("Pretty-print --json output.")
+                .help("Pretty-print --json output."),
         )
-        .arg(
-            Arg::new("brief")
-                .long("brief")
-                .help("Provide a briefer --human report.
+        .arg(Arg::new("brief").long("brief").help(
+            "Provide a briefer --human report.
 
-Only provides the top-level summary and a backtrace of the crashing thread.\n\n\n")
-        )
+Only provides the top-level summary and a backtrace of the crashing thread.",
+        ))
         .arg(
             Arg::new("evil-json")
                 .long("evil-json")
                 .takes_value(true)
-                .long_help("**[UNSTABLE]** An input JSON file with the extra information.
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "**[UNSTABLE]** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will \
 hopefully be phased out and deprecated in favour of just using custom streams in the \
-minidump itself.\n\n\n")
+minidump itself.",
+                ),
         )
         .arg(
             Arg::new("recover-function-args")
                 .long("recover-function-args")
-                .help("**[UNSTABLE]** Heuristically recover function arguments
+                .help(
+                    "**[UNSTABLE]** Heuristically recover function arguments
 
-This is an experimental feature, which currently only shows up in --human output.\n\n\n")
+This is an experimental feature, which currently only shows up in --human output.",
+                ),
         )
         .arg(
             Arg::new("symbols-url")
@@ -167,7 +177,8 @@ This is an experimental feature, which currently only shows up in --human output
                 .multiple_values(true)
                 .takes_value(true)
                 .number_of_values(1)
-                .long_help("base URL from which URLs to symbol files can be constructed.
+                .long_help(
+                    "base URL from which URLs to symbol files can be constructed.
 
 If multiple symbols-url values are provided, they will each be tried in order until \
 one resolves.
@@ -177,13 +188,16 @@ symbol server protocol. For more details, see the Tecken docs:
 
 https://tecken.readthedocs.io/en/latest/
 
-Example symbols-url value: https://symbols.mozilla.org/\n\n\n")
+Example symbols-url value: https://symbols.mozilla.org/",
+                ),
         )
         .arg(
             Arg::new("symbols-cache")
                 .long("symbols-cache")
                 .takes_value(true)
-                .long_help("A directory in which downloaded symbols can be stored.
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "A directory in which downloaded symbols can be stored.
                     
 Symbol files can be very large, so we recommend placing cached files in your \
 system's temp directory so that it can garbage collect unused ones for you. \
@@ -191,13 +205,16 @@ To this end, the default value for this flag is a `rust-minidump-cache` \
 subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
 
 symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean anything to \
-you, don't worry about it, you're probably not doing something that will run afoul of it).\n\n\n")
+you, don't worry about it, you're probably not doing something that will run afoul of it).",
+                ),
         )
         .arg(
             Arg::new("symbols-tmp")
                 .long("symbols-tmp")
                 .takes_value(true)
-                .long_help("A directory to use as temp space for downloading symbols.
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "A directory to use as temp space for downloading symbols.
 
 A temp dir is necessary to allow for multiple rust-minidump instances to share a cache without \
 race conditions. Files to be added to the cache will be constructed in this location before \
@@ -208,34 +225,42 @@ See the rust documentation for how to set that value if you wish to use somethin
 your system's default temp directory.
 
 symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean anything to \
-you, don't worry about it, you're probably not doing something that will run afoul of it).\n\n\n")
+you, don't worry about it, you're probably not doing something that will run afoul of it).",
+                ),
         )
         .arg(
             Arg::new("symbol-download-timeout-secs")
                 .long("symbol-download-timeout-secs")
                 .default_value("1000")
                 .takes_value(true)
-                .help("The maximum amount of time (in seconds) a symbol file download is allowed \
+                .help(
+                    "The maximum amount of time (in seconds) a symbol file download is allowed \
 to take.
 
-This is necessary to enforce forward progress on misbehaving http responses.\n\n")
+This is necessary to enforce forward progress on misbehaving http responses.",
+                ),
         )
         .arg(
             Arg::new("minidump")
-                .required(true)
+                .required_unless_present("help-markdown")
                 .takes_value(true)
-                .help("Path to the minidump file to analyze.")
+                .allow_invalid_utf8(true)
+                .help("Path to the minidump file to analyze."),
         )
         .arg(
             Arg::new("symbols-path")
                 .multiple_values(true)
                 .takes_value(true)
-                .long_help("Path to a symbol file.
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "Path to a symbol file.
 
 If multiple symbols-path values are provided, all symbol files will be merged \
-into minidump-stackwalk's symbol database.\n\n\n")
+into minidump-stackwalk's symbol database.",
+                ),
         )
-        .after_help("
+        .after_help(
+            "
 NOTES:
 
 Purpose of Symbols:
@@ -248,14 +273,10 @@ Purpose of Symbols:
 call frame information (CFI), but just knowing what parts of a module maps to actual \
 code is also useful!
 
-
-
 Supported Symbol Formats:
 
   Currently only breakpad text symbol files are supported, although we hope to eventually \
 support native formats like PDB and DWARF as well.
-
-
 
 Breakpad Symbol Files:
 
@@ -263,10 +284,11 @@ Breakpad Symbol Files:
 native debuginfo formats. We recommend using a version of dump_syms to generate them.
 
   See:
-    * symbol file docs: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
+    * https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
     * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
 
-")
+",
+        )
 }
 
 #[cfg_attr(test, allow(dead_code))]
