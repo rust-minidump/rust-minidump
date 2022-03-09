@@ -6991,10 +6991,24 @@ impl ContextFlagsCpu {
     }
 }
 
+bitflags! {
+    /// Flags available for use in [`CONTEXT_AMD64.context_flags`]
+    pub struct ContextFlagsAmd64: u32 {
+        const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits | Self::CONTEXT_AMD64_INTEGER.bits | Self::CONTEXT_AMD64_FLOATING_POINT.bits;
+        const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits | Self::CONTEXT_AMD64_SEGMENTS.bits | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits;
+    }
+}
+
 /// Possible contents of [`CONTEXT_AMD64::float_save`].
 ///
 /// This struct matches the definition of the struct with the same name from WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, SmartDefault, Clone, Pread, Pwrite, SizeWith)]
 pub struct XMM_SAVE_AREA32 {
     pub control_word: u16,
     pub status_word: u16,
@@ -7009,8 +7023,11 @@ pub struct XMM_SAVE_AREA32 {
     pub reserved3: u16,
     pub mx_csr: u32,
     pub mx_csr_mask: u32,
+    #[default([0; 8])]
     pub float_registers: [u128; 8],
+    #[default([0; 16])]
     pub xmm_registers: [u128; 16],
+    #[default([0; 96])]
     pub reserved4: [u8; 96],
 }
 
@@ -7043,7 +7060,7 @@ pub struct SSE_REGISTERS {
 /// An x86-64 (amd64) CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86-64.
-#[derive(Debug, SmartDefault, Clone, Pread, SizeWith)]
+#[derive(Debug, SmartDefault, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_AMD64 {
     pub p1_home: u64,
