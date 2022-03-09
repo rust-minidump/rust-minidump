@@ -156,6 +156,19 @@ pub enum ProcessError {
     MissingThreadList,
 }
 
+impl ProcessError {
+    /// Returns just the name of the error, as a more human-friendly version of
+    /// an error-code for error logging.
+    pub fn name(&self) -> &'static str {
+        match self {
+            ProcessError::MinidumpReadError(_) => "MinidumpReadError",
+            ProcessError::UnknownError => "UnknownError",
+            ProcessError::MissingSystemInfo => "MissingSystemInfo",
+            ProcessError::MissingThreadList => "MissingThreadList",
+        }
+    }
+}
+
 /// Unwind all threads in `dump` and return a report as a `ProcessState`.
 ///
 /// This is equivalent to [`process_minidump_with_options`] with

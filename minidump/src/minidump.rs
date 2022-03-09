@@ -100,6 +100,28 @@ pub enum Error {
     CodeViewReadFailure,
 }
 
+impl Error {
+    /// Returns just the name of the error, as a more human-friendly version of
+    /// an error-code for error logging.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Error::FileNotFound => "FileNotFound",
+            Error::IoError => "IoError",
+            Error::MissingHeader => "MissingHeader",
+            Error::HeaderMismatch => "HeaderMismatch",
+            Error::VersionMismatch => "VersionMismatch",
+            Error::MissingDirectory => "MissingDirectory",
+            Error::StreamReadFailure => "StreamReadFailure",
+            Error::StreamSizeMismatch { .. } => "StreamSizeMismatch",
+            Error::StreamNotFound => "StreamNotFound",
+            Error::ModuleReadFailure => "ModuleReadFailure",
+            Error::MemoryReadFailure => "MemoryReadFailure",
+            Error::DataError => "DataError",
+            Error::CodeViewReadFailure => "CodeViewReadFailure",
+        }
+    }
+}
+
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream<'a>: Sized {
     /// The stream type constant used in the `md::MDRawDirectory` entry.

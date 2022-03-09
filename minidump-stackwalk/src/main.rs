@@ -513,13 +513,13 @@ async fn main() {
                     }
                 }
                 Err(err) => {
-                    error!("{:?} - Error processing dump: {}", err, err);
+                    error!("{} - Error processing dump: {}", err.name(), err);
                     std::process::exit(1);
                 }
             }
         }
         Err(err) => {
-            error!("{:?} - Error reading dump: {}", err, err);
+            error!("{} - Error reading dump: {}", err.name(), err);
             std::process::exit(1);
         }
     }
