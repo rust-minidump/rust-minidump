@@ -15,7 +15,7 @@ use std::fmt;
 
 use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
-use scroll::{Endian, Pread, SizeWith};
+use scroll::{Endian, Pread, Pwrite, SizeWith};
 use smart_default::SmartDefault;
 
 /// An offset from the start of the minidump file.
@@ -35,7 +35,7 @@ pub const MINIDUMP_VERSION: u32 = 42899;
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_header
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_HEADER {
     /// This should be [`MINIDUMP_SIGNATURE`][signature].
     ///
@@ -63,7 +63,7 @@ pub struct MINIDUMP_HEADER {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_location_descriptor
-#[derive(Debug, Copy, Default, Clone, Pread, SizeWith)]
+#[derive(Debug, Copy, Default, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_LOCATION_DESCRIPTOR {
     /// The size of this data.
     pub data_size: u32,
@@ -83,7 +83,7 @@ impl From<u8> for MINIDUMP_LOCATION_DESCRIPTOR {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_descriptor
-#[derive(Debug, Copy, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Copy, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MEMORY_DESCRIPTOR {
     /// The base address of this memory range from the process.
     pub start_of_memory_range: u64,
@@ -97,7 +97,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_descriptor64
-#[derive(Debug, Copy, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Copy, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MEMORY_DESCRIPTOR64 {
     /// The base address of this memory range from the process.
     pub start_of_memory_range: u64,
@@ -112,7 +112,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR64 {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_directory
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_DIRECTORY {
     /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`][ty] for known stream types,
     /// but user streams can have arbitrary values.
@@ -298,7 +298,7 @@ impl From<MINIDUMP_STREAM_TYPE> for u32 {
 }
 
 /// The name of a thread, found in the ThreadNamesStream.
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_THREAD_NAME {
     /// The id of the thread.
     pub thread_id: u32,
@@ -311,7 +311,7 @@ pub struct MINIDUMP_THREAD_NAME {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_module
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_MODULE {
     /// The base address of the executable image in memory.
     pub base_of_image: u64,
@@ -369,7 +369,7 @@ pub struct MINIDUMP_UNLOADED_MODULE {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/verrsrc/ns-verrsrc-vs_fixedfileinfo
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct VS_FIXEDFILEINFO {
     /// Contains the value of `VS_FFI_SIGNATURE`
     pub signature: u32,
@@ -613,7 +613,7 @@ pub struct IMAGE_DEBUG_MISC {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_thread
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_THREAD {
     /// The identifier of this thread
     pub thread_id: u32,
@@ -642,7 +642,7 @@ pub struct MINIDUMP_THREAD {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_exception_stream
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_EXCEPTION_STREAM {
     /// The identifier of the thread that encountered the exception.
     pub thread_id: u32,
@@ -660,7 +660,7 @@ pub struct MINIDUMP_EXCEPTION_STREAM {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_exception
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_EXCEPTION {
     /// The reason the exception occurred.
     ///
@@ -7430,7 +7430,7 @@ pub struct CONTEXT_X86 {
 /// CPU information contained within the [`MINIDUMP_SYSTEM_INFO`] struct
 ///
 /// This struct matches the definition of the `CPU_INFORMATION` union from minidumpapiset.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct CPU_INFORMATION {
     /// `data` is defined as a union in the Microsoft headers
     ///
@@ -7477,7 +7477,7 @@ pub struct OtherCpuInfo {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_system_info
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_SYSTEM_INFO {
     /// The system's processor architecture
     ///
@@ -8001,7 +8001,7 @@ pub enum AssertionType {
 /// Dynamic linker information for a shared library on 32-bit Linux
 ///
 /// This is functionally equivalent to the data in `struct link_map` defined in <link.h>.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct LINK_MAP_32 {
     pub addr: u32,
     /// The offset of a string containing the filename of this shared library
@@ -8013,7 +8013,7 @@ pub struct LINK_MAP_32 {
 ///
 /// Used when converting minidumps to coredumps. This is functionally equivalent to the data
 /// in `struct r_debug` defined in <link.h>.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct DSO_DEBUG_32 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
@@ -8033,7 +8033,7 @@ pub struct DSO_DEBUG_32 {
 /// Dynamic linker information for a shared library on 64-bit Linux
 ///
 /// This is functionally equivalent to the data in `struct link_map` defined in <link.h>.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct LINK_MAP_64 {
     pub addr: u64,
     /// The offset of a string containing the filename of this shared library
@@ -8045,7 +8045,7 @@ pub struct LINK_MAP_64 {
 ///
 /// Used when converting minidumps to coredumps. This is functionally equivalent to the data
 /// in `struct r_debug` defined in <link.h>.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct DSO_DEBUG_64 {
     /// The version number of this protocol, from `r_debug.r_version`
     pub version: u32,
