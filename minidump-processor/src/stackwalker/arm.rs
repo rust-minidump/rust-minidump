@@ -9,6 +9,7 @@ use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
 use log::trace;
+use minidump::system_info::Os;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
@@ -99,11 +100,22 @@ fn get_caller_by_frame_pointer<P>(
     callee: &StackFrame,
     stack_memory: &MinidumpMemory<'_>,
     _modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
+    // The ARM manual states that:
+    // > LR can be used for other purposes when it is not required to support
+    // > a return from a subroutine.
+    // In other words, we need to be conservative and treat it as a general
+    // purpose register. Except on iOS, which has stricter conventions around
+    // register use, and does guarantee that LR contains a valid return addr.
+    if system_info.os != Os::Ios {
+        return None;
+    }
+
     trace!("unwind: trying frame pointer");
     // Assume that the standard %fp-using ARM calling convention is in use.
     // The main quirk of this ABI is that the return address doesn't need to
@@ -305,7 +317,7 @@ impl Unwind for ArmContext {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
-        _system_info: &SystemInfo,
+        system_info: &SystemInfo,
         syms: &P,
     ) -> Option<StackFrame>
     where
@@ -319,7 +331,7 @@ impl Unwind for ArmContext {
             frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
         }
         if frame.is_none() {
-            frame = get_caller_by_frame_pointer(self, callee, stack, modules, syms);
+            frame = get_caller_by_frame_pointer(self, callee, stack, modules, system_info, syms);
         }
         if frame.is_none() {
             frame = get_caller_by_scan(self, callee, stack, modules, syms).await;

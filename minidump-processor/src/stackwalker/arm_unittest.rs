@@ -13,6 +13,7 @@ use test_assembler::*;
 struct TestFixture {
     pub raw: CONTEXT_ARM,
     pub modules: MinidumpModuleList,
+    pub system_info: SystemInfo,
     pub symbols: HashMap<String, String>,
 }
 
@@ -26,6 +27,15 @@ impl TestFixture {
                 MinidumpModule::new(0x40000000, 0x10000, "module1"),
                 MinidumpModule::new(0x50000000, 0x10000, "module2"),
             ]),
+            system_info: SystemInfo {
+                os: Os::Ios,
+                os_version: None,
+                os_build: None,
+                cpu: Cpu::Arm,
+                cpu_info: None,
+                cpu_microcode_version: None,
+                cpu_count: 1,
+            },
             symbols: HashMap::new(),
         }
     }
@@ -44,21 +54,12 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
-        let system_info = SystemInfo {
-            os: Os::Windows,
-            os_version: None,
-            os_build: None,
-            cpu: Cpu::Arm,
-            cpu_info: None,
-            cpu_microcode_version: None,
-            cpu_count: 1,
-        };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
-            &system_info,
+            &self.system_info,
             &symbolizer,
         )
         .await
@@ -241,6 +242,102 @@ async fn test_scan_first_frame() {
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap() as u32
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_invalid_lr() {
+    let mut f = TestFixture::new();
+    f.system_info.os = Os::Linux;
+
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let lr = Label::new();
+    let return_address1 = 0x50000100u32;
+    let return_address2 = 0x50000900u32;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 32) // space
+        .mark(&lr) // the LR points to something on the stack
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame1_fp) // next fp will point to the next value
+        .D32(&frame2_fp) // save current frame pointer
+        .D32(return_address1) // save current link register
+        .mark(&frame1_sp)
+        // frame 1
+        .append_repeated(0, 32) // space
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(return_address2)
+        .mark(&frame2_sp);
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", lr.value().unwrap() as u32);
+    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw
+        .set_register("sp", stack.start().value().unwrap() as u32);
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 3);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 2);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap() as u32
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        // Frame 2
+        let frame = &s.frames[2];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 2);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap() as u32
             );
         } else {
             unreachable!();
