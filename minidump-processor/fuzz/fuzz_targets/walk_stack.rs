@@ -3,8 +3,9 @@ use libfuzzer_sys::fuzz_target;
 
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
+use minidump::system_info::{Cpu, Os};
 use minidump_processor::walk_stack;
-use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer};
+use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer, SystemInfo};
 use std::collections::HashMap;
 use test_assembler::Section;
 
@@ -43,6 +44,15 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
+        let system_info = SystemInfo {
+            os: Os::Windows,
+            os_version: None,
+            os_build: None,
+            cpu: Cpu::X86_64,
+            cpu_info: None,
+            cpu_microcode_version: None,
+            cpu_count: 1,
+        };
 
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
 
@@ -51,6 +61,7 @@ impl TestFixture {
                 &Some(&context),
                 Some(&stack_memory),
                 &self.modules,
+                &system_info,
                 &symbolizer,
             )
             .await,
