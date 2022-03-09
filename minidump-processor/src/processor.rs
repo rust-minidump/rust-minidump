@@ -370,9 +370,14 @@ where
 
         let stack_memory = thread.stack_memory(&memory_list);
 
-        let mut stack =
-            stackwalker::walk_stack(&context, stack_memory.as_deref(), &modules, symbol_provider)
-                .await;
+        let mut stack = stackwalker::walk_stack(
+            &context,
+            stack_memory.as_deref(),
+            &modules,
+            &system_info,
+            symbol_provider,
+        )
+        .await;
         stack.thread_id = id;
         for frame in &mut stack.frames {
             // If the frame doesn't have a loaded module, try to find an unloaded module

@@ -9,7 +9,7 @@
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
-use crate::SymbolProvider;
+use crate::{SymbolProvider, SystemInfo};
 use log::trace;
 use minidump::format::CONTEXT_AMD64;
 use minidump::{
@@ -416,6 +416,7 @@ impl Unwind for CONTEXT_AMD64 {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
+        _system_info: &SystemInfo,
         syms: &P,
     ) -> Option<StackFrame>
     where

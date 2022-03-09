@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use crate::process_state::StackFrame;
-use crate::SymbolProvider;
+use crate::{SymbolProvider, SystemInfo};
 use minidump::{MinidumpMemory, MinidumpModuleList};
 
 /// A trait for things that can unwind to a caller.
@@ -15,6 +15,7 @@ pub trait Unwind {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
+        system_info: &SystemInfo,
         symbol_provider: &P,
     ) -> Option<StackFrame>
     where

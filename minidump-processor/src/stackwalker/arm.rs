@@ -7,7 +7,7 @@
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
-use crate::SymbolProvider;
+use crate::{SymbolProvider, SystemInfo};
 use log::trace;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
@@ -305,6 +305,7 @@ impl Unwind for ArmContext {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
+        _system_info: &SystemInfo,
         syms: &P,
     ) -> Option<StackFrame>
     where
