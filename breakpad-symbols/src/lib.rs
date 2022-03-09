@@ -541,6 +541,8 @@ pub trait FrameSymbolizer {
 pub trait FrameWalker {
     /// Get the instruction address that we're trying to unwind from.
     fn get_instruction(&self) -> u64;
+    /// Check whether the callee has a callee of its own.
+    fn has_grand_callee(&self) -> bool;
     /// Get the number of bytes the callee's callee's parameters take up
     /// on the stack (or 0 if unknown/invalid). This is needed for
     /// STACK WIN unwinding.

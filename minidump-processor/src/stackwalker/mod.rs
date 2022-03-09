@@ -22,6 +22,7 @@ use std::convert::TryFrom;
 
 struct CfiStackWalker<'a, C: CpuContext> {
     instruction: u64,
+    has_grand_callee: bool,
     grand_callee_parameter_size: u32,
 
     callee_ctx: &'a C,
@@ -42,6 +43,9 @@ where
 {
     fn get_instruction(&self) -> u64 {
         self.instruction
+    }
+    fn has_grand_callee(&self) -> bool {
+        self.has_grand_callee
     }
     fn get_grand_callee_parameter_size(&self) -> u32 {
         self.grand_callee_parameter_size
