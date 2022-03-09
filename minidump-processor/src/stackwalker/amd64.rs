@@ -50,9 +50,11 @@ where
     let module = modules.module_at_address(callee.instruction)?;
 
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
+    let has_grand_callee = grand_callee.is_some();
 
     let mut stack_walker = CfiStackWalker {
         instruction: callee.instruction,
+        has_grand_callee,
         grand_callee_parameter_size,
 
         callee_ctx: ctx,

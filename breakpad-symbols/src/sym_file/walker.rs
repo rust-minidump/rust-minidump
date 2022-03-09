@@ -1044,6 +1044,7 @@ mod test {
 
     struct TestFrameWalker<Reg> {
         instruction: Reg,
+        has_grand_callee: bool,
         grand_callee_param_size: u32,
         callee_regs: HashMap<&'static str, Reg>,
         caller_regs: HashMap<&'static str, Reg>,
@@ -1088,6 +1089,9 @@ mod test {
     impl<Reg: Int + Copy> FrameWalker for TestFrameWalker<Reg> {
         fn get_instruction(&self) -> u64 {
             self.instruction.into_u64()
+        }
+        fn has_grand_callee(&self) -> bool {
+            self.has_grand_callee
         }
         fn get_grand_callee_parameter_size(&self) -> u32 {
             self.grand_callee_param_size
@@ -1134,6 +1138,7 @@ mod test {
 
                 // Arbitrary values
                 instruction: Reg::from_u64(0xF1CEFA32),
+                has_grand_callee: true,
                 grand_callee_param_size: 4,
             }
         }
