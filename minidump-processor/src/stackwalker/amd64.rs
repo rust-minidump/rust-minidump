@@ -12,6 +12,7 @@ use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
 use log::trace;
 use minidump::format::CONTEXT_AMD64;
+use minidump::system_info::Os;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
@@ -108,11 +109,24 @@ fn get_caller_by_frame_pointer<P>(
     callee: &StackFrame,
     stack_memory: &MinidumpMemory<'_>,
     _modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
+    // On Windows x64, frame-pointer unwinding purely with the data on the stack
+    // is not possible, as proper unwinding requires access to `UNWIND_INFO`,
+    // because the frame pointer does not necessarily point to the end of the
+    // frame.
+    // In particular, the docs state that:
+    // > [The frame register] offset permits pointing the FP register into the
+    // > middle of the local stack allocation [...]
+    // https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64
+    if system_info.os == Os::Windows {
+        return None;
+    }
+
     trace!("unwind: trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
@@ -416,7 +430,7 @@ impl Unwind for CONTEXT_AMD64 {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<&MinidumpMemory<'_>>,
         modules: &MinidumpModuleList,
-        _system_info: &SystemInfo,
+        system_info: &SystemInfo,
         syms: &P,
     ) -> Option<StackFrame>
     where
@@ -430,7 +444,7 @@ impl Unwind for CONTEXT_AMD64 {
             frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
         }
         if frame.is_none() {
-            frame = get_caller_by_frame_pointer(self, callee, stack, modules, syms);
+            frame = get_caller_by_frame_pointer(self, callee, stack, modules, system_info, syms);
         }
         if frame.is_none() {
             frame = get_caller_by_scan(self, callee, stack, modules, syms).await;

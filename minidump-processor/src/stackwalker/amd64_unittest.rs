@@ -13,6 +13,7 @@ use test_assembler::*;
 struct TestFixture {
     pub raw: CONTEXT_AMD64,
     pub modules: MinidumpModuleList,
+    pub system_info: SystemInfo,
     pub symbols: HashMap<String, String>,
 }
 
@@ -26,6 +27,15 @@ impl TestFixture {
                 MinidumpModule::new(0x00007400c0000000, 0x10000, "module1"),
                 MinidumpModule::new(0x00007500b0000000, 0x10000, "module2"),
             ]),
+            system_info: SystemInfo {
+                os: Os::Linux,
+                os_version: None,
+                os_build: None,
+                cpu: Cpu::X86_64,
+                cpu_info: None,
+                cpu_microcode_version: None,
+                cpu_count: 1,
+            },
             symbols: HashMap::new(),
         }
     }
@@ -44,21 +54,12 @@ impl TestFixture {
             size,
             bytes: &stack,
         };
-        let system_info = SystemInfo {
-            os: Os::Windows,
-            os_version: None,
-            os_build: None,
-            cpu: Cpu::X86_64,
-            cpu_info: None,
-            cpu_microcode_version: None,
-            cpu_count: 1,
-        };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
-            &system_info,
+            &self.system_info,
             &symbolizer,
         )
         .await
@@ -154,6 +155,74 @@ async fn test_caller_pushed_rbp() {
             assert_eq!(ctx.rip, return_address);
             assert_eq!(ctx.rsp, frame1_sp.value().unwrap());
             assert_eq!(ctx.rbp, frame1_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_windows_rbp_scan() {
+    let mut f = TestFixture::new();
+    f.system_info.os = Os::Windows;
+
+    let mut stack = Section::new();
+    let stack_start = 0x8000000080000000;
+    let return_address = 0x00007500b0000110;
+    stack.start().set_const(stack_start);
+
+    let frame0_rbp = Label::new();
+    let frame1_sp = Label::new();
+    let frame1_rbp = Label::new();
+
+    stack = stack
+        // frame 0
+        .append_repeated(0, 16) // space
+        .D64(0x00000000b0000000) // junk that's not
+        .D64(0x00000000b0000000) // a return address
+        .mark(&frame0_rbp) // the FP can point to the middle of the stack on Windows
+        .D64(0x00000000c0001000)
+        .D64(0x00000000b000aaaa)
+        .D64(&frame1_rbp) // caller-pushed %rbp
+        .D64(return_address) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .append_repeated(0, 32) // body of frame1
+        .mark(&frame1_rbp) // end of stack
+        .D64(0);
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = frame0_rbp.value().unwrap();
+    f.raw.rsp = stack.start().value().unwrap();
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // To avoid reusing locals by mistake
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+        if let MinidumpRawContext::Amd64(ctx) = &f0.context.raw {
+            assert_eq!(ctx.rbp, frame0_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        // To avoid reusing locals by mistake
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::Scan);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::Amd64(ctx) = &f1.context.raw {
+            assert_eq!(ctx.rip, return_address);
+            assert_eq!(ctx.rsp, frame1_sp.value().unwrap());
         } else {
             unreachable!();
         }
