@@ -1192,7 +1192,7 @@ where
             return Err(Error::StreamSizeMismatch {
                 expected: counted_size,
                 actual: bytes.len(),
-            })
+            });
         }
     };
     // read count T raw stream entries
@@ -1420,9 +1420,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
         for raw in raw_modules.into_iter() {
-            if raw.size_of_image == 0
-                || raw.size_of_image as u64 > (u64::max_value() - raw.base_of_image)
-            {
+            if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::MAX - raw.base_of_image) {
                 // Bad image size.
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
