@@ -987,9 +987,25 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
         let frame_size = win_frame_size(info, grand_callee_param_size) as u64;
 
         let callee_esp = walker.get_callee_register("esp")?;
-        let eip_address = callee_esp + frame_size;
-        let caller_eip = walker.get_register_at_address(eip_address)?;
-        let caller_esp = callee_esp + frame_size + 4;
+        let mut eip_address = callee_esp + frame_size;
+        let mut caller_eip = walker.get_register_at_address(eip_address)?;
+
+        // Check for a "leftover return address": in some pathological cases the return address isn't popped off the stack
+        // after a return instruction. According to breakpad, this can happen for "frame-pointer-optimized
+        // system calls", which implies that the callee must be a context frame.
+        //
+        // To detect these cases, we check whether
+        // 1. we are in a context frame. We approximate this by checking whether there's a grand-callee.
+        // 2. the caller's eip (aka the return address) is the same as the callee's eip.
+        //
+        // If we detect a leftover return address, we skip it and try again one word
+        // further down the stack.
+        let callee_is_context_frame = !walker.has_grand_callee();
+        if callee_is_context_frame && caller_eip == walker.get_callee_register("eip")? {
+            eip_address += 4;
+            caller_eip = walker.get_register_at_address(eip_address)?;
+        }
+        let caller_esp = eip_address + 4;
 
         trace!("unwind: found caller $eip and $esp");
 
@@ -1032,7 +1048,7 @@ fn clear_stack_win_caller_registers(walker: &mut dyn FrameWalker) {
 #[cfg(test)]
 mod test {
     use super::super::types::{CfiRules, StackInfoWin, WinStackThing};
-    use super::{eval_win_expr, walk_with_stack_cfi};
+    use super::{eval_win_expr, walk_with_stack_cfi, walk_with_stack_win_fpo};
     use crate::FrameWalker;
     use std::collections::HashMap;
 
@@ -1432,6 +1448,43 @@ mod test {
         assert_eq!(walker.caller_regs.len(), 2);
         assert_eq!(walker.caller_regs["esp"], 1);
         assert_eq!(walker.caller_regs["ebp"], -2i32 as u32);
+    }
+
+    #[test]
+    fn test_stack_win_leftover_return_address() {
+        // The return address on top of the stack (0xABCD_1234) is equal to the callee's eip, indicating
+        // a return address that was left over from a return. The stackwalker should skip it and
+        // return the second value on the stack (0xABCD_5678) as the caller's eip.
+        let stack = vec![0x34, 0x12, 0xCD, 0xAB, 0x78, 0x56, 0xCD, 0xAB];
+        let mut walker = TestFrameWalker {
+            instruction: 0xABCD_1234u32,
+            has_grand_callee: false,
+            grand_callee_param_size: 0,
+            callee_regs: vec![("eip", 0xABCD_1234), ("esp", 0), ("ebp", 17)]
+                .into_iter()
+                .collect(),
+            caller_regs: HashMap::new(),
+            stack,
+        };
+
+        // these are all dummy values
+        let info = StackInfoWin {
+            address: 0,
+            size: 0,
+            prologue_size: 0,
+            epilogue_size: 0,
+            parameter_size: 0,
+            saved_register_size: 0,
+            local_size: 0,
+            max_stack_size: 0,
+            program_string_or_base_pointer: WinStackThing::AllocatesBasePointer(false),
+        };
+
+        walk_with_stack_win_fpo(&info, &mut walker).unwrap();
+
+        assert_eq!(walker.caller_regs["esp"], 8);
+        assert_eq!(walker.caller_regs["ebp"], 17);
+        assert_eq!(walker.caller_regs["eip"], 0xABCD_5678);
     }
 
     #[test]
