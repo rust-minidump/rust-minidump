@@ -7,6 +7,5 @@ members = [
         "minidump-stackwalk",
 ]
 exclude = [
-    "scripts/*",
     "testdata/*",
 ]

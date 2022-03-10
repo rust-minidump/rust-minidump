@@ -1,12 +1,13 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+assertion_line: 502
 expression: stdout
 ---
 # minidump-stackwalk CLI manual
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.9.6`
+Version: `minidump-stackwalk 0.10.0`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 
