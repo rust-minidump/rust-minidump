@@ -1,34 +1,8 @@
-# Pending Release (TBD -- 0.10.0?)
+# Version 0.10.0 (2022-03-10)
 
-Commit: TBD
+Commit: This One!
 
 This release is a mix of substantial quality improvements, one major breaking change (making some things async), and several smaller changes to APIs. It's a bit of a big release because some major experimentation was going on and we didn't want to release something that we might immediately revert.
-
-
-
-## CURRENT BLOCKERS FOR THIS RELEASE
-
-
-### How unloaded modules are handled in JSON output 
-
-A change to how we handle unloaded modules was introduced in #348, reimplementing a hack in tools that predate rust-minidump. But #367 wants to introduce a more complete and prinicipled design. Cutting the release before resolving #367 would be a forward-compat hazard.
-
-
-
-### Do we really want to be async?
-
-The async branch (#329) was landed to just force us to try it out and see what it's like, but we may still conclude it's a bad idea and revert it. Best not to cut a release until it has had some time to bake.
-
-
-
-### debugid/codeid churn
-
-Many changes have been made to how we handle codeids/debugids, and some are still in the process of review, it would be good to let those patches all land and bake before cutting a release and "comitting" to those changes.
-
-
-### audit error types
-
-In #356, error strings now include the "type" of the error, but this is done slopily with Debug, so if the error types have payloads those may get dumped into the error message, which is probably undesirable. We should probably be more principled before cutting a release.
 
 
 

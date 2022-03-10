@@ -561,7 +561,7 @@ anyway.
 This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it rather than eternally have two copies of the field. Sorry!
 
 
-## 0.10.0 (Upcoming Release)
+## 0.10.0
 
 ### sensitive and exploitability fully removed
 
@@ -576,6 +576,10 @@ The evil_json feature has always been an "ideally temporary" hack for Mozilla's 
 The codebase also interchangeably referred to the evil_json feature as both evil_json and raw_json. It is now always evil_json to properly express that this is an evil feature that you should not use unless you are mozilla (and if you are mozilla, you should also stop using it).
 
 This changes the `--raw-json` flag of minidump-stackwalk to `--evil-json`
+
+## code_id casing
+
+`modules[N].code_id` and `unloaded_modules[N].code_id` are now uniformly output as lowercase, as this format is expected by some case-sensitive tools. Previously, the casing would be a seemingly arbitrary casing, because code_id's were getting fed through the machinery for formatting debug_ids (which often contain two values, which are distinguished by UPPERlower).
 
 ### Unloaded Modules
 
