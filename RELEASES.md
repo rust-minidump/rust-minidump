@@ -1,6 +1,31 @@
+Pending Release (TBD)
+
+Commit: TBD
+
+Nothing in the upcoming release yet!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.10.0 (2022-03-10)
 
-Commit: This One!
+Commit: [a8a4a2228af05b73ee671ae5b8a445b804368ef6](https://github.com/luser/rust-minidump/commit/a8a4a2228af05b73ee671ae5b8a445b804368ef6) (there was some Cargo.lock messiness, release is smeared between this one and the previous)
 
 This release is a mix of substantial quality improvements, one major breaking change (making some things async), and several smaller changes to APIs. It's a bit of a big release because some major experimentation was going on and we didn't want to release something that we might immediately revert.
 
