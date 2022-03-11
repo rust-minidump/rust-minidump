@@ -64,6 +64,7 @@ where
     /// The raw minidump header from the file.
     pub header: md::MINIDUMP_HEADER,
     streams: HashMap<u32, (u32, md::MINIDUMP_DIRECTORY)>,
+    system_info: Option<MinidumpSystemInfo>,
     /// The endianness of this minidump file.
     pub endian: scroll::Endian,
     _phantom: PhantomData<&'a [u8]>,
@@ -131,7 +132,12 @@ pub trait MinidumpStream<'a>: Sized {
     /// `bytes` is the contents of this specific stream.
     /// `all` refers to the full contents of the minidump, for reading auxilliary data
     /// referred to with `MINIDUMP_LOCATION_DESCRIPTOR`s.
-    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error>;
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error>;
 }
 
 /// Provides a unified interface for getting metadata about the process's mapped memory regions
@@ -335,7 +341,7 @@ pub struct MinidumpThreadList<'a> {
 }
 
 /// Information about the system that generated the minidump.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpSystemInfo {
     /// The `MINIDUMP_SYSTEM_INFO` direct from the minidump
     pub raw: md::MINIDUMP_SYSTEM_INFO,
@@ -1297,7 +1303,12 @@ where
 impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadNamesStream;
 
-    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error> {
         let mut offset = 0;
         let raw_names: Vec<md::MINIDUMP_THREAD_NAME> =
             read_stream_list(&mut offset, bytes, endian)?;
@@ -1436,6 +1447,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpModuleList, Error> {
         let mut offset = 0;
         let raw_modules: Vec<md::MINIDUMP_MODULE> = read_stream_list(&mut offset, bytes, endian)?;
@@ -1536,6 +1548,7 @@ impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpUnloadedModuleList, Error> {
         let mut offset = 0;
         let raw_modules: Vec<md::MINIDUMP_UNLOADED_MODULE> =
@@ -1768,6 +1781,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpMemoryList<'a>, Error> {
         let mut offset = 0;
         let descriptors: Vec<md::MINIDUMP_MEMORY_DESCRIPTOR> =
@@ -1793,6 +1807,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemory64List<'a> {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpMemory64List<'a>, Error> {
         let mut offset = 0;
         let u: u64 = bytes
@@ -1855,6 +1870,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryInfoList<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpMemoryInfoList<'a>, Error> {
         let mut offset = 0;
         let raw_regions: Vec<md::MINIDUMP_MEMORY_INFO> =
@@ -1999,6 +2015,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxMaps<'a>, Error> {
         let regions = LinuxOsStr::from_bytes(bytes)
             .lines()
@@ -2527,6 +2544,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpThreadList<'a>, Error> {
         let mut offset = 0;
         let raw_threads: Vec<md::MINIDUMP_THREAD> = read_stream_list(&mut offset, bytes, endian)?;
@@ -2592,7 +2610,16 @@ impl<'a> MinidumpThreadList<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::SystemInfoStream;
 
-    fn read(bytes: &[u8], all: &[u8], endian: scroll::Endian) -> Result<MinidumpSystemInfo, Error> {
+    fn read(
+        bytes: &[u8],
+        all: &[u8],
+        endian: scroll::Endian,
+        system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpSystemInfo, Error> {
+        if let Some(system_info) = system_info {
+            return Ok(system_info.clone());
+        }
+
         use std::fmt::Write;
 
         let raw: md::MINIDUMP_SYSTEM_INFO = bytes
@@ -2972,7 +2999,12 @@ impl RawMiscInfo {
 impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MiscInfoStream;
 
-    fn read(bytes: &[u8], _all: &[u8], endian: scroll::Endian) -> Result<MinidumpMiscInfo, Error> {
+    fn read(
+        bytes: &[u8],
+        _all: &[u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpMiscInfo, Error> {
         // The misc info has gone through several revisions, so try to read the largest known
         // struct possible.
         macro_rules! do_read {
@@ -3101,6 +3133,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
         bytes: &[u8],
         all: &[u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpMacCrashInfo, Error> {
         // Get the main header of the stream
         let header: md::MINIDUMP_MAC_CRASH_INFO = bytes
@@ -3218,6 +3251,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxLsbRelease<'a>, Error> {
         Ok(Self { data: bytes })
     }
@@ -3231,6 +3265,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxEnviron<'a>, Error> {
         Ok(Self { data: bytes })
     }
@@ -3244,6 +3279,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxProcStatus<'a>, Error> {
         Ok(Self { data: bytes })
     }
@@ -3256,6 +3292,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo<'a> {
         bytes: &'a [u8],
         _all: &'a [u8],
         _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxCpuInfo<'a>, Error> {
         Ok(Self { data: bytes })
     }
@@ -3466,6 +3503,7 @@ impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
         bytes: &[u8],
         _all: &[u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpBreakpadInfo, Error> {
         let raw: md::MINIDUMP_BREAKPAD_INFO = bytes
             .pread_with(0, endian)
@@ -4087,7 +4125,12 @@ impl fmt::Display for CrashReason {
 impl<'a> MinidumpStream<'a> for MinidumpException<'a> {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ExceptionStream;
 
-    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error> {
         let raw: md::MINIDUMP_EXCEPTION_STREAM = bytes
             .pread_with(0, endian)
             .or(Err(Error::StreamReadFailure))?;
@@ -4247,6 +4290,7 @@ impl<'a> MinidumpStream<'a> for MinidumpAssertion {
         bytes: &'a [u8],
         _all: &'a [u8],
         endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpAssertion, Error> {
         let raw: md::MINIDUMP_ASSERTION_INFO = bytes
             .pread_with(0, endian)
@@ -4481,7 +4525,12 @@ fn read_crashpad_module_links(
 impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
     const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::CrashpadInfoStream;
 
-    fn read(bytes: &'a [u8], all: &'a [u8], endian: scroll::Endian) -> Result<Self, Error> {
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error> {
         let raw: md::MINIDUMP_CRASHPAD_INFO = bytes
             .pread_with(0, endian)
             .or(Err(Error::StreamReadFailure))?;
@@ -4681,11 +4730,23 @@ where
                 }
             }
         }
+        let system_info = streams
+            .get(&MinidumpSystemInfo::STREAM_TYPE.into())
+            .and_then(|&(_, ref dir)| {
+                location_slice(data.deref(), &dir.location)
+                    .ok()
+                    .and_then(|bytes| {
+                        let all_bytes = data.deref();
+                        MinidumpSystemInfo::read(bytes, all_bytes, endian, None).ok()
+                    })
+            });
+
         Ok(Minidump {
             data,
             header,
             streams,
             endian,
+            system_info,
             _phantom: PhantomData,
         })
     }
@@ -4774,7 +4835,7 @@ where
             Err(e) => Err(e),
             Ok(bytes) => {
                 let all_bytes = self.data.deref();
-                S::read(bytes, all_bytes, self.endian)
+                S::read(bytes, all_bytes, self.endian, self.system_info.as_ref())
             }
         }
     }
