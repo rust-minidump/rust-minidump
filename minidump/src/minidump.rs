@@ -281,6 +281,7 @@ pub struct MinidumpModule {
     pub codeview_info: Option<CodeView>,
     /// A misc debug record, if one is present.
     pub misc_info: Option<md::IMAGE_DEBUG_MISC>,
+    os: Os,
 }
 
 /// A list of `MinidumpModule`s contained in a `Minidump`.
@@ -759,6 +760,7 @@ impl MinidumpModule {
             name: String::from(name),
             codeview_info: None,
             misc_info: None,
+            os: Os::Unknown(0),
         }
     }
 
@@ -768,6 +770,7 @@ impl MinidumpModule {
         raw: md::MINIDUMP_MODULE,
         bytes: &[u8],
         endian: scroll::Endian,
+        system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpModule, Error> {
         let mut offset = raw.module_name_rva as usize;
         let name =
@@ -777,11 +780,13 @@ impl MinidumpModule {
         } else {
             Some(read_codeview(&raw.cv_record, bytes, endian).ok_or(Error::CodeViewReadFailure)?)
         };
+        let os = system_info.map(|info| info.os).unwrap_or(Os::Unknown(0));
         Ok(MinidumpModule {
             raw,
             name,
             codeview_info,
             misc_info: None,
+            os,
         })
     }
 
@@ -956,7 +961,7 @@ impl Module for MinidumpModule {
     fn code_identifier(&self) -> Option<CodeId> {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
-                if raw.age == 0 {
+                if self.os == Os::MacOs {
                     // This is a macOS minidump. It looks like the age is
                     // typically >0 for Windows minidumps, and Breakpad sets it
                     // to 0 on macOS. We're relying on this observation in order
@@ -964,8 +969,6 @@ impl Module for MinidumpModule {
                     // uses PDB70 instead of its own dedicated format.
                     // See the following linked comment in a Windows PDB writer:
                     // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
-                    // TODO: Figure out a way to get access to
-                    // `MinidumpSystemInfo` here instead of relying on `age`.
                     Some(CodeId::new(format!("{:#}", raw.signature)))
                 } else {
                     Some(CodeId::new(format!(
@@ -1447,7 +1450,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
         bytes: &'a [u8],
         all: &'a [u8],
         endian: scroll::Endian,
-        _system_info: Option<&MinidumpSystemInfo>,
+        system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpModuleList, Error> {
         let mut offset = 0;
         let raw_modules: Vec<md::MINIDUMP_MODULE> = read_stream_list(&mut offset, bytes, endian)?;
@@ -1459,7 +1462,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
                 // TODO: just drop this module, keep the rest?
                 return Err(Error::ModuleReadFailure);
             }
-            modules.push(MinidumpModule::read(raw, all, endian)?);
+            modules.push(MinidumpModule::read(raw, all, endian, system_info)?);
         }
         Ok(MinidumpModuleList::from_modules(modules))
     }
@@ -6267,10 +6270,16 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         )
         .cv_record(&cv_record);
         let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(
+                SystemInfo::new(Endian::Little).set_platform_id(PlatformId::MacOs as u32),
+            )
             .add_module(module)
             .add(name)
             .add(cv_record);
         let dump = read_synth_dump(dump).unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        assert_eq!(system_info.os, Os::MacOs);
+
         let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
         let modules = module_list.iter().collect::<Vec<_>>();
         assert_eq!(modules.len(), 1);
