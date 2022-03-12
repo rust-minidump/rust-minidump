@@ -1787,6 +1787,11 @@ impl SystemInfo {
         self.processor_architecture = arch;
         self
     }
+
+    pub fn set_platform_id(mut self, platform_id: u32) -> Self {
+        self.platform_id = platform_id;
+        self
+    }
 }
 
 impl_dumpsection!(SystemInfo);
@@ -1795,7 +1800,6 @@ impl From<SystemInfo> for Section {
     fn from(info: SystemInfo) -> Self {
         let section = info
             .section
-            .D16(info.processor_architecture)
             .D16(info.processor_architecture)
             .D16(info.processor_level)
             .D16(info.processor_revision)
