@@ -1,8 +1,7 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 761
-expression: stdout
-
+assertion_line: 776
+expression: json_out
 ---
 {
   "crash_info": {
@@ -20,11 +19,11 @@ expression: stdout
   "status": "OK",
   "system_info": {
     "cpu_arch": "x86",
-    "cpu_count": 0,
-    "cpu_info": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 family 0 model 0 stepping 6",
+    "cpu_count": 1,
+    "cpu_info": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000 family 6 model 0 stepping 0",
     "cpu_microcode_version": null,
     "os": "0x0x000000",
-    "os_ver": "1.0.0"
+    "os_ver": "0.0.0"
   },
   "thread_count": 1,
   "threads": [

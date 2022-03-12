@@ -5028,7 +5028,7 @@ fn stream_vendor(stream_type: u32) -> &'static str {
 mod test {
     use super::*;
     use md::GUID;
-    use minidump_common::format::ProcessorArchitecture;
+    use minidump_common::format::{PlatformId, ProcessorArchitecture};
     use std::mem;
     use synth_minidump::{
         self, AnnotationValue, CrashpadInfo, DumpString, Exception, Memory,
@@ -6228,6 +6228,17 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             modules[1].debug_identifier().unwrap(),
             DebugId::from_breakpad("030201000504070600000000000000000").unwrap()
         );
+    }
+
+    #[test]
+    fn test_os() {
+        let dump = SynthMinidump::with_endian(Endian::Little).add_system_info(
+            SystemInfo::new(Endian::Little).set_platform_id(PlatformId::MacOs as u32),
+        );
+
+        let dump = read_synth_dump(dump).unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        assert_eq!(system_info.os, Os::MacOs);
     }
 
     #[test]
