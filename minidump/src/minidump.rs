@@ -962,13 +962,9 @@ impl Module for MinidumpModule {
         match self.codeview_info {
             Some(CodeView::Pdb70(ref raw)) => {
                 if self.os == Os::MacOs {
-                    // This is a macOS minidump. It looks like the age is
-                    // typically >0 for Windows minidumps, and Breakpad sets it
-                    // to 0 on macOS. We're relying on this observation in order
-                    // to distinguish between these two platforms since macOS
-                    // uses PDB70 instead of its own dedicated format.
-                    // See the following linked comment in a Windows PDB writer:
-                    // https://github.com/microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/pdb.cpp#L602-L606
+                    // MacOs uses PDB70 instead of its own dedicated format.
+                    // See the following issue for a potential MacOs-specific format:
+                    // https://github.com/luser/rust-minidump/issues/455
                     Some(CodeId::new(format!("{:#}", raw.signature)))
                 } else {
                     Some(CodeId::new(format!(
