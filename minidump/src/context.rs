@@ -43,7 +43,7 @@ pub trait CpuContext {
     /// Gets whether the given register is valid
     ///
     /// This is exposed so that the context can map aliases. For instance
-    /// "sp" and "x30" are aliases in ARM64.
+    /// "lr" and "x30" are aliases in ARM64.
     fn register_is_valid(&self, reg: &str, valid: &MinidumpContextValidity) -> bool {
         if let MinidumpContextValidity::Some(ref which) = *valid {
             which.contains(reg)
@@ -426,9 +426,9 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
             "x29" => self.iregs[29],
             "x30" => self.iregs[30],
             "pc" => self.pc,
+            "sp" => self.sp,
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
-            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
             _ => unreachable!("Invalid aarch64 register! {}", reg),
         }
     }
@@ -467,9 +467,9 @@ impl CpuContext for md::CONTEXT_ARM64_OLD {
             "x29" => self.iregs[29] = val,
             "x30" => self.iregs[30] = val,
             "pc" => self.pc = val,
+            "sp" => self.sp = val,
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize] = val,
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
-            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
             _ => return None,
         }
         Some(())
@@ -547,9 +547,9 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "x29" => self.iregs[29],
             "x30" => self.iregs[30],
             "pc" => self.pc,
+            "sp" => self.sp,
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize],
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize],
-            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize],
             _ => unreachable!("Invalid aarch64 register! {}", reg),
         }
     }
@@ -588,9 +588,9 @@ impl CpuContext for md::CONTEXT_ARM64 {
             "x29" => self.iregs[29] = val,
             "x30" => self.iregs[30] = val,
             "pc" => self.pc = val,
+            "sp" => self.sp = val,
             "lr" => self.iregs[md::Arm64RegisterNumbers::LinkRegister as usize] = val,
             "fp" => self.iregs[md::Arm64RegisterNumbers::FramePointer as usize] = val,
-            "sp" => self.iregs[md::Arm64RegisterNumbers::StackPointer as usize] = val,
             _ => return None,
         }
         Some(())
@@ -1199,12 +1199,8 @@ impl MinidumpContext {
             MinidumpRawContext::Arm(ref ctx) => {
                 ctx.iregs[md::ArmRegisterNumbers::StackPointer as usize] as u64
             }
-            MinidumpRawContext::Arm64(ref ctx) => {
-                ctx.iregs[md::Arm64RegisterNumbers::StackPointer as usize]
-            }
-            MinidumpRawContext::OldArm64(ref ctx) => {
-                ctx.iregs[md::Arm64RegisterNumbers::StackPointer as usize]
-            }
+            MinidumpRawContext::Arm64(ref ctx) => ctx.sp,
+            MinidumpRawContext::OldArm64(ref ctx) => ctx.sp,
             MinidumpRawContext::Ppc(ref ctx) => {
                 ctx.gpr[md::PpcRegisterNumbers::StackPointer as usize] as u64
             }
@@ -1516,46 +1512,52 @@ impl MinidumpContext {
 "#,
                     raw.context_flags
                 )?;
-                for (i, reg) in raw.iregs.iter().enumerate() {
-                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
+                for (i, reg) in raw.iregs[..29].iter().enumerate() {
+                    writeln!(f, "  x{:<2}                  = {:#x}", i, reg)?;
                 }
+                writeln!(f, "  x29 (fp)             = {:#x}", raw.iregs[29])?;
+                writeln!(f, "  x30 (lr)             = {:#x}", raw.iregs[30])?;
+                writeln!(f, "  sp                   = {:#x}", raw.sp)?;
                 writeln!(f, "  pc                   = {:#x}", raw.pc)?;
-                write!(
-                    f,
-                    r#"  cpsr                 = {:#x}
-  float_save.fpsr     = {:#x}
-  float_save.fpcr     = {:#x}
-"#,
-                    raw.cpsr, raw.float_save.fpsr, raw.float_save.fpcr
-                )?;
-                for (i, reg) in raw.float_save.regs.iter().enumerate() {
-                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
+                writeln!(f, "  cpsr                 = {:#x}", raw.cpsr)?;
+                writeln!(f, "  fpsr                 = {:#x}", raw.fpsr)?;
+                writeln!(f, "  fpcr                 = {:#x}", raw.fpcr)?;
+                for (i, reg) in raw.float_regs.iter().enumerate() {
+                    writeln!(f, "  d{:<2} = {:#x}", i, reg)?;
+                }
+                for (i, reg) in raw.bcr.iter().enumerate() {
+                    writeln!(f, "  bcr[{:2}] = {:#x}", i, reg)?;
+                }
+                for (i, reg) in raw.bvr.iter().enumerate() {
+                    writeln!(f, "  bvr[{:2}] = {:#x}", i, reg)?;
+                }
+                for (i, reg) in raw.wcr.iter().enumerate() {
+                    writeln!(f, "  wcr[{:2}] = {:#x}", i, reg)?;
+                }
+                for (i, reg) in raw.wvr.iter().enumerate() {
+                    writeln!(f, "  wvr[{:2}] = {:#x}", i, reg)?;
                 }
             }
             MinidumpRawContext::OldArm64(ref raw) => {
                 write!(
                     f,
-                    r#"CONTEXT_ARM64
+                    r#"CONTEXT_ARM64_OLD
   context_flags        = {:#x}
 "#,
-                    { raw.context_flags }
+                    raw.context_flags
                 )?;
-                for (i, reg) in { raw.iregs }.iter().enumerate() {
-                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
+                for (i, reg) in raw.iregs[..29].iter().enumerate() {
+                    writeln!(f, "  x{:<2}                  = {:#x}", i, reg)?;
                 }
-                writeln!(f, "  pc                   = {:#x}", { raw.pc })?;
-                write!(
-                    f,
-                    r#"  cpsr                 = {:#x}
-  float_save.fpsr     = {:#x}
-  float_save.fpcr     = {:#x}
-"#,
-                    { raw.cpsr },
-                    { raw.float_save }.fpsr,
-                    { raw.float_save }.fpcr
-                )?;
-                for (i, reg) in { raw.float_save }.regs.iter().enumerate() {
-                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
+                writeln!(f, "  x29 (fp)             = {:#x}", raw.iregs[29])?;
+                writeln!(f, "  x30 (lr)             = {:#x}", raw.iregs[30])?;
+                writeln!(f, "  sp                   = {:#x}", raw.sp)?;
+                writeln!(f, "  pc                   = {:#x}", raw.pc)?;
+                writeln!(f, "  cpsr                 = {:#x}", raw.cpsr)?;
+                writeln!(f, "  fpsr                 = {:#x}", raw.fpsr)?;
+                writeln!(f, "  fpcr                 = {:#x}", raw.fpcr)?;
+                for (i, reg) in raw.float_regs.iter().enumerate() {
+                    writeln!(f, "  d{:<2} = {:#x}", i, reg)?;
                 }
             }
             MinidumpRawContext::Mips(_) => {

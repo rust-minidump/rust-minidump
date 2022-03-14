@@ -4,6 +4,29 @@
 //! some [Breakpad][breakpad] and [Crashpad][crashpad] extension types are defined here and should
 //! match the definitions from those projects.
 //!
+//! # Type Layouts
+//!
+//! This library isn't a "proper" minidump-sys library because it doesn't use repr attributes
+//! to force Rust to layout these structs identically to how they're laid out in memory.
+//!
+//! The reasons for this are 3-fold:
+//!
+//! 1. It isn't necessary because we specify how to serialize/deserialize things with `scroll`
+//!    via `derive(Pread, Pwrite)` which uses the declared field order and not the in-memory
+//!    layout, and assumes everything is packed anyway, which as a rule, minidump types are.
+//!    Specifically they're packed to align 4, but Microsoft is mercifully very attentive to
+//!    its type layouts so we're not aware of anywhere where packing to align 1 would change
+//!    offsets. Packing is mostly just there so 32-bit and 64-bit definitely agree on offsets.
+//!
+//! 2. We would have to mark several types as `repr(packed(4))`, making them dangerous to use
+//!    as several of the fields would become misaligned. This would create a bunch of
+//!    unnecessary and brittle `unsafe`.
+//!
+//! 3. It's not *actually* that useful to have structs with precise in-memory layouts since
+//!    a minidump parser needs to accept both little-endian and big-endian minidumps, and
+//!    is therefore swizzling the bytes of all the values anyway. Also it's dangerous to
+//!    reinterpret a pile of memory as arbitrary types without validation!
+//!
 //! [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/
 //! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/
 //! [crashpad]: https://chromium.googlesource.com/crashpad/crashpad/+/master/README.md
@@ -7005,6 +7028,40 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// Flags available for use in [`CONTEXT_ARM64.context_flags`]
+    pub struct ContextFlagsArm64: u32 {
+        /// FP, LR, SP, PC, and CPSR
+        const CONTEXT_ARM64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        /// X0-X28 (but maybe not X18)
+        const CONTEXT_ARM64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
+        const CONTEXT_ARM64_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
+        const CONTEXT_ARM64_DEBUG_REGISTERS = 0x0000008 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        /// Whether x18 has a valid value, because on Windows it contains the TEB.
+        ///
+        /// NOTE: at this precise moment breakpad doesn't define this, but Microsoft does!
+        const CONTEXT_ARM64_X18 = 0x0000010 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_FULL = Self::CONTEXT_ARM64_CONTROL.bits | Self::CONTEXT_ARM64_INTEGER.bits | Self::CONTEXT_ARM64_FLOATING_POINT.bits;
+        const CONTEXT_ARM64_ALL = Self::CONTEXT_ARM64_FULL.bits | Self::CONTEXT_ARM64_DEBUG_REGISTERS.bits | Self::CONTEXT_ARM64_X18.bits;
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_ARM64_OLD.context_flags`]
+    pub struct ContextFlagsArm64Old: u32 {
+        // Yes, breakpad never defined CONTROL for this context
+
+        /// FP, LR, SP, PC, CPSR, and X0-X28
+        const CONTEXT_ARM64_OLD_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
+        /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
+        const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
+        const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits;
+        const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits;
+    }
+}
+
 /// Possible contents of [`CONTEXT_AMD64::float_save`].
 ///
 /// This struct matches the definition of the struct with the same name from WinNT.h.
@@ -7137,6 +7194,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
+    // [r0, r1, ..., r15]
     pub iregs: [u32; 16],
     pub cpsr: u32,
     pub float_save: FLOATING_SAVE_AREA_ARM,
@@ -7165,50 +7223,89 @@ impl ArmRegisterNumbers {
     }
 }
 
-/// aarch64 floating point state (old)
-#[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct FLOATING_SAVE_AREA_ARM64_OLD {
-    pub fpsr: u32,
-    pub fpcr: u32,
-    pub regs: [u128; 32usize],
-}
-
-/// An old aarch64 (arm64) CPU context
+/// An old (breakpad-style) aarch64 (arm64) CPU context.
 ///
-/// This is a Breakpad extension.
+/// This is a breakpad extension, but contrary to what the name might suggest,
+/// it isn't completely out of service. I believe all non-windows platforms
+/// still prefer emitting this format to avoid needless churn.
+///
+/// Semantically this type agrees with the "new" [CONTEXT_ARM64][] and can
+/// generally be handled with all the same logic. i.e. the general purpose
+/// `iregs` are the same. It's just that the other fields are shuffled around.
+///
+/// As I understand it, this is basically an artifact of breakpad getting to
+/// arm64 "first" (Android would be first in line for it!) and picking a
+/// definition they thought was reasonable. Thankfully they picked an
+/// "out of the way" context id so that when Microsoft came along and picked
+/// their own definition, there wouldn't be a conflict.
+///
+/// Note that we have inlined the fields of the "float save" struct from
+/// breakpad's definition to be more uniform with [CONTEXT_ARM64][].
+///
+/// NOTE: if you ever decide to try to make this repr(C) and get really clever,
+/// this type is actually non-trivially repr(packed(4)) in the headers!
 #[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
-#[repr(packed)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
-    pub iregs: [u64; 32],
+    /// `[x0, x1, ..., x28, fp, lr]`. See [Arm64RegisterNumbers][].
+    pub iregs: [u64; 31],
+    pub sp: u64,
     pub pc: u64,
     pub cpsr: u32,
-    pub float_save: FLOATING_SAVE_AREA_ARM64_OLD,
-}
-
-/// aarch64 floating point state
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
-#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct FLOATING_SAVE_AREA_ARM64 {
-    pub regs: [u128; 32usize],
+    /// FPU status register.
     pub fpsr: u32,
+    /// FPU control register.
     pub fpcr: u32,
+    /// float/NEON registers `[d0, d1, ..., d31]`
+    pub float_regs: [u128; 32usize],
 }
 
-/// An aarch64 (arm64) CPU context
+/// A (microsoft-style) aarch64 (arm64) CPU context
 ///
-/// This is a Breakpad extension, and does not match the definition of `CONTEXT` for aarch64
-/// in WinNT.h.
+/// This matches the layout of how Windows defines this type. Breakpad defines
+/// it in an equivalent but more-quirky way that relies more on packing.
+///
+/// For general purpose registers:
+///
+/// * microsoft: make iregs have 31 values and have sp and pc as explicit fields.
+/// * breakpad make iregs have 33 values, no explicit fields.
+///
+/// For float registers:
+///
+/// * microsoft: inline the fields for float_regs, fpcr, fpsr.
+/// * breakpad: wrap them in a struct.
+///
+/// -----------------
+///
+/// Why *we* went with these definitions:
+///
+/// * ARM64 actually defines x0..x30 register names, but sp and pc aren't
+///   "x31" and "x32". Breakpad is effectively punning them as such, and
+///   that's kinda weird?
+///
+/// * Microsft's inlining of the float registers eliminates any need for
+///   padding on all platforms (note how there's always an even number of
+///   u32's before a u64, and an even number of u64's before a u128!)
+///
+/// NOTE: if you ever decide to try to make this repr(C) and get really clever,
+/// note that microsoft aligns this to 16 (and as of this writing, rust does
+/// not consistently aling u128 as such).
 #[derive(Debug, Default, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64 {
     pub context_flags: u32,
     pub cpsr: u32,
-    pub iregs: [u64; 32],
+    /// `[x0, x1, ..., x28, fp, lr]`. See [Arm64RegisterNumbers][].
+    pub iregs: [u64; 31],
+    pub sp: u64,
     pub pc: u64,
-    pub float_save: FLOATING_SAVE_AREA_ARM64,
+    /// float/NEON registers `[d0, d1, ..., d31]`
+    pub float_regs: [u128; 32usize],
+    /// FPU control register.
+    pub fpcr: u32,
+    /// FPU status register.
+    pub fpsr: u32,
     pub bcr: [u32; 8],
     pub bvr: [u64; 8],
     pub wcr: [u32; 2],
@@ -7221,8 +7318,6 @@ pub struct CONTEXT_ARM64 {
 pub enum Arm64RegisterNumbers {
     FramePointer = 29,
     LinkRegister = 30,
-    StackPointer = 31,
-    ProgramCounter = 32,
 }
 
 impl Arm64RegisterNumbers {
@@ -7230,8 +7325,6 @@ impl Arm64RegisterNumbers {
         match self {
             Self::FramePointer => "x29",
             Self::LinkRegister => "x30",
-            Self::StackPointer => "sp",
-            Self::ProgramCounter => "pc",
         }
     }
 }
