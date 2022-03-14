@@ -21,9 +21,9 @@ type Registers = minidump::format::Arm64RegisterNumbers;
 
 const POINTER_WIDTH: Pointer = std::mem::size_of::<Pointer>() as Pointer;
 const FRAME_POINTER: &str = Registers::FramePointer.name();
-const STACK_POINTER: &str = Registers::StackPointer.name();
 const LINK_REGISTER: &str = Registers::LinkRegister.name();
-const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
+const STACK_POINTER: &str = "sp";
+const PROGRAM_COUNTER: &str = "pc";
 const CALLEE_SAVED_REGS: &[&str] = &[
     "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "fp",
 ];

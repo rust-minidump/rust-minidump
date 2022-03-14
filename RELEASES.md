@@ -2,12 +2,24 @@ Pending Release (TBD)
 
 Commit: TBD
 
-Nothing in the upcoming release yet!
+Work on making minidump-common more useful for breakpad clients, as well as general improvements.
 
+Changes:
 
+# minidump-common
 
+* CONTEXT_ARM64 / CONTEXT_ARM64_OLD have been modified
+    * Neither type is packed anymore (didn't effect serialize/deserialize, just made the type less safe)
+    * Arm64RegisterNumbers now only has fp/lr, as those are the only actual "x" register puns
+    * `sp` has been pulled from the `iregs` array to its own field like pc (layout works either way, this is just more honest).
+    * FLOATING_SAVE_AREA_ARM64 has fixed the order of fpcr/fpsr (was just wrong)
+    * ContextFlagsArm64 and ContextFlagsArm64Old have been added
 
+# minidump
 
+* MinidumpStream now takes an extra `Option<&MinidumpSystemInfo>` argument so that every stream can have this critical information available while parsing. We will eagerly try to parse this info when you create a Minidump, so if there's any SystemInfo at all (which should always be true, but minidumps are evil), then your stream should have it available for its own parsing. We are currently working on migrating existing streams that need/want it.
+
+* macOS codeids are now properly handled thanks to the above SystemInfo work.
 
 
 
