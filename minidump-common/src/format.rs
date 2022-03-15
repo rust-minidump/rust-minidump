@@ -7017,14 +7017,39 @@ impl ContextFlagsCpu {
 bitflags! {
     /// Flags available for use in [`CONTEXT_AMD64.context_flags`]
     pub struct ContextFlagsAmd64: u32 {
+        /// SegSs, Rsp, SegCs, Rip, and EFlags
         const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        /// Rax, Rcx, Rdx, Rbx, Rbp, Rsi, Rdi, and R8-R15
         const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        /// SegDs, SegEs, SegFs, and SegGs
         const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        /// Xmm0-Xmm15
         const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        /// Dr0-Dr3 and Dr6-Dr7
         const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits;
         const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits;
         const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits | Self::CONTEXT_AMD64_INTEGER.bits | Self::CONTEXT_AMD64_FLOATING_POINT.bits;
         const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits | Self::CONTEXT_AMD64_SEGMENTS.bits | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits;
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_X86.context_flags`]
+    pub struct ContextFlagsX86: u32 {
+        /// Ebp, Eip, SegCs, EFlags, Esp, SegSs
+        const CONTEXT_X86_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_X86.bits;
+        /// Edi, Esi, Ebx, Edx, Ecx, Eax
+        const CONTEXT_X86_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_X86.bits;
+        /// SegDs, SegEs, SegFs, and SegGs
+        const CONTEXT_X86_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_X86.bits;
+        /// Fpcr, Fpsr, Fptag, Fpioff, Fpisel, Fpdoff, Fpdsel, Mxcsr, Mxcsr_mask, Xmm0-Xmm7
+        const CONTEXT_X86_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_X86.bits;
+        /// Dr0-Dr3 and Dr6-Dr7
+        const CONTEXT_X86_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_EXTENDED_REGISTERS = 0x00000020 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_XSTATE = 0x00000040 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_FULL = Self::CONTEXT_X86_CONTROL.bits | Self::CONTEXT_X86_INTEGER.bits | Self::CONTEXT_X86_SEGMENTS.bits;
+        const CONTEXT_X86_ALL = Self::CONTEXT_X86_FULL.bits | Self::CONTEXT_X86_FLOATING_POINT.bits | Self::CONTEXT_X86_DEBUG_REGISTERS.bits | Self::CONTEXT_X86_EXTENDED_REGISTERS.bits;
     }
 }
 
@@ -7059,6 +7084,24 @@ bitflags! {
         const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
         const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits;
         const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits;
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_ARM.context_flags`]
+    pub struct ContextFlagsArm: u32 {
+        // Yes, breakpad never defined CONTROL for this context
+
+        /// SP, LR, PC, and CPSR
+        const CONTEXT_ARM_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        /// R0-R12
+        const CONTEXT_ARM_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        /// Q0-Q15 / D0-D31 / S0-S31
+        const CONTEXT_ARM_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
+        const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits | Self::CONTEXT_ARM_INTEGER.bits | Self::CONTEXT_ARM_FLOATING_POINT.bits;
+        const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits;
     }
 }
 
@@ -7178,7 +7221,7 @@ pub struct CONTEXT_AMD64 {
 }
 
 /// ARM floating point state
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_ARM {
     pub fpscr: u64,
@@ -7190,7 +7233,7 @@ pub struct FLOATING_SAVE_AREA_ARM {
 ///
 /// This is a Breakpad extension, and does not match the definition of `CONTEXT` for ARM
 /// in WinNT.h.
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM {
     pub context_flags: u32,
@@ -7244,7 +7287,7 @@ impl ArmRegisterNumbers {
 ///
 /// NOTE: if you ever decide to try to make this repr(C) and get really clever,
 /// this type is actually non-trivially repr(packed(4)) in the headers!
-#[derive(Debug, Clone, Copy, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Copy, Default, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_ARM64_OLD {
     pub context_flags: u64,
@@ -7488,7 +7531,7 @@ pub enum SparcRegisterNumbers {
 /// x86 floating point state
 ///
 /// This struct matches the definition of the `FLOATING_SAVE_AREA` struct from WinNT.h.
-#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
+#[derive(Debug, Clone, SmartDefault, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_X86 {
     pub control_word: u32,
@@ -7506,7 +7549,7 @@ pub struct FLOATING_SAVE_AREA_X86 {
 /// An x86 CPU context
 ///
 /// This struct matches the definition of `CONTEXT` in WinNT.h for x86.
-#[derive(Debug, Clone, SmartDefault, Pread, SizeWith)]
+#[derive(Debug, Clone, SmartDefault, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_X86 {
     pub context_flags: u32,
