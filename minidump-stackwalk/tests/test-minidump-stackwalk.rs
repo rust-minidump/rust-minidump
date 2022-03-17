@@ -15,11 +15,11 @@
 // Also note that `cargo test` for an application adds our binary to
 // the env as `CARGO_BIN_EXE_<name>`.
 
+use minidump_synth::*;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use synth_minidump::*;
 use test_assembler::*;
 
 // Some tests need to write files (and read them back).
@@ -621,7 +621,7 @@ fn test_brief_robots() {
 }
 
 fn minimal_minidump() -> SynthMinidump {
-    let context = synth_minidump::x86_context(Endian::Little, 0xf00800, 0x1010);
+    let context = minidump_synth::x86_context(Endian::Little, 0xf00800, 0x1010);
     let stack = Memory::with_section(
         Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
         0x1000,

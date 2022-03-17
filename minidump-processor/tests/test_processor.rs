@@ -10,7 +10,7 @@ use minidump_processor::{
 };
 use std::path::{Path, PathBuf};
 
-use synth_minidump::*;
+use minidump_synth::*;
 use test_assembler::*;
 
 fn locate_testdata() -> PathBuf {
@@ -134,7 +134,7 @@ async fn test_processor_symbols() {
 }
 
 fn minimal_minidump() -> SynthMinidump {
-    let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
+    let context = minidump_synth::x86_context(Endian::Little, 0xabcd1234, 0x1010);
     let stack = Memory::with_section(
         Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
         0x1000,
@@ -243,7 +243,7 @@ async fn test_linux_proc_status() {
 
 #[tokio::test]
 async fn test_no_frames() {
-    let context = synth_minidump::x86_context(Endian::Little, 0, 0);
+    let context = minidump_synth::x86_context(Endian::Little, 0, 0);
 
     let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
 

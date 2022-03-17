@@ -6,6 +6,7 @@ Work on making minidump-common more useful for breakpad clients, as well as gene
 
 Changes:
 
+
 # minidump-common
 
 * CONTEXT_ARM64 / CONTEXT_ARM64_OLD have been modified
@@ -15,6 +16,7 @@ Changes:
     * FLOATING_SAVE_AREA_ARM64 has fixed the order of fpcr/fpsr (was just wrong)
     * ContextFlagsArm64 and ContextFlagsArm64Old have been added
 
+
 # minidump
 
 * MinidumpStream now takes an extra `Option<&MinidumpSystemInfo>` argument so that every stream can have this critical information available while parsing. We will eagerly try to parse this info when you create a Minidump, so if there's any SystemInfo at all (which should always be true, but minidumps are evil), then your stream should have it available for its own parsing. We are currently working on migrating existing streams that need/want it.
@@ -22,6 +24,11 @@ Changes:
 * macOS codeids are now properly handled thanks to the above SystemInfo work.
 
 
+# synth-minidump / minidump-synth
+
+synth-minidump has been renamed to minidump-synth and is now published on crates.io. There's no good reason to do this or use it, but I flaw in `cargo publish` requires the dev-dependencies of binaries (minidump-stackwalk) to be published, so, ok it is!
+
+The rename was done to keep our public naming scheme consistent.
 
 
 
