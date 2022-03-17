@@ -72,7 +72,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "async-trait",
  "circular",
@@ -633,7 +633,7 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 
 [[package]]
 name = "minidump"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "arbitrary",
  "debugid",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "arbitrary",
  "bitflags",
@@ -669,7 +669,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-stackwalk"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "clap",
  "insta",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-synth"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "encoding",
  "minidump-common",

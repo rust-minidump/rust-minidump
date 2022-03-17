@@ -165,7 +165,7 @@ Here is an example stackwalking trace:
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.10.0`
+Version: `minidump-stackwalk 0.10.1`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 

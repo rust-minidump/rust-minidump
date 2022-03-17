@@ -1,8 +1,9 @@
-Pending Release (TBD)
+# Version 0.10.1 (2022-03-17)
 
-Commit: TBD
+Commit: This one!
 
-Work on making minidump-common more useful for breakpad clients, as well as general improvements.
+Work on making minidump-common more useful for minidump *clients* (generators), as well as general improvements.
+
 
 Changes:
 
