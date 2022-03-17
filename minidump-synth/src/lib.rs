@@ -1,6 +1,18 @@
 // Copyright 2016 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+//! Synthetic Minidumps for Testing
+//!
+//! This is a hacky mess that intentionally doesn't use minidump-common's layouts
+//! so that we can catch incorrect changes to minidump-common itself. It exists
+//! primarily as an internal dev-dependency of rust-minidump, but is published
+//! for the sake of satisfying cargo-publish.
+//!
+//! Basic usage is to  [SynthMinidump][], use its methods to build up the binary,
+//! and then `finish()` to write the binary to a buffer. Then you can either write
+//! that to disk as an actual minidump file or feed it directly to the minidump
+//! or minidump-processor crate.
+
 // Some test_assembler types do not have Debug, so be a bit more lenient here.
 #![allow(missing_debug_implementations)]
 

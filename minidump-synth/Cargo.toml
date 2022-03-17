@@ -1,5 +1,5 @@
 [package]
-name = "synth-minidump"
+name = "minidump-synth"
 version = "0.10.0"
 edition = "2021"
 readme = "README.md"

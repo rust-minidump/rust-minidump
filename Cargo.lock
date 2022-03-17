@@ -642,10 +642,10 @@ dependencies = [
  "log",
  "memmap2",
  "minidump-common",
+ "minidump-synth",
  "num-traits 0.2.14",
  "range-map",
  "scroll",
- "synth-minidump",
  "test-assembler",
  "thiserror",
  "time 0.3.7",
@@ -678,10 +678,10 @@ dependencies = [
  "log",
  "memmap2",
  "minidump",
+ "minidump-synth",
  "scroll",
  "serde",
  "serde_json",
- "synth-minidump",
  "test-assembler",
  "thiserror",
  "tokio",
@@ -697,11 +697,21 @@ dependencies = [
  "minidump",
  "minidump-common",
  "minidump-processor",
+ "minidump-synth",
  "openssl",
  "simplelog",
- "synth-minidump",
  "test-assembler",
  "tokio",
+]
+
+[[package]]
+name = "minidump-synth"
+version = "0.10.0"
+dependencies = [
+ "encoding",
+ "minidump-common",
+ "scroll",
+ "test-assembler",
 ]
 
 [[package]]
@@ -1198,16 +1208,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
-]
-
-[[package]]
-name = "synth-minidump"
-version = "0.10.0"
-dependencies = [
- "encoding",
- "minidump-common",
- "scroll",
- "test-assembler",
 ]
 
 [[package]]

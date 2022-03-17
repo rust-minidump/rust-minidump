@@ -202,11 +202,11 @@ This is primarily designed for use by minidump-processor.
 
 
 
-## [synth-minidump](synth-minidump)
-
-(currently private to this project)
+## [minidump-synth](minidump-synth)
 
 Provides a simple interface for mocking minidumps for unit tests.
+
+This is basically an internal dev-dependency of rust-minidump that we're publishing only so that `cargo publish` doesn't complain about it. I guess you could use it but we don't recommend it?
 
 
 

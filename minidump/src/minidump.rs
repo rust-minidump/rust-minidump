@@ -5028,14 +5028,14 @@ mod test {
     use super::*;
     use md::GUID;
     use minidump_common::format::{PlatformId, ProcessorArchitecture};
-    use std::mem;
-    use synth_minidump::{
+    use minidump_synth::{
         self, AnnotationValue, CrashpadInfo, DumpString, Exception, Memory,
         MemoryInfo as SynthMemoryInfo, MiscFieldsBuildString, MiscFieldsPowerInfo,
         MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields, MiscStream,
         Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, SystemInfo, Thread,
         ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
     };
+    use std::mem;
     use test_assembler::*;
 
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {
@@ -6354,7 +6354,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
     #[test]
     fn test_thread_list_x86() {
-        let context = synth_minidump::x86_context(Endian::Little, 0xabcd1234, 0x1010);
+        let context = minidump_synth::x86_context(Endian::Little, 0xabcd1234, 0x1010);
         let stack = Memory::with_section(
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000,
@@ -6392,7 +6392,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     #[test]
     fn test_thread_list_amd64() {
         let context =
-            synth_minidump::amd64_context(Endian::Little, 0x1234abcd1234abcd, 0x1000000010000000);
+            minidump_synth::amd64_context(Endian::Little, 0x1234abcd1234abcd, 0x1000000010000000);
         let stack = Memory::with_section(
             Section::with_endian(Endian::Little).append_repeated(0, 0x1000),
             0x1000000010000000,

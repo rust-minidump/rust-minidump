@@ -60,7 +60,7 @@ If you ever introduce a new stream, you should consider adjusting the following.
 Core Functionality / Testing:
 
 * [minidump's stream fuzzing tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/fuzz/fuzz_targets/parse.rs#L13)
-* [synth-minidump's stream generator](https://github.com/luser/rust-minidump/blob/master/synth-minidump/src/lib.rs#L31) (make it so that we can test the stream)
+* [minidump-synth's stream generator](https://github.com/luser/rust-minidump/blob/master/minidump-synth/src/lib.rs#L31) (make it so that we can test the stream)
     * This will require filling in quite a bit of code!
 * [minidump-stackwalk's raw stream dumper](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/src/main.rs#L516) (make it so we can debug the stream)
     * This generally requires implementing a "print" function for it
@@ -75,7 +75,7 @@ Documentation / Reporting:
 
 Wow that's a lot!
 
-Since streams are rarely perfectly unique, you can usually fill in this stuff by basing it (read: copy-pasting) the code for similar streams. For instance, if you're implementing something similar to MemoryList, then CTRL+Fing for "memory_list" in synth-minidump will generally show you what needs to be added.
+Since streams are rarely perfectly unique, you can usually fill in this stuff by basing it (read: copy-pasting) the code for similar streams. For instance, if you're implementing something similar to MemoryList, then CTRL+Fing for "memory_list" in minidump-synth will generally show you what needs to be added.
 
 
 # Adding a New Analysis to minidump-processor/minidump-stackwalk
@@ -112,8 +112,8 @@ Whether you're adding a new feature or fixing a bug, **you should always add a t
 
 Major locations for tests include:
 
-* [minidump parsing unit tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4739) (see the `synth-minidump` section)
-* [minidump-processor integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-processor/tests/test_processor.rs) (see the `synth-minidump` section)
+* [minidump parsing unit tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4739) (see the `minidump-synth` section)
+* [minidump-processor integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-processor/tests/test_processor.rs) (see the `minidump-synth` section)
 * [minidump-stackwalk integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (see the `insta` section)
 * [breakpad-symbols symbol file parser tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/breakpad-symbols/src/lib.rs#L819)
 * [breakpad-symbols cfi interpreter tests](https://github.com/luser/rust-minidump/blob/master/breakpad-symbols/src/sym_file/walker.rs#L1032)
@@ -133,13 +133,13 @@ fuzzing tests (see the `cargo fuzz` section):
 
 
 
-## synth-minidump: Synthetic Minidumps for Tests
+## minidump-synth: Synthetic Minidumps for Tests
 
-rust-minidump includes a [synthetic minidump generator](synth-minidump) which lets you come up with a high-level description of the contents of a minidump, and then produces an actual minidump binary that we can feed it into the full parser.
+rust-minidump includes a [synthetic minidump generator](minidump-synth) which lets you come up with a high-level description of the contents of a minidump, and then produces an actual minidump binary that we can feed it into the full parser.
 
-This is used throughout the codebase. Being able to use synth-minidump and add things to it is very important! This can in turn involve the test_assembler crate, which we discuss in the next section. Thankfully you don't need to master these systems: there's usually already code/tests for something *similar* which you can copy-paste and tweak. 
+This is used throughout the codebase. Being able to use minidump-synth and add things to it is very important! This can in turn involve the test_assembler crate, which we discuss in the next section. Thankfully you don't need to master these systems: there's usually already code/tests for something *similar* which you can copy-paste and tweak. 
 
-Most streams in the minidump format are "some kind of list", and there are a few common formats for those lists. synth-minidump makes it relatively easy to add streams like that. See: ListStream, ExListStream, and SimpleStream.
+Most streams in the minidump format are "some kind of list", and there are a few common formats for those lists. minidump-synth makes it relatively easy to add streams like that. See: ListStream, ExListStream, and SimpleStream.
 
 If your stream is more complicated you might instead want to model your code off of the more adhoc streams like SystemInfo, Exception, or MiscStream.
 
@@ -147,7 +147,7 @@ It's hard for me to know what exactly to say here... the copy-paste method reall
 
 ------
 
-Example test using synth-minidump (from the minidump crate's unit tests):
+Example test using minidump-synth (from the minidump crate's unit tests):
 
 ```rust ,ignore
 #[test]

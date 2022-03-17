@@ -26,7 +26,7 @@ time = { version = "0.3.6", features = ["formatting"] }
 uuid = "0.8"
 
 [dev-dependencies]
-synth-minidump = { path = "../synth-minidump" }
+minidump-synth = { path = "../minidump-synth" }
 test-assembler = "0.1.6"
 doc-comment = "0.3.3"
 
