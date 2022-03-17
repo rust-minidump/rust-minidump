@@ -1,11 +1,34 @@
+Pending Release (TBD)
+
+Commit: TBD
+
+Nothing Yet!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.10.1 (2022-03-17)
 
-Commit: This one!
+Commit: [b0af5b4ce2e8b5fb680ef006f415744f4a536d8a](https://github.com/luser/rust-minidump/commit/b0af5b4ce2e8b5fb680ef006f415744f4a536d8a)
 
 Work on making minidump-common more useful for minidump *clients* (generators), as well as general improvements.
 
-
-Changes:
 
 
 # minidump-common
@@ -30,6 +53,16 @@ Changes:
 synth-minidump has been renamed to minidump-synth and is now published on crates.io. There's no good reason to do this or use it, but I flaw in `cargo publish` requires the dev-dependencies of binaries (minidump-stackwalk) to be published, so, ok it is!
 
 The rename was done to keep our public naming scheme consistent.
+
+
+
+
+
+
+
+
+
+
 
 
 
