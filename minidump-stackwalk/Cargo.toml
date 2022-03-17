@@ -1,7 +1,7 @@
 [package]
 name = "minidump-stackwalk"
 description = "A CLI minidump analyzer"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 homepage = "https://github.com/luser/rust-minidump"
@@ -17,9 +17,9 @@ travis-ci = { repository = "luser/rust-minidump" }
 [dependencies]
 clap = { version = "3.1", features = ["cargo", "wrap_help"] }
 log = "0.4"
-minidump = { version = "0.10.0", path = "../minidump" }
-minidump-common = { version = "0.10.0", path = "../minidump-common" }
-minidump-processor = { version = "0.10.0", path = "../minidump-processor" }
+minidump = { version = "0.10.1", path = "../minidump" }
+minidump-common = { version = "0.10.1", path = "../minidump-common" }
+minidump-processor = { version = "0.10.1", path = "../minidump-processor" }
 simplelog = "0.11.2"
 tokio = { version = "1.12.0", features = ["full"] }
 
@@ -32,5 +32,5 @@ optional = true
 
 [dev-dependencies]
 insta = "1.13.0"
-minidump-synth = { version = "0.10.0", path = "../minidump-synth" }
+minidump-synth = { version = "0.10.1", path = "../minidump-synth" }
 test-assembler = "0.1.6"
