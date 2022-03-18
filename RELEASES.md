@@ -4,9 +4,12 @@ Commit: TBD
 
 # minidump-common
 
-All the platform-specific errorcode enums have been pulled out to an `errors` module
+* All the platform-specific errorcode enums have been pulled out to an `errors` module
 to keep them out of the way of the actual minidump format's definitions.
 
+# minidump
+
+* MinidumpStream::STREAM_TYPE is now a u32 instead of an enum. This reflects the fact that minidumps allow for custom streams, and makes it easier for third-parties to add implementations of their own streams for their projects.
 
 
 

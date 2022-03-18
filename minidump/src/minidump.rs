@@ -127,12 +127,16 @@ impl Error {
 /// The fundamental unit of data in a `Minidump`.
 pub trait MinidumpStream<'a>: Sized {
     /// The stream type constant used in the `md::MDRawDirectory` entry.
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE;
+    /// This is usually a [MINIDUMP_STREAM_TYPE][] but it's left as a u32
+    /// to allow external projects to add support for their own custom streams.
+    const STREAM_TYPE: u32;
+
     /// Read this `MinidumpStream` type from `bytes`.
     ///
-    /// `bytes` is the contents of this specific stream.
-    /// `all` refers to the full contents of the minidump, for reading auxilliary data
-    /// referred to with `MINIDUMP_LOCATION_DESCRIPTOR`s.
+    /// * `bytes` is the contents of this specific stream.
+    /// * `all` refers to the full contents of the minidump, for reading auxilliary data
+    ///   referred to with `MINIDUMP_LOCATION_DESCRIPTOR`s.
+    /// * `system_info` is the preparsed SystemInfo stream, if it exists in the minidump.
     fn read(
         bytes: &'a [u8],
         all: &'a [u8],
@@ -1301,7 +1305,7 @@ where
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadNamesStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::ThreadNamesStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -1441,7 +1445,7 @@ impl Default for MinidumpModuleList {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpModuleList {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ModuleListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::ModuleListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -1542,7 +1546,7 @@ impl Default for MinidumpUnloadedModuleList {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::UnloadedModuleListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::UnloadedModuleListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -1775,7 +1779,7 @@ impl<'a, Descriptor> Default for MinidumpMemoryListBase<'a, Descriptor> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MemoryListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MemoryListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -1801,7 +1805,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpMemory64List<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::Memory64ListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::Memory64ListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -1864,7 +1868,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemory64List<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpMemoryInfoList<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MemoryInfoListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MemoryInfoListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -2009,7 +2013,7 @@ impl<'a> MinidumpMemoryInfo<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxMaps;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxMaps as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -2538,7 +2542,7 @@ impl<'a> MinidumpThread<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ThreadListStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::ThreadListStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -2608,7 +2612,7 @@ impl<'a> MinidumpThreadList<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::SystemInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::SystemInfoStream as u32;
 
     fn read(
         bytes: &[u8],
@@ -2997,7 +3001,7 @@ impl RawMiscInfo {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpMiscInfo {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MiscInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MiscInfoStream as u32;
 
     fn read(
         bytes: &[u8],
@@ -3127,7 +3131,7 @@ impl RawMacCrashInfo {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MozMacosCrashInfoStream as u32;
 
     fn read(
         bytes: &[u8],
@@ -3245,7 +3249,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxLsbRelease;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -3258,7 +3262,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxEnviron;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxEnviron as u32;
 
     #[allow(clippy::single_match)]
     fn read(
@@ -3272,7 +3276,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxProcStatus;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32;
 
     #[allow(clippy::single_match)]
     fn read(
@@ -3286,7 +3290,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::LinuxCpuInfo;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -3497,7 +3501,7 @@ impl MinidumpMiscInfo {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpBreakpadInfo {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::BreakpadInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::BreakpadInfoStream as u32;
 
     fn read(
         bytes: &[u8],
@@ -4126,7 +4130,7 @@ impl fmt::Display for CrashReason {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpException<'a> {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::ExceptionStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::ExceptionStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -4287,7 +4291,7 @@ impl<'a> MinidumpException<'a> {
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpAssertion {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::AssertionInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::AssertionInfoStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -4526,7 +4530,7 @@ fn read_crashpad_module_links(
 }
 
 impl<'a> MinidumpStream<'a> for MinidumpCrashpadInfo {
-    const STREAM_TYPE: MINIDUMP_STREAM_TYPE = MINIDUMP_STREAM_TYPE::CrashpadInfoStream;
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::CrashpadInfoStream as u32;
 
     fn read(
         bytes: &'a [u8],
@@ -4733,16 +4737,17 @@ where
                 }
             }
         }
-        let system_info = streams
-            .get(&MinidumpSystemInfo::STREAM_TYPE.into())
-            .and_then(|&(_, ref dir)| {
-                location_slice(data.deref(), &dir.location)
-                    .ok()
-                    .and_then(|bytes| {
-                        let all_bytes = data.deref();
-                        MinidumpSystemInfo::read(bytes, all_bytes, endian, None).ok()
-                    })
-            });
+        let system_info =
+            streams
+                .get(&MinidumpSystemInfo::STREAM_TYPE)
+                .and_then(|&(_, ref dir)| {
+                    location_slice(data.deref(), &dir.location)
+                        .ok()
+                        .and_then(|bytes| {
+                            let all_bytes = data.deref();
+                            MinidumpSystemInfo::read(bytes, all_bytes, endian, None).ok()
+                        })
+                });
 
         Ok(Minidump {
             data,
@@ -4852,11 +4857,8 @@ where
     /// Note that the lifetime of the returned stream is bound to the lifetime of the this
     /// `Minidump` struct itself and not to the lifetime of the data backing this minidump.
     /// This is a consequence of how this struct relies on [Deref] to access the data.
-    pub fn get_raw_stream<S>(&'a self, stream_type: S) -> Result<&'a [u8], Error>
-    where
-        S: Into<u32>,
-    {
-        match self.streams.get(&stream_type.into()) {
+    pub fn get_raw_stream(&'a self, stream_type: u32) -> Result<&'a [u8], Error> {
+        match self.streams.get(&stream_type) {
             None => Err(Error::StreamNotFound),
             Some(&(_, ref dir)) => {
                 let bytes = self.data.deref();
