@@ -284,19 +284,19 @@ fn test_thread_list() {
     }
     if let Some(ref stack) = threads[0].stack_memory(&memory_list) {
         // Try the beginning
-        assert_eq!(stack.get_memory_at_address::<u8>(0x12f31c).unwrap(), 0);
-        assert_eq!(stack.get_memory_at_address::<u16>(0x12f31c).unwrap(), 0);
-        assert_eq!(stack.get_memory_at_address::<u32>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u8>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u16>(0x12f31c).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u32>(0x12f31c).unwrap(), 0);
         assert_eq!(
-            stack.get_memory_at_address::<u64>(0x12f31c).unwrap(),
+            stack.read_memory_at_address::<u64>(0x12f31c).unwrap(),
             0x7c90e9c000000000
         );
         // And the end
-        assert_eq!(stack.get_memory_at_address::<u8>(0x12ffff).unwrap(), 0);
-        assert_eq!(stack.get_memory_at_address::<u16>(0x12fffe).unwrap(), 0);
-        assert_eq!(stack.get_memory_at_address::<u32>(0x12fffc).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u8>(0x12ffff).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u16>(0x12fffe).unwrap(), 0);
+        assert_eq!(stack.read_memory_at_address::<u32>(0x12fffc).unwrap(), 0);
         assert_eq!(
-            stack.get_memory_at_address::<u64>(0x12fff8).unwrap(),
+            stack.read_memory_at_address::<u64>(0x12fff8).unwrap(),
             0x405443
         );
     } else {

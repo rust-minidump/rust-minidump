@@ -10,4 +10,5 @@
 
 pub mod errors;
 pub mod format;
+pub mod teb;
 pub mod traits;

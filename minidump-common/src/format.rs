@@ -653,6 +653,8 @@ pub struct MINIDUMP_THREAD {
     /// The priority level of the thread
     pub priority: u32,
     /// The thread environment block
+    ///
+    /// See the [teb](crate::teb) module for digging into this.
     pub teb: u64,
     /// The location and base address of this thread's stack memory
     pub stack: MINIDUMP_MEMORY_DESCRIPTOR,

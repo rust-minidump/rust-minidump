@@ -51,7 +51,7 @@ where
         self.grand_callee_parameter_size
     }
     fn get_register_at_address(&self, address: u64) -> Option<u64> {
-        let result: Option<C::Register> = self.stack_memory.get_memory_at_address(address);
+        let result: Option<C::Register> = self.stack_memory.read_memory_at_address(address);
         result.and_then(|val| u64::try_from(val).ok())
     }
     fn get_callee_register(&self, name: &str) -> Option<u64> {

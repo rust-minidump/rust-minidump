@@ -158,8 +158,8 @@ where
         (0, 0, last_sp)
     } else {
         (
-            stack_memory.get_memory_at_address(last_fp as u64)?,
-            stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?,
+            stack_memory.read_memory_at_address(last_fp as u64)?,
+            stack_memory.read_memory_at_address(last_fp + POINTER_WIDTH as u64)?,
             last_fp + POINTER_WIDTH * 2,
         )
     };
@@ -228,7 +228,7 @@ fn get_link_register_by_frame_pointer(
     } else {
         return None;
     };
-    let presumed_last_fp: Pointer = stack_memory.get_memory_at_address(last_last_fp as u64)?;
+    let presumed_last_fp: Pointer = stack_memory.read_memory_at_address(last_last_fp as u64)?;
 
     // Make sure fp and sp aren't obviously garbage (are well-ordered)
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
@@ -244,7 +244,7 @@ fn get_link_register_by_frame_pointer(
 
     // Now that we're pretty confident that frame pointers are valid, restore
     // the callee's %lr, which should be right next to where its %fp is saved.
-    let last_lr = stack_memory.get_memory_at_address(last_last_fp + POINTER_WIDTH)?;
+    let last_lr = stack_memory.read_memory_at_address(last_last_fp + POINTER_WIDTH)?;
 
     Some(ptr_auth_strip(modules, last_lr))
 }
@@ -323,7 +323,7 @@ where
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let caller_pc = stack_memory.read_memory_at_address(address_of_pc as u64)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;

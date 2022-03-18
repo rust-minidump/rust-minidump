@@ -32,6 +32,7 @@ use crate::system_info::{Cpu, Os};
 use minidump_common::errors::{self as err};
 use minidump_common::format::{self as md};
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
+use minidump_common::teb::{self, Addr64};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
 use time::format_description::well_known::Rfc3339;
@@ -646,13 +647,27 @@ fn location_slice<'a>(
 fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -> Option<String> {
     let u: u32 = bytes.gread_with(offset, endian).ok()?;
     let size = u as usize;
-    if size % 2 != 0 || (*offset + size) > bytes.len() {
+    read_fixed_len_string_utf16(offset, bytes, size, size)
+}
+
+/// Read a fixed-length UTF-16 string from `bytes` at `offset`.
+fn read_fixed_len_string_utf16(
+    offset: &mut usize,
+    bytes: &[u8],
+    max_len: usize,
+    len: usize,
+) -> Option<String> {
+    if len > max_len {
+        return None;
+    }
+
+    if len % 2 != 0 || (*offset + len) > bytes.len() {
         return None;
     }
     let s = UTF_16LE
-        .decode(&bytes[*offset..*offset + size], DecoderTrap::Strict)
+        .decode(&bytes[*offset..*offset + len], DecoderTrap::Strict)
         .ok()?;
-    *offset += size;
+    *offset += len;
     Some(s)
 }
 
@@ -1633,7 +1648,7 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
     ///
     /// Return `None` if the requested address range falls out of the bounds
     /// of this memory region.
-    pub fn get_memory_at_address<T>(&self, addr: u64) -> Option<T>
+    pub fn read_memory_at_address<T>(&self, addr: u64) -> Option<T>
     where
         T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
         T: SizeWith<scroll::Endian>,
@@ -1647,6 +1662,17 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         }
         let start = (addr - self.base_address) as usize;
         self.bytes.pread_with::<T>(start, LE).ok()
+    }
+
+    pub fn slice_at_address(&self, addr: u64, len: usize) -> Option<&[u8]> {
+        let end = self.base_address.checked_add(self.size)?;
+
+        let in_range = |a: u64| a >= self.base_address && a < end;
+        if !in_range(addr) || !in_range(addr + len as u64 - 1) {
+            return None;
+        }
+        let start = (addr - self.base_address) as usize;
+        Some(&self.bytes[start..start + len])
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
@@ -1702,6 +1728,15 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
         self.regions_by_addr
             .get(address)
             .map(|&index| &self.regions[index])
+    }
+
+    pub fn read_memory_at_address<T>(&self, addr: teb::Addr64<T>) -> Option<T>
+    where
+        T: TryFromCtx<'mdmp, scroll::Endian, [u8], Error = scroll::Error>,
+        T: SizeWith<scroll::Endian>,
+    {
+        self.memory_at_address(addr.addr)?
+            .read_memory_at_address(addr.addr)
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
@@ -2492,20 +2527,46 @@ impl<'a> MinidumpThread<'a> {
             self.raw.thread_context.data_size,
             self.raw.thread_context.rva,
         )?;
+        // We might not need any memory, so try to move forward with an empty
+        // MemoryList if we don't have one.
+        let dummy_memory = MinidumpMemoryList::default();
+        let memory = memory.unwrap_or(&dummy_memory);
+
         if let Some(system_info) = system {
             if let Some(ctx) = self.context(system_info, misc) {
                 ctx.print(f)?;
             } else {
                 write!(f, "  (no context)\n\n")?;
             }
+
+            if let (Os::Windows, Cpu::X86_64) = (system_info.os, system_info.cpu) {
+                let teb_ptr = Addr64::<teb::TEB_X64>::from(self.raw.teb);
+                if let Some(teb) = memory.read_memory_at_address(teb_ptr) {
+                    writeln!(f, "Thread Environment Block (TEB)")?;
+                    writeln!(
+                        f,
+                        "  last_error_value           = {:#x}",
+                        teb.last_error_value
+                    )?;
+                    writeln!(
+                        f,
+                        "  process_environment_block  = {:#x}",
+                        teb.process_environment_block.addr
+                    )?;
+                    writeln!(
+                        f,
+                        "  tls_expansion_slots        = {:#x}",
+                        teb.tls_expansion_slots
+                    )?;
+                    writeln!(f)?;
+                    // tls_slots is 64 values... kind noisy
+                    // writeln!(f, " = {:#x}", teb.tls_slots);
+                }
+            }
         } else {
             write!(f, "  (no context)\n\n")?;
         }
 
-        // We might not need any memory, so try to limp forward with an empty
-        // MemoryList if we don't have one.
-        let dummy_memory = MinidumpMemoryList::default();
-        let memory = memory.unwrap_or(&dummy_memory);
         if let Some(ref stack) = self.stack_memory(memory) {
             writeln!(f, "Stack")?;
             stack.print_contents(f)?;
@@ -2531,9 +2592,40 @@ impl<'a> MinidumpThread<'a> {
         let addr = teb.checked_add(offset)?;
         let val: u32 = memory
             .memory_at_address(addr)?
-            .get_memory_at_address(addr)?;
+            .read_memory_at_address(addr)?;
 
         Some(CrashReason::from_windows_error(val))
+    }
+
+    /// Gets the command-line invocation that started this process, if it's stored here.
+    ///
+    /// i.e. "C:\Program Files\Firefox Nightly\firefox.exe" (quotes included!)
+    /// (not sure what command-line flags would show up as yet)
+    pub fn command_line(
+        &self,
+        system_info: &MinidumpSystemInfo,
+        memory: &MinidumpMemoryList,
+    ) -> Option<String> {
+        // FIXME: this is *wildly* bloated, the TEB and PEB are HUGE!
+        // can we design a nice clean system for just getting fields?
+        if let (Os::Windows, Cpu::X86_64) = (system_info.os, system_info.cpu) {
+            let teb_ptr = Addr64::<teb::TEB_X64>::from(self.raw.teb);
+            let teb = memory.read_memory_at_address(teb_ptr)?;
+            let peb = memory.read_memory_at_address(teb.process_environment_block)?;
+            let params = memory.read_memory_at_address(peb.process_parameters)?;
+            let cmd = &params.command_line;
+            let mem = memory.memory_at_address(cmd.buffer.addr)?;
+            let bytes = mem.slice_at_address(cmd.buffer.addr, cmd.length as usize)?;
+            let args = read_fixed_len_string_utf16(
+                &mut 0,
+                bytes,
+                cmd.maximum_length as usize,
+                cmd.length as usize,
+            )?;
+            Some(args)
+        } else {
+            None
+        }
     }
 }
 
@@ -2602,6 +2694,69 @@ impl<'a> MinidumpThreadList<'a> {
         for (i, thread) in self.threads.iter().enumerate() {
             writeln!(f, "thread[{}]", i)?;
             thread.print(f, memory, system, misc)?;
+        }
+
+        if let (Some(memory), Some(system_info), Some(thread)) =
+            (memory, system, self.threads.get(0))
+        {
+            if let (Os::Windows, Cpu::X86_64) = (system_info.os, system_info.cpu) {
+                let teb_ptr = Addr64::<teb::TEB_X64>::from(thread.raw.teb);
+                if let Some(teb) = memory.read_memory_at_address(teb_ptr) {
+                    if let Some(peb) = memory.read_memory_at_address(teb.process_environment_block)
+                    {
+                        writeln!(f, "Process Environment Block (PEB)")?;
+                        writeln!(
+                            f,
+                            "  atl_thunk_s_list_ptr      = {:#x}",
+                            peb.atl_thunk_s_list_ptr
+                        )?;
+                        writeln!(
+                            f,
+                            "  atl_thunk_s_list_ptr_32   = {:#x}",
+                            peb.atl_thunk_s_list_ptr_32
+                        )?;
+                        writeln!(
+                            f,
+                            "  being_debugged            = {:#x} ({})",
+                            peb.being_debugged,
+                            peb.being_debugged != 0
+                        )?;
+                        writeln!(f, "  ldr                       = {:#x}", peb.ldr.addr)?;
+                        writeln!(
+                            f,
+                            "  post_process_init_routine = {:#x}",
+                            peb.post_process_init_routine
+                        )?;
+                        writeln!(f, "  session_id                = {:#x}", peb.session_id)?;
+                        writeln!(
+                            f,
+                            "  process_parameters        = {:#x}",
+                            peb.process_parameters.addr
+                        )?;
+                        if let Some(params) = memory.read_memory_at_address(peb.process_parameters)
+                        {
+                            let args = params.command_line;
+                            if let Some(args) = memory
+                                .memory_at_address(args.buffer.addr)
+                                .and_then(|mem| {
+                                    mem.slice_at_address(args.buffer.addr, args.length as usize)
+                                })
+                                .and_then(|bytes| {
+                                    read_fixed_len_string_utf16(
+                                        &mut 0,
+                                        bytes,
+                                        args.maximum_length as usize,
+                                        args.length as usize,
+                                    )
+                                })
+                            {
+                                writeln!(f, "    command_line: {}", args)?;
+                            }
+                        }
+                        writeln!(f)?;
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -5828,7 +5983,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
         let regions = memory_list.iter().collect::<Vec<_>>();
         assert_eq!(regions.len(), 1);
-        assert!(regions[0].get_memory_at_address::<u8>(u64::MAX).is_none());
+        assert!(regions[0].read_memory_at_address::<u8>(u64::MAX).is_none());
     }
 
     #[test]

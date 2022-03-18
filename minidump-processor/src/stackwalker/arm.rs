@@ -155,8 +155,8 @@ where
         (0, 0, last_sp)
     } else {
         (
-            stack_memory.get_memory_at_address(last_fp as u64)?,
-            stack_memory.get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
+            stack_memory.read_memory_at_address(last_fp as u64)?,
+            stack_memory.read_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
             last_fp + POINTER_WIDTH * 2,
         )
     };
@@ -223,7 +223,7 @@ where
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let caller_pc = stack_memory.read_memory_at_address(address_of_pc as u64)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;

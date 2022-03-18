@@ -164,8 +164,8 @@ where
         // drowning the rest of the code in checked_add.
         return None;
     }
-    let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
-    let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
+    let caller_ip = stack_memory.read_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
+    let caller_bp = stack_memory.read_memory_at_address(last_bp as u64)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
 
     // NOTE: minor divergence from x64 impl here: doing extra validation on the
@@ -244,7 +244,7 @@ where
 
     for i in 0..scan_range {
         let address_of_ip = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_ip = stack_memory.get_memory_at_address(address_of_ip as u64)?;
+        let caller_ip = stack_memory.read_memory_at_address(address_of_ip as u64)?;
         if instruction_seems_valid(caller_ip, modules, symbol_provider).await {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
             let caller_sp = address_of_ip.checked_add(POINTER_WIDTH)?;
@@ -276,12 +276,12 @@ where
             // we expect the frame pointer to be in, so we can unconditionally load it here.
             if i > 0 {
                 let address_of_bp = address_of_ip - POINTER_WIDTH;
-                let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+                let bp = stack_memory.read_memory_at_address(address_of_bp as u64)?;
 
                 if bp > address_of_ip && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES {
                     // Sanity check that resulting bp is still inside stack memory.
                     if stack_memory
-                        .get_memory_at_address::<Pointer>(bp as u64)
+                        .read_memory_at_address::<Pointer>(bp as u64)
                         .is_some()
                     {
                         caller_bp = Some(bp);
@@ -290,7 +290,7 @@ where
                     if last_bp >= caller_sp {
                         // Sanity check that resulting bp is still inside stack memory.
                         if stack_memory
-                            .get_memory_at_address::<Pointer>(last_bp as u64)
+                            .read_memory_at_address::<Pointer>(last_bp as u64)
                             .is_some()
                         {
                             caller_bp = Some(last_bp);

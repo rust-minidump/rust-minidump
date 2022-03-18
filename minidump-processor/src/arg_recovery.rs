@@ -107,7 +107,7 @@ pub fn fill_arguments(call_stack: &mut CallStack, stack_memory: Option<&Minidump
                     let mut read_head = caller_stack_pointer;
                     let mut pop_value = || {
                         if read_head < caller_frame_pointer {
-                            let val = mem.get_memory_at_address::<u32>(read_head);
+                            let val = mem.read_memory_at_address::<u32>(read_head);
                             read_head += POINTER_WIDTH;
                             val.map(|val| val as u64)
                         } else {
