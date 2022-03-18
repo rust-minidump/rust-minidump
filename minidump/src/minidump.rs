@@ -29,7 +29,8 @@ use uuid::Uuid;
 pub use crate::context::*;
 use crate::strings::*;
 use crate::system_info::{Cpu, Os};
-use minidump_common::format::{self as md, ExceptionCodeLinux};
+use minidump_common::errors::{self as err};
+use minidump_common::format::{self as md};
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
 use minidump_common::traits::{IntoRangeMapSafe, Module};
 use range_map::{Range, RangeMap};
@@ -461,43 +462,43 @@ pub struct MinidumpLinuxProcStatus<'a> {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CrashReason {
     /// A Mac/iOS error code with no other interesting details.
-    MacGeneral(md::ExceptionCodeMac, u32),
-    MacBadAccessKern(md::ExceptionCodeMacBadAccessKernType),
-    MacBadAccessArm(md::ExceptionCodeMacBadAccessArmType),
-    MacBadAccessPpc(md::ExceptionCodeMacBadAccessPpcType),
-    MacBadAccessX86(md::ExceptionCodeMacBadAccessX86Type),
-    MacBadInstructionArm(md::ExceptionCodeMacBadInstructionArmType),
-    MacBadInstructionPpc(md::ExceptionCodeMacBadInstructionPpcType),
-    MacBadInstructionX86(md::ExceptionCodeMacBadInstructionX86Type),
-    MacArithmeticPpc(md::ExceptionCodeMacArithmeticPpcType),
-    MacArithmeticX86(md::ExceptionCodeMacArithmeticX86Type),
-    MacSoftware(md::ExceptionCodeMacSoftwareType),
-    MacBreakpointArm(md::ExceptionCodeMacBreakpointArmType),
-    MacBreakpointPpc(md::ExceptionCodeMacBreakpointPpcType),
-    MacBreakpointX86(md::ExceptionCodeMacBreakpointX86Type),
-    MacResource(md::ExceptionCodeMacResourceType, u64, u64),
-    MacGuard(md::ExceptionCodeMacGuardType, u64, u64),
+    MacGeneral(err::ExceptionCodeMac, u32),
+    MacBadAccessKern(err::ExceptionCodeMacBadAccessKernType),
+    MacBadAccessArm(err::ExceptionCodeMacBadAccessArmType),
+    MacBadAccessPpc(err::ExceptionCodeMacBadAccessPpcType),
+    MacBadAccessX86(err::ExceptionCodeMacBadAccessX86Type),
+    MacBadInstructionArm(err::ExceptionCodeMacBadInstructionArmType),
+    MacBadInstructionPpc(err::ExceptionCodeMacBadInstructionPpcType),
+    MacBadInstructionX86(err::ExceptionCodeMacBadInstructionX86Type),
+    MacArithmeticPpc(err::ExceptionCodeMacArithmeticPpcType),
+    MacArithmeticX86(err::ExceptionCodeMacArithmeticX86Type),
+    MacSoftware(err::ExceptionCodeMacSoftwareType),
+    MacBreakpointArm(err::ExceptionCodeMacBreakpointArmType),
+    MacBreakpointPpc(err::ExceptionCodeMacBreakpointPpcType),
+    MacBreakpointX86(err::ExceptionCodeMacBreakpointX86Type),
+    MacResource(err::ExceptionCodeMacResourceType, u64, u64),
+    MacGuard(err::ExceptionCodeMacGuardType, u64, u64),
 
     /// A Linux/Android error code with no other interesting metadata.
-    LinuxGeneral(md::ExceptionCodeLinux, u32),
-    LinuxSigill(md::ExceptionCodeLinuxSigillKind),
-    LinuxSigtrap(md::ExceptionCodeLinuxSigtrapKind),
-    LinuxSigbus(md::ExceptionCodeLinuxSigbusKind),
-    LinuxSigfpe(md::ExceptionCodeLinuxSigfpeKind),
-    LinuxSigsegv(md::ExceptionCodeLinuxSigsegvKind),
-    LinuxSigsys(md::ExceptionCodeLinuxSigsysKind),
+    LinuxGeneral(err::ExceptionCodeLinux, u32),
+    LinuxSigill(err::ExceptionCodeLinuxSigillKind),
+    LinuxSigtrap(err::ExceptionCodeLinuxSigtrapKind),
+    LinuxSigbus(err::ExceptionCodeLinuxSigbusKind),
+    LinuxSigfpe(err::ExceptionCodeLinuxSigfpeKind),
+    LinuxSigsegv(err::ExceptionCodeLinuxSigsegvKind),
+    LinuxSigsys(err::ExceptionCodeLinuxSigsysKind),
 
     /// A Windows error code with no other interesting metadata.
-    WindowsGeneral(md::ExceptionCodeWindows),
+    WindowsGeneral(err::ExceptionCodeWindows),
     /// A Windows error from winerror.h.
-    WindowsWinError(md::WinErrorWindows),
+    WindowsWinError(err::WinErrorWindows),
     /// A Windows error from ntstatus.h
-    WindowsNtStatus(md::NtStatusWindows),
+    WindowsNtStatus(err::NtStatusWindows),
     /// ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION but with details on the kind of access.
-    WindowsAccessViolation(md::ExceptionCodeWindowsAccessType),
+    WindowsAccessViolation(err::ExceptionCodeWindowsAccessType),
     /// ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR but with details on the kind of access.
     /// Second argument is a windows NTSTATUS value.
-    WindowsInPageError(md::ExceptionCodeWindowsInPageErrorType, u64),
+    WindowsInPageError(err::ExceptionCodeWindowsInPageErrorType, u64),
     /// ExceptionCodeWindows::EXCEPTION_STACK_BUFFER_OVERRUN with an accompanying
     /// windows FAST_FAIL value.
     WindowsStackBufferOverrun(u64),
@@ -3577,7 +3578,7 @@ impl CrashReason {
     /// Augments [`CrashReason::from_windows_error`] by also including
     /// `ExceptionCodeWindows`. Appropriate for an actual crash reason.
     pub fn from_windows_code(exception_code: u32) -> CrashReason {
-        if let Some(err) = md::ExceptionCodeWindows::from_u32(exception_code) {
+        if let Some(err) = err::ExceptionCodeWindows::from_u32(exception_code) {
             Self::WindowsGeneral(err)
         } else {
             Self::from_windows_error(exception_code)
@@ -3588,9 +3589,9 @@ impl CrashReason {
     ///
     /// Appropriate for things like LastErrorValue() which may be non-fatal.
     pub fn from_windows_error(error_code: u32) -> CrashReason {
-        if let Some(err) = md::WinErrorWindows::from_u32(error_code) {
+        if let Some(err) = err::WinErrorWindows::from_u32(error_code) {
             Self::WindowsWinError(err)
-        } else if let Some(err) = md::NtStatusWindows::from_u32(error_code) {
+        } else if let Some(err) = err::NtStatusWindows::from_u32(error_code) {
             Self::WindowsNtStatus(err)
         } else {
             Self::WindowsUnknown(error_code)
@@ -3601,7 +3602,7 @@ impl CrashReason {
         raw: &md::MINIDUMP_EXCEPTION_STREAM,
         _cpu: Cpu,
     ) -> Option<CrashReason> {
-        use md::ExceptionCodeWindows;
+        use err::ExceptionCodeWindows;
 
         let record = &raw.exception_record;
         let info = &record.exception_information;
@@ -3621,7 +3622,7 @@ impl CrashReason {
                 // will be present in the crash thread's instruction field anyway.
                 if record.number_parameters >= 1 {
                     // NOTE: address := info[1];
-                    if let Some(ty) = md::ExceptionCodeWindowsAccessType::from_u64(info[0]) {
+                    if let Some(ty) = err::ExceptionCodeWindowsAccessType::from_u64(info[0]) {
                         reason = CrashReason::WindowsAccessViolation(ty);
                     }
                 }
@@ -3639,12 +3640,12 @@ impl CrashReason {
                 if record.number_parameters >= 3 {
                     // NOTE: address := info[1];
                     let nt_status = info[2];
-                    if let Some(ty) = md::ExceptionCodeWindowsInPageErrorType::from_u64(info[0]) {
+                    if let Some(ty) = err::ExceptionCodeWindowsInPageErrorType::from_u64(info[0]) {
                         reason = CrashReason::WindowsInPageError(ty, nt_status);
                     }
                 }
             }
-            CrashReason::WindowsNtStatus(md::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN) => {
+            CrashReason::WindowsNtStatus(err::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN) => {
                 if record.number_parameters >= 1 {
                     let fast_fail = info[0];
                     reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
@@ -3662,7 +3663,7 @@ impl CrashReason {
         raw: &md::MINIDUMP_EXCEPTION_STREAM,
         cpu: Cpu,
     ) -> Option<CrashReason> {
-        use md::ExceptionCodeMac;
+        use err::ExceptionCodeMac;
 
         let record = &raw.exception_record;
         let info = &record.exception_information;
@@ -3670,33 +3671,34 @@ impl CrashReason {
         let exception_flags = record.exception_flags;
 
         // Default to just directly reporting this reason.
-        let mac_reason = md::ExceptionCodeMac::from_u32(exception_code)?;
+        let mac_reason = err::ExceptionCodeMac::from_u32(exception_code)?;
         let mut reason = CrashReason::MacGeneral(mac_reason, exception_flags);
 
         // Refine the output for error codes that have more info
         match mac_reason {
             ExceptionCodeMac::EXC_BAD_ACCESS => {
-                if let Some(ty) = md::ExceptionCodeMacBadAccessKernType::from_u32(exception_flags) {
+                if let Some(ty) = err::ExceptionCodeMacBadAccessKernType::from_u32(exception_flags)
+                {
                     reason = CrashReason::MacBadAccessKern(ty);
                 } else {
                     match cpu {
                         Cpu::Arm64 => {
                             if let Some(ty) =
-                                md::ExceptionCodeMacBadAccessArmType::from_u32(exception_flags)
+                                err::ExceptionCodeMacBadAccessArmType::from_u32(exception_flags)
                             {
                                 reason = CrashReason::MacBadAccessArm(ty);
                             }
                         }
                         Cpu::Ppc => {
                             if let Some(ty) =
-                                md::ExceptionCodeMacBadAccessPpcType::from_u32(exception_flags)
+                                err::ExceptionCodeMacBadAccessPpcType::from_u32(exception_flags)
                             {
                                 reason = CrashReason::MacBadAccessPpc(ty);
                             }
                         }
                         Cpu::X86 | Cpu::X86_64 => {
                             if let Some(ty) =
-                                md::ExceptionCodeMacBadAccessX86Type::from_u32(exception_flags)
+                                err::ExceptionCodeMacBadAccessX86Type::from_u32(exception_flags)
                             {
                                 reason = CrashReason::MacBadAccessX86(ty);
                             }
@@ -3710,21 +3712,21 @@ impl CrashReason {
             ExceptionCodeMac::EXC_BAD_INSTRUCTION => match cpu {
                 Cpu::Arm64 => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBadInstructionArmType::from_u32(exception_flags)
+                        err::ExceptionCodeMacBadInstructionArmType::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBadInstructionArm(ty);
                     }
                 }
                 Cpu::Ppc => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBadInstructionPpcType::from_u32(exception_flags)
+                        err::ExceptionCodeMacBadInstructionPpcType::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBadInstructionPpc(ty);
                     }
                 }
                 Cpu::X86 | Cpu::X86_64 => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBadInstructionX86Type::from_u32(exception_flags)
+                        err::ExceptionCodeMacBadInstructionX86Type::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBadInstructionX86(ty);
                     }
@@ -3736,14 +3738,14 @@ impl CrashReason {
             ExceptionCodeMac::EXC_ARITHMETIC => match cpu {
                 Cpu::Ppc => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacArithmeticPpcType::from_u32(exception_flags)
+                        err::ExceptionCodeMacArithmeticPpcType::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacArithmeticPpc(ty);
                     }
                 }
                 Cpu::X86 | Cpu::X86_64 => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacArithmeticX86Type::from_u32(exception_flags)
+                        err::ExceptionCodeMacArithmeticX86Type::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacArithmeticX86(ty);
                     }
@@ -3753,28 +3755,28 @@ impl CrashReason {
                 }
             },
             ExceptionCodeMac::EXC_SOFTWARE => {
-                if let Some(ty) = md::ExceptionCodeMacSoftwareType::from_u32(exception_flags) {
+                if let Some(ty) = err::ExceptionCodeMacSoftwareType::from_u32(exception_flags) {
                     reason = CrashReason::MacSoftware(ty);
                 }
             }
             ExceptionCodeMac::EXC_BREAKPOINT => match cpu {
                 Cpu::Arm64 => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBreakpointArmType::from_u32(exception_flags)
+                        err::ExceptionCodeMacBreakpointArmType::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBreakpointArm(ty);
                     }
                 }
                 Cpu::Ppc => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBreakpointPpcType::from_u32(exception_flags)
+                        err::ExceptionCodeMacBreakpointPpcType::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBreakpointPpc(ty);
                     }
                 }
                 Cpu::X86 | Cpu::X86_64 => {
                     if let Some(ty) =
-                        md::ExceptionCodeMacBreakpointX86Type::from_u32(exception_flags)
+                        err::ExceptionCodeMacBreakpointX86Type::from_u32(exception_flags)
                     {
                         reason = CrashReason::MacBreakpointX86(ty);
                     }
@@ -3785,14 +3787,14 @@ impl CrashReason {
             },
             ExceptionCodeMac::EXC_RESOURCE => {
                 if let Some(ty) =
-                    md::ExceptionCodeMacResourceType::from_u32((exception_flags >> 29) & 0x7)
+                    err::ExceptionCodeMacResourceType::from_u32((exception_flags >> 29) & 0x7)
                 {
                     reason = CrashReason::MacResource(ty, info[1], info[2]);
                 }
             }
             ExceptionCodeMac::EXC_GUARD => {
                 if let Some(ty) =
-                    md::ExceptionCodeMacGuardType::from_u32((exception_flags >> 29) & 0x7)
+                    err::ExceptionCodeMacGuardType::from_u32((exception_flags >> 29) & 0x7)
                 {
                     reason = CrashReason::MacGuard(ty, info[1], info[2]);
                 }
@@ -3812,37 +3814,37 @@ impl CrashReason {
         let exception_code = record.exception_code;
         let exception_flags = record.exception_flags;
 
-        let linux_reason = ExceptionCodeLinux::from_u32(exception_code)?;
+        let linux_reason = err::ExceptionCodeLinux::from_u32(exception_code)?;
         let mut reason = CrashReason::LinuxGeneral(linux_reason, exception_flags);
         // Refine the output for error codes that have more info
         match linux_reason {
-            ExceptionCodeLinux::SIGILL => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigillKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGILL => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigillKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigill(ty);
                 }
             }
-            ExceptionCodeLinux::SIGTRAP => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigtrapKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGTRAP => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigtrapKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigtrap(ty);
                 }
             }
-            ExceptionCodeLinux::SIGFPE => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigfpeKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGFPE => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigfpeKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigfpe(ty);
                 }
             }
-            ExceptionCodeLinux::SIGSEGV => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigsegvKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGSEGV => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigsegvKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigsegv(ty);
                 }
             }
-            ExceptionCodeLinux::SIGBUS => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigbusKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGBUS => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigbusKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigbus(ty);
                 }
             }
-            ExceptionCodeLinux::SIGSYS => {
-                if let Some(ty) = md::ExceptionCodeLinuxSigsysKind::from_u32(exception_flags) {
+            err::ExceptionCodeLinux::SIGSYS => {
+                if let Some(ty) = err::ExceptionCodeLinuxSigsysKind::from_u32(exception_flags) {
                     reason = CrashReason::LinuxSigsys(ty);
                 }
             }
@@ -3865,7 +3867,7 @@ impl fmt::Display for CrashReason {
         use CrashReason::*;
 
         fn write_nt_status(f: &mut fmt::Formatter<'_>, raw_nt_status: u64) -> fmt::Result {
-            let nt_status = md::NtStatusWindows::from_u64(raw_nt_status);
+            let nt_status = err::NtStatusWindows::from_u64(raw_nt_status);
             if let Some(nt_status) = nt_status {
                 write!(f, "{:?}", nt_status)
             } else {
@@ -3874,7 +3876,7 @@ impl fmt::Display for CrashReason {
         }
 
         fn write_fast_fail(f: &mut fmt::Formatter<'_>, raw_fast_fail: u64) -> fmt::Result {
-            let fast_fail = md::FastFailCode::from_u64(raw_fast_fail);
+            let fast_fail = err::FastFailCode::from_u64(raw_fast_fail);
             if let Some(fast_fail) = fast_fail {
                 write!(f, "{:?}", fast_fail)
             } else {
@@ -3884,16 +3886,16 @@ impl fmt::Display for CrashReason {
 
         fn write_exc_resource(
             f: &mut fmt::Formatter<'_>,
-            ex: md::ExceptionCodeMacResourceType,
+            ex: err::ExceptionCodeMacResourceType,
             code: u64,
             subcode: u64,
         ) -> fmt::Result {
             let flavor = (code >> 58) & 0x7;
             write!(f, "EXC_RESOURCE / {:?} / ", ex)?;
             match ex {
-                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_CPU => {
+                err::ExceptionCodeMacResourceType::RESOURCE_TYPE_CPU => {
                     if let Some(cpu_flavor) =
-                        md::ExceptionCodeMacResourceCpuFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacResourceCpuFlavor::from_u64(flavor)
                     {
                         let interval = (code >> 7) & 0x1ffffff;
                         let cpu_limit = code & 0x7;
@@ -3907,9 +3909,9 @@ impl fmt::Display for CrashReason {
                         write!(f, "0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_WAKEUPS => {
+                err::ExceptionCodeMacResourceType::RESOURCE_TYPE_WAKEUPS => {
                     if let Some(wakeups_flavor) =
-                        md::ExceptionCodeMacResourceWakeupsFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacResourceWakeupsFlavor::from_u64(flavor)
                     {
                         let interval = (code >> 20) & 0xfffff;
                         let wakeups_permitted = code & 0xfff;
@@ -3923,9 +3925,9 @@ impl fmt::Display for CrashReason {
                         write!(f, "0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_MEMORY => {
+                err::ExceptionCodeMacResourceType::RESOURCE_TYPE_MEMORY => {
                     if let Some(memory_flavor) =
-                        md::ExceptionCodeMacResourceMemoryFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacResourceMemoryFlavor::from_u64(flavor)
                     {
                         let hwm_limit = code & 0x1fff;
                         write!(
@@ -3937,8 +3939,8 @@ impl fmt::Display for CrashReason {
                         write!(f, "0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_IO => {
-                    if let Some(io_flavor) = md::ExceptionCodeMacResourceIOFlavor::from_u64(flavor)
+                err::ExceptionCodeMacResourceType::RESOURCE_TYPE_IO => {
+                    if let Some(io_flavor) = err::ExceptionCodeMacResourceIOFlavor::from_u64(flavor)
                     {
                         let interval = (code >> 15) & 0x1ffff;
                         let io_limit = code & 0x7fff;
@@ -3952,9 +3954,9 @@ impl fmt::Display for CrashReason {
                         write!(f, "0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacResourceType::RESOURCE_TYPE_THREADS => {
+                err::ExceptionCodeMacResourceType::RESOURCE_TYPE_THREADS => {
                     if let Some(threads_flavor) =
-                        md::ExceptionCodeMacResourceThreadsFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacResourceThreadsFlavor::from_u64(flavor)
                     {
                         let hwm_limit = code & 0x7fff;
                         write!(
@@ -3971,19 +3973,19 @@ impl fmt::Display for CrashReason {
 
         fn write_exc_guard(
             f: &mut fmt::Formatter<'_>,
-            ex: md::ExceptionCodeMacGuardType,
+            ex: err::ExceptionCodeMacGuardType,
             code: u64,
             subcode: u64,
         ) -> fmt::Result {
             let flavor = (code >> 32) & 0x1fffffff;
             write!(f, "EXC_GUARD / {:?}", ex)?;
             match ex {
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_NONE => {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_NONE => {
                     write!(f, "")
                 }
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_MACH_PORT => {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_MACH_PORT => {
                     if let Some(mach_port_flavor) =
-                        md::ExceptionCodeMacGuardMachPortFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacGuardMachPortFlavor::from_u64(flavor)
                     {
                         let port_name = code & 0xfffffff;
                         write!(
@@ -3995,8 +3997,8 @@ impl fmt::Display for CrashReason {
                         write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_FD => {
-                    if let Some(fd_flavor) = md::ExceptionCodeMacGuardFDFlavor::from_u64(flavor) {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_FD => {
+                    if let Some(fd_flavor) = err::ExceptionCodeMacGuardFDFlavor::from_u64(flavor) {
                         let fd = code & 0xfffffff;
                         write!(
                             f,
@@ -4007,7 +4009,7 @@ impl fmt::Display for CrashReason {
                         write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
                     let namespace = code & 0xffffffff;
                     write!(
                         f,
@@ -4015,8 +4017,8 @@ impl fmt::Display for CrashReason {
                         namespace, subcode,
                     )
                 }
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_VN => {
-                    if let Some(vn_flavor) = md::ExceptionCodeMacGuardVNFlavor::from_u64(flavor) {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_VN => {
+                    if let Some(vn_flavor) = err::ExceptionCodeMacGuardVNFlavor::from_u64(flavor) {
                         let pid = code & 0xfffffff;
                         write!(
                             f,
@@ -4027,9 +4029,9 @@ impl fmt::Display for CrashReason {
                         write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
                     }
                 }
-                md::ExceptionCodeMacGuardType::GUARD_TYPE_VIRT_MEMORY => {
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_VIRT_MEMORY => {
                     if let Some(virt_memory_flavor) =
-                        md::ExceptionCodeMacGuardVirtMemoryFlavor::from_u64(flavor)
+                        err::ExceptionCodeMacGuardVirtMemoryFlavor::from_u64(flavor)
                     {
                         write!(f, " / {:?} offset: {}", virt_memory_flavor, subcode)
                     } else {
@@ -4041,11 +4043,11 @@ impl fmt::Display for CrashReason {
 
         fn write_signal(
             f: &mut fmt::Formatter<'_>,
-            ex: ExceptionCodeLinux,
+            ex: err::ExceptionCodeLinux,
             flags: u32,
         ) -> fmt::Result {
-            if let Some(si_code) = md::ExceptionCodeLinuxSicode::from_u32(flags) {
-                if si_code == md::ExceptionCodeLinuxSicode::SI_USER {
+            if let Some(si_code) = err::ExceptionCodeLinuxSicode::from_u32(flags) {
+                if si_code == err::ExceptionCodeLinuxSicode::SI_USER {
                     write!(f, "{:?}", ex)
                 } else {
                     write!(f, "{:?} / {:?}", ex, si_code)
@@ -4062,7 +4064,7 @@ impl fmt::Display for CrashReason {
             // ======================== Mac/iOS ============================
 
             // These codes get special messages
-            MacGeneral(md::ExceptionCodeMac::SIMULATED, _) => write!(f, "Simulated Exception"),
+            MacGeneral(err::ExceptionCodeMac::SIMULATED, _) => write!(f, "Simulated Exception"),
 
             // Thse codes just repeat their names
             MacGeneral(ex, flags) => write!(f, "{:?} / 0x{:08x}", ex, flags),
@@ -4096,11 +4098,13 @@ impl fmt::Display for CrashReason {
             // ======================== Windows =============================
 
             // These codes get special messages
-            WindowsGeneral(md::ExceptionCodeWindows::OUT_OF_MEMORY) => write!(f, "Out of Memory"),
-            WindowsGeneral(md::ExceptionCodeWindows::UNHANDLED_CPP_EXCEPTION) => {
+            WindowsGeneral(err::ExceptionCodeWindows::OUT_OF_MEMORY) => write!(f, "Out of Memory"),
+            WindowsGeneral(err::ExceptionCodeWindows::UNHANDLED_CPP_EXCEPTION) => {
                 write!(f, "Unhandled C++ Exception")
             }
-            WindowsGeneral(md::ExceptionCodeWindows::SIMULATED) => write!(f, "Simulated Exception"),
+            WindowsGeneral(err::ExceptionCodeWindows::SIMULATED) => {
+                write!(f, "Simulated Exception")
+            }
             // These codes just repeat their names
             WindowsGeneral(ex) => write!(f, "{:?}", ex),
             WindowsWinError(winerror) => write!(f, "{:?}", winerror),
@@ -4178,10 +4182,10 @@ impl<'a> MinidumpException<'a> {
     pub fn get_crash_address(&self, os: Os, cpu: Cpu) -> u64 {
         let addr = match (
             os,
-            md::ExceptionCodeWindows::from_u32(self.raw.exception_record.exception_code),
+            err::ExceptionCodeWindows::from_u32(self.raw.exception_record.exception_code),
         ) {
-            (Os::Windows, Some(md::ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION))
-            | (Os::Windows, Some(md::ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR))
+            (Os::Windows, Some(err::ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION))
+            | (Os::Windows, Some(err::ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR))
                 if self.raw.exception_record.number_parameters >= 2 =>
             {
                 self.raw.exception_record.exception_information[1]
