@@ -2,7 +2,10 @@ Pending Release (TBD)
 
 Commit: TBD
 
-Nothing Yet!
+# minidump-common
+
+All the platform-specific errorcode enums have been pulled out to an `errors` module
+to keep them out of the way of the actual minidump format's definitions.
 
 
 

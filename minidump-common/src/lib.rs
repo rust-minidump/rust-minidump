@@ -8,5 +8,6 @@
 
 #![warn(missing_debug_implementations)]
 
+pub mod errors;
 pub mod format;
 pub mod traits;
