@@ -174,15 +174,36 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
 pub fn relative_symbol_path(module: &(dyn Module + Sync), extension: &str) -> Option<String> {
-    module.debug_file().and_then(|debug_file| {
-        module.debug_identifier().map(|debug_id| {
-            // Can't use PathBuf::file_name here, it doesn't handle
-            // Windows file paths on non-Windows.
-            let leaf = leafname(&debug_file);
-            let filename = replace_or_add_extension(leaf, "pdb", extension);
-            [leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/")
-        })
-    })
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let leaf = leafname(&debug_file);
+    let filename = replace_or_add_extension(leaf, "pdb", extension);
+    Some([leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/"))
+}
+
+pub fn relative_debuginfo_path(module: &(dyn Module + Sync)) -> Option<String> {
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let leaf = leafname(&debug_file);
+    Some([leaf, &debug_id.breakpad().to_string(), leaf].join("/"))
+}
+
+/// Returns (cache_path, server_path)
+pub fn relative_binary_path(module: &(dyn Module + Sync)) -> Option<(String, String)> {
+    let code_file = module.code_file();
+    let code_id = module.code_identifier()?;
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let bin_leaf = leafname(&code_file);
+    let debug_leaf = leafname(&debug_file);
+
+    Some((
+        [debug_leaf, &debug_id.breakpad().to_string(), bin_leaf].join("/"),
+        [bin_leaf, &code_id.to_string(), bin_leaf].join("/"),
+    ))
 }
 
 /// Possible results of locating symbols for a module.
@@ -502,6 +523,148 @@ async fn fetch_symbol_file(
     Ok(symbol_file)
 }
 
+async fn fetch_debuginfo(
+    client: &Client,
+    base_url: &Url,
+    module: &(dyn Module + Sync),
+    cache: &Path,
+    tmp: &Path,
+) -> Result<(PathBuf, String), SymbolError> {
+    let rel_path = relative_debuginfo_path(module).ok_or(SymbolError::MissingDebugFileOrId)?;
+
+    // First try to GET the file from a server
+    let mut url = base_url
+        .join(&rel_path)
+        .map_err(|_| SymbolError::NotFound)?;
+    let code_id = module.code_identifier().unwrap_or_default();
+    url.query_pairs_mut()
+        .append_pair("code_id", code_id.as_str())
+        .append_pair("code_file", &module.code_file());
+    debug!("Trying {}", url);
+    let mut res = client
+        .get(url.clone())
+        .send()
+        .await
+        .and_then(|res| res.error_for_status())
+        .map_err(|_| SymbolError::NotFound)?;
+
+    // Now try to create the temp cache file (not yet in the cache)
+    let final_cache_path = cache.join(rel_path);
+    let mut temp = create_cache_file(tmp, &final_cache_path)?;
+
+    // Now stream the contents to our file
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    {
+        temp.write_all(&chunk[..])?;
+    }
+
+    // And swap it into the cache
+    temp.persist_noclobber(&final_cache_path)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok((final_cache_path, url.to_string()))
+}
+
+async fn fetch_binary(
+    client: &Client,
+    base_url: &Url,
+    module: &(dyn Module + Sync),
+    cache: &Path,
+    tmp: &Path,
+) -> Result<(PathBuf, String), SymbolError> {
+    // NOTE: to make dump_syms happy we're currently moving the bin
+    // to be next to the pdb. This changes where we would naively put it,
+    // hence the two different paths!
+    let (cache_rel_path, server_rel_path) =
+        relative_binary_path(module).ok_or(SymbolError::MissingDebugFileOrId)?;
+
+    // First try to GET the file from a server
+    let mut url = base_url
+        .join(&server_rel_path)
+        .map_err(|_| SymbolError::NotFound)?;
+    let code_id = module.code_identifier().unwrap_or_default();
+    url.query_pairs_mut()
+        .append_pair("code_id", code_id.as_str())
+        .append_pair("code_file", &module.code_file());
+    debug!("Trying {}", url);
+    let mut res = client
+        .get(url.clone())
+        .send()
+        .await
+        .and_then(|res| res.error_for_status())
+        .map_err(|_| SymbolError::NotFound)?;
+
+    // Now try to create the temp cache file (not yet in the cache)
+    let final_cache_path = cache.join(cache_rel_path);
+    let mut temp = create_cache_file(tmp, &final_cache_path)?;
+
+    // Now stream the contents to our file
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    {
+        temp.write_all(&chunk[..])?;
+    }
+
+    // And swap it into the cache
+    temp.persist_noclobber(&final_cache_path)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok((final_cache_path, url.to_string()))
+}
+
+async fn dump_syms(
+    inputs: &[Result<(PathBuf, String), SymbolError>],
+    output: &Path,
+) -> Result<(), SymbolError> {
+    if !inputs.iter().any(|input| input.is_ok()) {
+        return Err(SymbolError::NotFound);
+    }
+
+    let mut cmd = std::process::Command::new("dump_syms");
+    let cmd = cmd.arg("--output").arg(output).arg("--verbose=error");
+
+    let mut source_file = None;
+    let mut urls = vec![];
+    for (input_path, input_url) in inputs.iter().flatten() {
+        urls.push(input_url);
+        // dump_syms only wants one input, and will derive the others
+        // from that one input by looking in the directory. If we have
+        // multiple sources, we want the last one (caller knows the right priority).
+        source_file = Some(input_path);
+    }
+
+    cmd.arg(source_file.unwrap());
+
+    debug!("Running {:?}", cmd);
+
+    let status = cmd.status().map_err(|e| {
+        warn!("Could not run dump_syms {:?}", e);
+        std::io::Error::new(std::io::ErrorKind::Other, e)
+    })?;
+
+    if !status.success() {
+        warn!("dump_syms didn't succeed: {:?}", status);
+        return Err(SymbolError::MissingDebugFileOrId);
+    }
+
+    {
+        // Write extra metadata to the file
+        let mut temp = std::fs::File::options().append(true).open(output)?;
+        let mut cache_metadata = String::new();
+        for url in urls {
+            cache_metadata.push_str(&format!("INFO URL {}\n", url));
+        }
+        temp.write_all(cache_metadata.as_bytes())?;
+    }
+
+    Ok(())
+}
+
 #[async_trait]
 impl SymbolSupplier for HttpSymbolSupplier {
     async fn locate_symbols(
@@ -516,10 +679,34 @@ impl SymbolSupplier for HttpSymbolSupplier {
         }
         // Now try urls
         for url in &self.urls {
-            if let Ok(file) =
-                fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await
-            {
+            // First, try to get a breakpad .sym file from the symbol server
+            let sym = fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await;
+            if let Ok(file) = sym {
                 return Ok(file);
+            }
+
+            // If that didn't work, try to request a native pdb/dll from the symbol server
+            let pdb = fetch_debuginfo(&self.client, url, module, &self.cache, &self.tmp).await;
+            let bin = fetch_binary(&self.client, url, module, &self.cache, &self.tmp).await;
+
+            // Now try to run the user's local dump_syms binary on the inputs to produce a .sym
+            let out =
+                relative_symbol_path(module, "sym").ok_or(SymbolError::MissingDebugFileOrId)?;
+            let output = self.cache.join(out);
+
+            // NOTE: pdb must come after bin, as this indicates that we should prefer
+            // the pdb over the bin when they're both available (dump_syms doesn't like
+            // when you pass it both, and just wants to infer one from the other).
+            // This will also check if both failed for us.
+            if dump_syms(&[bin, pdb], &output).await.is_ok() {
+                // We want dump_syms to leave us in a state "as if" we had downloaded
+                // the symbol file, so as a guard against that diverging, we now use
+                // the proper cache-lookup path to read the file dump_syms just wrote.
+                if let Ok(local_result) = self.local.locate_symbols(module).await {
+                    return Ok(local_result);
+                } else {
+                    warn!("dump_syms succeeded, but there was no symbol file in the cache?");
+                }
             }
         }
         // If we get this far, we have failed to find anything
