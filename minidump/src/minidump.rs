@@ -1027,20 +1027,13 @@ impl Module for MinidumpModule {
 
     fn code_identifier(&self) -> Option<CodeId> {
         match self.codeview_info {
-            Some(CodeView::Pdb70(ref raw)) => {
-                if self.os == Os::MacOs {
-                    // MacOs uses PDB70 instead of its own dedicated format.
-                    // See the following issue for a potential MacOs-specific format:
-                    // https://github.com/luser/rust-minidump/issues/455
-                    Some(CodeId::new(format!("{:#}", raw.signature)))
-                } else {
-                    Some(CodeId::new(format!(
-                        "{0:08X}{1:x}",
-                        self.raw.time_date_stamp, self.raw.size_of_image
-                    )))
-                }
+            Some(CodeView::Pdb70(ref raw)) if self.os == Os::MacOs => {
+                // MacOs uses PDB70 instead of its own dedicated format.
+                // See the following issue for a potential MacOs-specific format:
+                // https://github.com/luser/rust-minidump/issues/455
+                Some(CodeId::new(format!("{:#}", raw.signature)))
             }
-            Some(CodeView::Pdb20(_)) => Some(CodeId::new(format!(
+            Some(CodeView::Pdb20(_)) | Some(CodeView::Pdb70(_)) => Some(CodeId::new(format!(
                 "{0:08X}{1:x}",
                 self.raw.time_date_stamp, self.raw.size_of_image
             ))),
@@ -1053,6 +1046,21 @@ impl Module for MinidumpModule {
                 } else {
                     Some(CodeId::from_binary(&raw.build_id))
                 }
+            }
+            None if self.os == Os::Windows => {
+                // Fall back to the timestamp + size-based debug-id for Windows.
+                // Some Module records from Windows have no codeview record, but
+                // the CodeId generated here is valid and can be looked up on
+                // the Microsoft symbol server.
+                // One example might be `wow64cpu.dll` with code-id `378BC3CDa000`.
+                // This can however lead to "false positive" code-ids for modules
+                // that have no timestamp, in which case the code-id looks extremely
+                // low-entropy. The same can happen though if they *do* have a
+                // codeview record.
+                Some(CodeId::new(format!(
+                    "{0:08X}{1:x}",
+                    self.raw.time_date_stamp, self.raw.size_of_image
+                )))
             }
             // Occasionally things will make it into the module stream that
             // shouldn't be there, and so no meaningful CodeId can be found from
