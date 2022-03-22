@@ -2,7 +2,6 @@
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
 assertion_line: 55
 expression: stdout
-
 ---
 MDRawHeader
   signature            = 0x504d444d
@@ -681,7 +680,7 @@ MINIDUMP_SYSTEM_INFO
   platform_id                                = 0x2
   csd_version_rva                            = 0x768
   suite_mask                                 = 0x100
-  (version)                                  = 512600 Service Pack 2
+  (version)                                  = 5.1.2600 Service Pack 2
   (cpu_info)                                 = GenuineIntel family 6 model 13 stepping 8
 
 MINIDUMP_MISC_INFO

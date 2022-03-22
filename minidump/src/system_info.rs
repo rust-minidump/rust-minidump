@@ -85,6 +85,7 @@ impl fmt::Display for Os {
 /// This is a slightly nicer layer over the `ProcessorArchitecture` enum defined in
 /// the minidump-common crate.
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Cpu {
     X86,
     X86_64,

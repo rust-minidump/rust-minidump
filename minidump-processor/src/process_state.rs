@@ -929,7 +929,7 @@ Unknown streams encountered:
             Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => {
                 format!("0x{:08x}", val)
             }
-            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 | Cpu::Mips64 | Cpu::Unknown(_) => {
+            _ => {
                 format!("0x{:016x}", val)
             }
         }
