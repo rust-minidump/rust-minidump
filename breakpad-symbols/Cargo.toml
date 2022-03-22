@@ -17,7 +17,7 @@ travis-ci = { repository = "luser/rust-minidump" }
 async-trait = "0.1.51"
 circular = "0.3.0"
 debugid = "0.7.3"
-log = "0.4.1"
+log = "0.4.15"
 minidump-common = { version = "0.10.1", path = "../minidump-common" }
 nom = "~1.2.2"
 range-map = "0.1.5"
