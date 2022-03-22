@@ -93,6 +93,8 @@ pub enum Cpu {
     Sparc,
     Arm,
     Arm64,
+    Mips,
+    Mips64,
     Unknown(u16),
 }
 
@@ -111,6 +113,8 @@ impl Cpu {
             Some(PROCESSOR_ARCHITECTURE_ARM64) | Some(PROCESSOR_ARCHITECTURE_ARM64_OLD) => {
                 Cpu::Arm64
             }
+            Some(PROCESSOR_ARCHITECTURE_MIPS) => Cpu::Mips,
+            Some(PROCESSOR_ARCHITECTURE_MIPS64) => Cpu::Mips64,
             _ => Cpu::Unknown(arch),
         }
     }
@@ -118,8 +122,8 @@ impl Cpu {
     /// The native pointer width of this platform
     pub fn pointer_width(&self) -> Option<u64> {
         match self {
-            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm => Some(4),
-            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 => Some(8),
+            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => Some(4),
+            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 | Cpu::Mips64 => Some(8),
             Cpu::Unknown(_) => None,
         }
     }
@@ -138,6 +142,8 @@ impl fmt::Display for Cpu {
                 Cpu::Sparc => "sparc",
                 Cpu::Arm => "arm",
                 Cpu::Arm64 => "arm64",
+                Cpu::Mips => "mips",
+                Cpu::Mips64 => "mips64",
                 Cpu::Unknown(_) => "unknown",
             }
         )
