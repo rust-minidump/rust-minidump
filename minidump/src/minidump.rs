@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use debugid::{CodeId, DebugId};
-use encoding::all::UTF_16LE;
+use encoding::all::{UTF_16BE, UTF_16LE};
 use encoding::{DecoderTrap, Encoding};
 use log::warn;
 use memmap2::Mmap;
@@ -287,6 +287,8 @@ pub struct MinidumpModule {
     /// A misc debug record, if one is present.
     pub misc_info: Option<md::IMAGE_DEBUG_MISC>,
     os: Os,
+    /// The parsed DebugId of the module, if one is present.
+    debug_id: Option<DebugId>,
 }
 
 /// A list of `MinidumpModule`s contained in a `Minidump`.
@@ -653,7 +655,11 @@ fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -
     if size % 2 != 0 || (*offset + size) > bytes.len() {
         return None;
     }
-    let s = UTF_16LE
+    let encoding: &dyn Encoding = match endian {
+        scroll::Endian::Little => UTF_16LE,
+        scroll::Endian::Big => UTF_16BE,
+    };
+    let s = encoding
         .decode(&bytes[*offset..*offset + size], DecoderTrap::Strict)
         .ok()?;
     *offset += size;
@@ -728,6 +734,54 @@ fn read_codeview(
     })
 }
 
+fn read_debug_id(codeview_info: &CodeView, endian: scroll::Endian) -> Option<DebugId> {
+    match codeview_info {
+        CodeView::Pdb70(ref raw) => {
+            // For macOS, this should be its code ID with the age (0)
+            // appended to the end of it. This makes it identical to debug
+            // IDs for Windows, and is why it doesn't have a special case
+            // here.
+            let uuid = Uuid::from_fields(
+                raw.signature.data1,
+                raw.signature.data2,
+                raw.signature.data3,
+                &raw.signature.data4,
+            )
+            .ok()?;
+            (!uuid.is_nil()).then(|| DebugId::from_parts(uuid, raw.age))
+        }
+        CodeView::Pdb20(ref raw) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
+        CodeView::Elf(ref raw) => {
+            // For empty or trivial `build_id`s, we don't want to return a `DebugId`.
+            // This can happen for mapped files that aren't executable, like fonts or .jar files.
+            if raw.build_id.iter().all(|byte| *byte == 0) {
+                return None;
+            }
+
+            // For backwards-compat (Linux minidumps have historically
+            // been written using PDB70 CodeView info), treat build_id
+            // as if the first 16 bytes were a GUID.
+            let guid_size = <md::GUID>::size_with(&endian);
+            let guid = if raw.build_id.len() < guid_size {
+                // Pad with zeros.
+                let v: Vec<u8> = raw
+                    .build_id
+                    .iter()
+                    .cloned()
+                    .chain(iter::repeat(0))
+                    .take(guid_size)
+                    .collect();
+                v.pread_with::<md::GUID>(0, endian).ok()
+            } else {
+                raw.build_id.pread_with::<md::GUID>(0, endian).ok()
+            };
+            guid.and_then(|g| Uuid::from_fields(g.data1, g.data2, g.data3, &g.data4).ok())
+                .map(DebugId::from_uuid)
+        }
+        _ => None,
+    }
+}
+
 /// Checks that the buffer is large enough for the given number of items.
 ///
 /// Essentially ensures that `buf.len() >= offset + (number_of_entries * size_of_entry)`.
@@ -766,6 +820,7 @@ impl MinidumpModule {
             codeview_info: None,
             misc_info: None,
             os: Os::Unknown(0),
+            debug_id: None,
         }
     }
 
@@ -785,13 +840,20 @@ impl MinidumpModule {
         } else {
             Some(read_codeview(&raw.cv_record, bytes, endian).ok_or(Error::CodeViewReadFailure)?)
         };
+
         let os = system_info.map(|info| info.os).unwrap_or(Os::Unknown(0));
+
+        let debug_id = codeview_info
+            .as_ref()
+            .and_then(|cv| read_debug_id(cv, endian));
+
         Ok(MinidumpModule {
             raw,
             name,
             codeview_info,
             misc_info: None,
             os,
+            debug_id,
         })
     }
 
@@ -1009,51 +1071,7 @@ impl Module for MinidumpModule {
         }
     }
     fn debug_identifier(&self) -> Option<DebugId> {
-        match self.codeview_info {
-            Some(CodeView::Pdb70(ref raw)) => {
-                // For macOS, this should be its code ID with the age (0)
-                // appended to the end of it. This makes it identical to debug
-                // IDs for Windows, and is why it doesn't have a special case
-                // here.
-                let uuid = Uuid::from_fields(
-                    raw.signature.data1,
-                    raw.signature.data2,
-                    raw.signature.data3,
-                    &raw.signature.data4,
-                )
-                .ok()?;
-                (!uuid.is_nil()).then(|| DebugId::from_parts(uuid, raw.age))
-            }
-            Some(CodeView::Pdb20(ref raw)) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
-            Some(CodeView::Elf(ref raw)) => {
-                // For empty or trivial `build_id`s, we don't want to return a `DebugId`.
-                // This can happen for mapped files that aren't executable, like fonts or .jar files.
-                if raw.build_id.iter().all(|byte| *byte == 0) {
-                    return None;
-                }
-
-                // For backwards-compat (Linux minidumps have historically
-                // been written using PDB70 CodeView info), treat build_id
-                // as if the first 16 bytes were a GUID.
-                let guid_size = <md::GUID>::size_with(&LE);
-                let guid = if raw.build_id.len() < guid_size {
-                    // Pad with zeros.
-                    let v: Vec<u8> = raw
-                        .build_id
-                        .iter()
-                        .cloned()
-                        .chain(iter::repeat(0))
-                        .take(guid_size)
-                        .collect();
-                    v.pread_with::<md::GUID>(0, LE).ok()
-                } else {
-                    raw.build_id.pread_with::<md::GUID>(0, LE).ok()
-                };
-                guid.and_then(|g| Uuid::from_fields(g.data1, g.data2, g.data3, &g.data4).ok())
-                    .map(DebugId::from_uuid)
-            }
-            _ => None,
-        }
+        self.debug_id
     }
     fn version(&self) -> Option<Cow<'_, str>> {
         if self.raw.version_info.signature == md::VS_FFI_SIGNATURE
@@ -2798,7 +2816,7 @@ impl MinidumpSystemInfo {
   platform_id                                = {:#x}
   csd_version_rva                            = {:#x}
   suite_mask                                 = {:#x}
-  (version)                                  = {}{}{} {}
+  (version)                                  = {}.{}.{} {}
   (cpu_info)                                 = {}
 
 ",
