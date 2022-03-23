@@ -160,7 +160,7 @@ impl CpuContext for md::CONTEXT_X86 {
     type Register = u32;
 
     const REGISTERS: &'static [&'static str] = &[
-        "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "efl",
+        "eip", "esp", "ebp", "ebx", "esi", "edi", "eax", "ecx", "edx", "eflags",
     ];
 
     fn get_register_always(&self, reg: &str) -> u32 {
@@ -174,7 +174,7 @@ impl CpuContext for md::CONTEXT_X86 {
             "eax" => self.eax,
             "ecx" => self.ecx,
             "edx" => self.edx,
-            "efl" => self.eflags,
+            "eflags" => self.eflags,
             _ => unreachable!("Invalid x86 register! {}", reg),
         }
     }
@@ -190,7 +190,7 @@ impl CpuContext for md::CONTEXT_X86 {
             "eax" => self.eax = val,
             "ecx" => self.ecx = val,
             "edx" => self.edx = val,
-            "efl" => self.eflags = val,
+            "eflags" => self.eflags = val,
             _ => return None,
         }
         Some(())
