@@ -348,7 +348,7 @@ fn print_registers<T: Write>(f: &mut T, ctx: &MinidumpContext) -> io::Result<()>
     for reg in ctx.general_purpose_registers() {
         if registers.contains(reg) {
             let reg_val = ctx.format_register(reg);
-            let next = format!(" {: >5} = {}", reg, reg_val);
+            let next = format!(" {: >6} = {}", reg, reg_val);
             if output.chars().count() + next.chars().count() > 80 {
                 // Flush the buffer.
                 writeln!(f, " {}", output)?;

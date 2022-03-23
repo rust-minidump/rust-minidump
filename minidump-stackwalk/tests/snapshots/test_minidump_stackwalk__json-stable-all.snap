@@ -2,7 +2,6 @@
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
 assertion_line: 116
 expression: stdout
-
 ---
 {
   "crash_info": {
@@ -31,7 +30,7 @@ expression: stdout
           "ecx": "0x0012fe94",
           "edi": "0x00000a28",
           "edx": "0x0042bc58",
-          "efl": "0x00010246",
+          "eflags": "0x00010246",
           "eip": "0x0040429e",
           "esi": "0x00000002",
           "esp": "0x0012fe84"

@@ -1,7 +1,7 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+assertion_line: 308
 expression: stdout
-
 ---
 Operating system: Windows NT
                   5.1.2600 Service Pack 2
@@ -15,18 +15,18 @@ Process uptime: 0 seconds
 
 Thread 0  (crashed)
  0  test_app.exe + 0x429e
-    eip = 0x0040429e   esp = 0x0012fe84   ebp = 0x0012fe88   ebx = 0x7c80abc1
-    esi = 0x00000002   edi = 0x00000a28   eax = 0x00000045   ecx = 0x0012fe94
-    edx = 0x0042bc58   efl = 0x00010246
+     eip = 0x0040429e    esp = 0x0012fe84    ebp = 0x0012fe88    ebx = 0x7c80abc1
+     esi = 0x00000002    edi = 0x00000a28    eax = 0x00000045    ecx = 0x0012fe94
+     edx = 0x0042bc58 eflags = 0x00010246
     Found by: given as instruction pointer in context
  1  test_app.exe + 0x41ff
-    eip = 0x00404200   esp = 0x0012fe90   ebp = 0x0012ff70
+     eip = 0x00404200    esp = 0x0012fe90    ebp = 0x0012ff70
     Found by: previous frame's frame pointer
  2  test_app.exe + 0x53eb
-    eip = 0x004053ec   esp = 0x0012ff78   ebp = 0x0012ffc0
+     eip = 0x004053ec    esp = 0x0012ff78    ebp = 0x0012ffc0
     Found by: previous frame's frame pointer
  3  kernel32.dll + 0x16fd6
-    eip = 0x7c816fd7   esp = 0x0012ffc8   ebp = 0x0012fff0
+     eip = 0x7c816fd7    esp = 0x0012ffc8    ebp = 0x0012fff0
     Found by: previous frame's frame pointer
 
 
