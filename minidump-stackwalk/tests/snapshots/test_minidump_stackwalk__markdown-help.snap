@@ -18,11 +18,11 @@ minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
 ### `<minidump>`
 Path to the minidump file to analyze.
 
-### `<symbols-path>...`
-Path to a symbol file.
+### `<symbols-path-legacy>...`
+Path to a symbol file. (Passed positionally)
 
-If multiple symbols-path values are provided, all symbol files will be merged into
-minidump-stackwalk's symbol database.
+If multiple symbols-path-legacy values are provided, all symbol files will be merged
+into minidump-stackwalk's symbol database.
 
 # OPTIONS
 ### `--json`
@@ -162,6 +162,12 @@ The maximum amount of time (in seconds) a symbol file download is allowed to tak
 This is necessary to enforce forward progress on misbehaving http responses.
 
 \[default: 1000]
+
+### `--symbols-path <symbols-path>`
+Path to a symbol file.
+
+If multiple symbols-path values are provided, all symbol files will be merged into
+minidump-stackwalk's symbol database.
 
 ### `-h, --help`
 Print help information
