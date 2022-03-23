@@ -6326,6 +6326,39 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
     }
 
     #[test]
+    fn test_windows_code_id_no_cv() {
+        let name = DumpString::new("windows module", Endian::Little);
+        let module = SynthModule::new(
+            Endian::Little,
+            0x100000000,
+            0x4000, // size of image
+            &name,
+            0xb105_4d2a, // datetime
+            0x34571371,
+            Some(&STOCK_VERSION_INFO),
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(
+                SystemInfo::new(Endian::Little)
+                    .set_platform_id(PlatformId::VER_PLATFORM_WIN32_NT as u32),
+            )
+            .add_module(module)
+            .add(name);
+        let dump = read_synth_dump(dump).unwrap();
+        let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        assert_eq!(system_info.os, Os::Windows);
+
+        let module_list = dump.get_stream::<MinidumpModuleList>().unwrap();
+        let modules = module_list.iter().collect::<Vec<_>>();
+        assert_eq!(modules.len(), 1);
+        // should match datetime + size of image
+        assert_eq!(
+            modules[0].code_identifier().unwrap(),
+            CodeId::new("B1054D2A4000".to_owned())
+        );
+    }
+
+    #[test]
     fn test_null_id() {
         // Add a module with an ELF build id of nothing but zeros
         let name1 = DumpString::new("module 1", Endian::Little);
