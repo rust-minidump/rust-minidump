@@ -174,9 +174,8 @@ This is an experimental feature, which currently only shows up in --human output
         .arg(
             Arg::new("symbols-url")
                 .long("symbols-url")
-                .multiple_values(true)
+                .multiple_occurrences(true)
                 .takes_value(true)
-                .number_of_values(1)
                 .long_help(
                     "base URL from which URLs to symbol files can be constructed.
 
@@ -249,13 +248,26 @@ This is necessary to enforce forward progress on misbehaving http responses.",
         )
         .arg(
             Arg::new("symbols-path")
-                .multiple_values(true)
+                .long("symbols-path")
+                .multiple_occurrences(true)
                 .takes_value(true)
                 .allow_invalid_utf8(true)
                 .long_help(
                     "Path to a symbol file.
 
 If multiple symbols-path values are provided, all symbol files will be merged \
+into minidump-stackwalk's symbol database.",
+                ),
+        )
+        .arg(
+            Arg::new("symbols-path-legacy")
+                .multiple_values(true)
+                .takes_value(true)
+                .allow_invalid_utf8(true)
+                .long_help(
+                    "Path to a symbol file. (Passed positionally)
+
+If multiple symbols-path-legacy values are provided, all symbol files will be merged \
 into minidump-stackwalk's symbol database.",
                 ),
         )
@@ -389,13 +401,21 @@ async fn main() {
 
     let temp_dir = std::env::temp_dir();
 
-    let symbols_paths = matches
+    let mut symbols_paths = matches
         .values_of_os("symbols-path")
         .map(|v| {
             v.map(|os_str| Path::new(os_str).to_owned())
                 .collect::<Vec<_>>()
         })
         .unwrap_or_else(Vec::new);
+    let symbols_paths_legacy = matches
+        .values_of_os("symbols-path-legacy")
+        .map(|v| {
+            v.map(|os_str| Path::new(os_str).to_owned())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(Vec::new);
+    symbols_paths.extend(symbols_paths_legacy);
 
     // Default to env::temp_dir()/rust-minidump-cache
     let symbols_cache = matches
