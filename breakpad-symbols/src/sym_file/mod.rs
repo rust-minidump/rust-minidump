@@ -81,8 +81,8 @@ impl SymbolFile {
 
                         let input = buf.data();
                         let consumed = parser.parse_more(input)?;
-                        if consumed > 0 {
-                            callback(&input[..consumed]);
+                        if consumed > 1 {
+                            callback(&input[..consumed - 1]);
                         }
 
                         if input.len() == consumed {
@@ -161,8 +161,8 @@ impl SymbolFile {
 
                         let input = buf.data();
                         let consumed = parser.parse_more(input)?;
-                        if consumed > 0 {
-                            callback(&input[..consumed]);
+                        if consumed > 1 {
+                            callback(&input[..consumed - 1]);
                         }
 
                         if input.len() == consumed {
@@ -434,5 +434,11 @@ mod test {
         test_symbolfile_from_bytes(
             b"MODULE Linux x86 ffff0000 bar\nFILE 53 bar.c\nPUBLIC 1234 10 some public\nFUNC 1000 30 10 another func\n1000 30 7 53",
         );
+    }
+
+    #[test]
+    fn test_symbolfile_empty() {
+        let sym = SymbolFile::from_bytes(b"");
+        assert!(sym.is_ok());
     }
 }
