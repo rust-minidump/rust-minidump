@@ -34,7 +34,7 @@ Quick Reference:
 
 minidump-stackwalk defaults to outputting human-readable reports because this is a nicer default for casual use, but the machine-readable output is considered the "main" output format.
 
-If you pass **the --json flag** you will get machine-readable (JSON) output. As of version 0.9.6 this format *should* be stable, [and has a fully documented schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)! (--pretty will make this output easier for a human to read.)
+If you pass **the --json flag** you will get machine-readable (JSON) output. As of version 0.9.6 this format *should* be stable, [and has a fully documented schema](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md)! (--pretty will make this output easier for a human to read.)
 
 If you pass **the --human flag**, minidump-stackwalk will output a report in a more human-friendly format with no particular structure. (--brief will make this output less verbose.)
 
@@ -165,7 +165,7 @@ Here is an example stackwalking trace:
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.10.1`
+Version: `minidump-stackwalk 0.10.2`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 
@@ -187,7 +187,8 @@ into minidump-stackwalk's symbol database.
 Emit a machine-readable JSON report.
 
 The schema for this output is officially documented here:
-https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md
+https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-
+schema.md
 
 ### `--human`
 Emit a human-readable report (the default).

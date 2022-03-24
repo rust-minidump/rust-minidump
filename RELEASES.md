@@ -1,6 +1,6 @@
-Pending Release (TBD)
+# Version 0.10.2 (2022-03-24)
 
-Commit: TBD
+Some random cleanups and fixes.
 
 # minidump-common
 
@@ -36,7 +36,7 @@ to keep them out of the way of the actual minidump format's definitions.
 
 # Version 0.10.1 (2022-03-17)
 
-Commit: [b0af5b4ce2e8b5fb680ef006f415744f4a536d8a](https://github.com/luser/rust-minidump/commit/b0af5b4ce2e8b5fb680ef006f415744f4a536d8a)
+Commit: [b0af5b4ce2e8b5fb680ef006f415744f4a536d8a](https://github.com/rust-minidump/rust-minidump/commit/b0af5b4ce2e8b5fb680ef006f415744f4a536d8a)
 
 Work on making minidump-common more useful for minidump *clients* (generators), as well as general improvements.
 
@@ -89,7 +89,7 @@ The rename was done to keep our public naming scheme consistent.
 
 # Version 0.10.0 (2022-03-10)
 
-Commit: [a8a4a2228af05b73ee671ae5b8a445b804368ef6](https://github.com/luser/rust-minidump/commit/a8a4a2228af05b73ee671ae5b8a445b804368ef6) (there was some Cargo.lock messiness, release is smeared between this one and the previous)
+Commit: [a8a4a2228af05b73ee671ae5b8a445b804368ef6](https://github.com/rust-minidump/rust-minidump/commit/a8a4a2228af05b73ee671ae5b8a445b804368ef6) (there was some Cargo.lock messiness, release is smeared between this one and the previous)
 
 This release is a mix of substantial quality improvements, one major breaking change (making some things async), and several smaller changes to APIs. It's a bit of a big release because some major experimentation was going on and we didn't want to release something that we might immediately revert.
 
@@ -337,7 +337,7 @@ minidump-stackwalk now has a suite of snapshot tests, so we can detect and docum
 any change to output. If you have a specific configuration/input you want to be
 monitored, we may be able to include it in our codebase.
 
-See: https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs
+See: https://github.com/rust-minidump/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs
 
 
 ## --raw-json is now --evil-json
@@ -385,7 +385,7 @@ runtime. I/O time should be about the same, but CPU time should be reduced.
 
 # Version 0.9.6 (2021-12-08)
 
-Commit: [564ece47dd3b46dd928318fea7ca5f4254dd99c3](https://github.com/luser/rust-minidump/commit/564ece47dd3b46dd928318fea7ca5f4254dd99c3)
+Commit: [564ece47dd3b46dd928318fea7ca5f4254dd99c3](https://github.com/rust-minidump/rust-minidump/commit/564ece47dd3b46dd928318fea7ca5f4254dd99c3)
 
 Breaking changes to fix integration issues found during deployment.
 
@@ -418,7 +418,7 @@ This change was made to reflect the fact that most users of other flavours of mi
 
 # Version 0.9.5 (2021-12-01)
 
-Commit: [445431ce2bfe55fd85b990bb2a5c01867d2a8150](https://github.com/luser/rust-minidump/commit/445431ce2bfe55fd85b990bb2a5c01867d2a8150)
+Commit: [445431ce2bfe55fd85b990bb2a5c01867d2a8150](https://github.com/rust-minidump/rust-minidump/commit/445431ce2bfe55fd85b990bb2a5c01867d2a8150)
 
 The JSON schema and minidump-stackwalk CLI are now stabilized. They are now
 reasonable to rely on in production (only reason we would break them is if
@@ -457,7 +457,7 @@ New features:
     * Also introduces ProcessState::print_brief
 * Added dummy --json flag to hang docs off of (and to let you be explicit if you want)
 * Better feedback for corrupt minidumps
-* Added JSON Schema document: https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md
+* Added JSON Schema document: https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md
     * JSON Schema is now stabilized
 
 
@@ -469,7 +469,7 @@ New features:
 
 # Version 0.9.4 (2021-11-19)
 
-Commit: [8308577df997bae72cf952ddbfaeb901a992d950](https://github.com/luser/rust-minidump/commit/8308577df997bae72cf952ddbfaeb901a992d950)
+Commit: [8308577df997bae72cf952ddbfaeb901a992d950](https://github.com/rust-minidump/rust-minidump/commit/8308577df997bae72cf952ddbfaeb901a992d950)
 
 Removing derelict experiments, and one bugfix.
 
@@ -494,7 +494,7 @@ The private minidump-tools subcrate has been completely removed from the project
 
 # Version 0.9.3 (2021-11-18)
 
-Commit: [1e7cc1a18399e32b5589d95575447e5f159d275d](https://github.com/luser/rust-minidump/commit/1e7cc1a18399e32b5589d95575447e5f159d275d)
+Commit: [1e7cc1a18399e32b5589d95575447e5f159d275d](https://github.com/rust-minidump/rust-minidump/commit/1e7cc1a18399e32b5589d95575447e5f159d275d)
 
 New features added to make symbol downloading more reliable.
 
@@ -518,7 +518,7 @@ This is a breaking change for the constructor of HttpSymbolSupplier, as it now r
 
 # Version 0.9.2 (2021-11-10)
 
-Commit: [4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72](https://github.com/luser/rust-minidump/commit/4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72)
+Commit: [4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72](https://github.com/rust-minidump/rust-minidump/commit/4d96a5c49a5e36cf8905cefd5ad8a5041c0d2e72)
 
 Tentative parity with mozilla/minidump-stackwalk (and all the breakpad features it uses)! 🎉
 
@@ -630,7 +630,7 @@ Breaking changes:
 
 # Version 0.9.1 (2021-10-27)
 
-Commit: [15d73f888c019517411329213c2671d59335f957](https://github.com/luser/rust-minidump/commit/15d73f888c019517411329213c2671d59335f957)
+Commit: [15d73f888c019517411329213c2671d59335f957](https://github.com/rust-minidump/rust-minidump/commit/15d73f888c019517411329213c2671d59335f957)
 
 Iterating closer to parity with mozilla's minidump-stackwalk!
 

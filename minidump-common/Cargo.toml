@@ -1,16 +1,16 @@
 [package]
 name = "minidump-common"
 description = "Some common types for working with minidump files."
-version = "0.10.1"
+version = "0.10.2"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 readme = "README.md"
 license = "MIT"
-homepage = "https://github.com/luser/rust-minidump"
-repository = "https://github.com/luser/rust-minidump"
+homepage = "https://github.com/rust-minidump/rust-minidump"
+repository = "https://github.com/rust-minidump/rust-minidump"
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "luser/rust-minidump" }
+travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [dependencies]
 arbitrary = { version = "1", optional = true, features = ["derive"] }

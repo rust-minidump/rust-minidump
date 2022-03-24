@@ -3,7 +3,7 @@ source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
 assertion_line: 465
 expression: stdout
 ---
-minidump-stackwalk 0.10.1
+minidump-stackwalk 0.10.2
 Analyzes minidumps and produces a report (either human-readable or JSON).
 
 USAGE:
@@ -24,7 +24,8 @@ OPTIONS:
             Emit a machine-readable JSON report.
             
             The schema for this output is officially documented here:
-            https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md
+            https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-
+            schema.md
 
         --human
             Emit a human-readable report (the default).

@@ -33,7 +33,7 @@ fn make_app() -> Command<'static> {
             "Emit a machine-readable JSON report.
 
 The schema for this output is officially documented here:
-https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md",
+https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md",
         ))
         .arg(Arg::new("human").long("human").long_help(
             "Emit a human-readable report (the default).

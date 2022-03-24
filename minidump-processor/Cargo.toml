@@ -1,16 +1,16 @@
 [package]
 name = "minidump-processor"
 description = "A library for producing stack traces and other useful information from minidump files."
-version = "0.10.1"
+version = "0.10.2"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/luser/rust-minidump"
-repository = "https://github.com/luser/rust-minidump"
+homepage = "https://github.com/rust-minidump/rust-minidump"
+repository = "https://github.com/rust-minidump/rust-minidump"
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "luser/rust-minidump" }
+travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
 default = ["breakpad-syms"]
@@ -21,11 +21,11 @@ symbolic-syms = []
 
 [dependencies]
 async-trait = "0.1.51"
-breakpad-symbols = { version = "0.10.1", path = "../breakpad-symbols", optional = true }
+breakpad-symbols = { version = "0.10.2", path = "../breakpad-symbols", optional = true }
 debugid = "0.7.3"
 log = "0.4"
 memmap2 = "0.5.3"
-minidump = { version = "0.10.1", path = "../minidump" }
+minidump = { version = "0.10.2", path = "../minidump" }
 scroll = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

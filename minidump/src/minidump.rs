@@ -1030,7 +1030,7 @@ impl Module for MinidumpModule {
             Some(CodeView::Pdb70(ref raw)) if self.os == Os::MacOs => {
                 // MacOs uses PDB70 instead of its own dedicated format.
                 // See the following issue for a potential MacOs-specific format:
-                // https://github.com/luser/rust-minidump/issues/455
+                // https://github.com/rust-minidump/rust-minidump/issues/455
                 Some(CodeId::new(format!("{:#}", raw.signature)))
             }
             Some(CodeView::Pdb20(_)) | Some(CodeView::Pdb70(_)) => Some(CodeId::new(format!(
@@ -6618,7 +6618,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
     #[test]
     fn test_fuzzed_oom() {
-        // https://github.com/luser/rust-minidump/issues/381
+        // https://github.com/rust-minidump/rust-minidump/issues/381
         let data = b"MDMP\x93\xa7\x00\x00\x00\xffffdYfffff@\n\nfp\n\xbb\xff\xff\xff\n\xff\n";
         assert!(Minidump::read(data.as_ref()).is_err());
 

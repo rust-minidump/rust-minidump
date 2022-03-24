@@ -7,7 +7,7 @@ provides APIs for producing symbolicated stack traces for the threads in a minid
 a `minidump_stackwalk` tool that is intended to function very similarly to the one in the
 [Google Breakpad](https://chromium.googlesource.com/breakpad/breakpad/+/master/) project.
 
-The JSON Schema is stable and [documented here](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md).
+The JSON Schema is stable and [documented here](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md).
 
 If you want lower-level access to the minidump's contents, use the [minidump](https://crates.io/crates/minidump) crate.
 

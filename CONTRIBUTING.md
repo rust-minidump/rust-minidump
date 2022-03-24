@@ -59,19 +59,19 @@ If you ever introduce a new stream, you should consider adjusting the following.
 
 Core Functionality / Testing:
 
-* [minidump's stream fuzzing tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/fuzz/fuzz_targets/parse.rs#L13)
-* [minidump-synth's stream generator](https://github.com/luser/rust-minidump/blob/master/minidump-synth/src/lib.rs#L31) (make it so that we can test the stream)
+* [minidump's stream fuzzing tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/fuzz/fuzz_targets/parse.rs#L13)
+* [minidump-synth's stream generator](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-synth/src/lib.rs#L31) (make it so that we can test the stream)
     * This will require filling in quite a bit of code!
-* [minidump-stackwalk's raw stream dumper](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/src/main.rs#L516) (make it so we can debug the stream)
+* [minidump-stackwalk's raw stream dumper](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-stackwalk/src/main.rs#L516) (make it so we can debug the stream)
     * This generally requires implementing a "print" function for it
 
 Documentation / Reporting:
 
-* [unimplemented_streams](https://github.com/luser/rust-minidump/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/master/minidump/src/minidump.rs#L4582) (remove it)
-* [stream_vendor](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4726) (if this stream has a new custom vendor)
-* [get_stream's listing of implemented streams](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4520)
-* [minidump's listing of implemented streams](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/lib.rs#L71)
-* [minidump's listing of stream families](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/lib.rs#L276) (optional, but nice)
+* [unimplemented_streams](https://github.com/rust-minidump/rust-minidump/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/master/minidump/src/minidump.rs#L4582) (remove it)
+* [stream_vendor](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4726) (if this stream has a new custom vendor)
+* [get_stream's listing of implemented streams](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4520)
+* [minidump's listing of implemented streams](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/lib.rs#L71)
+* [minidump's listing of stream families](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/lib.rs#L276) (optional, but nice)
 
 Wow that's a lot!
 
@@ -85,21 +85,21 @@ Many potential analyses of minidumps can be done fairly modularly (e.g. argument
 New features should be added to minidump-processor (minidump-stackwalk) as unstable_all (--unstable-all) features, and the code should be given its own module. Places to modify:
 
 
-* Add [a module for the feature to lib.rs](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/lib.rs#L80)
-* Add [the feature to ProcessorOptions](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L58)
-* Fill in the values for [all of ProcessorOptions's ctors](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L82) (disabled for everything but unstable_all) 
-* Add fields for the data [to ProcessState](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L211) (or one of its subfields)
-* Run your analysis in [process_minidump_with_options](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L353-L356) (if the flag is set in `options`) and populate its ProcessState fields.
-* Add synthetic tests for your feature [in test_processor](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/tests/test_processor.rs)
-* (Please) List your new feature in the pending release [in RELEASES.md](https://github.com/luser/rust-minidump/blob/master/RELEASES.md)
+* Add [a module for the feature to lib.rs](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/lib.rs#L80)
+* Add [the feature to ProcessorOptions](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L58)
+* Fill in the values for [all of ProcessorOptions's ctors](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L82) (disabled for everything but unstable_all) 
+* Add fields for the data [to ProcessState](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L211) (or one of its subfields)
+* Run your analysis in [process_minidump_with_options](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/processor.rs#L353-L356) (if the flag is set in `options`) and populate its ProcessState fields.
+* Add synthetic tests for your feature [in test_processor](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/tests/test_processor.rs)
+* (Please) List your new feature in the pending release [in RELEASES.md](https://github.com/rust-minidump/rust-minidump/blob/master/RELEASES.md)
 
-* (Optional) Add support for this data to [ProcessState::print_internal](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L527) (--human output)
-* (Optional) Add support for this data to [ProcessState::print_json](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L734) (--json output)
-  * Update [the JSON Schema](https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md)
-* If added to either output, then add [a flag to minidump-stackwalk](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-stackwalk/src/main.rs#L25)
-  * List it under the [--features flag](https://github.com/luser/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-stackwalk/src/main.rs#L98)
-  * Update [the CLI docs in minidump-stackwalk's README.md](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk#minidump-stackwalk-cli-manual) with the output of --help-markdown
-  * Ensure your feature is tested [in test-minidump-stackwalk](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (may be picked up automatically)
+* (Optional) Add support for this data to [ProcessState::print_internal](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L527) (--human output)
+* (Optional) Add support for this data to [ProcessState::print_json](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-processor/src/process_state.rs#L734) (--json output)
+  * Update [the JSON Schema](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md)
+* If added to either output, then add [a flag to minidump-stackwalk](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-stackwalk/src/main.rs#L25)
+  * List it under the [--features flag](https://github.com/rust-minidump/rust-minidump/blob/a8a4a2228af05b73ee671ae5b8a445b804368ef6/minidump-stackwalk/src/main.rs#L98)
+  * Update [the CLI docs in minidump-stackwalk's README.md](https://github.com/rust-minidump/rust-minidump/tree/master/minidump-stackwalk#minidump-stackwalk-cli-manual) with the output of --help-markdown
+  * Ensure your feature is tested [in test-minidump-stackwalk](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (may be picked up automatically)
   * See the section below on `insta` for how to update the snapshots of these tests
 
 It's ok to not have *everything* here ready to go in your initial PR if you're concerned we might not want the feature at all. But if we do accept the feature, all of this should ideally be filled out.
@@ -112,24 +112,24 @@ Whether you're adding a new feature or fixing a bug, **you should always add a t
 
 Major locations for tests include:
 
-* [minidump parsing unit tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4739) (see the `minidump-synth` section)
-* [minidump-processor integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-processor/tests/test_processor.rs) (see the `minidump-synth` section)
-* [minidump-stackwalk integration tests](https://github.com/luser/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (see the `insta` section)
-* [breakpad-symbols symbol file parser tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/breakpad-symbols/src/lib.rs#L819)
-* [breakpad-symbols cfi interpreter tests](https://github.com/luser/rust-minidump/blob/master/breakpad-symbols/src/sym_file/walker.rs#L1032)
+* [minidump parsing unit tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4739) (see the `minidump-synth` section)
+* [minidump-processor integration tests](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/tests/test_processor.rs) (see the `minidump-synth` section)
+* [minidump-stackwalk integration tests](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-stackwalk/tests/test-minidump-stackwalk.rs) (see the `insta` section)
+* [breakpad-symbols symbol file parser tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/breakpad-symbols/src/lib.rs#L819)
+* [breakpad-symbols cfi interpreter tests](https://github.com/rust-minidump/rust-minidump/blob/master/breakpad-symbols/src/sym_file/walker.rs#L1032)
 
 minidump-processor stackwalker tests (see `test_assembler` section):
 
-* [x86_unittest.rs](https://github.com/luser/rust-minidump/blob/master/minidump-processor/src/stackwalker/x86_unittest.rs)
-* [amd64_unittest.rs](https://github.com/luser/rust-minidump/blob/master/minidump-processor/src/stackwalker/amd64_unittest.rs)
-* [arm_unittest.rs](https://github.com/luser/rust-minidump/blob/master/minidump-processor/src/stackwalker/arm_unittest.rs)
-* [arm64_unittest.rs](https://github.com/luser/rust-minidump/blob/master/minidump-processor/src/stackwalker/arm64_unittest.rs)
+* [x86_unittest.rs](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/src/stackwalker/x86_unittest.rs)
+* [amd64_unittest.rs](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/src/stackwalker/amd64_unittest.rs)
+* [arm_unittest.rs](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/src/stackwalker/arm_unittest.rs)
+* [arm64_unittest.rs](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/src/stackwalker/arm64_unittest.rs)
 
 fuzzing tests (see the `cargo fuzz` section):
 
-* [minidump fuzz_targets](https://github.com/luser/rust-minidump/tree/master/minidump/fuzz/fuzz_targets)
-* [minidump-processor fuzz targets](https://github.com/luser/rust-minidump/tree/master/minidump-processor/fuzz/fuzz_targets)
-* [breakpad-symbols fuzz targets](https://github.com/luser/rust-minidump/tree/master/breakpad-symbols/fuzz/fuzz_targets)
+* [minidump fuzz_targets](https://github.com/rust-minidump/rust-minidump/tree/master/minidump/fuzz/fuzz_targets)
+* [minidump-processor fuzz targets](https://github.com/rust-minidump/rust-minidump/tree/master/minidump-processor/fuzz/fuzz_targets)
+* [breakpad-symbols fuzz targets](https://github.com/rust-minidump/rust-minidump/tree/master/breakpad-symbols/fuzz/fuzz_targets)
 
 
 
@@ -192,7 +192,7 @@ fn test_crashpad_info_annotations() {
 
 One of the major pieces of testing infra we rely on is [test_assembler](https://github.com/luser/rust-test-assembler), which allows us to construct artificial binaries with a combination of the builder pattern and *labels* which essentially represent variables which will have their values filled in later. The primary purpose of labels is that they let us refer to offsets in the binary we're writing, *even in the binary itself*, **even when those offsets aren't defined yet**.
 
-The place where you'll see this most is in our stackwalker tests, where we artificially construct the memory a stack we want to walk. Things like frame pointers are *precisely* pointers to later parts of the stack. Here's an [example frame pointery stack in the amd64 tests](https://github.com/luser/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump-processor/src/stackwalker/amd64_unittest.rs#L82-L116):
+The place where you'll see this most is in our stackwalker tests, where we artificially construct the memory a stack we want to walk. Things like frame pointers are *precisely* pointers to later parts of the stack. Here's an [example frame pointery stack in the amd64 tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump-processor/src/stackwalker/amd64_unittest.rs#L82-L116):
 
 ```rust ,ignore
 // Functions typically push their %rbp upon entry and set %rbp pointing
@@ -261,14 +261,14 @@ It's advisable to be extra explicit about integer types and the exact values you
 
 [Insta](https://github.com/mitsuhiko/insta) is a tool for writing snapshot tests. What are snapshot tests? Well basically we write a test which produces some output and ask insta "hey, is this value the same as last time?". If it's not, insta will fail the test and spit out a diff.
 
-We have [integration tests for the minidump-stackwalk CLI application that snapshot its output](https://github.com/luser/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-stackwalk/tests/test-minidump-stackwalk.rs) to confirm that we never *accidentally* change the results. This also lets everyone see exactly what your changes look like in practice!
+We have [integration tests for the minidump-stackwalk CLI application that snapshot its output](https://github.com/rust-minidump/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-stackwalk/tests/test-minidump-stackwalk.rs) to confirm that we never *accidentally* change the results. This also lets everyone see exactly what your changes look like in practice!
 
 Now of course, this raises two questions:
 
 * How does it know what the old value was?
 * What do I do when the value changes?
 
-When we ask insta about a snapshot, we give it a name like "json-pretty-evil-symbols". Insta maintains [a directory of files containing snapshots](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk/tests/snapshots) and will lookup the checked in snapshot with that name.
+When we ask insta about a snapshot, we give it a name like "json-pretty-evil-symbols". Insta maintains [a directory of files containing snapshots](https://github.com/rust-minidump/rust-minidump/tree/master/minidump-stackwalk/tests/snapshots) and will lookup the checked in snapshot with that name.
 
 Whenever a snapshot *doesn't* match (including when insta has no record of that snapshot name at all), it will write out some temporary files to disk recording the diffs. You can then review and accept/reject those diffs with [cargo-insta](https://insta.rs/docs/cli/), a CLI-application you should be able to easily install and run:
 
@@ -312,9 +312,9 @@ fn test_evil_json() {
 }
 ```
 
-Part of the motivation for this is to ensure we don't break the the JSON output, which has [very detailed schema document](https://github.com/luser/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-processor/json-schema.md), which we're trying to keep stable so people can actually rely on it while the actual implementation details are still in flux.
+Part of the motivation for this is to ensure we don't break the the JSON output, which has [very detailed schema document](https://github.com/rust-minidump/rust-minidump/blob/40c3390f5705890f932f78b7db4fc02866e012b8/minidump-processor/json-schema.md), which we're trying to keep stable so people can actually rely on it while the actual implementation details are still in flux.
 
-Yes, [minidump-stackwalk](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk) is supposed to be stable and reasonable to use in production!
+Yes, [minidump-stackwalk](https://github.com/rust-minidump/rust-minidump/tree/master/minidump-stackwalk) is supposed to be stable and reasonable to use in production!
 
 Oh also if **test_minidump_stackwalk__markdown-help.snap changes, use the new contents to update minidump-stackwalk's README.md**.
 
@@ -347,7 +347,7 @@ It also includes a bunch of mocking and benchmarking functionality.
 
 The tool *can* be made to work without mozilla's servers, **but that workflow needs more work**.
 
-It also enables the [really detailed trace-logging for the stackwalker](https://github.com/luser/rust-minidump/tree/master/minidump-stackwalk#debugging-stackwalking), making it easier to do a post-mortem debug on the stackwalk and the decisions it made.
+It also enables the [really detailed trace-logging for the stackwalker](https://github.com/rust-minidump/rust-minidump/tree/master/minidump-stackwalk#debugging-stackwalking), making it easier to do a post-mortem debug on the stackwalk and the decisions it made.
 
 Here's a trimmed down version of the kind of report socc-pair would produce:
 

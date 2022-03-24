@@ -7,7 +7,7 @@ expression: stdout
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.10.1`
+Version: `minidump-stackwalk 0.10.2`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 
@@ -29,7 +29,8 @@ into minidump-stackwalk's symbol database.
 Emit a machine-readable JSON report.
 
 The schema for this output is officially documented here:
-https://github.com/luser/rust-minidump/blob/master/minidump-processor/json-schema.md
+https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-
+schema.md
 
 ### `--human`
 Emit a human-readable report (the default).

@@ -1,4 +1,4 @@
-![Rust CI](https://github.com/luser/rust-minidump/workflows/Rust%20CI/badge.svg?branch=master)
+![Rust CI](https://github.com/rust-minidump/rust-minidump/workflows/Rust%20CI/badge.svg?branch=master)
 
 # Overview
 

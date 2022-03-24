@@ -1,25 +1,25 @@
 [package]
 name = "minidump-stackwalk"
 description = "A CLI minidump analyzer"
-version = "0.10.1"
+version = "0.10.2"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
-homepage = "https://github.com/luser/rust-minidump"
-repository = "https://github.com/luser/rust-minidump"
+homepage = "https://github.com/rust-minidump/rust-minidump"
+repository = "https://github.com/rust-minidump/rust-minidump"
 keywords = ["breakpad", "symbols"]
 categories = ["parsing"]
 readme = "README.md"
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "luser/rust-minidump" }
+travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [dependencies]
 clap = { version = "3.1", features = ["cargo", "wrap_help"] }
 log = "0.4"
-minidump = { version = "0.10.1", path = "../minidump" }
-minidump-common = { version = "0.10.1", path = "../minidump-common" }
-minidump-processor = { version = "0.10.1", path = "../minidump-processor" }
+minidump = { version = "0.10.2", path = "../minidump" }
+minidump-common = { version = "0.10.2", path = "../minidump-common" }
+minidump-processor = { version = "0.10.2", path = "../minidump-processor" }
 simplelog = "0.11.2"
 tokio = { version = "1.12.0", features = ["full"] }
 
@@ -32,5 +32,5 @@ optional = true
 
 [dev-dependencies]
 insta = "1.13.0"
-minidump-synth = { version = "0.10.1", path = "../minidump-synth" }
+minidump-synth = { version = "0.10.2", path = "../minidump-synth" }
 test-assembler = "0.1.6"
