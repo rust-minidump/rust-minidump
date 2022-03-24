@@ -1,4 +1,27 @@
+Pending Release (TBD)
+
+Commit: TBD
+
+Nothing Yet!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.10.2 (2022-03-24)
+
+Commit: [77b30fc564c8fe23b5ba4dd1663be799d580d290](https://github.com/rust-minidump/rust-minidump/commit/77b30fc564c8fe23b5ba4dd1663be799d580d290)
 
 Some random cleanups and fixes.
 
