@@ -10,6 +10,11 @@ to keep them out of the way of the actual minidump format's definitions.
 # minidump
 
 * MinidumpStream::STREAM_TYPE is now a u32 instead of an enum. This reflects the fact that minidumps allow for custom streams, and makes it easier for third-parties to add implementations of their own streams for their projects.
+* Use the more common `eflags` register name instead of `efl`.
+* Add `Mips/64` to `system_info::Cpu`, and the enum was made `#[non_exhaustive]`.
+* Better support big-endian minidumps. This includes fixes for big-endian UTF16 string parsing, and endian aware parsing of debug-ids.
+* The CodeId will always use timestamp + sizeof on Windows, even if no CodeView Record is available.
+
 
 
 
