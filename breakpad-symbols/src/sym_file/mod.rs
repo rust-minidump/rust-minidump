@@ -70,6 +70,26 @@ impl SymbolFile {
                 if fully_consumed {
                     return Ok(parser.finish());
                 } else {
+                    // The reader is exhausted, but the parser was not fully
+                    // consumed on the last iteration. Probably because it was
+                    // expecting a trailing newline. Lets give it one, and do
+                    // one more parse attempt.
+                    let space = buf.space();
+                    if !space.is_empty() {
+                        space[0] = b'\n';
+                        buf.fill(1);
+
+                        let input = buf.data();
+                        let consumed = parser.parse_more(input)?;
+                        if consumed > 0 {
+                            callback(&input[..consumed]);
+                        }
+
+                        if input.len() == consumed {
+                            return Ok(parser.finish());
+                        }
+                    }
+
                     return Err(SymbolError::ParseError(
                         "unexpected EOF during parsing of SymbolFile (or a line was too long?)",
                         parser.lines,
@@ -82,7 +102,9 @@ impl SymbolFile {
             let consumed = parser.parse_more(input)?;
 
             // Give the other consumer of this Reader a chance to use this data.
-            callback(&input[..consumed]);
+            if consumed > 0 {
+                callback(&input[..consumed]);
+            }
 
             // Remember for the next iteration if all the input was consumed.
             fully_consumed = input.len() == consumed;
@@ -128,6 +150,26 @@ impl SymbolFile {
                 if fully_consumed {
                     return Ok(parser.finish());
                 } else {
+                    // The reader is exhausted, but the parser was not fully
+                    // consumed on the last iteration. Probably because it was
+                    // expecting a trailing newline. Lets give it one, and do
+                    // one more parse attempt.
+                    let space = buf.space();
+                    if !space.is_empty() {
+                        space[0] = b'\n';
+                        buf.fill(1);
+
+                        let input = buf.data();
+                        let consumed = parser.parse_more(input)?;
+                        if consumed > 0 {
+                            callback(&input[..consumed]);
+                        }
+
+                        if input.len() == consumed {
+                            return Ok(parser.finish());
+                        }
+                    }
+
                     return Err(SymbolError::ParseError(
                         "unexpected EOF during parsing of SymbolFile (or a line was too long?) at line",
                         parser.lines
@@ -140,7 +182,9 @@ impl SymbolFile {
             let consumed = parser.parse_more(input)?;
 
             // Give the other consumer of this Reader a chance to use this data.
-            callback(&input[..consumed]);
+            if consumed > 0 {
+                callback(&input[..consumed]);
+            }
 
             // Remember for the next iteration if all the input was consumed.
             fully_consumed = input.len() == consumed;
@@ -374,24 +418,21 @@ mod test {
     #[test]
     fn test_symbolfile_from_bytes_with_lf() {
         test_symbolfile_from_bytes(
-            b"MODULE Linux x86 ffff0000 bar
-FILE 53 bar.c
-PUBLIC 1234 10 some public
-FUNC 1000 30 10 another func
-1000 30 7 53
-",
+            b"MODULE Linux x86 ffff0000 bar\nFILE 53 bar.c\nPUBLIC 1234 10 some public\nFUNC 1000 30 10 another func\n1000 30 7 53\n",
         );
     }
 
     #[test]
     fn test_symbolfile_from_bytes_with_crlf() {
         test_symbolfile_from_bytes(
-            b"MODULE Linux x86 ffff0000 bar
-FILE 53 bar.c
-PUBLIC 1234 10 some public
-FUNC 1000 30 10 another func
-1000 30 7 53
-",
+            b"MODULE Linux x86 ffff0000 bar\r\nFILE 53 bar.c\r\nPUBLIC 1234 10 some public\r\nFUNC 1000 30 10 another func\r\n1000 30 7 53\r\n",
+        );
+    }
+
+    #[test]
+    fn test_symbolfile_no_trailing_newline() {
+        test_symbolfile_from_bytes(
+            b"MODULE Linux x86 ffff0000 bar\nFILE 53 bar.c\nPUBLIC 1234 10 some public\nFUNC 1000 30 10 another func\n1000 30 7 53",
         );
     }
 }
