@@ -151,17 +151,20 @@ where
         // drowning the rest of the code in checked_add.
         return None;
     }
-    let caller_fp = stack_memory.get_memory_at_address(last_fp as u64)?;
-    let caller_lr = stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?;
+
+    let (caller_fp, caller_lr, caller_sp) = if last_fp == 0 {
+        // In this case we want unwinding to stop. One of the termination conditions in get_caller_frame
+        // is that caller_sp <= last_sp. Therefore we can force termination by setting caller_sp = last_sp.
+        (0, 0, last_sp)
+    } else {
+        (
+            stack_memory.get_memory_at_address(last_fp as u64)?,
+            stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?,
+            last_fp + POINTER_WIDTH * 2,
+        )
+    };
     let caller_lr = ptr_auth_strip(modules, caller_lr);
     let caller_pc = last_lr;
-
-    // TODO: why does breakpad do this? How could we get this far with a null fp?
-    let caller_sp = if last_fp == 0 {
-        last_sp
-    } else {
-        last_fp + POINTER_WIDTH * 2
-    };
 
     // TODO: restore all the other callee-save registers that weren't touched.
     // unclear: does this mean we need to be aware of ".undef" entries at this point?
