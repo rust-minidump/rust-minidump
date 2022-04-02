@@ -165,7 +165,7 @@ Here is an example stackwalking trace:
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
-Version: `minidump-stackwalk 0.10.2`
+Version: `minidump-stackwalk 0.10.3`
 
 Analyzes minidumps and produces a report (either human-readable or JSON).
 
@@ -359,4 +359,5 @@ debuginfo formats. We recommend using a version of dump_syms to generate them.
 See:
 * https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
 * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
+
 
