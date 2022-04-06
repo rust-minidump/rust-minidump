@@ -1681,11 +1681,26 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
     pub fn print_contents<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        write!(f, "0x")?;
-        for byte in self.bytes.iter() {
-            write!(f, "{:02x}", byte)?;
+        const PARAGRAPH_SIZE: usize = 16;
+        let mut offset = 0;
+        for paragraph in self.bytes.chunks(PARAGRAPH_SIZE) {
+            write!(f, "    {:08x}: ", offset)?;
+            for &byte in paragraph.iter() {
+                write!(f, "{:02x} ", byte)?;
+            }
+            for &byte in paragraph.iter() {
+                let ascii_char = if !byte.is_ascii() || byte.is_ascii_control() {
+                    '.'
+                } else {
+                    char::from(byte)
+                };
+
+                write!(f, "{}", ascii_char)?;
+            }
+            writeln!(f)?;
+
+            offset += PARAGRAPH_SIZE;
         }
-        writeln!(f)?;
         Ok(())
     }
 
