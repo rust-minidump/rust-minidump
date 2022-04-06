@@ -2532,13 +2532,42 @@ impl<'a> MinidumpThread<'a> {
             write!(f, "  (no context)\n\n")?;
         }
 
+        let pointer_width = system.map_or(PointerWidth::Unknown, |info| info.cpu.pointer_width());
+
         // We might not need any memory, so try to limp forward with an empty
         // MemoryList if we don't have one.
         let dummy_memory = MinidumpMemoryList::default();
         let memory = memory.unwrap_or(&dummy_memory);
         if let Some(ref stack) = self.stack_memory(memory) {
             writeln!(f, "Stack")?;
-            stack.print_contents(f)?;
+
+            // For printing purposes, we'll treat any unknown CPU type as 64-bit
+            let chunk_size: usize = pointer_width.size_in_bytes().unwrap_or(8).into();
+            let mut offset = 0;
+            for chunk in stack.bytes.chunks_exact(chunk_size) {
+                write!(f, "    0x{:08x}: 0x", offset)?;
+
+                match pointer_width {
+                    PointerWidth::Bits32 => {
+                        let value = match self.endian {
+                            scroll::Endian::Little => u32::from_le_bytes(chunk.try_into().unwrap()),
+                            scroll::Endian::Big => u32::from_be_bytes(chunk.try_into().unwrap()),
+                        };
+                        write!(f, "{:08x}", value)?;
+                    }
+                    PointerWidth::Unknown | PointerWidth::Bits64 => {
+                        let value = match self.endian {
+                            scroll::Endian::Little => u64::from_le_bytes(chunk.try_into().unwrap()),
+                            scroll::Endian::Big => u64::from_be_bytes(chunk.try_into().unwrap()),
+                        };
+                        write!(f, "{:016x}", value)?;
+                    }
+                }
+
+                writeln!(f)?;
+
+                offset += chunk_size;
+            }
         } else {
             writeln!(f, "No stack")?;
         }
