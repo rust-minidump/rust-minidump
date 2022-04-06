@@ -28,7 +28,7 @@ use uuid::Uuid;
 
 pub use crate::context::*;
 use crate::strings::*;
-use crate::system_info::{Cpu, Os};
+use crate::system_info::{Cpu, Os, PointerWidth};
 use minidump_common::errors::{self as err};
 use minidump_common::format::{self as md};
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
@@ -2556,7 +2556,7 @@ impl<'a> MinidumpThread<'a> {
         // just use the fact that we know the value we want is a 13-pointers offset
         // from the start of the TEB.
         let teb = self.raw.teb;
-        let pointer_width = cpu.pointer_width()?;
+        let pointer_width = cpu.pointer_width().size_in_bytes()? as u64;
         let offset = pointer_width.checked_mul(13)?;
         let addr = teb.checked_add(offset)?;
         let val: u32 = memory
@@ -4226,7 +4226,7 @@ impl<'a> MinidumpException<'a> {
         // Sometimes on 32-bit these values can be incorrectly sign-extended,
         // so mask and zero-extend them here.
         match cpu.pointer_width() {
-            Some(4) => addr as u32 as u64,
+            PointerWidth::Bits32 => addr as u32 as u64,
             _ => addr,
         }
     }

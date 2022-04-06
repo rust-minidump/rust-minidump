@@ -99,6 +99,14 @@ pub enum Cpu {
     Unknown(u16),
 }
 
+/// Supported CPU pointer widths
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PointerWidth {
+    Bits32,
+    Bits64,
+    Unknown,
+}
+
 impl Cpu {
     /// Get a `Cpu` value matching the `processor_architecture` value from `MINIDUMP_SYSTEM_INFO`
     pub fn from_processor_architecture(arch: u16) -> Cpu {
@@ -121,11 +129,11 @@ impl Cpu {
     }
 
     /// The native pointer width of this platform
-    pub fn pointer_width(&self) -> Option<u64> {
+    pub fn pointer_width(&self) -> PointerWidth {
         match self {
-            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => Some(4),
-            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 | Cpu::Mips64 => Some(8),
-            Cpu::Unknown(_) => None,
+            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => PointerWidth::Bits32,
+            Cpu::X86_64 | Cpu::Ppc64 | Cpu::Arm64 | Cpu::Mips64 => PointerWidth::Bits64,
+            Cpu::Unknown(_) => PointerWidth::Unknown,
         }
     }
 }
@@ -148,5 +156,15 @@ impl fmt::Display for Cpu {
                 Cpu::Unknown(_) => "unknown",
             }
         )
+    }
+}
+
+impl PointerWidth {
+    pub fn size_in_bytes(self) -> Option<u8> {
+        match self {
+            Self::Bits32 => Some(4),
+            Self::Bits64 => Some(8),
+            Self::Unknown => None,
+        }
     }
 }
