@@ -3510,7 +3510,8 @@ impl MinidumpMiscInfo {
                 writeln!(f)?;
                 for (i, feature) in xstate_data.iter() {
                     if let Some(feature) = md::XstateFeatureIndex::from_index(i) {
-                        write!(f, "    feature {:2} - {:22}: ", i, format!("{:?}", feature))?;
+                        let feature_name = format!("{:?}", feature);
+                        write!(f, "    feature {:2} - {:22}: ", i, feature_name)?;
                     } else {
                         write!(f, "    feature {:2} - (unknown)           : ", i)?;
                     }
