@@ -293,13 +293,22 @@ impl SymbolSupplier for SimpleSymbolSupplier {
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
+        trace!("symbols: SimpleSymbolSupplier search");
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    return SymbolFile::from_file(&test_path);
+                    trace!("symbols: SimpleSymbolSupplier found file {test_path:#?}");
+                    let file = SymbolFile::from_file(&test_path).map_err(|e| {
+                        trace!("symbols: SimpleSymbolSupplier failed: {e}");
+                        e
+                    })?;
+                    trace!("symbols: SimpleSymbolSupplier parsed file!");
+                    return Ok(file);
                 }
             }
+        } else {
+            trace!("symbols: SimpleSymbolSupplier could not build symbol_path");
         }
         Err(SymbolError::NotFound)
     }
@@ -326,9 +335,14 @@ impl SymbolSupplier for StringSymbolSupplier {
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
+        trace!("symbols: StringSymbolSupplier search");
         if let Some(symbols) = self.modules.get(&*module.code_file()) {
-            return SymbolFile::from_bytes(symbols.as_bytes());
+            trace!("symbols: StringSymbolSupplier found file");
+            let file = SymbolFile::from_bytes(symbols.as_bytes())?;
+            trace!("symbols: StringSymbolSupplier parsed file!");
+            return Ok(file);
         }
+        trace!("symbols: StringSymbolSupplier could not find file");
         Err(SymbolError::NotFound)
     }
 }
@@ -443,6 +457,7 @@ async fn fetch_symbol_file(
     cache: &Path,
     tmp: &Path,
 ) -> Result<SymbolFile, SymbolError> {
+    trace!("symbols: HttpSymbolSupplier trying symbol server {base_url}");
     // This function is a bit of a complicated mess because we want to write
     // the input to our symbol cache, but we're a streaming parser. So we
     // use the bare SymbolFile::parse to get access to the contents of
@@ -514,12 +529,18 @@ impl SymbolSupplier for HttpSymbolSupplier {
             // Everything but NotFound prevents cascading
             return local_result;
         }
+        trace!("symbols: HttpSymbolSupplier search (SimpleSymbolSupplier found nothing)");
         // Now try urls
         for url in &self.urls {
-            if let Ok(file) =
-                fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await
-            {
-                return Ok(file);
+            let file = fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await;
+            match file {
+                Ok(file) => {
+                    trace!("symbols: HttpSymbolSupplier parsed file!");
+                    return Ok(file);
+                }
+                Err(e) => {
+                    trace!("symbols: HttpSymbolSupplier failed: {e}");
+                }
             }
         }
         // If we get this far, we have failed to find anything
@@ -792,6 +813,7 @@ impl Symbolizer {
     /// exists (so if they first time we look is an Error, it always will be).
     async fn ensure_module(&self, module: &(dyn Module + Sync), k: &ModuleKey) {
         if !self.symbols.lock().unwrap().contains_key(k) {
+            trace!("symbols: locating {k:?}");
             let res = self.supplier.locate_symbols(module).await;
             self.symbols.lock().unwrap().insert(k.clone(), res);
         }
