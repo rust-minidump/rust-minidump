@@ -298,9 +298,9 @@ impl SymbolSupplier for SimpleSymbolSupplier {
             for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    trace!("symbols: SimpleSymbolSupplier found file {test_path:#?}");
+                    trace!("symbols: SimpleSymbolSupplier found file {:#?}", test_path);
                     let file = SymbolFile::from_file(&test_path).map_err(|e| {
-                        trace!("symbols: SimpleSymbolSupplier failed: {e}");
+                        trace!("symbols: SimpleSymbolSupplier failed: {}", e);
                         e
                     })?;
                     trace!("symbols: SimpleSymbolSupplier parsed file!");
@@ -457,7 +457,10 @@ async fn fetch_symbol_file(
     cache: &Path,
     tmp: &Path,
 ) -> Result<SymbolFile, SymbolError> {
-    trace!("symbols: HttpSymbolSupplier trying symbol server {base_url}");
+    trace!(
+        "symbols: HttpSymbolSupplier trying symbol server {}",
+        base_url
+    );
     // This function is a bit of a complicated mess because we want to write
     // the input to our symbol cache, but we're a streaming parser. So we
     // use the bare SymbolFile::parse to get access to the contents of
@@ -539,7 +542,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
                     return Ok(file);
                 }
                 Err(e) => {
-                    trace!("symbols: HttpSymbolSupplier failed: {e}");
+                    trace!("symbols: HttpSymbolSupplier failed: {}", e);
                 }
             }
         }
@@ -813,7 +816,7 @@ impl Symbolizer {
     /// exists (so if they first time we look is an Error, it always will be).
     async fn ensure_module(&self, module: &(dyn Module + Sync), k: &ModuleKey) {
         if !self.symbols.lock().unwrap().contains_key(k) {
-            trace!("symbols: locating {k:?}");
+            trace!("symbols: locating {:?}", k);
             let res = self.supplier.locate_symbols(module).await;
             self.symbols.lock().unwrap().insert(k.clone(), res);
         }
