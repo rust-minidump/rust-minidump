@@ -528,7 +528,7 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 /// ```
 /// use minidump_common::format::GUID;
 ///
-/// let guid = GUID { data1: 10, data2: 11, data3: 12, data4: [1,2,3,4,5,6,7,8]};
+/// let guid = GUID { data1: 10, data2: 11, data3: 12, data4: [1,2,3,4,5,6,7,8] };
 ///
 /// // default formatting
 /// assert_eq!("0000000a-000b-000c-0102-030405060708", guid.to_string());
@@ -538,12 +538,50 @@ impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
 /// ```
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/guiddef/ns-guiddef-guid
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Pread, SizeWith)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pread, Pwrite, SizeWith)]
 pub struct GUID {
     pub data1: u32,
     pub data2: u16,
     pub data3: u16,
     pub data4: [u8; 8],
+}
+
+/// Creates a GUID from raw byte array. It is assumed that the components in
+/// the array are in big-endian bytes.
+///
+/// ```
+/// use minidump_common::format::GUID;
+///
+/// let mut buf = [0u8; 16];
+/// buf[0..4].copy_from_slice(&0xdeadc0deu32.to_be_bytes());
+/// buf[4..6].copy_from_slice(&0xb105u16.to_be_bytes());
+/// buf[6..8].copy_from_slice(&0xc0deu16.to_be_bytes());
+/// buf[8..].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+///
+/// let guid: GUID = buf.into();
+///
+/// let expected = GUID { data1: 0xdeadc0de, data2: 0xb105, data3: 0xc0de, data4: [1, 2, 3, 4, 5, 6, 7, 8] };
+///
+/// assert_eq!(guid, expected);
+/// ```
+impl From<[u8; 16]> for GUID {
+    fn from(uuid: [u8; 16]) -> Self {
+        let data1 = (uuid[0] as u32) << 24
+            | (uuid[1] as u32) << 16
+            | (uuid[2] as u32) << 8
+            | uuid[3] as u32;
+        let data2 = (uuid[4] as u16) << 8 | uuid[5] as u16;
+        let data3 = (uuid[6] as u16) << 8 | uuid[7] as u16;
+        let mut data4 = [0u8; 8];
+        data4.copy_from_slice(&uuid[8..]);
+
+        Self {
+            data1,
+            data2,
+            data3,
+            data4,
+        }
+    }
 }
 
 impl fmt::Display for GUID {
