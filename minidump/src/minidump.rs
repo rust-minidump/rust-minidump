@@ -1685,8 +1685,13 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         let mut offset = 0;
         for paragraph in self.bytes.chunks(PARAGRAPH_SIZE) {
             write!(f, "    {:08x}: ", offset)?;
-            for &byte in paragraph.iter() {
-                write!(f, "{:02x} ", byte)?;
+            let mut byte_iter = paragraph.iter().fuse();
+            for _ in 0..PARAGRAPH_SIZE {
+                if let Some(byte) = byte_iter.next() {
+                    write!(f, "{:02x} ", byte)?;
+                } else {
+                    write!(f, "   ")?;
+                }
             }
             for &byte in paragraph.iter() {
                 let ascii_char = if !byte.is_ascii() || byte.is_ascii_control() {
