@@ -1668,14 +1668,11 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
         T: SizeWith<scroll::Endian>,
     {
-        let end = self.base_address.checked_add(self.size)?;
+        // XXX: Instead of checking the base+size validity on each access, maybe
+        // move this check to a different place?
+        let _end = self.base_address.checked_add(self.size)?;
+        let start = addr.checked_sub(self.base_address)? as usize;
 
-        let in_range = |a: u64| a >= self.base_address && a < end;
-        let size = <T>::size_with(&LE);
-        if !in_range(addr) || !in_range(addr + size as u64 - 1) {
-            return None;
-        }
-        let start = (addr - self.base_address) as usize;
         self.bytes.pread_with::<T>(start, LE).ok()
     }
 
