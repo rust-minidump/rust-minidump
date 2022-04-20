@@ -1,6 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::Path;
@@ -381,7 +382,23 @@ where
             thread_context.as_deref()
         };
 
-        let stack_memory = thread.stack_memory(&memory_list);
+        let mut stack_memory = thread.stack_memory(&memory_list);
+        // Always chose the memory region that is referenced by the context,
+        // as the `exception_context` may refer to a different memory region than
+        // the `thread_context`, which in turn would fail to stack walk.
+        let stack_ptr = context.as_ref().map(|ctx| ctx.get_stack_pointer());
+        if let Some(stack_ptr) = stack_ptr {
+            let contains_stack_ptr = stack_memory
+                .as_ref()
+                .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
+                .is_some();
+            if !contains_stack_ptr {
+                stack_memory = memory_list
+                    .memory_at_address(stack_ptr)
+                    .map(Cow::Borrowed)
+                    .or(stack_memory);
+            }
+        }
 
         let mut stack = stackwalker::walk_stack(
             &context,
