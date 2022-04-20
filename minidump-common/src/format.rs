@@ -546,8 +546,8 @@ pub struct GUID {
     pub data4: [u8; 8],
 }
 
-/// Creates a GUID from raw byte array. It is assumed that the components in
-/// the array are in big-endian bytes.
+/// Creates a GUID from a raw byte array. It is assumed that the components in
+/// the array are in big-endian order.
 ///
 /// ```
 /// use minidump_common::format::GUID;
