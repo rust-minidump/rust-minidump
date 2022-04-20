@@ -721,7 +721,7 @@ pub struct MINIDUMP_EXCEPTION_STREAM {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_exception
-#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_EXCEPTION {
     /// The reason the exception occurred.
     ///
@@ -1512,7 +1512,7 @@ pub enum PlatformId {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms724950(v=vs.85).aspx
-#[derive(Debug, Clone, Default, Pread, SizeWith, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith, PartialEq, Eq)]
 pub struct SYSTEMTIME {
     pub year: u16,
     pub month: u16,
@@ -1529,7 +1529,7 @@ pub struct SYSTEMTIME {
 /// This struct matches the [Microsoft struct][msdn] of the same name.
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/timezoneapi/ns-timezoneapi-time_zone_information
-#[derive(Debug, Clone, Default, Pread, SizeWith)]
+#[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct TIME_ZONE_INFORMATION {
     pub bias: i32,
     pub standard_name: [u16; 32],
@@ -1556,7 +1556,7 @@ macro_rules! multi_structs {
     // Declare a single struct.
     ($(#[$attr:meta])* pub struct $name:ident { $( pub $field:ident: $t:tt, )* } $($tail:tt)* ) => {
         $(#[$attr])*
-        #[derive(Debug, Clone, Pread, SizeWith)]
+        #[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
         pub struct $name {
             $( pub $field: $t, )*
         }
@@ -1669,7 +1669,7 @@ multi_structs! {
 /// If you want to check for that bit, check the raw value of
 /// [`context_flags`](`CONTEXT_AMD64::context_flags`).
 
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
     /// The size of this struct.
     pub size_of_info: u32,
@@ -1756,7 +1756,7 @@ impl XstateFeatureIndex {
 }
 
 /// The offset and size of each XSAVE entry inside the XSAVE context.
-#[derive(Clone, Copy, Debug, Default, Pread, SizeWith, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Pread, Pwrite, SizeWith, PartialEq, Eq)]
 pub struct XSTATE_FEATURE {
     /// This entry's offset from the start of the context (in bytes).
     ///
