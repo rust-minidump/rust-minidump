@@ -1886,7 +1886,7 @@ bitflags! {
 /// Taken from the definition in Breakpad's [minidump_format.h][fmt].
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#962
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_BREAKPAD_INFO {
     pub validity: u32,
     /// The Thread ID of the handler thread
