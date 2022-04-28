@@ -35,4 +35,4 @@ thiserror = "1.0.30"
 doc-comment = "0.3.3"
 minidump-synth = { path = "../minidump-synth" }
 test-assembler = "0.1.6"
-tokio = { version = "1.12.0", features = ["full"] }
+tokio = { version = "1.18.0", features = ["full"] }
