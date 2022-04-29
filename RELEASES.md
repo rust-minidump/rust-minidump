@@ -1,6 +1,30 @@
+# Version 0.10.4 (2022-04-29)
+
+Commit: [7cd02d5824bebf92ba395e3368136ddcff9b9f2c](https://github.com/rust-minidump/rust-minidump/commit/7cd02d5824bebf92ba395e3368136ddcff9b9f2c)
+
+* Added trace logging to symbol resolution.
+* Make `SymbolFile` parsing more robust towards enormous symbols.
+* Improvements to stack memory pretty printing.
+* Add more write implementations for minidump structures.
+* Allow unwinding exception contexts that reference different memory regions than the stack memory.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.10.3 (2022-04-01)
 
-Commit: This One!
+Commit: [7cd02d5824bebf92ba395e3368136ddcff9b9f2c](https://github.com/rust-minidump/rust-minidump/commit/7cd02d5824bebf92ba395e3368136ddcff9b9f2c)
 
 Just a bugfix, pulling a previous change that was only applied to ARM64 to ARM64_OLD as well (they should have identical behaviour).
 
