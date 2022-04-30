@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-pub use minidump_common::traits::Module;
+pub use minidump_common::{traits::Module, utils::basename};
 pub use sym_file::walker;
 
 pub use crate::sym_file::{CfiRules, SymbolFile};
@@ -477,8 +477,8 @@ async fn fetch_symbol_file(
         .map_err(|_| SymbolError::NotFound)?;
     let code_id = module.code_identifier().unwrap_or_default();
     url.query_pairs_mut()
-        .append_pair("code_id", code_id.as_str())
-        .append_pair("code_file", &module.code_file());
+        .append_pair("code_file", basename(&module.code_file()))
+        .append_pair("code_id", code_id.as_str());
     debug!("Trying {}", url);
     let res = client
         .get(url.clone())

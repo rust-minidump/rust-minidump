@@ -678,6 +678,7 @@ dependencies = [
  "log",
  "memmap2",
  "minidump",
+ "minidump-common",
  "minidump-synth",
  "scroll",
  "serde",

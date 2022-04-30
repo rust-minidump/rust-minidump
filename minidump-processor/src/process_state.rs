@@ -13,6 +13,7 @@ use crate::system_info::SystemInfo;
 use crate::{FrameSymbolizer, SymbolStats};
 use minidump::system_info::Cpu;
 use minidump::*;
+use minidump_common::utils::basename;
 use serde_json::json;
 
 /// Indicates how well the instruction pointer derived during
@@ -323,13 +324,6 @@ impl FrameSymbolizer for StackFrame {
         self.source_file_name = Some(String::from(file));
         self.source_line = Some(line);
         self.source_line_base = Some(base);
-    }
-}
-
-fn basename(f: &str) -> &str {
-    match f.rfind(|c| c == '/' || c == '\\') {
-        None => f,
-        Some(index) => &f[(index + 1)..],
     }
 }
 
