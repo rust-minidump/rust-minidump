@@ -196,6 +196,7 @@ impl SymbolFile {
     }
 
     /// `parse` but async
+    #[cfg(feature = "http")]
     pub async fn parse_async(
         mut response: reqwest::Response,
         mut callback: impl FnMut(&[u8]),
