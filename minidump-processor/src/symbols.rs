@@ -185,7 +185,6 @@ mod symbols_shim {
     use minidump::Module;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::time::Duration;
 
     #[async_trait]
     impl SymbolProvider for Symbolizer {
@@ -238,7 +237,7 @@ mod symbols_shim {
         symbol_urls: Vec<String>,
         symbols_cache: PathBuf,
         symbols_tmp: PathBuf,
-        timeout: Duration,
+        timeout: std::time::Duration,
     ) -> impl SymbolSupplier {
         breakpad_symbols::HttpSymbolSupplier::new(
             symbol_urls,
