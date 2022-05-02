@@ -232,6 +232,7 @@ mod symbols_shim {
     ///   As of this writing, minidump-stackwalk defaults this to 1000 seconds. In
     ///   the event of a timeout, the supplier may still try to parse the truncated
     ///   download.
+    #[cfg(feature = "http")]
     pub fn http_symbol_supplier(
         symbol_paths: Vec<PathBuf>,
         symbol_urls: Vec<String>,

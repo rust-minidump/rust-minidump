@@ -18,6 +18,8 @@ default = ["breakpad-syms"]
 breakpad-syms = ["breakpad-symbols"]
 # Use the `symbolic` crate for symbolizing and cfi evaluation (TODO)
 symbolic-syms = []
+# Allows retrieval of symbol files via HTTP
+http = ["breakpad-symbols/http"]
 
 [dependencies]
 async-trait = "0.1.51"

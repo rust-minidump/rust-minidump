@@ -17,18 +17,13 @@ travis-ci = { repository = "rust-minidump/rust-minidump" }
 [dependencies]
 clap = { version = "3.1", features = ["cargo", "wrap_help"] }
 log = "0.4"
-minidump = { version = "0.10.4", path = "../minidump" }
-minidump-common = { version = "0.10.4", path = "../minidump-common" }
-minidump-processor = { version = "0.10.4", path = "../minidump-processor" }
-simplelog = "0.11.2"
+minidump = { version = "0.10.3", path = "../minidump" }
+minidump-common = { version = "0.10.3", path = "../minidump-common" }
+minidump-processor = { version = "0.10.3", path = "../minidump-processor", features = [
+    "http",
+] }
+simplelog = "0.12"
 tokio = { version = "1.12.0", features = ["full"] }
-
-[features]
-vendored-openssl = ["openssl/vendored"]
-
-[dependencies.openssl]
-version = "0.10.4"
-optional = true
 
 [dev-dependencies]
 insta = "1.13.0"
