@@ -1,6 +1,6 @@
 # Version 0.10.4 (2022-04-29)
 
-Commit: [7cd02d5824bebf92ba395e3368136ddcff9b9f2c](https://github.com/rust-minidump/rust-minidump/commit/7cd02d5824bebf92ba395e3368136ddcff9b9f2c)
+Commit: [7811838a0fb6ddac0663fe07026c526bb9012825](https://github.com/rust-minidump/rust-minidump/commit/7811838a0fb6ddac0663fe07026c526bb9012825)
 
 * Added trace logging to symbol resolution.
 * Make `SymbolFile` parsing more robust towards enormous symbols.
