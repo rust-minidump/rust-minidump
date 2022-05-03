@@ -1,6 +1,6 @@
 [package]
 name = "minidump-fuzz"
-version = "0.0.0"
+version = "0.10.4"
 authors = ["Automatically generated"]
 publish = false
 edition = "2018"
