@@ -746,8 +746,7 @@ fn read_debug_id(codeview_info: &CodeView, endian: scroll::Endian) -> Option<Deb
                 raw.signature.data2,
                 raw.signature.data3,
                 &raw.signature.data4,
-            )
-            .ok()?;
+            );
             (!uuid.is_nil()).then(|| DebugId::from_parts(uuid, raw.age))
         }
         CodeView::Pdb20(ref raw) => Some(DebugId::from_pdb20(raw.signature, raw.age)),
@@ -775,7 +774,7 @@ fn read_debug_id(codeview_info: &CodeView, endian: scroll::Endian) -> Option<Deb
             } else {
                 raw.build_id.pread_with::<md::GUID>(0, endian).ok()
             };
-            guid.and_then(|g| Uuid::from_fields(g.data1, g.data2, g.data3, &g.data4).ok())
+            guid.map(|g| Uuid::from_fields(g.data1, g.data2, g.data3, &g.data4))
                 .map(DebugId::from_uuid)
         }
         _ => None,
