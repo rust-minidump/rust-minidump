@@ -22,7 +22,7 @@ symbolic-syms = []
 http = ["breakpad-symbols/http"]
 
 [dependencies]
-async-trait = "0.1.51"
+async-trait = "0.1.53"
 breakpad-symbols = { version = "0.10.4", path = "../breakpad-symbols", optional = true }
 debugid = "0.7.3"
 log = "0.4"
