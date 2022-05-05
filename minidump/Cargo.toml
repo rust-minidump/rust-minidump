@@ -13,7 +13,7 @@ edition = "2018"
 
 [dependencies]
 arbitrary = { version = "1", optional = true, features = ["derive"] }
-debugid = "0.7.3"
+debugid = "0.8.0"
 encoding = "0.2"
 log = "0.4.1"
 memmap2 = "0.5.3"
