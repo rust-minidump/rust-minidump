@@ -20,6 +20,7 @@ breakpad-syms = ["breakpad-symbols"]
 symbolic-syms = []
 # Allows retrieval of symbol files via HTTP
 http = ["breakpad-symbols/http"]
+dump_syms = ["breakpad-symbols/dump_syms", "http"]
 
 [dependencies]
 async-trait = "0.1.51"

@@ -175,15 +175,12 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
 pub fn relative_symbol_path(module: &(dyn Module + Sync), extension: &str) -> Option<String> {
-    module.debug_file().and_then(|debug_file| {
-        module.debug_identifier().map(|debug_id| {
-            // Can't use PathBuf::file_name here, it doesn't handle
-            // Windows file paths on non-Windows.
-            let leaf = leafname(&debug_file);
-            let filename = replace_or_add_extension(leaf, "pdb", extension);
-            [leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/")
-        })
-    })
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let leaf = leafname(&debug_file);
+    let filename = replace_or_add_extension(leaf, "pdb", extension);
+    Some([leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/"))
 }
 
 /// Possible results of locating symbols for a module.
