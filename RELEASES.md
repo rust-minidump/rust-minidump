@@ -1,3 +1,25 @@
+# Version 0.11.0 (2022-05-19)
+
+Commit: TODO
+
+* Update `debugid` and `uuid` dependencies to `0.8.0` and `1.0.0` respectively.
+* Make retrieval from http source an optional feature of `breakpad-symbols`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Version 0.10.4 (2022-04-29)
 
 Commit: [7811838a0fb6ddac0663fe07026c526bb9012825](https://github.com/rust-minidump/rust-minidump/commit/7811838a0fb6ddac0663fe07026c526bb9012825)

@@ -72,7 +72,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "circular",
@@ -599,7 +599,7 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 
 [[package]]
 name = "minidump"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "arbitrary",
  "debugid",
@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "arbitrary",
  "bitflags",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-stackwalk"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "clap",
  "insta",
@@ -672,7 +672,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-synth"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "encoding",
  "minidump-common",
@@ -746,9 +746,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+checksum = "7b10983b38c53aebdf33f542c6275b0f58a238129d00c4ae0e6fb59738d783ca"
 
 [[package]]
 name = "os_str_bytes"
