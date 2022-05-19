@@ -22,7 +22,7 @@ http = ["reqwest", "tempfile"]
 [dependencies]
 async-trait = "0.1.51"
 circular = "0.3.0"
-debugid = "0.7.3"
+debugid = "0.8.0"
 log = "0.4.1"
 minidump-common = { version = "0.10.4", path = "../minidump-common" }
 nom = "~1.2.2"
