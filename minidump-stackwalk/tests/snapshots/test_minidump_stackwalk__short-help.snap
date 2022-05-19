@@ -24,8 +24,7 @@ OPTIONS:
             Emit a machine-readable JSON report.
             
             The schema for this output is officially documented here:
-            https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-
-            schema.md
+            https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md
 
         --human
             Emit a human-readable report (the default).
@@ -75,8 +74,8 @@ OPTIONS:
             
             Features under unstable-all may be deprecated and become noops. Features which require
             additional input (such as `--evil-json`) cannot be affected by this, and must still be
-            manually 'discovered'.[default: stable-basic] [possible values: stable-basic, stable-
-            all, unstable-all]
+            manually 'discovered'.[default: stable-basic] [possible values: stable-basic,
+            stable-all, unstable-all]
 
         --output-file <output-file>
             Where to write the output to (if unspecified, stdout is used)
