@@ -41,8 +41,8 @@ use tracing::level_filters::LevelFilter;
 /// native debuginfo formats. We recommend using a version of dump_syms to generate them.
 ///
 /// See:
-/// * https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
-/// * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
+/// * <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md>
+/// * mozilla's dump_syms (co-developed with this program): <https://github.com/mozilla/dump_syms>
 #[derive(Parser)]
 #[clap(version, about, long_about = None)]
 #[clap(propagate_version = true)]
@@ -68,7 +68,7 @@ struct Cli {
     /// Emit a machine-readable JSON report
     ///
     /// The schema for this output is officially documented here:
-    /// https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md
+    /// <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
     #[clap(long)]
     json: bool,
 
@@ -152,7 +152,7 @@ struct Cli {
     #[clap(long)]
     brief: bool,
 
-    /// **[UNSTABLE]** An input JSON file with the extra information.
+    /// **UNSTABLE** An input JSON file with the extra information.
     ///
     /// This is a gross hack for some legacy side-channel information that mozilla uses.
     /// It will hopefully be phased out and deprecated in favour of just using custom
@@ -160,7 +160,7 @@ struct Cli {
     #[clap(long)]
     evil_json: Option<PathBuf>,
 
-    /// **[UNSTABLE]** Heuristically recover function arguments
+    /// **UNSTABLE** Heuristically recover function arguments
     ///
     /// This is an experimental feature, which currently only shows up in --human output.
     #[clap(long)]
@@ -174,11 +174,11 @@ struct Cli {
     /// The server the base URL points to is expected to conform to the Tecken
     /// symbol server protocol. For more details, see the Tecken docs:
     ///
-    /// https://tecken.readthedocs.io/en/latest/
+    /// <https://tecken.readthedocs.io/en/latest/>
     ///
     /// Example symbols-url values:
-    /// * microsoft's symbol-server: https://msdl.microsoft.com/download/symbols/
-    /// * mozilla's symbols-server: https://symbols.mozilla.org/
+    /// * microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
+    /// * mozilla's symbols-server: <https://symbols.mozilla.org/>
     #[clap(long)]
     #[clap(verbatim_doc_comment)]
     symbols_url: Vec<String>,
