@@ -486,19 +486,19 @@
 
 use super::{CfiRules, StackInfoWin, WinStackThing};
 use crate::FrameWalker;
-use log::{debug, trace};
 use std::collections::HashMap;
 use std::str::FromStr;
+use tracing::{debug, trace};
 
 pub fn walk_with_stack_cfi(
     init: &CfiRules,
     additional: &[CfiRules],
     walker: &mut dyn FrameWalker,
 ) -> Option<()> {
-    trace!("unwind: trying STACK CFI exprs");
-    trace!("unwind:   {}", init.rules);
+    trace!("trying STACK CFI exprs");
+    trace!("  {}", init.rules);
     for line in additional {
-        trace!("unwind:   {}", line.rules);
+        trace!("  {}", line.rules);
     }
 
     // First we must collect up all the `REG: EXPR` pairs in these lines.
@@ -509,18 +509,18 @@ pub fn walk_with_stack_cfi(
     for line in additional {
         parse_cfi_exprs(&line.rules, &mut exprs)?;
     }
-    trace!("unwind: STACK CFI parse successful");
+    trace!("STACK CFI parse successful");
 
     // These two are special and *must* always be present
     let cfa_expr = exprs.remove(&CfiReg::Cfa)?;
     let ra_expr = exprs.remove(&CfiReg::Ra)?;
-    trace!("unwind: STACK CFI seems reasonable, evaluating");
+    trace!("STACK CFI seems reasonable, evaluating");
 
     // Evaluating the CFA cannot itself use the CFA
     let cfa = eval_cfi_expr(cfa_expr, walker, None)?;
-    trace!("unwind: successfully evaluated .cfa (frame address)");
+    trace!("successfully evaluated .cfa (frame address)");
     let ra = eval_cfi_expr(ra_expr, walker, Some(cfa))?;
-    trace!("unwind: successfully evaluated .ra (return address)");
+    trace!("successfully evaluated .ra (return address)");
 
     walker.set_cfa(cfa)?;
     walker.set_ra(ra)?;
@@ -534,14 +534,11 @@ pub fn walk_with_stack_cfi(
             match eval_cfi_expr(expr, walker, Some(cfa)) {
                 Some(val) => {
                     walker.set_caller_register(reg, val);
-                    trace!("unwind: successfully evaluated {}", reg);
+                    trace!("successfully evaluated {}", reg);
                 }
                 None => {
                     walker.clear_caller_register(reg);
-                    trace!(
-                        "unwind: optional register {} failed to evaluate, dropping it",
-                        reg
-                    );
+                    trace!("optional register {} failed to evaluate, dropping it", reg);
                 }
             }
         } else {
@@ -772,7 +769,7 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         // is valid and that the standard calling convention is used
         // (so the caller's $ebp was pushed right after the return address,
         // and now $ebp points to that.)
-        trace!("unwind: program used @ operator, using $ebp instead of $esp for return addr");
+        trace!("program used @ operator, using $ebp instead of $esp for return addr");
         callee_ebp.checked_add(4)?
     } else {
         // $esp should be reasonable, get the return address from that
@@ -780,7 +777,7 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
     };
 
     trace!(
-        "unwind: raSearchStart = 0x{:08x} (0x{:08x}, 0x{:08x}, 0x{:08x})",
+        "raSearchStart = 0x{:08x} (0x{:08x}, 0x{:08x}, 0x{:08x})",
         search_start,
         grand_callee_param_size,
         info.local_size,
@@ -913,7 +910,7 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
                 } else {
                     // Unknown expr
                     trace!(
-                        "unwind: STACK WIN expression eval failed - unknown token: {}",
+                        "STACK WIN expression eval failed - unknown token: {}",
                         token
                     );
                     return None;
@@ -929,7 +926,7 @@ fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) 
         }
     }
 
-    trace!("unwind: STACK WIN expression eval succeeded!");
+    trace!("STACK WIN expression eval succeeded!");
 
     Some(())
 }
@@ -966,7 +963,7 @@ pub fn walk_with_stack_win_framedata(
     walker: &mut dyn FrameWalker,
 ) -> Option<()> {
     if let WinStackThing::ProgramString(ref expr) = info.program_string_or_base_pointer {
-        trace!("unwind: trying STACK WIN framedata -- {}", expr);
+        trace!("trying STACK WIN framedata -- {}", expr);
         clear_stack_win_caller_registers(walker);
         eval_win_expr(expr, info, walker)
     } else {
@@ -980,7 +977,7 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
     {
         // FIXME: do a bunch of heuristics to make this more robust.
         // Haven't needed the heuristics breakpad uses yet.
-        trace!("unwind: trying STACK WIN fpo");
+        trace!("trying STACK WIN fpo");
         clear_stack_win_caller_registers(walker);
 
         let grand_callee_param_size = walker.get_grand_callee_parameter_size();
@@ -1007,7 +1004,7 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
         }
         let caller_esp = eip_address + 4;
 
-        trace!("unwind: found caller $eip and $esp");
+        trace!("found caller $eip and $esp");
 
         let caller_ebp = if allocates_base_pointer {
             let ebp_address =
@@ -1024,13 +1021,13 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
 
             walker.get_callee_register("ebp")?
         };
-        trace!("unwind: found caller $ebp");
+        trace!("found caller $ebp");
 
         walker.set_caller_register("eip", caller_eip)?;
         walker.set_caller_register("esp", caller_esp)?;
         walker.set_caller_register("ebp", caller_ebp)?;
 
-        trace!("unwind: STACK WIN fpo eval succeeded!");
+        trace!("STACK WIN fpo eval succeeded!");
         Some(())
     } else {
         unreachable!()

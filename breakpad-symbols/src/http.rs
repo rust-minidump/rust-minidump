@@ -1,13 +1,13 @@
 //! Contains HTTP symbol retrieval specific functionality
 
 use crate::*;
-use log::{debug, trace, warn};
 use reqwest::{Client, Url};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::NamedTempFile;
+use tracing::{debug, trace, warn};
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format
 /// symbols from HTTP URLs.
@@ -118,10 +118,7 @@ async fn fetch_symbol_file(
     cache: &Path,
     tmp: &Path,
 ) -> Result<SymbolFile, SymbolError> {
-    trace!(
-        "symbols: HttpSymbolSupplier trying symbol server {}",
-        base_url
-    );
+    trace!("HttpSymbolSupplier trying symbol server {}", base_url);
     // This function is a bit of a complicated mess because we want to write
     // the input to our symbol cache, but we're a streaming parser. So we
     // use the bare SymbolFile::parse to get access to the contents of
@@ -183,6 +180,7 @@ async fn fetch_symbol_file(
 
 #[async_trait]
 impl SymbolSupplier for HttpSymbolSupplier {
+    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
@@ -193,17 +191,17 @@ impl SymbolSupplier for HttpSymbolSupplier {
             // Everything but NotFound prevents cascading
             return local_result;
         }
-        trace!("symbols: HttpSymbolSupplier search (SimpleSymbolSupplier found nothing)");
+        trace!("HttpSymbolSupplier search (SimpleSymbolSupplier found nothing)");
         // Now try urls
         for url in &self.urls {
             let file = fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await;
             match file {
                 Ok(file) => {
-                    trace!("symbols: HttpSymbolSupplier parsed file!");
+                    trace!("HttpSymbolSupplier parsed file!");
                     return Ok(file);
                 }
                 Err(e) => {
-                    trace!("symbols: HttpSymbolSupplier failed: {}", e);
+                    trace!("HttpSymbolSupplier failed: {}", e);
                 }
             }
         }

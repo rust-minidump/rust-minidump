@@ -14,10 +14,8 @@ use minidump_processor::{
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
-use log::error;
-use simplelog::{
-    ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode, WriteLogger,
-};
+use tracing::error;
+use tracing::level_filters::LevelFilter;
 
 /// Analyzes minidumps and produces a report (either human-readable or JSON)
 ///
@@ -243,32 +241,22 @@ async fn main() {
     let cli = Cli::parse();
 
     // Init the logger (and make trace logging less noisy)
-    if let Some(log_path) = cli.log_file {
+    if let Some(log_path) = &cli.log_file {
         let log_file = File::create(log_path).unwrap();
-        let _ = WriteLogger::init(
-            cli.verbose,
-            ConfigBuilder::new()
-                .set_location_level(LevelFilter::Off)
-                .set_time_level(LevelFilter::Off)
-                .set_thread_level(LevelFilter::Off)
-                .set_target_level(LevelFilter::Off)
-                .build(),
-            log_file,
-        )
-        .unwrap();
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(cli.verbose)
+            .with_target(false)
+            .without_time()
+            .with_ansi(false)
+            .with_writer(log_file)
+            .init();
     } else {
-        let _ = TermLogger::init(
-            cli.verbose,
-            ConfigBuilder::new()
-                .set_location_level(LevelFilter::Off)
-                .set_time_level(LevelFilter::Off)
-                .set_thread_level(LevelFilter::Off)
-                .set_target_level(LevelFilter::Off)
-                .set_level_color(Level::Trace, None)
-                .build(),
-            TerminalMode::Stderr,
-            ColorChoice::Auto,
-        );
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(cli.verbose)
+            .with_target(false)
+            .without_time()
+            .with_writer(std::io::stderr)
+            .init();
     }
 
     // Set a panic hook to redirect to the logger

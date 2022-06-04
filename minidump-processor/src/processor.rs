@@ -400,7 +400,13 @@ where
             }
         }
 
+        let name = thread_names
+            .get_name(thread.raw.thread_id)
+            .map(|cow| cow.into_owned())
+            .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
         let mut stack = stackwalker::walk_stack(
+            id,
+            name.as_deref(),
             &context,
             stack_memory.as_deref(),
             &modules,
@@ -409,6 +415,7 @@ where
         )
         .await;
         stack.thread_id = id;
+        stack.thread_name = name;
         for frame in &mut stack.frames {
             // If the frame doesn't have a loaded module, try to find an unloaded module
             // that overlaps with its address range. The may be multiple, so record all
@@ -426,12 +433,6 @@ where
                 frame.unloaded_modules = offsets;
             }
         }
-
-        let name = thread_names
-            .get_name(thread.raw.thread_id)
-            .map(|cow| cow.into_owned())
-            .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
-        stack.thread_name = name;
 
         stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
 
