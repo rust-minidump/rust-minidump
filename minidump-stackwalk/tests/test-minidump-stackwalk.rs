@@ -498,7 +498,7 @@ fn test_markdown_help() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    assert!(output.status.success());
+    assert!(output.status.success(), "{}", stderr);
     insta::assert_snapshot!("markdown-help", stdout);
     assert_eq!(stderr, "");
 }
@@ -771,7 +771,7 @@ fn test_unloaded() {
         .unwrap();
     let json_out = String::from_utf8(json_bytes).unwrap();
 
-    assert!(output.status.success());
+    assert!(output.status.success(), "{}", stderr);
     insta::assert_snapshot!("human-unloaded", stdout);
     insta::assert_snapshot!("json-pretty-unloaded", json_out);
     assert_eq!(stderr, "");
