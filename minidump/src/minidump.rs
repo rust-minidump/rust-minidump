@@ -4,7 +4,6 @@
 use debugid::{CodeId, DebugId};
 use encoding::all::{UTF_16BE, UTF_16LE};
 use encoding::{DecoderTrap, Encoding};
-use log::warn;
 use memmap2::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -24,6 +23,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::str;
 use std::time::{Duration, SystemTime};
+use tracing::warn;
 use uuid::Uuid;
 
 pub use crate::context::*;

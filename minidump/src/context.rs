@@ -3,7 +3,6 @@
 
 //! CPU contexts.
 
-use log::warn;
 use num_traits::FromPrimitive;
 use scroll::{self, Pread};
 use std::collections::HashSet;
@@ -11,6 +10,7 @@ use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::mem;
+use tracing::warn;
 
 use crate::iostuff::*;
 use crate::{MinidumpMiscInfo, MinidumpSystemInfo};

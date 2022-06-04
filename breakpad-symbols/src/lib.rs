@@ -39,7 +39,7 @@
 
 use async_trait::async_trait;
 use debugid::{CodeId, DebugId};
-use log::trace;
+use tracing::trace;
 
 use std::borrow::Cow;
 use std::boxed::Box;
@@ -235,17 +235,17 @@ pub enum SymbolError {
 #[derive(Debug)]
 pub struct FillSymbolError {
     // We don't want to yield a full SymbolError for fill_symbol
-    // as this would involve cloning bulky Error strings every time
-    // someone requested symbols for a missing module.
-    //
-    // As it turns out there's currently no reason to care about *why*
-    // fill_symbol, so for now this is just a dummy type until we have
-    // something to put here.
-    //
-    // The only reason fill_symbol *can* produce an Err is so that
-    // the caller can distinguish between "we had symbols, but this address
-    // didn't map to a function name" and "we had no symbols for that module"
-    // (this is used as a heuristic for stack scanning).
+// as this would involve cloning bulky Error strings every time
+// someone requested symbols for a missing module.
+//
+// As it turns out there's currently no reason to care about *why*
+// fill_symbol, so for now this is just a dummy type until we have
+// something to put here.
+//
+// The only reason fill_symbol *can* produce an Err is so that
+// the caller can distinguish between "we had symbols, but this address
+// didn't map to a function name" and "we had no symbols for that module"
+// (this is used as a heuristic for stack scanning).
 }
 
 impl PartialEq for SymbolError {
@@ -290,26 +290,27 @@ impl SimpleSymbolSupplier {
 
 #[async_trait]
 impl SymbolSupplier for SimpleSymbolSupplier {
+    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
-        trace!("symbols: SimpleSymbolSupplier search");
+        trace!("SimpleSymbolSupplier search");
         if let Some(rel_path) = relative_symbol_path(module, "sym") {
             for path in self.paths.iter() {
                 let test_path = path.join(&rel_path);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    trace!("symbols: SimpleSymbolSupplier found file {:#?}", test_path);
+                    trace!("SimpleSymbolSupplier found file {:#?}", test_path);
                     let file = SymbolFile::from_file(&test_path).map_err(|e| {
-                        trace!("symbols: SimpleSymbolSupplier failed: {}", e);
+                        trace!("SimpleSymbolSupplier failed: {}", e);
                         e
                     })?;
-                    trace!("symbols: SimpleSymbolSupplier parsed file!");
+                    trace!("SimpleSymbolSupplier parsed file!");
                     return Ok(file);
                 }
             }
         } else {
-            trace!("symbols: SimpleSymbolSupplier could not build symbol_path");
+            trace!("SimpleSymbolSupplier could not build symbol_path");
         }
         Err(SymbolError::NotFound)
     }
@@ -332,18 +333,19 @@ impl StringSymbolSupplier {
 
 #[async_trait]
 impl SymbolSupplier for StringSymbolSupplier {
+    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
-        trace!("symbols: StringSymbolSupplier search");
+        trace!("StringSymbolSupplier search");
         if let Some(symbols) = self.modules.get(&*module.code_file()) {
-            trace!("symbols: StringSymbolSupplier found file");
+            trace!("StringSymbolSupplier found file");
             let file = SymbolFile::from_bytes(symbols.as_bytes())?;
-            trace!("symbols: StringSymbolSupplier parsed file!");
+            trace!("StringSymbolSupplier parsed file!");
             return Ok(file);
         }
-        trace!("symbols: StringSymbolSupplier could not find file");
+        trace!("StringSymbolSupplier could not find file");
         Err(SymbolError::NotFound)
     }
 }
@@ -613,7 +615,7 @@ impl Symbolizer {
     /// exists (so if they first time we look is an Error, it always will be).
     async fn ensure_module(&self, module: &(dyn Module + Sync), k: &ModuleKey) {
         if !self.symbols.lock().unwrap().contains_key(k) {
-            trace!("symbols: locating {:?}", k);
+            trace!("locating {:?}", k);
             let res = self.supplier.locate_symbols(module).await;
             self.symbols.lock().unwrap().insert(k.clone(), res);
         }
