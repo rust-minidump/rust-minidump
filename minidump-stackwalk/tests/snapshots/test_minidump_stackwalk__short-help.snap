@@ -46,10 +46,10 @@ OPTIONS:
             Provide a briefer --human report
 
         --evil-json <EVIL_JSON>
-            **[UNSTABLE]** An input JSON file with the extra information
+            **UNSTABLE** An input JSON file with the extra information
 
         --recover-function-args
-            **[UNSTABLE]** Heuristically recover function arguments
+            **UNSTABLE** Heuristically recover function arguments
 
         --symbols-url <SYMBOLS_URL>
             base URL from which URLs to symbol files can be constructed

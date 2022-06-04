@@ -235,17 +235,17 @@ pub enum SymbolError {
 #[derive(Debug)]
 pub struct FillSymbolError {
     // We don't want to yield a full SymbolError for fill_symbol
-// as this would involve cloning bulky Error strings every time
-// someone requested symbols for a missing module.
-//
-// As it turns out there's currently no reason to care about *why*
-// fill_symbol, so for now this is just a dummy type until we have
-// something to put here.
-//
-// The only reason fill_symbol *can* produce an Err is so that
-// the caller can distinguish between "we had symbols, but this address
-// didn't map to a function name" and "we had no symbols for that module"
-// (this is used as a heuristic for stack scanning).
+    // as this would involve cloning bulky Error strings every time
+    // someone requested symbols for a missing module.
+    //
+    // As it turns out there's currently no reason to care about *why*
+    // fill_symbol, so for now this is just a dummy type until we have
+    // something to put here.
+    //
+    // The only reason fill_symbol *can* produce an Err is so that
+    // the caller can distinguish between "we had symbols, but this address
+    // didn't map to a function name" and "we had no symbols for that module"
+    // (this is used as a heuristic for stack scanning).
 }
 
 impl PartialEq for SymbolError {

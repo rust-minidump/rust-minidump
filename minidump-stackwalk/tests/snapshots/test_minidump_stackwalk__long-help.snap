@@ -30,7 +30,7 @@ OPTIONS:
             Emit a machine-readable JSON report
             
             The schema for this output is officially documented here:
-            https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md
+            <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
 
         --cyborg <CYBORG>
             Combine --human and --json
@@ -103,14 +103,14 @@ OPTIONS:
             Only provides the top-level summary and a backtrace of the crashing thread.
 
         --evil-json <EVIL_JSON>
-            **[UNSTABLE]** An input JSON file with the extra information.
+            **UNSTABLE** An input JSON file with the extra information.
             
             This is a gross hack for some legacy side-channel information that mozilla uses. It will
             hopefully be phased out and deprecated in favour of just using custom streams in the
             minidump itself.
 
         --recover-function-args
-            **[UNSTABLE]** Heuristically recover function arguments
+            **UNSTABLE** Heuristically recover function arguments
             
             This is an experimental feature, which currently only shows up in --human output.
 
@@ -123,11 +123,11 @@ OPTIONS:
             The server the base URL points to is expected to conform to the Tecken
             symbol server protocol. For more details, see the Tecken docs:
             
-            https://tecken.readthedocs.io/en/latest/
+            <https://tecken.readthedocs.io/en/latest/>
             
             Example symbols-url values:
-            * microsoft's symbol-server: https://msdl.microsoft.com/download/symbols/
-            * mozilla's symbols-server: https://symbols.mozilla.org/
+            * microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
+            * mozilla's symbols-server: <https://symbols.mozilla.org/>
 
         --symbols-cache <SYMBOLS_CACHE>
             A directory in which downloaded symbols can be stored
