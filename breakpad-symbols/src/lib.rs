@@ -602,10 +602,10 @@ impl Symbolizer {
         let k = key(module);
         self.ensure_module(module, &k).await;
         if let Some(Ok(ref sym)) = self.symbols.lock().unwrap().get(&k) {
-            trace!("unwind: found symbols for address, searching for cfi entries");
+            trace!("found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
-            trace!("unwind: couldn't find symbols for address, cannot use cfi");
+            trace!("couldn't find symbols for address, cannot use cfi");
             None
         }
     }
