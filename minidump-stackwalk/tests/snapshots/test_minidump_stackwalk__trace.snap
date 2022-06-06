@@ -1,26 +1,26 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-expression: stderr
+expression: log
 ---
-[33m WARN[0m Minidump contains multiple streams of type 0 (UnusedStream) at indices 7 (0 bytes) and 8 (0 bytes) (using 8)
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m starting stack unwind of thread 3060 
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m unwinding 0x0040429e
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying cfi
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying frame pointer
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m frame pointer seems valid -- caller_ip: 0x00404200, caller_sp: 0x0012fe90
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m unwinding 0x004041ff
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying cfi
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying frame pointer
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m frame pointer seems valid -- caller_ip: 0x004053ec, caller_sp: 0x0012ff78
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m unwinding 0x004053eb
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying cfi
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying frame pointer
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m frame pointer seems valid -- caller_ip: 0x7c816fd7, caller_sp: 0x0012ffc8
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m unwinding 0x7c816fd6
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying cfi
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m trying frame pointer
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m frame pointer seems valid -- caller_ip: 0x00000000, caller_sp: 0x0012fff8
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m instruction pointer was nullish, assuming unwind complete
-[35mTRACE[0m [1munwind[0m[1m{[0m[3mtid[0m[2m=[0m3060 [3mname[0m[2m=[0m""[1m}[0m[2m:[0m finished stack unwind of thread 3060 
+ WARN Minidump contains multiple streams of type 0 (UnusedStream) at indices 7 (0 bytes) and 8 (0 bytes) (using 8)
+TRACE unwind{tid=3060 name=""}: starting stack unwind of thread 3060 
+TRACE unwind{tid=3060 name=""}: unwinding 0x0040429e
+TRACE unwind{tid=3060 name=""}: trying cfi
+TRACE unwind{tid=3060 name=""}: trying frame pointer
+TRACE unwind{tid=3060 name=""}: frame pointer seems valid -- caller_ip: 0x00404200, caller_sp: 0x0012fe90
+TRACE unwind{tid=3060 name=""}: unwinding 0x004041ff
+TRACE unwind{tid=3060 name=""}: trying cfi
+TRACE unwind{tid=3060 name=""}: trying frame pointer
+TRACE unwind{tid=3060 name=""}: frame pointer seems valid -- caller_ip: 0x004053ec, caller_sp: 0x0012ff78
+TRACE unwind{tid=3060 name=""}: unwinding 0x004053eb
+TRACE unwind{tid=3060 name=""}: trying cfi
+TRACE unwind{tid=3060 name=""}: trying frame pointer
+TRACE unwind{tid=3060 name=""}: frame pointer seems valid -- caller_ip: 0x7c816fd7, caller_sp: 0x0012ffc8
+TRACE unwind{tid=3060 name=""}: unwinding 0x7c816fd6
+TRACE unwind{tid=3060 name=""}: trying cfi
+TRACE unwind{tid=3060 name=""}: trying frame pointer
+TRACE unwind{tid=3060 name=""}: frame pointer seems valid -- caller_ip: 0x00000000, caller_sp: 0x0012fff8
+TRACE unwind{tid=3060 name=""}: instruction pointer was nullish, assuming unwind complete
+TRACE unwind{tid=3060 name=""}: finished stack unwind of thread 3060 
 
 
