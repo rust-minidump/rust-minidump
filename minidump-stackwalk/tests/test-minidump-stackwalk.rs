@@ -365,8 +365,8 @@ fn test_trace() {
     let output = Command::new(bin)
         .arg("--human")
         .arg("--verbose=trace")
+        .arg("--no-color") // disable coloured output for logs
         .arg("../testdata/test.dmp")
-        .env("NO_COLOR", "1") // disable coloured output for logs
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

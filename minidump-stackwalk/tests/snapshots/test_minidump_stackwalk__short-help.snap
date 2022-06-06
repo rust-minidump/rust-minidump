@@ -39,6 +39,9 @@ OPTIONS:
         --log-file <LOG_FILE>
             Where to write logs to (if unspecified, stderr is used)
 
+        --no-color
+            Prevent the output/logging from using ANSI coloring
+
         --pretty
             Pretty-print --json output
 

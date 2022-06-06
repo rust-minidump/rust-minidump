@@ -142,6 +142,13 @@ struct Cli {
     #[clap(long)]
     log_file: Option<PathBuf>,
 
+    /// Prevent the output/logging from using ANSI coloring
+    ///
+    /// Output written to a file via --log-file, --output-file, or --cyborg
+    /// is always --no-color, so this just forces stdout/stderr printing.
+    #[clap(long)]
+    no_color: bool,
+
     /// Pretty-print --json output
     #[clap(long)]
     pretty: bool,
@@ -255,6 +262,7 @@ async fn main() {
             .with_max_level(cli.verbose)
             .with_target(false)
             .without_time()
+            .with_ansi(!cli.no_color)
             .with_writer(std::io::stderr)
             .init();
     }

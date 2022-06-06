@@ -94,6 +94,12 @@ OPTIONS:
         --log-file <LOG_FILE>
             Where to write logs to (if unspecified, stderr is used)
 
+        --no-color
+            Prevent the output/logging from using ANSI coloring
+            
+            Output written to a file via --log-file, --output-file, or --cyborg is always
+            --no-color, so this just forces stdout/stderr printing.
+
         --pretty
             Pretty-print --json output
 
