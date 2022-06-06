@@ -58,6 +58,8 @@ impl TestFixture {
 
         Some(
             walk_stack(
+                0,
+                None,
                 &Some(&context),
                 Some(&stack_memory),
                 &self.modules,
