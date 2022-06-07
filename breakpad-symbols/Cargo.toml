@@ -20,7 +20,7 @@ fuzz = []
 http = ["reqwest", "tempfile"]
 
 [dependencies]
-async-trait = "0.1.51"
+async-trait = "0.1.56"
 circular = "0.3.0"
 debugid = "0.8.0"
 tracing = { version = "0.1.34", features = ["log"] }
