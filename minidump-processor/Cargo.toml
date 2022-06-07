@@ -26,7 +26,7 @@ async-trait = "0.1.51"
 breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols", optional = true }
 debugid = "0.8.0"
 tracing = { version = "0.1.34", features = ["log"] }
-memmap2 = "0.5.3"
+memmap2 = "0.5.4"
 minidump = { version = "0.11.0", path = "../minidump" }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
 scroll = "0.11.0"
