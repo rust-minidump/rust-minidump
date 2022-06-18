@@ -543,8 +543,6 @@ pub enum FileKind {
 /// * debug_file
 /// * debug_id
 type ModuleKey = (String, Option<String>, Option<String>, Option<String>);
-/// A key that uniquely identifies a File associated with a module
-type FileKey = (ModuleKey, FileKind);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
 fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {

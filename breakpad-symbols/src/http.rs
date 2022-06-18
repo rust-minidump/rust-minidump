@@ -9,6 +9,9 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use tracing::{debug, trace, warn};
 
+/// A key that uniquely identifies a File associated with a module
+type FileKey = (ModuleKey, FileKind);
+
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format
 /// symbols from HTTP URLs.
 ///
