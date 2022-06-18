@@ -23,9 +23,9 @@
 //! use breakpad_symbols::{BreakpadSymbolClient, HttpClientArgs};
 //!  
 //! #[tokio::main]
-//! async fn main() -> Result<(), ()> {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Read the minidump
-//!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
+//!     let dump = Minidump::read_path("../testdata/test.dmp")?;
 //!  
 //!     // Configure the symbol client
 //!     let mut client_args = HttpClientArgs::default();
@@ -39,15 +39,14 @@
 //!     let symbol_client = BreakpadSymbolClient::http_client(client_args);
 //!  
 //!     let state = minidump_processor::process_minidump_with_options(&dump, &symbol_client, options)
-//!         .await
-//!         .map_err(|_| ())?;
+//!         .await?;
 //!  
 //!     // Write the JSON output to an arbitrary writer (here, a Vec).
 //!     let mut json_output = Vec::new();
-//!     state.print_json(&mut json_output, false).map_err(|_| ())?;
+//!     state.print_json(&mut json_output, false)?;
 //!  
 //!     // Now parse it (here parsed into an arbitrary JSON Object for max flexibility).
-//!     let json: Value = serde_json::from_slice(&json_output).map_err(|_| ())?;
+//!     let json: Value = serde_json::from_slice(&json_output)?;
 //!  
 //!     // Now read whatever values you want out of it
 //!     if let Some(Value::Number(pid)) = json.get("pid") {
