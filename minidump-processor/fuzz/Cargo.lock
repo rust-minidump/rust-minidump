@@ -42,6 +42,7 @@ dependencies = [
  "circular",
  "debugid",
  "minidump-common",
+ "minidump-symbol-client",
  "nom",
  "range-map",
  "thiserror",
@@ -247,11 +248,11 @@ name = "minidump-processor"
 version = "0.11.0"
 dependencies = [
  "async-trait",
- "breakpad-symbols",
  "debugid",
  "memmap2",
  "minidump",
  "minidump-common",
+ "minidump-symbol-client",
  "scroll",
  "serde",
  "serde_json",
@@ -264,12 +265,22 @@ name = "minidump-processor-fuzz"
 version = "0.11.0"
 dependencies = [
  "async-trait",
+ "breakpad-symbols",
  "libfuzzer-sys",
  "minidump",
  "minidump-common",
  "minidump-processor",
  "pin-utils",
  "test-assembler",
+]
+
+[[package]]
+name = "minidump-symbol-client"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "minidump-common",
+ "thiserror",
 ]
 
 [[package]]

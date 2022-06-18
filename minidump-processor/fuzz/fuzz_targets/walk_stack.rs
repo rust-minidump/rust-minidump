@@ -5,7 +5,8 @@ use minidump::system_info::{Cpu, Os};
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
 use minidump_processor::walk_stack;
-use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer, SystemInfo};
+use minidump_processor::{CallStack, SystemInfo};
+use breakpad_symbols::{BreakpadSymbolClient, StringClientArgs};
 use std::collections::HashMap;
 use test_assembler::Section;
 
@@ -54,7 +55,9 @@ impl TestFixture {
             cpu_count: 1,
         };
 
-        let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let mut client_args = StringClientArgs::default();
+        client_args.breakpad_modules = self.symbols.clone();
+        let symbolizer = BreakpadSymbolClient::string_client(client_args);
 
         Some(
             walk_stack(

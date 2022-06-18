@@ -6,19 +6,19 @@ struct StaticSymbolSupplier {
 }
 
 #[async_trait::async_trait]
-impl minidump_processor::SymbolSupplier for StaticSymbolSupplier {
+impl breakpad_symbols::SymbolClientStrategy for StaticSymbolSupplier {
     async fn locate_symbols(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),
-    ) -> Result<minidump_processor::SymbolFile, minidump_processor::SymbolError> {
-        minidump_processor::SymbolFile::from_bytes(&self.file)
+    ) -> Result<breakpad_symbols::SymbolFile, breakpad_symbols::SymbolError> {
+        breakpad_symbols::SymbolFile::from_bytes(&self.file)
     }
     async fn locate_file(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),
-        _file_kind: minidump_processor::FileKind,
-    ) -> Result<std::path::PathBuf, minidump_processor::FileError> {
-        Err(minidump_processor::FileError::NotFound)
+        _file_kind: breakpad_symbols::FileKind,
+    ) -> Result<std::path::PathBuf, breakpad_symbols::FileError> {
+        Err(breakpad_symbols::FileError::NotFound)
     }
 }
 
@@ -28,7 +28,7 @@ fuzz_target!(|data: (&[u8], &[u8])| {
             file: data.1.to_vec(),
         };
 
-        let provider = minidump_processor::Symbolizer::new(supplier);
+        let provider = breakpad_symbols::BreakpadSymbolClient::new(supplier);
         // Fuzz every possible feature
         let options = minidump_processor::ProcessorOptions::unstable_all();
 

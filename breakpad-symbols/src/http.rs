@@ -469,8 +469,6 @@ async fn dump_syms(
 
 #[async_trait]
 impl SymbolClientStrategy for HttpSymbolSupplier {
-    type Client = BreakpadSymbolClient;
-
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,

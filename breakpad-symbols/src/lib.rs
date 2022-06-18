@@ -291,8 +291,6 @@ impl PartialEq for SymbolError {
 /// A trait for things that can locate symbols for a given module.
 #[async_trait]
 pub trait SymbolClientStrategy {
-    type Client: SymbolClient;
-
     /// Locate and load a symbol file for `module`.
     ///
     /// Implementations may use any strategy for locating and loading
@@ -331,8 +329,6 @@ impl SimpleSymbolSupplier {
 
 #[async_trait]
 impl SymbolClientStrategy for SimpleSymbolSupplier {
-    type Client = BreakpadSymbolClient;
-
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(module = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
@@ -377,8 +373,6 @@ pub struct NoSymbolSupplier;
 
 #[async_trait]
 impl SymbolClientStrategy for NoSymbolSupplier {
-    type Client = BreakpadSymbolClient;
-
     async fn locate_symbols(
         &self,
         _module: &(dyn Module + Sync),
@@ -414,8 +408,6 @@ impl StringSymbolSupplier {
 
 #[async_trait]
 impl SymbolClientStrategy for StringSymbolSupplier {
-    type Client = BreakpadSymbolClient;
-
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
@@ -521,7 +513,7 @@ type CachedOperation<T, E> = Arc<tokio::sync::OnceCell<Result<T, E>>>;
 /// [`BreakpadSymbolClient::local_client`] will work.
 pub struct BreakpadSymbolClient {
     /// Symbol supplier for locating symbols.
-    supplier: Box<dyn SymbolClientStrategy<Client = Self> + Send + Sync + 'static>,
+    supplier: Box<dyn SymbolClientStrategy + Send + Sync + 'static>,
     /// Cache of symbol locating results.
     // TODO?: use lru-cache: https://crates.io/crates/lru-cache/
     // note that using an lru-cache would mess up the fact that we currently
@@ -532,7 +524,7 @@ pub struct BreakpadSymbolClient {
 
 impl BreakpadSymbolClient {
     /// Create a `Symbolizer` that uses `supplier` to locate symbols.
-    pub fn new<T: SymbolClientStrategy<Client = Self> + Send + Sync + 'static>(
+    pub fn new<T: SymbolClientStrategy + Send + Sync + 'static>(
         supplier: T,
     ) -> BreakpadSymbolClient {
         BreakpadSymbolClient {
