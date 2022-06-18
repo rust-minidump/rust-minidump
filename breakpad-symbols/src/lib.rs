@@ -434,7 +434,7 @@ impl SymbolClientStrategy for StringSymbolSupplier {
     }
 }
 
-/// A simple implementation of `FrameSymbolizer` that just holds data.
+/// A simple implementation of [`FrameSymbolizerCallbacks`] that just holds data.
 #[derive(Debug, Default)]
 pub struct SimpleFrame {
     /// The program counter value for this frame.
@@ -455,7 +455,7 @@ pub struct SimpleFrame {
 }
 
 impl SimpleFrame {
-    /// Instantiate a `SimpleFrame` with instruction pointer `instruction`.
+    /// Instantiate a [`SimpleFrame`] with instruction pointer `instruction`.
     pub fn with_instruction(instruction: u64) -> SimpleFrame {
         SimpleFrame {
             instruction,
@@ -500,6 +500,10 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
     )
 }
 
+/// An operation that is cachable.
+///
+/// The first thing to acquire it will initialize, and everything
+/// else will async-block on it.
 type CachedOperation<T, E> = Arc<tokio::sync::OnceCell<Result<T, E>>>;
 
 /// Symbolicate stack frames using breakpad sym files.
@@ -523,7 +527,7 @@ pub struct BreakpadSymbolClient {
 }
 
 impl BreakpadSymbolClient {
-    /// Create a `Symbolizer` that uses `supplier` to locate symbols.
+    /// Create a [`BreakpadSymbolClient`] that uses `supplier` to locate symbols.
     pub fn new<T: SymbolClientStrategy + Send + Sync + 'static>(
         supplier: T,
     ) -> BreakpadSymbolClient {

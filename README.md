@@ -188,6 +188,14 @@ Provides an API for evaluating breakpad CFI (and WIN) expressions.
 This is primarily designed for use by minidump-processor.
 
 
+## [minidump-symbol-client](minidump-symbol-client)
+
+An interface for Symbol Clients used by rust-minidump.
+
+This is glue for [minidump-processor](https://docs.rs/minidump-processor/latest/minidump-processor/)/[minidump-stackwalk](https://docs.rs/minidump-stackwalk/latest/minidump-stackwalk/) to be able to have any symbolizer backend plugged in. The current primary implementation is [breakpad-symbols](https://docs.rs/breakpad-symbols/latest/breakpad-symbols/), but ideally this will one day be replaced by something based on [symbolic](https://docs.rs/symbolic/latest/symbolic/).
+
+"All" you need to do to implement a new Symbol Client backend is provide an implementation of the SymbolClient trait.
+
 
 
 
