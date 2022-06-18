@@ -346,9 +346,7 @@ pub trait SymbolSupplier {
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
 /// paths.
 ///
-/// See [`relative_symbol_path`] for details on how paths are searched.
-///
-/// [`relative_symbol_path`]: fn.relative_symbol_path.html
+/// See [`breakpad_sym_lookup`] for details on how paths are searched.
 pub struct SimpleSymbolSupplier {
     /// Local disk paths in which to search for symbols.
     paths: Vec<PathBuf>,
@@ -565,7 +563,7 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
 ///
 /// Call [`Symbolizer::new`][new] to instantiate a `Symbolizer`. A Symbolizer
 /// requires a [`SymbolSupplier`][supplier] to locate symbols. If you have
-/// symbols on disk in the [customary directory layout][dirlayout], a
+/// symbols on disk in the [customary directory layout][breakpad_sym_lookup], a
 /// [`SimpleSymbolSupplier`][simple] will work.
 ///
 /// Use [`get_symbol_at_address`][get_symbol] or [`fill_symbol`][fill_symbol] to
@@ -573,7 +571,6 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
 ///
 /// [new]: struct.Symbolizer.html#method.new
 /// [supplier]: trait.SymbolSupplier.html
-/// [dirlayout]: fn.relative_symbol_path.html
 /// [simple]: struct.SimpleSymbolSupplier.html
 /// [get_symbol]: struct.Symbolizer.html#method.get_symbol_at_address
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
