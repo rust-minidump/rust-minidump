@@ -9,10 +9,13 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use tracing::{debug, trace, warn};
 
+/// A key that uniquely identifies a File associated with a module
+type FileKey = (ModuleKey, FileKind);
+
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format
 /// symbols from HTTP URLs.
 ///
-/// See [`crate::relative_symbol_path`] for details on how paths are searched.
+/// See [`crate::breakpad_sym_lookup`] for details on how paths are searched.
 pub struct HttpSymbolSupplier {
     /// File paths that are known to be in the cache
     #[allow(clippy::type_complexity)]

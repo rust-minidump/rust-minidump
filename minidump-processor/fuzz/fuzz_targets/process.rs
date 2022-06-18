@@ -13,6 +13,13 @@ impl minidump_processor::SymbolSupplier for StaticSymbolSupplier {
     ) -> Result<minidump_processor::SymbolFile, minidump_processor::SymbolError> {
         minidump_processor::SymbolFile::from_bytes(&self.file)
     }
+    async fn locate_file(
+        &self,
+        _module: &(dyn minidump_common::traits::Module + Sync),
+        _file_kind: minidump_processor::FileKind,
+    ) -> Result<std::path::PathBuf, minidump_processor::FileError> {
+        Err(minidump_processor::FileError::NotFound)
+    }
 }
 
 fuzz_target!(|data: (&[u8], &[u8])| {
