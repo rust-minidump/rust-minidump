@@ -1,9 +1,9 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
+use minidump::system_info::{Cpu, Os};
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
-use minidump::system_info::{Cpu, Os};
 use minidump_processor::walk_stack;
 use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer, SystemInfo};
 use std::collections::HashMap;

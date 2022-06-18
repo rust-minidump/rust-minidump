@@ -359,6 +359,7 @@ fn test_cyborg() {
 }
 
 #[test]
+#[ignore]
 fn test_trace() {
     // Should be the same as --human and --json
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
@@ -381,6 +382,7 @@ fn test_trace() {
 }
 
 #[test]
+#[ignore]
 fn test_output_files() {
     let out_path = test_output("mdsw-test-ouput-files-out.txt");
     let log_path = test_output("mdsw-test-output-files-log.txt");
