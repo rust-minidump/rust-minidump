@@ -8,12 +8,12 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
+use minidump_symbol_client::SymbolClient;
 
 use crate::arg_recovery;
 use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
-use crate::symbols::*;
 use crate::system_info::SystemInfo;
 
 /// Configuration of the processor's exact behaviour.
@@ -180,16 +180,20 @@ impl ProcessError {
 /// ```
 /// use minidump::Minidump;
 /// use std::path::PathBuf;
-/// use breakpad_symbols::{Symbolizer, SimpleSymbolSupplier};
+/// use breakpad_symbols::{BreakpadSymbolClient, LocalClientArgs};
 /// use minidump_processor::ProcessError;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), ProcessError> {
 ///     # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 ///     let mut dump = Minidump::read_path("../testdata/test.dmp")?;
-///     let supplier = SimpleSymbolSupplier::new(vec!(PathBuf::from("../testdata/symbols")));
-///     let symbolizer = Symbolizer::new(supplier);
-///     let state = minidump_processor::process_minidump(&mut dump, &symbolizer).await?;
+///
+///     let mut client_args = LocalClientArgs::default();
+///     client_args.symbol_paths = vec![PathBuf::from("../testdata/symbols")];
+///     let symbol_client = BreakpadSymbolClient::local_client(client_args);
+///
+///     let state = minidump_processor::process_minidump(&mut dump, &symbol_client).await?;
+///
 ///     assert_eq!(state.threads.len(), 2);
 ///     println!("Processed {} threads", state.threads.len());
 ///     Ok(())
@@ -201,7 +205,7 @@ pub async fn process_minidump<'a, T, P>(
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     // No Evil JSON Here!
     process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default()).await
@@ -218,7 +222,7 @@ pub async fn process_minidump_with_options<'a, T, P>(
 ) -> Result<ProcessState, ProcessError>
 where
     T: Deref<Target = [u8]> + 'a,
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     options.check_deprecated_and_disabled();
 

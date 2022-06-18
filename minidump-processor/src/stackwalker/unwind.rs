@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use crate::process_state::StackFrame;
-use crate::{SymbolProvider, SystemInfo};
+use crate::{SymbolClient, SystemInfo};
 use minidump::{MinidumpMemory, MinidumpModuleList};
 
 /// A trait for things that can unwind to a caller.
@@ -19,5 +19,5 @@ pub trait Unwind {
         symbol_provider: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider + Sync;
+        P: SymbolClient + Sync;
 }

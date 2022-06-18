@@ -9,7 +9,7 @@
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
-use crate::{SymbolProvider, SystemInfo};
+use crate::{SymbolClient, SystemInfo};
 use minidump::format::CONTEXT_X86;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
@@ -34,7 +34,7 @@ async fn get_caller_by_cfi<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying cfi");
 
@@ -125,7 +125,7 @@ fn get_caller_by_frame_pointer<P>(
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
@@ -205,7 +205,7 @@ async fn get_caller_by_scan<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -357,7 +357,7 @@ async fn instruction_seems_valid<P>(
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     if instruction == 0 {
         return false;
@@ -398,7 +398,7 @@ impl Unwind for CONTEXT_X86 {
         syms: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider + Sync,
+        P: SymbolClient + Sync,
     {
         let stack = stack_memory.as_ref()?;
 

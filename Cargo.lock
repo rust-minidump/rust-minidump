@@ -142,6 +142,7 @@ dependencies = [
  "debugid 0.8.0",
  "dump_syms",
  "minidump-common",
+ "minidump-symbol-client",
  "nom 1.2.4",
  "range-map",
  "reqwest",
@@ -1103,6 +1104,7 @@ dependencies = [
  "memmap2",
  "minidump",
  "minidump-common",
+ "minidump-symbol-client",
  "minidump-synth",
  "scroll 0.11.0",
  "serde",
@@ -1117,6 +1119,7 @@ dependencies = [
 name = "minidump-stackwalk"
 version = "0.11.0"
 dependencies = [
+ "breakpad-symbols",
  "clap 3.2.5",
  "insta",
  "minidump",
@@ -1127,6 +1130,15 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "minidump-symbol-client"
+version = "0.11.0"
+dependencies = [
+ "async-trait",
+ "minidump-common",
+ "thiserror",
 ]
 
 [[package]]

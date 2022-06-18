@@ -11,7 +11,7 @@ mod unwind;
 mod x86;
 
 use crate::process_state::*;
-use crate::{FrameWalker, SymbolProvider, SystemInfo};
+use crate::{FrameWalkerCallbacks, SymbolClient, SystemInfo};
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
 use tracing::trace;
@@ -34,7 +34,7 @@ struct CfiStackWalker<'a, C: CpuContext> {
     stack_memory: &'a MinidumpMemory<'a>,
 }
 
-impl<'a, C> FrameWalker for CfiStackWalker<'a, C>
+impl<'a, C> FrameWalkerCallbacks for CfiStackWalker<'a, C>
 where
     C: CpuContext,
     C::Register: TryFrom<u64>,
@@ -93,7 +93,7 @@ async fn get_caller_frame<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     match callee_frame.context.raw {
         /*
@@ -166,7 +166,7 @@ async fn fill_source_line_info<P>(
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     // Find the module whose address range covers this frame's instruction.
     if let Some(module) = modules.module_at_address(frame.instruction) {
@@ -190,7 +190,7 @@ pub async fn walk_stack<P>(
     symbol_provider: &P,
 ) -> CallStack
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     // Begin with the context frame, and keep getting callers until there are
     // no more.
@@ -252,7 +252,7 @@ async fn instruction_seems_valid_by_symbols<P>(
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     // Our input is a candidate return address, but we *really* want to validate the address
     // of the call instruction *before* the return address. In theory this symbol-based
@@ -280,13 +280,13 @@ where
         // our symbol provider with the address we're interested in. If
         // it tries to set a non-empty function name, then we can reasonably
         // assume the instruction address is valid.
-        use crate::FrameSymbolizer;
+        use crate::FrameSymbolizerCallbacks;
 
         struct DummyFrame {
             instruction: u64,
             has_name: bool,
         }
-        impl FrameSymbolizer for DummyFrame {
+        impl FrameSymbolizerCallbacks for DummyFrame {
             fn get_instruction(&self) -> u64 {
                 self.instruction
             }

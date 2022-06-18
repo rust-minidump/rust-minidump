@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 116
 expression: stdout
 ---
 {
@@ -96,7 +95,7 @@ expression: stdout
       "end_addr": "0x0042d000",
       "filename": "test_app.exe",
       "loaded_symbols": false,
-      "missing_symbols": false,
+      "missing_symbols": true,
       "symbol_url": null,
       "version": null
     },
@@ -124,7 +123,7 @@ expression: stdout
       "end_addr": "0x7c8f4000",
       "filename": "kernel32.dll",
       "loaded_symbols": false,
-      "missing_symbols": false,
+      "missing_symbols": true,
       "symbol_url": null,
       "version": "5.1.2600.2945"
     },

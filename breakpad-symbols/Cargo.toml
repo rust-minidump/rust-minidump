@@ -28,6 +28,7 @@ debugid = "0.8.0"
 dump_syms = { git = "https://github.com/mozilla/dump_syms", optional = true }
 tracing = { version = "0.1.34", features = ["log"] }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
+minidump-symbol-client = {  version = "0.11.0", path = "../minidump-symbol-client"  }
 nom = "~1.2.2"
 range-map = "0.1.5"
 reqwest = { version = "0.11.6", default-features = false, features = [

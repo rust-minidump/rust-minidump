@@ -9,13 +9,14 @@ use std::time::Duration;
 use std::{boxed::Box, path::PathBuf};
 
 use minidump::*;
-use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
-};
+use minidump_processor::{HttpClientArgs, LocalClientArgs, ProcessorOptions};
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
 use tracing::error;
 use tracing::level_filters::LevelFilter;
+
+/// If you want to experiment with a new symbolizer backend, just change this line!
+type SymbolClientImpl = breakpad_symbols::BreakpadSymbolClient;
 
 /// Analyzes minidumps and produces a report (either human-readable or JSON)
 ///
@@ -373,23 +374,24 @@ async fn main() {
                 return print_minidump_dump(&dump, &mut output).unwrap();
             }
 
-            let mut provider = MultiSymbolProvider::new();
-
-            if !cli.symbols_url.is_empty() {
-                provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
-                    symbols_paths,
-                    cli.symbols_url,
-                    symbols_cache,
-                    symbols_tmp,
-                    timeout,
-                ))));
+            let symbol_client = if !cli.symbols_url.is_empty() {
+                let mut client_args = HttpClientArgs::default();
+                client_args.symbol_paths = symbols_paths;
+                client_args.symbol_urls = cli.symbols_url;
+                client_args.symbols_cache = symbols_cache;
+                client_args.symbols_tmp = symbols_tmp;
+                client_args.timeout = timeout;
+                SymbolClientImpl::http_client(client_args)
             } else if !symbols_paths.is_empty() {
-                provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
-                    symbols_paths,
-                ))));
-            }
+                let mut client_args = LocalClientArgs::default();
+                client_args.symbol_paths = symbols_paths;
+                SymbolClientImpl::local_client(client_args)
+            } else {
+                SymbolClientImpl::no_client()
+            };
 
-            match minidump_processor::process_minidump_with_options(&dump, &provider, options).await
+            match minidump_processor::process_minidump_with_options(&dump, &symbol_client, options)
+                .await
             {
                 Ok(state) => {
                     // Print the human output if requested (always uses the "real" output).

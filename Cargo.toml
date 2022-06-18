@@ -5,6 +5,7 @@ members = [
         "minidump-common",
         "minidump-processor",
         "minidump-stackwalk",
+        "minidump-symbol-client",
         "minidump-synth",
 ]
 exclude = [

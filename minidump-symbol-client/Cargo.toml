@@ -1,0 +1,21 @@
+[package]
+name = "minidump-symbol-client"
+description = "An interface for symbol clients used by rust-minidump"
+version = "0.11.0"
+license = "MIT"
+homepage = "https://github.com/rust-minidump/rust-minidump"
+repository = "https://github.com/rust-minidump/rust-minidump"
+keywords = ["breakpad", "symbols"]
+categories = ["parsing"]
+readme = "README.md"
+edition = "2021"
+
+[badges]
+travis-ci = { repository = "rust-minidump/rust-minidump" }
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.51"
+minidump-common = { version = "0.11.0", path = "../minidump-common" }
+thiserror = "1.0.30"

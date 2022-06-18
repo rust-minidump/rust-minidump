@@ -49,52 +49,42 @@ Analyze a minidump with [minidump-processor](https://crates.io/crates/minidump-p
 
 ```rust
 use minidump::Minidump;
-use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+use minidump_processor::ProcessorOptions;
 use serde_json::Value;
-
+use breakpad_symbols::{BreakpadSymbolClient, HttpClientArgs};
+ 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     // Read the minidump
     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
  
-    // Configure the symbolizer and processor
-    let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
-    let symbols_paths = vec![];
-    let mut symbols_cache = std::env::temp_dir();
-    symbols_cache.push("minidump-cache");
-    let symbols_tmp = std::env::temp_dir();
-    let timeout = std::time::Duration::from_secs(1000);
+    // Configure the symbol client
+    let mut client_args = HttpClientArgs::default();
+    client_args.symbol_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
+    client_args.symbols_cache = std::env::temp_dir().join("minidump-cache");
  
-    // Use ProcessorOptions for detailed configuration
+    // Use ProcessorOptions for detailed processor configuration
     let options = ProcessorOptions::default();
-
-    // Specify a symbol supplier (here we're using the most powerful one, the http supplier)
-    let provider = Symbolizer::new(http_symbol_supplier(
-        symbols_paths,
-        symbols_urls,
-        symbols_cache,
-        symbols_tmp,
-        timeout,
-    ));
  
-    let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
+    // Specify a symbol supplier (here we're using the most powerful one, the http supplier)
+    let symbol_client = BreakpadSymbolClient::http_client(client_args);
+ 
+    let state = minidump_processor::process_minidump_with_options(&dump, &symbol_client, options)
         .await
         .map_err(|_| ())?;
-
+ 
     // Write the JSON output to an arbitrary writer (here, a Vec).
-    // This is currently preferred because this output is more stable 
-    // than the contents of ProcessState.
     let mut json_output = Vec::new();
     state.print_json(&mut json_output, false).map_err(|_| ())?;
-
+ 
     // Now parse it (here parsed into an arbitrary JSON Object for max flexibility).
     let json: Value = serde_json::from_slice(&json_output).map_err(|_| ())?;
-
+ 
     // Now read whatever values you want out of it
     if let Some(Value::Number(pid)) = json.get("pid") {
         println!("pid: {}", pid);
     }
-
+ 
     Ok(())
 }
 ```

@@ -1,6 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
-use crate::{FrameSymbolizer, FrameWalker, Module, SymbolError};
+use crate::{FrameSymbolizerCallbacks, FrameWalkerCallbacks, Module, SymbolError};
 
 pub use crate::sym_file::types::*;
 pub use parser::SymbolParser;
@@ -333,7 +333,7 @@ impl SymbolFile {
     }
 
     /// Fill in as much source information for `frame` as possible.
-    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizer) {
+    pub fn fill_symbol(&self, module: &dyn Module, frame: &mut dyn FrameSymbolizerCallbacks) {
         // Look for a FUNC covering the address first.
         if frame.get_instruction() < module.base_address() {
             return;
@@ -424,7 +424,11 @@ impl SymbolFile {
         }
     }
 
-    pub fn walk_frame(&self, module: &dyn Module, walker: &mut dyn FrameWalker) -> Option<()> {
+    pub fn walk_frame(
+        &self,
+        module: &dyn Module,
+        walker: &mut dyn FrameWalkerCallbacks,
+    ) -> Option<()> {
         if walker.get_instruction() < module.base_address() {
             return None;
         }

@@ -7,11 +7,12 @@
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
-use crate::{SymbolProvider, SystemInfo};
+use crate::SystemInfo;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext, Module,
 };
+use minidump_symbol_client::SymbolClient;
 use std::collections::HashSet;
 use tracing::trace;
 
@@ -37,7 +38,7 @@ async fn get_caller_by_cfi<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying cfi");
 
@@ -113,7 +114,7 @@ fn get_caller_by_frame_pointer<P>(
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying frame pointer");
     // Assume that the standard %fp-using ARM64 calling convention is in use.
@@ -297,7 +298,7 @@ async fn get_caller_by_scan<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -385,7 +386,7 @@ async fn instruction_seems_valid<P>(
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     if is_non_canonical(instruction) || instruction == 0 {
         return false;
@@ -431,7 +432,7 @@ impl Unwind for ArmContext {
         syms: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider + Sync,
+        P: SymbolClient + Sync,
     {
         let stack = stack_memory.as_ref()?;
 

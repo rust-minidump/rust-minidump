@@ -6,12 +6,14 @@ use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
 use minidump_processor::{
-    simple_symbol_supplier, CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer,
+    CallStackInfo, FrameTrust, LinuxStandardBase, LocalClientArgs, ProcessState,
 };
 use std::path::{Path, PathBuf};
 
 use minidump_synth::*;
 use test_assembler::*;
+
+type SymbolClientImpl = breakpad_symbols::BreakpadSymbolClient;
 
 fn locate_testdata() -> PathBuf {
     // This is a little weird because while cargo will always build this code by running rustc
@@ -47,12 +49,9 @@ fn testdata_symbol_path() -> PathBuf {
 #[tokio::test]
 async fn test_processor() {
     let dump = read_test_minidump().unwrap();
-    let state = minidump_processor::process_minidump(
-        &dump,
-        &Symbolizer::new(simple_symbol_supplier(vec![])),
-    )
-    .await
-    .unwrap();
+    let state = minidump_processor::process_minidump(&dump, &SymbolClientImpl::no_client())
+        .await
+        .unwrap();
     assert_eq!(state.system_info.os, Os::Windows);
     assert_eq!(state.system_info.os_version.unwrap(), "5.1.2600");
     assert_eq!(state.system_info.os_build.unwrap(), "Service Pack 2");
@@ -120,12 +119,12 @@ async fn test_processor_symbols() {
     let dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
     println!("symbol path: {:?}", path);
-    let state = minidump_processor::process_minidump(
-        &dump,
-        &Symbolizer::new(simple_symbol_supplier(vec![path])),
-    )
-    .await
-    .unwrap();
+    let mut client_args = LocalClientArgs::default();
+    client_args.symbol_paths = vec![path];
+    let state =
+        minidump_processor::process_minidump(&dump, &SymbolClientImpl::local_client(client_args))
+            .await
+            .unwrap();
     let f0 = &state.threads[0].frames[0];
     assert_eq!(
         f0.function_name.as_deref(),
@@ -150,7 +149,7 @@ fn minimal_minidump() -> SynthMinidump {
 
 async fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
     let dump = Minidump::read(dump.finish().unwrap()).unwrap();
-    minidump_processor::process_minidump(&dump, &Symbolizer::new(simple_symbol_supplier(vec![])))
+    minidump_processor::process_minidump(&dump, &SymbolClientImpl::no_client())
         .await
         .unwrap()
 }

@@ -47,7 +47,7 @@
 //! for a particular execution, and so just unconditionally strips leading
 //! $'s. So `$rax`, `$x11`, `rax`, and `x11` should all be valid.
 //!
-//! Registers names are otherwise only "validated" by the [FrameWalker][],
+//! Registers names are otherwise only "validated" by the [FrameWalkerCallbacks][],
 //! in that it will return an error if we try to get or set a register name
 //! *it* doesn't recognize (or doesn't have a valid value for). But it
 //! doesn't ever expect `$`'s, so that detail has been erased by
@@ -485,7 +485,7 @@
 //! Giving a final output of `ebp=(*16)`, `esp=24`, `eip=(*20)`.
 
 use super::{CfiRules, StackInfoWin, WinStackThing};
-use crate::FrameWalker;
+use crate::FrameWalkerCallbacks;
 use std::collections::HashMap;
 use std::str::FromStr;
 use tracing::{debug, trace};
@@ -493,7 +493,7 @@ use tracing::{debug, trace};
 pub fn walk_with_stack_cfi(
     init: &CfiRules,
     additional: &[CfiRules],
-    walker: &mut dyn FrameWalker,
+    walker: &mut dyn FrameWalkerCallbacks,
 ) -> Option<()> {
     trace!("trying STACK CFI exprs");
     trace!("  {}", init.rules);
@@ -611,7 +611,11 @@ fn parse_cfi_exprs<'a>(input: &'a str, output: &mut HashMap<CfiReg<'a>, &'a str>
     Some(())
 }
 
-fn eval_cfi_expr(expr: &str, walker: &mut dyn FrameWalker, cfa: Option<u64>) -> Option<u64> {
+fn eval_cfi_expr(
+    expr: &str,
+    walker: &mut dyn FrameWalkerCallbacks,
+    cfa: Option<u64>,
+) -> Option<u64> {
     // FIXME: this should be an ArrayVec or something, most exprs are simple.
     let mut stack: Vec<u64> = Vec::new();
     for token in expr.split_ascii_whitespace() {
@@ -738,13 +742,17 @@ enum CfiReg<'a> {
 pub fn eval_win_expr_for_fuzzer(
     expr: &str,
     info: &StackInfoWin,
-    walker: &mut dyn FrameWalker,
+    walker: &mut dyn FrameWalkerCallbacks,
 ) -> Option<()> {
     eval_win_expr(expr, info, walker)
 }
 
 #[allow(clippy::map_flatten)]
-fn eval_win_expr(expr: &str, info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
+fn eval_win_expr(
+    expr: &str,
+    info: &StackInfoWin,
+    walker: &mut dyn FrameWalkerCallbacks,
+) -> Option<()> {
     // TODO?: do a bunch of heuristics to make this more robust.
     // So far I haven't encountered an in-the-wild example that needs the
     // extra heuristics that breakpad uses, so leaving them out until they
@@ -960,7 +968,7 @@ impl<'a> WinVal<'a> {
 
 pub fn walk_with_stack_win_framedata(
     info: &StackInfoWin,
-    walker: &mut dyn FrameWalker,
+    walker: &mut dyn FrameWalkerCallbacks,
 ) -> Option<()> {
     if let WinStackThing::ProgramString(ref expr) = info.program_string_or_base_pointer {
         trace!("trying STACK WIN framedata -- {}", expr);
@@ -971,7 +979,10 @@ pub fn walk_with_stack_win_framedata(
     }
 }
 
-pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker) -> Option<()> {
+pub fn walk_with_stack_win_fpo(
+    info: &StackInfoWin,
+    walker: &mut dyn FrameWalkerCallbacks,
+) -> Option<()> {
     if let WinStackThing::AllocatesBasePointer(allocates_base_pointer) =
         info.program_string_or_base_pointer
     {
@@ -1035,7 +1046,7 @@ pub fn walk_with_stack_win_fpo(info: &StackInfoWin, walker: &mut dyn FrameWalker
 }
 
 /// STACK WIN doesn't want implicit register forwarding
-fn clear_stack_win_caller_registers(walker: &mut dyn FrameWalker) {
+fn clear_stack_win_caller_registers(walker: &mut dyn FrameWalkerCallbacks) {
     let output_regs = ["$eip", "$esp", "$ebp", "$ebx", "$esi", "$edi"];
     for reg in output_regs {
         walker.clear_caller_register(reg);
@@ -1046,7 +1057,7 @@ fn clear_stack_win_caller_registers(walker: &mut dyn FrameWalker) {
 mod test {
     use super::super::types::{CfiRules, StackInfoWin, WinStackThing};
     use super::{eval_win_expr, walk_with_stack_cfi, walk_with_stack_win_fpo};
-    use crate::FrameWalker;
+    use crate::FrameWalkerCallbacks;
     use std::collections::HashMap;
 
     // Eugh, need this to memoize register names to static
@@ -1099,7 +1110,7 @@ mod test {
         }
     }
 
-    impl<Reg: Int + Copy> FrameWalker for TestFrameWalker<Reg> {
+    impl<Reg: Int + Copy> FrameWalkerCallbacks for TestFrameWalker<Reg> {
         fn get_instruction(&self) -> u64 {
             self.instruction.into_u64()
         }

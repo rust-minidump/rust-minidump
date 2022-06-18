@@ -5,7 +5,6 @@ use reqwest::{Client, Url};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use tempfile::NamedTempFile;
 use tracing::{debug, trace, warn};
 
@@ -47,15 +46,10 @@ impl HttpSymbolSupplier {
     /// Symbols will be searched for in each of `local_paths` and `cache` first,
     /// then via HTTP at each of `urls`. If a symbol file is found via HTTP it
     /// will be saved under `cache`.
-    pub fn new(
-        urls: Vec<String>,
-        cache: PathBuf,
-        tmp: PathBuf,
-        mut local_paths: Vec<PathBuf>,
-        timeout: Duration,
-    ) -> HttpSymbolSupplier {
-        let client = Client::builder().timeout(timeout).build().unwrap();
-        let urls = urls
+    pub fn new(mut args: HttpClientArgs) -> HttpSymbolSupplier {
+        let client = Client::builder().timeout(args.timeout).build().unwrap();
+        let urls = args
+            .symbol_urls
             .into_iter()
             .filter_map(|mut u| {
                 if !u.ends_with('/') {
@@ -64,16 +58,21 @@ impl HttpSymbolSupplier {
                 Url::parse(&u).ok()
             })
             .collect();
-        local_paths.push(cache.clone());
-        let local = SimpleSymbolSupplier::new(local_paths);
+        args.symbol_paths.push(args.symbols_cache.clone());
+
+        // Setup the nested LocalClient we first query
+        let mut local_client_args = LocalClientArgs::default();
+        local_client_args.symbol_paths = args.symbol_paths;
+        let local = SimpleSymbolSupplier::new(local_client_args);
+
         let cached_file_paths = Mutex::default();
         HttpSymbolSupplier {
             client,
             cached_file_paths,
             urls,
             local,
-            cache,
-            tmp,
+            cache: args.symbols_cache,
+            tmp: args.symbols_tmp,
         }
     }
 
@@ -469,7 +468,9 @@ async fn dump_syms(
 }
 
 #[async_trait]
-impl SymbolSupplier for HttpSymbolSupplier {
+impl SymbolClientStrategy for HttpSymbolSupplier {
+    type Client = BreakpadSymbolClient;
+
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,

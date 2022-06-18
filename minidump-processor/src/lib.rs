@@ -18,35 +18,27 @@
 //!  
 //! ```rust
 //! use minidump::Minidump;
-//! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+//! use minidump_processor::ProcessorOptions;
 //! use serde_json::Value;
+//! use breakpad_symbols::{BreakpadSymbolClient, HttpClientArgs};
 //!  
 //! #[tokio::main]
 //! async fn main() -> Result<(), ()> {
 //!     // Read the minidump
 //!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
 //!  
-//!     // Configure the symbolizer and processor
-//!     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
-//!     let symbols_paths = vec![];
-//!     let mut symbols_cache = std::env::temp_dir();
-//!     symbols_cache.push("minidump-cache");
-//!     let symbols_tmp = std::env::temp_dir();
-//!     let timeout = std::time::Duration::from_secs(1000);
+//!     // Configure the symbol client
+//!     let mut client_args = HttpClientArgs::default();
+//!     client_args.symbol_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
+//!     client_args.symbols_cache = std::env::temp_dir().join("minidump-cache");
 //!  
-//!     // Use ProcessorOptions for detailed configuration
+//!     // Use ProcessorOptions for detailed processor configuration
 //!     let options = ProcessorOptions::default();
 //!  
 //!     // Specify a symbol supplier (here we're using the most powerful one, the http supplier)
-//!     let provider = Symbolizer::new(http_symbol_supplier(
-//!         symbols_paths,
-//!         symbols_urls,
-//!         symbols_cache,
-//!         symbols_tmp,
-//!         timeout,
-//!     ));
+//!     let symbol_client = BreakpadSymbolClient::http_client(client_args);
 //!  
-//!     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
+//!     let state = minidump_processor::process_minidump_with_options(&dump, &symbol_client, options)
 //!         .await
 //!         .map_err(|_| ())?;
 //!  
@@ -81,11 +73,13 @@ mod evil;
 mod process_state;
 mod processor;
 mod stackwalker;
-pub mod symbols;
 mod system_info;
 
 pub use crate::process_state::*;
 pub use crate::processor::*;
 pub use crate::stackwalker::*;
-pub use crate::symbols::*;
 pub use crate::system_info::*;
+pub use minidump_symbol_client::*;
+
+#[cfg(test)]
+pub type SymbolClientImpl = breakpad_symbols::BreakpadSymbolClient;

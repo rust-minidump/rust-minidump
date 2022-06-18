@@ -4,7 +4,7 @@ use libfuzzer_sys::fuzz_target;
 use breakpad_symbols::fuzzing_private_exports::{
     eval_win_expr_for_fuzzer, StackInfoWin, WinStackThing,
 };
-use breakpad_symbols::FrameWalker;
+use breakpad_symbols::FrameWalkerCallbacks;
 use std::collections::HashMap;
 
 fuzz_target!(|data: ([u32; 14], &str)| {
@@ -60,7 +60,7 @@ impl Int for u64 {
     }
 }
 
-impl<Reg: Int + Copy> FrameWalker for TestFrameWalker<Reg> {
+impl<Reg: Int + Copy> FrameWalkerCallbacks for TestFrameWalker<Reg> {
     fn get_instruction(&self) -> u64 {
         self.instruction.into_u64()
     }

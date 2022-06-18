@@ -3,7 +3,7 @@
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
+use crate::{StringClientArgs, SymbolClientImpl, SystemInfo};
 use minidump::format::CONTEXT_X86;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
@@ -53,7 +53,10 @@ impl TestFixture {
             cpu_microcode_version: None,
             cpu_count: 1,
         };
-        let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let mut symbolizer_args = StringClientArgs::default();
+        symbolizer_args.breakpad_modules = self.symbols.clone();
+        let symbolizer = SymbolClientImpl::string_client(symbolizer_args);
+
         walk_stack(
             0,
             None,

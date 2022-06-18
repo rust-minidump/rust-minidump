@@ -7,12 +7,13 @@
 use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
-use crate::{SymbolProvider, SystemInfo};
+use crate::SystemInfo;
 use minidump::system_info::Os;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
 };
+use minidump_symbol_client::SymbolClient;
 use std::collections::HashSet;
 use tracing::trace;
 
@@ -36,7 +37,7 @@ async fn get_caller_by_cfi<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying cfi");
     let valid = &callee.context.valid;
@@ -106,7 +107,7 @@ fn get_caller_by_frame_pointer<P>(
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     // The ARM manual states that:
     // > LR can be used for other purposes when it is not required to support
@@ -197,7 +198,7 @@ async fn get_caller_by_scan<P>(
     symbol_provider: &P,
 ) -> Option<StackFrame>
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -286,7 +287,7 @@ async fn instruction_seems_valid<P>(
     symbol_provider: &P,
 ) -> bool
 where
-    P: SymbolProvider + Sync,
+    P: SymbolClient + Sync,
 {
     super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
 }
@@ -323,7 +324,7 @@ impl Unwind for ArmContext {
         syms: &P,
     ) -> Option<StackFrame>
     where
-        P: SymbolProvider + Sync,
+        P: SymbolClient + Sync,
     {
         let stack = stack_memory.as_ref()?;
 

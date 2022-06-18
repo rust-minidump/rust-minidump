@@ -9,8 +9,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::system_info::SystemInfo;
-use crate::{FrameSymbolizer, SymbolStats};
+use crate::{FrameSymbolizerCallbacks, SymbolStats, SystemInfo};
 use minidump::system_info::Cpu;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -311,7 +310,7 @@ impl StackFrame {
     }
 }
 
-impl FrameSymbolizer for StackFrame {
+impl FrameSymbolizerCallbacks for StackFrame {
     fn get_instruction(&self) -> u64 {
         self.instruction
     }

@@ -7,30 +7,29 @@
 //! See the [walker][] module for documentation on CFI evaluation.
 //!
 //! The highest-level API provided by this crate is to use the
-//! [`Symbolizer`][symbolizer] struct.
+//! [`BreakpadSymbolClient`] struct.
 //!
 //! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/+/master/
 //! [symbolfiles]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
-//! [symbolizer]: struct.Symbolizer.html
 //!
 //! # Examples
 //!
 //! ```
 //! # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
-//! use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer, SimpleFrame, SimpleModule};
+//! use breakpad_symbols::{BreakpadSymbolClient, LocalClientArgs, SimpleFrame, SimpleModule};
 //! use debugid::DebugId;
 //! use std::path::PathBuf;
 //! use std::str::FromStr;
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let paths = vec!(PathBuf::from("../testdata/symbols/"));
-//!     let supplier = SimpleSymbolSupplier::new(paths);
-//!     let symbolizer = Symbolizer::new(supplier);
+//!     let mut client_args = LocalClientArgs::default();
+//!     client_args.symbol_paths = vec!(PathBuf::from("../testdata/symbols/"));
+//!     let symbol_client = BreakpadSymbolClient::local_client(client_args);
 //!
 //!     // Simple function name lookup with debug file, debug id, address.
 //!     let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
-//!     assert_eq!(symbolizer.get_symbol_at_address("test_app.pdb", debug_id, 0x1010)
+//!     assert_eq!(symbol_client.get_symbol_at_address("test_app.pdb", debug_id, 0x1010)
 //!         .await
 //!         .unwrap(),
 //!         "vswprintf");
@@ -52,6 +51,7 @@ pub use minidump_common::{traits::Module, utils::basename};
 pub use sym_file::walker;
 
 pub use crate::sym_file::{CfiRules, SymbolFile};
+pub use minidump_symbol_client::*;
 
 #[cfg(feature = "http")]
 pub mod http;
@@ -68,24 +68,13 @@ pub mod fuzzing_private_exports {
     pub use crate::sym_file::{StackInfoWin, WinStackThing};
 }
 
-/// Statistics on the symbols of a module.
-#[derive(Default, Debug)]
-pub struct SymbolStats {
-    /// If the module's symbols were downloaded, this is the url used.
-    pub symbol_url: Option<String>,
-    /// If the symbols were found and loaded into memory.
-    pub loaded_symbols: bool,
-    /// If we tried to parse the symbols, but failed.
-    pub corrupt_symbols: bool,
-}
-
 /// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
 /// have a debug id and filename but not an actual minidump. If you have a
 /// minidump, you should be using [`MinidumpModule`][minidumpmodule].
 ///
-/// [minidumpmodule]: ../minidump/struct.MinidumpModule.html
+/// [minidumpmodule]: https://docs.rs/minidump/latest/minidump/struct.MinidumpModule.html
 #[derive(Default)]
 pub struct SimpleModule {
     pub base_address: Option<u64>,
@@ -288,29 +277,6 @@ pub enum SymbolError {
     ParseError(&'static str, u64),
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
-pub enum FileError {
-    #[error("file not found")]
-    NotFound,
-}
-
-/// An error produced by fill_symbol.
-#[derive(Debug)]
-pub struct FillSymbolError {
-    // We don't want to yield a full SymbolError for fill_symbol
-    // as this would involve cloning bulky Error strings every time
-    // someone requested symbols for a missing module.
-    //
-    // As it turns out there's currently no reason to care about *why*
-    // fill_symbol, so for now this is just a dummy type until we have
-    // something to put here.
-    //
-    // The only reason fill_symbol *can* produce an Err is so that
-    // the caller can distinguish between "we had symbols, but this address
-    // didn't map to a function name" and "we had no symbols for that module"
-    // (this is used as a heuristic for stack scanning).
-}
-
 impl PartialEq for SymbolError {
     fn eq(&self, other: &SymbolError) -> bool {
         matches!(
@@ -324,7 +290,9 @@ impl PartialEq for SymbolError {
 
 /// A trait for things that can locate symbols for a given module.
 #[async_trait]
-pub trait SymbolSupplier {
+pub trait SymbolClientStrategy {
+    type Client: SymbolClient;
+
     /// Locate and load a symbol file for `module`.
     ///
     /// Implementations may use any strategy for locating and loading
@@ -354,13 +322,17 @@ pub struct SimpleSymbolSupplier {
 
 impl SimpleSymbolSupplier {
     /// Instantiate a new `SimpleSymbolSupplier` that will search in `paths`.
-    pub fn new(paths: Vec<PathBuf>) -> SimpleSymbolSupplier {
-        SimpleSymbolSupplier { paths }
+    pub fn new(args: LocalClientArgs) -> SimpleSymbolSupplier {
+        SimpleSymbolSupplier {
+            paths: args.symbol_paths,
+        }
     }
 }
 
 #[async_trait]
-impl SymbolSupplier for SimpleSymbolSupplier {
+impl SymbolClientStrategy for SimpleSymbolSupplier {
+    type Client = BreakpadSymbolClient;
+
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(module = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
@@ -400,6 +372,29 @@ impl SymbolSupplier for SimpleSymbolSupplier {
     }
 }
 
+/// A SymbolClientStrategy that always fails to find symbols (and does nothing).
+pub struct NoSymbolSupplier;
+
+#[async_trait]
+impl SymbolClientStrategy for NoSymbolSupplier {
+    type Client = BreakpadSymbolClient;
+
+    async fn locate_symbols(
+        &self,
+        _module: &(dyn Module + Sync),
+    ) -> Result<SymbolFile, SymbolError> {
+        Err(SymbolError::NotFound)
+    }
+
+    async fn locate_file(
+        &self,
+        _module: &(dyn Module + Sync),
+        _file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        Err(FileError::NotFound)
+    }
+}
+
 /// A SymbolSupplier that maps module names (code_files) to an in-memory string.
 ///
 /// Intended for mocking symbol files in tests.
@@ -410,13 +405,17 @@ pub struct StringSymbolSupplier {
 
 impl StringSymbolSupplier {
     /// Make a new StringSymbolSupplier with no modules.
-    pub fn new(modules: HashMap<String, String>) -> Self {
-        Self { modules }
+    pub fn new(args: StringClientArgs) -> Self {
+        Self {
+            modules: args.breakpad_modules,
+        }
     }
 }
 
 #[async_trait]
-impl SymbolSupplier for StringSymbolSupplier {
+impl SymbolClientStrategy for StringSymbolSupplier {
+    type Client = BreakpadSymbolClient;
+
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
@@ -441,40 +440,6 @@ impl SymbolSupplier for StringSymbolSupplier {
         // StringSymbolSupplier can never find files, is for testing
         Err(FileError::NotFound)
     }
-}
-
-/// A trait for setting symbol information on something like a stack frame.
-pub trait FrameSymbolizer {
-    /// Get the program counter value for this frame.
-    fn get_instruction(&self) -> u64;
-    /// Set the name, base address, and paramter size of the function in
-    // which this frame is executing.
-    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
-    /// Set the source file and (1-based) line number this frame represents.
-    fn set_source_file(&mut self, file: &str, line: u32, base: u64);
-}
-
-pub trait FrameWalker {
-    /// Get the instruction address that we're trying to unwind from.
-    fn get_instruction(&self) -> u64;
-    /// Check whether the callee has a callee of its own.
-    fn has_grand_callee(&self) -> bool;
-    /// Get the number of bytes the callee's callee's parameters take up
-    /// on the stack (or 0 if unknown/invalid). This is needed for
-    /// STACK WIN unwinding.
-    fn get_grand_callee_parameter_size(&self) -> u32;
-    /// Get a register-sized value stored at this address.
-    fn get_register_at_address(&self, address: u64) -> Option<u64>;
-    /// Get the value of a register from the callee's frame.
-    fn get_callee_register(&self, name: &str) -> Option<u64>;
-    /// Set the value of a register for the caller's frame.
-    fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()>;
-    /// Explicitly mark one of the caller's registers as invalid.
-    fn clear_caller_register(&mut self, name: &str);
-    /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
-    fn set_cfa(&mut self, val: u64) -> Option<()>;
-    /// Set whatever registers in the caller should be set based on the return address (e.g. rip).
-    fn set_ra(&mut self, val: u64) -> Option<()>;
 }
 
 /// A simple implementation of `FrameSymbolizer` that just holds data.
@@ -507,7 +472,7 @@ impl SimpleFrame {
     }
 }
 
-impl FrameSymbolizer for SimpleFrame {
+impl FrameSymbolizerCallbacks for SimpleFrame {
     fn get_instruction(&self) -> u64 {
         self.instruction
     }
@@ -521,17 +486,6 @@ impl FrameSymbolizer for SimpleFrame {
         self.source_line = Some(line);
         self.source_line_base = Some(base);
     }
-}
-
-/// A type of file related to a module that you might want downloaded.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum FileKind {
-    /// A Breakpad symbol (.sym) file
-    BreakpadSym,
-    /// The native binary of a module ("code file") (.exe/.dll/.so/.dylib...)
-    Binary,
-    /// Extra debuginfo for a module ("debug file") (.pdb/...?)
-    ExtraDebugInfo,
 }
 
 // Can't make Module derive Hash, since then it can't be used as a trait
@@ -554,30 +508,20 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
     )
 }
 
-/// Symbolicate stack frames.
-///
-/// A `Symbolizer` manages loading symbols and looking up symbols in them
-/// including caching so that symbols for a given module are only loaded once.
-///
-/// Call [`Symbolizer::new`][new] to instantiate a `Symbolizer`. A Symbolizer
-/// requires a [`SymbolSupplier`][supplier] to locate symbols. If you have
-/// symbols on disk in the [customary directory layout][breakpad_sym_lookup], a
-/// [`SimpleSymbolSupplier`][simple] will work.
-///
-/// Use [`get_symbol_at_address`][get_symbol] or [`fill_symbol`][fill_symbol] to
-/// do symbol lookup.
-///
-/// [new]: struct.Symbolizer.html#method.new
-/// [supplier]: trait.SymbolSupplier.html
-/// [simple]: struct.SimpleSymbolSupplier.html
-/// [get_symbol]: struct.Symbolizer.html#method.get_symbol_at_address
-/// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
-
 type CachedOperation<T, E> = Arc<tokio::sync::OnceCell<Result<T, E>>>;
 
-pub struct Symbolizer {
+/// Symbolicate stack frames using breakpad sym files.
+///
+/// A `BreakpadSymbolClient` manages loading symbols and looking up symbols in them
+/// including caching so that symbols for a given module are only loaded once.
+///
+/// Use the various [`SymbolClient`][] constructors to instantiate it with
+/// the desired strategy. If you have symbols on disk in the
+/// [customary directory layout][breakpad_sym_lookup],
+/// [`BreakpadSymbolClient::local_client`] will work.
+pub struct BreakpadSymbolClient {
     /// Symbol supplier for locating symbols.
-    supplier: Box<dyn SymbolSupplier + Send + Sync + 'static>,
+    supplier: Box<dyn SymbolClientStrategy<Client = Self> + Send + Sync + 'static>,
     /// Cache of symbol locating results.
     // TODO?: use lru-cache: https://crates.io/crates/lru-cache/
     // note that using an lru-cache would mess up the fact that we currently
@@ -586,13 +530,36 @@ pub struct Symbolizer {
     symbols: Mutex<HashMap<ModuleKey, CachedOperation<SymbolFile, SymbolError>>>,
 }
 
-impl Symbolizer {
+impl BreakpadSymbolClient {
     /// Create a `Symbolizer` that uses `supplier` to locate symbols.
-    pub fn new<T: SymbolSupplier + Send + Sync + 'static>(supplier: T) -> Symbolizer {
-        Symbolizer {
+    pub fn new<T: SymbolClientStrategy<Client = Self> + Send + Sync + 'static>(
+        supplier: T,
+    ) -> BreakpadSymbolClient {
+        BreakpadSymbolClient {
             supplier: Box::new(supplier),
             symbols: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Gets a "disabled" SymbolClient that looks up no symbols.
+    pub fn no_client() -> Self {
+        BreakpadSymbolClient::new(NoSymbolSupplier)
+    }
+
+    /// Gets a "test" SymbolClient that has a hardcoded set of symbols.
+    pub fn string_client(args: StringClientArgs) -> Self {
+        BreakpadSymbolClient::new(StringSymbolSupplier::new(args))
+    }
+
+    /// Gets a "minimal" SymbolClient that looks up local symbols by local path.
+    pub fn local_client(args: LocalClientArgs) -> Self {
+        BreakpadSymbolClient::new(SimpleSymbolSupplier::new(args))
+    }
+
+    /// Gets a "full" SymbolClient that looks up symbols by local path or with urls.
+    #[cfg(feature = "http")]
+    pub fn http_client(args: HttpClientArgs) -> Self {
+        BreakpadSymbolClient::new(HttpSymbolSupplier::new(args))
     }
 
     /// Helper method for non-minidump-using callers.
@@ -630,18 +597,20 @@ impl Symbolizer {
     /// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
     /// use std::str::FromStr;
     /// use debugid::DebugId;
-    /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
+    /// use breakpad_symbols::{BreakpadSymbolClient, LocalClientArgs, SimpleFrame, SimpleModule};
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     use std::path::PathBuf;
-    ///     let paths = vec!(PathBuf::from("../testdata/symbols/"));
-    ///     let supplier = SimpleSymbolSupplier::new(paths);
-    ///     let symbolizer = Symbolizer::new(supplier);
+    ///
+    ///     let mut client_args = LocalClientArgs::default();
+    ///     client_args.symbol_paths = vec!(PathBuf::from("../testdata/symbols/"));
+    ///     let symbol_client = BreakpadSymbolClient::local_client(client_args);
+    ///
     ///     let debug_id = DebugId::from_str("5A9832E5287241C1838ED98914E9B7FF1").unwrap();
     ///     let m = SimpleModule::new("test_app.pdb", debug_id);
     ///     let mut f = SimpleFrame::with_instruction(0x1010);
-    ///     let _ = symbolizer.fill_symbol(&m, &mut f).await;
+    ///     let _ = symbol_client.fill_symbol(&m, &mut f).await;
     ///     assert_eq!(f.function.unwrap(), "vswprintf");
     ///     assert_eq!(f.source_file.unwrap(),
     ///         r"c:\program files\microsoft visual studio 8\vc\include\swprintf.inl");
@@ -654,7 +623,7 @@ impl Symbolizer {
     pub async fn fill_symbol(
         &self,
         module: &(dyn Module + Sync),
-        frame: &mut (dyn FrameSymbolizer + Send),
+        frame: &mut (dyn FrameSymbolizerCallbacks + Send),
     ) -> Result<(), FillSymbolError> {
         let cached_sym = self.get_symbols(module).await;
         let sym = cached_sym
@@ -702,13 +671,13 @@ impl Symbolizer {
             .collect()
     }
 
-    /// Tries to use CFI to walk the stack frame of the FrameWalker
+    /// Tries to use CFI to walk the stack frame of the `walker`
     /// using the symbols of the given Module. Output will be written
-    /// using the FrameWalker's `set_caller_*` APIs.
+    /// using the walker's `set_caller_*` APIs.
     pub async fn walk_frame(
         &self,
         module: &(dyn Module + Sync),
-        walker: &mut (dyn FrameWalker + Send),
+        walker: &mut (dyn FrameWalkerCallbacks + Send),
     ) -> Option<()> {
         let cached_sym = self.get_symbols(module).await;
         let sym = cached_sym.get().unwrap().as_ref();
@@ -719,6 +688,17 @@ impl Symbolizer {
             trace!("couldn't find symbols for address, cannot use cfi");
             None
         }
+    }
+
+    /// Gets the path to a file for a given module (or an Error).
+    ///
+    /// See [`FileKind`][] for the kinds of files.
+    pub async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        self.supplier.locate_file(module, file_kind).await
     }
 
     /// Gets the fully parsed SymbolFile for a given module (or an Error).
@@ -739,16 +719,54 @@ impl Symbolizer {
             .await;
         symbol_once
     }
+}
 
-    /// Gets the path to a file for a given module (or an Error).
-    ///
-    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
-    pub async fn get_file_path(
+#[async_trait]
+impl SymbolClient for BreakpadSymbolClient {
+    fn no_client() -> Self {
+        BreakpadSymbolClient::new(NoSymbolSupplier)
+    }
+
+    fn string_client(args: StringClientArgs) -> Self {
+        BreakpadSymbolClient::new(StringSymbolSupplier::new(args))
+    }
+
+    fn local_client(args: LocalClientArgs) -> Self {
+        BreakpadSymbolClient::new(SimpleSymbolSupplier::new(args))
+    }
+
+    #[cfg(feature = "http")]
+    fn http_client(args: HttpClientArgs) -> Self {
+        BreakpadSymbolClient::new(HttpSymbolSupplier::new(args))
+    }
+    #[cfg(not(feature = "http"))]
+    fn http_client(_args: HttpClientArgs) -> Self {
+        unimplemented!("You must enabled the http feature to use the http_client!")
+    }
+
+    async fn fill_symbol(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizerCallbacks + Send),
+    ) -> Result<(), FillSymbolError> {
+        self.fill_symbol(module, frame).await
+    }
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalkerCallbacks + Send),
+    ) -> Option<()> {
+        self.walk_frame(module, walker).await
+    }
+    async fn get_file_path(
         &self,
         module: &(dyn Module + Sync),
         file_kind: FileKind,
     ) -> Result<PathBuf, FileError> {
-        self.supplier.locate_file(module, file_kind).await
+        self.get_file_path(module, file_kind).await
+    }
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        self.stats()
     }
 }
 
@@ -893,7 +911,9 @@ mod test {
         let t = tempfile::tempdir().unwrap();
         let paths = mksubdirs(t.path(), &["one", "two"]);
 
-        let supplier = SimpleSymbolSupplier::new(paths.clone());
+        let mut supplier_args = LocalClientArgs::default();
+        supplier_args.symbol_paths = paths.clone();
+        let supplier = SimpleSymbolSupplier::new(supplier_args);
         let bad = SimpleModule::default();
         assert_eq!(
             supplier.locate_symbols(&bad).await,
@@ -956,8 +976,9 @@ mod test {
         let path = t.path();
 
         // TODO: This could really use a MockSupplier
-        let supplier = SimpleSymbolSupplier::new(vec![PathBuf::from(path)]);
-        let symbolizer = Symbolizer::new(supplier);
+        let mut supplier_args = LocalClientArgs::default();
+        supplier_args.symbol_paths = vec![path.to_owned()];
+        let symbolizer = BreakpadSymbolClient::local_client(supplier_args);
         let debug_id = DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap();
         let m1 = SimpleModule::new("foo.pdb", debug_id);
         write_symbol_file(
