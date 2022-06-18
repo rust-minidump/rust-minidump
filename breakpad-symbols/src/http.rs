@@ -14,6 +14,9 @@ use tracing::{debug, trace, warn};
 ///
 /// See [`crate::relative_symbol_path`] for details on how paths are searched.
 pub struct HttpSymbolSupplier {
+    /// File paths that are known to be in the cache
+    #[allow(clippy::type_complexity)]
+    cached_file_paths: Mutex<HashMap<FileKey, CachedOperation<(PathBuf, Option<Url>), FileError>>>,
     /// HTTP Client to use for fetching symbols.
     client: Client,
     /// URLs to search for symbols.
@@ -60,61 +63,80 @@ impl HttpSymbolSupplier {
             .collect();
         local_paths.push(cache.clone());
         let local = SimpleSymbolSupplier::new(local_paths);
+        let cached_file_paths = Mutex::default();
         HttpSymbolSupplier {
             client,
+            cached_file_paths,
             urls,
             local,
             cache,
             tmp,
         }
     }
+
+    #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&*module.code_file())))]
+    pub async fn locate_file_internal(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<(PathBuf, Option<Url>), FileError> {
+        let k = file_key(module, file_kind);
+        let file_once = self
+            .cached_file_paths
+            .lock()
+            .unwrap()
+            .entry(k)
+            .or_default()
+            .clone();
+        file_once
+            .get_or_init(|| async {
+                // First look for the file in the cache
+                if let Ok(path) = self.local.locate_file(module, file_kind).await {
+                    return Ok((path, None));
+                }
+
+                // Then try to download the file
+                // FIXME: if we try to parallelize this with `join` then if we have multiple hits
+                // we'll end up downloading all of them at once and having them race to write into
+                // the cache... is that ok? Maybe? Since only one will ever win the swap, and it's
+                // unlikely to get multiple hits... this might actually be ok!
+                if let Some(lookup) = lookup(module, file_kind) {
+                    for url in &self.urls {
+                        let fetch =
+                            fetch_lookup(&self.client, url, &lookup, &self.cache, &self.tmp).await;
+
+                        if let Ok((path, url)) = fetch {
+                            return Ok((path, url));
+                        }
+                    }
+
+                    // If we're allowed to look for mozilla's special CAB paths, do that
+                    if cfg!(feature = "mozilla_cab_symbols") {
+                        for url in &self.urls {
+                            let fetch = fetch_cab_lookup(
+                                &self.client,
+                                url,
+                                &lookup,
+                                &self.cache,
+                                &self.tmp,
+                            )
+                            .await;
+
+                            if let Ok((path, url)) = fetch {
+                                return Ok((path, url));
+                            }
+                        }
+                    }
+                }
+                Err(FileError::NotFound)
+            })
+            .await
+            .clone()
+    }
 }
 
-/// A lookup we would like to perform for some native binary (exe, pdb, dll, ...)
-pub struct BinaryLookup {
-    cache_rel: String,
-    server_rel: String,
-}
-
-/// Returns a lookup for this module's debuginfo (pdb)
-pub fn debuginfo_lookup(module: &(dyn Module + Sync)) -> Option<BinaryLookup> {
-    let debug_file = module.debug_file()?;
-    let debug_id = module.debug_identifier()?;
-
-    let leaf = leafname(&debug_file);
-    let rel_path = [leaf, &debug_id.breakpad().to_string(), leaf].join("/");
-    Some(BinaryLookup {
-        cache_rel: rel_path.clone(),
-        server_rel: rel_path,
-    })
-}
-
-/// Returns a lookup for this module's executable (exe, dll, ...)
-pub fn executable_lookup(module: &(dyn Module + Sync)) -> Option<BinaryLookup> {
-    // NOTE: to make dump_syms happy we're currently moving the bin
-    // to be next to the pdb. This changes where we would naively put it,
-    // hence the two different paths!
-
-    let code_file = module.code_file();
-    let code_id = module.code_identifier()?;
-    let debug_file = module.debug_file()?;
-    let debug_id = module.debug_identifier()?;
-
-    let bin_leaf = leafname(&code_file);
-    let debug_leaf = leafname(&debug_file);
-
-    Some(BinaryLookup {
-        cache_rel: [debug_leaf, &debug_id.breakpad().to_string(), bin_leaf].join("/"),
-        server_rel: [bin_leaf, &code_id.to_string(), bin_leaf].join("/"),
-    })
-}
-
-/// Mangles a lookup to mozilla's format where the last char is replaced by an underscore
-/// (and the file is wrapped in a CAB, but dump_syms handles that transparently).
-pub fn moz_lookup(mut lookup: BinaryLookup) -> BinaryLookup {
-    lookup.server_rel.pop().unwrap();
-    lookup.server_rel.push('_');
-    lookup
+fn file_key(module: &(dyn Module + Sync), file_kind: FileKind) -> FileKey {
+    (module_key(module), file_kind)
 }
 
 fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTempFile> {
@@ -161,22 +183,6 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
     Ok(())
 }
 
-/// Query a Lookup from the cache.
-///
-/// The returned value is the path to the cache file and the url it was downloaded from if known.
-fn get_cached_lookup(
-    lookup: &BinaryLookup,
-    cache: &Path,
-) -> Result<(PathBuf, Option<Url>), SymbolError> {
-    // All we have to do is check if the path exists, sadly we don't know the URL at this point.
-    let final_cache_path = cache.join(&lookup.cache_rel);
-    if final_cache_path.exists() {
-        Ok((final_cache_path, None))
-    } else {
-        Err(SymbolError::NotFound)
-    }
-}
-
 /// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
 /// save the file contents under `cache` + `rel_path` and also return them.
 async fn fetch_symbol_file(
@@ -197,9 +203,9 @@ async fn fetch_symbol_file(
     // give up on caching but let the parse+download continue.
 
     // First try to GET the file from a server
-    let rel_path = relative_symbol_path(module, "sym").ok_or(SymbolError::MissingDebugFileOrId)?;
+    let sym_lookup = breakpad_sym_lookup(module).ok_or(SymbolError::MissingDebugFileOrId)?;
     let mut url = base_url
-        .join(&rel_path)
+        .join(&sym_lookup.server_rel)
         .map_err(|_| SymbolError::NotFound)?;
     let code_id = module.code_identifier().unwrap_or_default();
     url.query_pairs_mut()
@@ -214,7 +220,7 @@ async fn fetch_symbol_file(
         .map_err(|_| SymbolError::NotFound)?;
 
     // Now try to create the temp cache file (not yet in the cache)
-    let final_cache_path = cache.join(rel_path);
+    let final_cache_path = cache.join(sym_lookup.cache_rel);
     let mut temp = create_cache_file(tmp, &final_cache_path)
         .map_err(|e| {
             warn!("Failed to save symbol file in local disk cache: {}", e);
@@ -253,7 +259,7 @@ async fn fetch_symbol_file(
 async fn fetch_lookup(
     client: &Client,
     base_url: &Url,
-    lookup: &BinaryLookup,
+    lookup: &FileLookup,
     cache: &Path,
     tmp: &Path,
 ) -> Result<(PathBuf, Option<Url>), SymbolError> {
@@ -291,24 +297,92 @@ async fn fetch_lookup(
     Ok((final_cache_path, Some(url)))
 }
 
-/// Try to lookup native binaries in the cache and by querying the symbol server
-async fn lookup(
+#[cfg(feature = "mozilla_cab_symbols")]
+async fn fetch_cab_lookup(
     client: &Client,
     base_url: &Url,
-    lookup: Option<&BinaryLookup>,
+    lookup: &FileLookup,
     cache: &Path,
     tmp: &Path,
-) -> Result<(PathBuf, Option<Url>), SymbolError> {
-    if let Some(lookup) = lookup {
-        if let Ok(res) = get_cached_lookup(lookup, cache) {
-            Ok(res)
-        } else {
-            fetch_lookup(client, base_url, lookup, cache, tmp).await
-        }
-    } else {
-        Err(SymbolError::NotFound)
-    }
+) -> Result<(PathBuf, Option<Url>), FileError> {
+    let cab_lookup = moz_lookup(lookup.clone());
+    // First try to GET the file from a server
+    let url = base_url
+        .join(&cab_lookup.server_rel)
+        .map_err(|_| FileError::NotFound)?;
+    debug!("Trying {}", url);
+    let res = client
+        .get(url.clone())
+        .send()
+        .await
+        .and_then(|res| res.error_for_status())
+        .map_err(|_| FileError::NotFound)?;
+
+    let cab_bytes = res.bytes().await.map_err(|_| FileError::NotFound)?;
+    let final_cache_path =
+        unpack_cabinet_file(&cab_bytes, lookup, cache, tmp).map_err(|_| FileError::NotFound)?;
+
+    trace!("symbols: fetched native binary: {}", lookup.cache_rel);
+
+    Ok((final_cache_path, Some(url)))
 }
+
+#[cfg(not(feature = "mozilla_cab_symbols"))]
+async fn fetch_cab_lookup(
+    _client: &Client,
+    _base_url: &Url,
+    _lookup: &FileLookup,
+    _cache: &Path,
+    _tmp: &Path,
+) -> Result<(PathBuf, Option<Url>), FileError> {
+    Err(FileError::NotFound)
+}
+
+#[cfg(feature = "mozilla_cab_symbols")]
+pub fn unpack_cabinet_file(
+    buf: &[u8],
+    lookup: &FileLookup,
+    cache: &Path,
+    tmp: &Path,
+) -> Result<PathBuf, std::io::Error> {
+    trace!("symbols: unpacking CAB file: {}", lookup.cache_rel);
+    // try to find a file in a cabinet archive and unpack it to the destination
+    use cab::Cabinet;
+    use std::io::Cursor;
+    fn get_cabinet_file(
+        cab: &Cabinet<Cursor<&[u8]>>,
+        file_name: &str,
+    ) -> Result<String, std::io::Error> {
+        for folder in cab.folder_entries() {
+            for file in folder.file_entries() {
+                let cab_file_name = file.name();
+                if cab_file_name.ends_with(file_name) {
+                    return Ok(cab_file_name.to_string());
+                }
+            }
+        }
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+    }
+    let final_cache_path = cache.join(&lookup.cache_rel);
+
+    let cursor = Cursor::new(buf);
+    let mut cab = Cabinet::new(cursor)?;
+    let file_name = final_cache_path.file_name().unwrap().to_string_lossy();
+    let cab_file = get_cabinet_file(&cab, &file_name)?;
+    let mut reader = cab.read_file(&cab_file)?;
+
+    // Now try to create the temp cache file (not yet in the cache)
+    let mut temp = create_cache_file(tmp, &final_cache_path)?;
+    std::io::copy(&mut reader, &mut temp)?;
+
+    // And swap it into the cache
+    temp.persist_noclobber(&final_cache_path)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok(final_cache_path)
+}
+
+/// Try to lookup native binaries in the cache and by querying the symbol server
 
 /// Runs dump_syms on the given inputs and produces a .sym file at the give output.
 ///
@@ -325,7 +399,7 @@ async fn lookup(
 /// we teach rust-minidump to handle native debuginfo directly.
 #[cfg(feature = "dump_syms")]
 async fn dump_syms(
-    inputs: &[Result<(PathBuf, Option<Url>), SymbolError>],
+    inputs: &[Result<(PathBuf, Option<Url>), FileError>],
     output: &Path,
 ) -> Result<(), SymbolError> {
     use dump_syms::dumper;
@@ -385,7 +459,7 @@ async fn dump_syms(
 
 #[cfg(not(feature = "dump_syms"))]
 async fn dump_syms(
-    _inputs: &[Result<(PathBuf, Option<Url>), SymbolError>],
+    _inputs: &[Result<(PathBuf, Option<Url>), FileError>],
     _output: &Path,
 ) -> Result<(), SymbolError> {
     Ok(())
@@ -398,14 +472,15 @@ impl SymbolSupplier for HttpSymbolSupplier {
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
-        // Check local paths first.
+        // First: try local paths for sym files
         let local_result = self.local.locate_symbols(module).await;
         if !matches!(local_result, Err(SymbolError::NotFound)) {
             // Everything but NotFound prevents cascading
             return local_result;
         }
         trace!("HttpSymbolSupplier search (SimpleSymbolSupplier found nothing)");
-        // Now try urls
+
+        // Second: try to directly download sym files
         for url in &self.urls {
             // First, try to get a breakpad .sym file from the symbol server
             let sym = fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await;
@@ -418,87 +493,47 @@ impl SymbolSupplier for HttpSymbolSupplier {
                     trace!("HttpSymbolSupplier failed: {}", e);
                 }
             }
+        }
 
-            if cfg!(feature = "dump_syms") {
-                trace!("symbols: trying to fetch native symbols");
-                // If that didn't work, try to request a native pdb/dll from the symbol server
-                let exe_lookup = executable_lookup(module);
-                let pdb_lookup = debuginfo_lookup(module);
-
-                // NOTE: pdb must come after bin, as this indicates that we should prefer
-                // the pdb over the bin when they're both available (dump_syms doesn't like
-                // when you pass it both, and just wants to infer one from the other).
-                //
-                // All of this logic handles lots of Options and Results to keep all the
-                // error handling in one place instead of smeared around in here.
-                let mut native_artifacts = vec![];
-                native_artifacts.push(
-                    lookup(
-                        &self.client,
-                        url,
-                        exe_lookup.as_ref(),
-                        &self.cache,
-                        &self.tmp,
-                    )
+        // Third: try to generate a symfile from native symbols
+        if cfg!(feature = "dump_syms") {
+            trace!("symbols: trying to fetch native symbols");
+            // Find native files
+            let mut native_artifacts = vec![];
+            native_artifacts.push(self.locate_file_internal(module, FileKind::Binary).await);
+            native_artifacts.push(
+                self.locate_file_internal(module, FileKind::ExtraDebugInfo)
                     .await,
-                );
-                native_artifacts.push(
-                    lookup(
-                        &self.client,
-                        url,
-                        pdb_lookup.as_ref(),
-                        &self.cache,
-                        &self.tmp,
-                    )
-                    .await,
-                );
+            );
 
-                // Query mozilla's quirky alternate names
-                // TODO: make this a separate feature?
-                if true {
-                    let moz_exe_lookup = exe_lookup.map(moz_lookup);
-                    let moz_pdb_lookup = pdb_lookup.map(moz_lookup);
-                    native_artifacts.push(
-                        lookup(
-                            &self.client,
-                            url,
-                            moz_exe_lookup.as_ref(),
-                            &self.cache,
-                            &self.tmp,
-                        )
-                        .await,
-                    );
-                    native_artifacts.push(
-                        lookup(
-                            &self.client,
-                            url,
-                            moz_pdb_lookup.as_ref(),
-                            &self.cache,
-                            &self.tmp,
-                        )
-                        .await,
-                    );
-                }
-
-                // Now try to run the user's local dump_syms binary on the inputs to produce a .sym
-                let out =
-                    relative_symbol_path(module, "sym").ok_or(SymbolError::MissingDebugFileOrId)?;
-                let output = self.cache.join(out);
-
-                if dump_syms(&native_artifacts, &output).await.is_ok() {
-                    trace!("symbols: dump_syms successful! using local result");
-                    // We want dump_syms to leave us in a state "as if" we had downloaded
-                    // the symbol file, so as a guard against that diverging, we now use
-                    // the proper cache-lookup path to read the file dump_syms just wrote.
-                    if let Ok(local_result) = self.local.locate_symbols(module).await {
-                        return Ok(local_result);
-                    } else {
-                        warn!("dump_syms succeeded, but there was no symbol file in the cache?");
-                    }
+            // Now try to run dump_syms to produce a .sym
+            let sym_lookup =
+                breakpad_sym_lookup(module).ok_or(SymbolError::MissingDebugFileOrId)?;
+            let output = self.cache.join(sym_lookup.cache_rel);
+            if dump_syms(&native_artifacts, &output).await.is_ok() {
+                trace!("symbols: dump_syms successful! using local result");
+                // We want dump_syms to leave us in a state "as if" we had downloaded
+                // the symbol file, so as a guard against that diverging, we now use
+                // the proper cache-lookup path to read the file dump_syms just wrote.
+                if let Ok(local_result) = self.local.locate_symbols(module).await {
+                    return Ok(local_result);
+                } else {
+                    warn!("dump_syms succeeded, but there was no symbol file in the cache?");
                 }
             }
         }
+
         // If we get this far, we have failed to find anything
         Err(SymbolError::NotFound)
+    }
+
+    async fn locate_file(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        self.locate_file_internal(module, file_kind)
+            .await
+            .map(|(path, _url)| path)
     }
 }

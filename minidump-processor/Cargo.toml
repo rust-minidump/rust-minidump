@@ -20,7 +20,10 @@ breakpad-syms = ["breakpad-symbols"]
 symbolic-syms = []
 # Allows retrieval of symbol files via HTTP
 http = ["breakpad-symbols/http"]
+# Allows construction of symbol files from native binaries
 dump_syms = ["breakpad-symbols/dump_syms", "http"]
+# Allows retrieval of CABed symbol files from mozilla servers
+mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
 async-trait = "0.1.51"

@@ -98,7 +98,7 @@
 
 use async_trait::async_trait;
 use minidump::Module;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 pub use symbols_shim::*;
 
 #[async_trait]
@@ -113,6 +113,11 @@ pub trait SymbolProvider {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()>;
+    async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError>;
     fn stats(&self) -> HashMap<String, SymbolStats>;
 }
 
@@ -163,6 +168,20 @@ impl SymbolProvider for MultiSymbolProvider {
         None
     }
 
+    async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        // Return Ok if *any* symbol provider came back with Ok
+        let mut best_result = Err(FileError::NotFound);
+        for p in self.providers.iter() {
+            let new_result = p.get_file_path(module, file_kind).await;
+            best_result = best_result.or(new_result);
+        }
+        best_result
+    }
+
     fn stats(&self) -> HashMap<String, SymbolStats> {
         let mut result = HashMap::new();
         for p in self.providers.iter() {
@@ -179,8 +198,8 @@ mod symbols_shim {
     use super::SymbolProvider;
     use async_trait::async_trait;
     pub use breakpad_symbols::{
-        FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError, SymbolFile, SymbolStats,
-        SymbolSupplier, Symbolizer,
+        FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError,
+        SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
     };
     use minidump::Module;
     use std::collections::HashMap;
@@ -201,6 +220,13 @@ mod symbols_shim {
             walker: &mut (dyn FrameWalker + Send),
         ) -> Option<()> {
             self.walk_frame(module, walker).await
+        }
+        async fn get_file_path(
+            &self,
+            module: &(dyn Module + Sync),
+            file_kind: FileKind,
+        ) -> Result<PathBuf, FileError> {
+            self.get_file_path(module, file_kind).await
         }
         fn stats(&self) -> HashMap<String, SymbolStats> {
             self.stats()
@@ -286,6 +312,16 @@ mod symbols_shim {
             &mut self,
             module: &(dyn Module + Sync),
         ) -> Result<SymbolFile, SymbolError>;
+
+        /// Locate a specific file associated with a `module`
+        ///
+        /// Implementations may use any strategy for locating and loading
+        /// symbols.
+        async fn locate_file(
+            &self,
+            module: &(dyn Module + Sync),
+            file_kind: FileKind,
+        ) -> Result<PathBuf, FileError>;
     }
 
     /// A trait for setting symbol information on something like a stack frame.
@@ -372,6 +408,13 @@ mod symbols_shim {
         fn stats(&self) -> HashMap<String, SymbolStats> {
             unimplemented!()
         }
+        async fn get_file_path(
+            &self,
+            module: &(dyn Module + Sync),
+            file_kind: FileKind,
+        ) -> Result<PathBuf, FileError> {
+            unimplemented!()
+        }
     }
 
     /// Gets a SymbolSupplier that looks up symbols by path or with urls.
@@ -421,6 +464,17 @@ mod symbols_shim {
         StringSymbolSupplier {}
     }
 
+    /// A type of file related to a module that you might want downloaded.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum FileKind {
+        /// A Breakpad symbol (.sym) file
+        BreakpadSym,
+        /// The native binary of a module ("code file") (.exe/.dll/.so/.dylib...)
+        Binary,
+        /// Extra debuginfo for a module ("debug file") (.pdb/...?)
+        ExtraDebugInfo,
+    }
+
     /// Possible results of locating symbols for a module.
     ///
     /// Because symbols may be found from different sources, symbol providers
@@ -457,6 +511,12 @@ mod symbols_shim {
         /// else). But sometimes we can't make any sense of the symbol file, and
         /// you find yourself here.
         ParseError,
+    }
+
+    #[derive(Clone, Debug, thiserror::Error)]
+    pub enum FileError {
+        #[error("file not found")]
+        NotFound,
     }
 
     #[derive(Debug)]

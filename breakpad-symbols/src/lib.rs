@@ -41,12 +41,12 @@ use async_trait::async_trait;
 use debugid::{CodeId, DebugId};
 use tracing::trace;
 
-use std::borrow::Cow;
 use std::boxed::Box;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::{borrow::Cow, sync::Arc};
 
 pub use minidump_common::{traits::Module, utils::basename};
 pub use sym_file::walker;
@@ -157,6 +157,13 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
     bits.join(".")
 }
 
+/// A lookup we would like to perform for some file (sym, exe, pdb, dll, ...)
+#[derive(Debug, Clone)]
+pub struct FileLookup {
+    cache_rel: String,
+    server_rel: String,
+}
+
 /// Get a relative symbol path at which to locate symbols for `module`.
 ///
 /// Symbols are generally stored in the layout used by Microsoft's symbol
@@ -174,13 +181,66 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 ///
 /// [module_line]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md#MODULE-records
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
-pub fn relative_symbol_path(module: &(dyn Module + Sync), extension: &str) -> Option<String> {
+pub fn breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
     let debug_file = module.debug_file()?;
     let debug_id = module.debug_identifier()?;
 
     let leaf = leafname(&debug_file);
-    let filename = replace_or_add_extension(leaf, "pdb", extension);
-    Some([leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/"))
+    let filename = replace_or_add_extension(leaf, "pdb", "sym");
+    let rel_path = [leaf, &debug_id.breakpad().to_string(), &filename[..]].join("/");
+    Some(FileLookup {
+        cache_rel: rel_path.clone(),
+        server_rel: rel_path,
+    })
+}
+
+/// Returns a lookup for this module's extra debuginfo (pdb)
+pub fn extra_debuginfo_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let leaf = leafname(&debug_file);
+    let rel_path = [leaf, &debug_id.breakpad().to_string(), leaf].join("/");
+    Some(FileLookup {
+        cache_rel: rel_path.clone(),
+        server_rel: rel_path,
+    })
+}
+
+/// Returns a lookup for this module's binary (exe, dll, so, dylib, ...)
+pub fn binary_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
+    // NOTE: to make dump_syms happy we're currently moving the bin
+    // to be next to the pdb. This changes where we would naively put it,
+    // hence the two different paths!
+
+    let code_file = module.code_file();
+    let code_id = module.code_identifier()?;
+    let debug_file = module.debug_file()?;
+    let debug_id = module.debug_identifier()?;
+
+    let bin_leaf = leafname(&code_file);
+    let debug_leaf = leafname(&debug_file);
+
+    Some(FileLookup {
+        cache_rel: [debug_leaf, &debug_id.breakpad().to_string(), bin_leaf].join("/"),
+        server_rel: [bin_leaf, &code_id.to_string(), bin_leaf].join("/"),
+    })
+}
+
+/// Mangles a lookup to mozilla's format where the last char is replaced by an underscore
+/// (and the file is wrapped in a CAB, but dump_syms handles that transparently).
+pub fn moz_lookup(mut lookup: FileLookup) -> FileLookup {
+    lookup.server_rel.pop().unwrap();
+    lookup.server_rel.push('_');
+    lookup
+}
+
+pub fn lookup(module: &(dyn Module + Sync), file_kind: FileKind) -> Option<FileLookup> {
+    match file_kind {
+        FileKind::BreakpadSym => breakpad_sym_lookup(module),
+        FileKind::Binary => binary_lookup(module),
+        FileKind::ExtraDebugInfo => extra_debuginfo_lookup(module),
+    }
 }
 
 /// Possible results of locating symbols for a module.
@@ -228,6 +288,12 @@ pub enum SymbolError {
     ParseError(&'static str, u64),
 }
 
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum FileError {
+    #[error("file not found")]
+    NotFound,
+}
+
 /// An error produced by fill_symbol.
 #[derive(Debug)]
 pub struct FillSymbolError {
@@ -265,6 +331,16 @@ pub trait SymbolSupplier {
     /// symbols.
     async fn locate_symbols(&self, module: &(dyn Module + Sync))
         -> Result<SymbolFile, SymbolError>;
+
+    /// Locate a specific file associated with a `module`
+    ///
+    /// Implementations may use any strategy for locating and loading
+    /// symbols.
+    async fn locate_file(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError>;
 }
 
 /// An implementation of `SymbolSupplier` that loads Breakpad text-format symbols from local disk
@@ -287,29 +363,42 @@ impl SimpleSymbolSupplier {
 
 #[async_trait]
 impl SymbolSupplier for SimpleSymbolSupplier {
-    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
+    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(module = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
+        let file_path = self
+            .locate_file(module, FileKind::BreakpadSym)
+            .await
+            .map_err(|_| SymbolError::NotFound)?;
+        let symbols = SymbolFile::from_file(&file_path).map_err(|e| {
+            trace!("SimpleSymbolSupplier failed: {}", e);
+            e
+        })?;
+        trace!("SimpleSymbolSupplier parsed file!");
+        Ok(symbols)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&*module.code_file())))]
+    async fn locate_file(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
         trace!("SimpleSymbolSupplier search");
-        if let Some(rel_path) = relative_symbol_path(module, "sym") {
+        if let Some(lookup) = lookup(module, file_kind) {
             for path in self.paths.iter() {
-                let test_path = path.join(&rel_path);
+                let test_path = path.join(&lookup.cache_rel);
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    trace!("SimpleSymbolSupplier found file {:#?}", test_path);
-                    let file = SymbolFile::from_file(&test_path).map_err(|e| {
-                        trace!("SimpleSymbolSupplier failed: {}", e);
-                        e
-                    })?;
-                    trace!("SimpleSymbolSupplier parsed file!");
-                    return Ok(file);
+                    trace!("SimpleSymbolSupplier found file {}", test_path.display());
+                    return Ok(test_path);
                 }
             }
         } else {
             trace!("SimpleSymbolSupplier could not build symbol_path");
         }
-        Err(SymbolError::NotFound)
+        Err(FileError::NotFound)
     }
 }
 
@@ -344,6 +433,15 @@ impl SymbolSupplier for StringSymbolSupplier {
         }
         trace!("StringSymbolSupplier could not find file");
         Err(SymbolError::NotFound)
+    }
+
+    async fn locate_file(
+        &self,
+        _module: &(dyn Module + Sync),
+        _file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        // StringSymbolSupplier can never find files, is for testing
+        Err(FileError::NotFound)
     }
 }
 
@@ -427,12 +525,31 @@ impl FrameSymbolizer for SimpleFrame {
     }
 }
 
+/// A type of file related to a module that you might want downloaded.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FileKind {
+    /// A Breakpad symbol (.sym) file
+    BreakpadSym,
+    /// The native binary of a module ("code file") (.exe/.dll/.so/.dylib...)
+    Binary,
+    /// Extra debuginfo for a module ("debug file") (.pdb/...?)
+    ExtraDebugInfo,
+}
+
 // Can't make Module derive Hash, since then it can't be used as a trait
 // object (because the hash method is generic), so this is a hacky workaround.
+/// A key that uniquely identifies a module:
+///
+/// * code_file
+/// * code_id
+/// * debug_file
+/// * debug_id
 type ModuleKey = (String, Option<String>, Option<String>, Option<String>);
+/// A key that uniquely identifies a File associated with a module
+type FileKey = (ModuleKey, FileKind);
 
 /// Helper for deriving a hash key from a `Module` for `Symbolizer`.
-fn key(module: &(dyn Module + Sync)) -> ModuleKey {
+fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
     (
         module.code_file().to_string(),
         module.code_identifier().map(|s| s.to_string()),
@@ -460,6 +577,9 @@ fn key(module: &(dyn Module + Sync)) -> ModuleKey {
 /// [simple]: struct.SimpleSymbolSupplier.html
 /// [get_symbol]: struct.Symbolizer.html#method.get_symbol_at_address
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
+
+type CachedOperation<T, E> = Arc<tokio::sync::OnceCell<Result<T, E>>>;
+
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
     supplier: Box<dyn SymbolSupplier + Send + Sync + 'static>,
@@ -468,7 +588,7 @@ pub struct Symbolizer {
     // note that using an lru-cache would mess up the fact that we currently
     // use this for statistics collection. Splitting out statistics would be
     // way messier but not impossible.
-    symbols: Mutex<HashMap<ModuleKey, Result<SymbolFile, SymbolError>>>,
+    symbols: Mutex<HashMap<ModuleKey, CachedOperation<SymbolFile, SymbolError>>>,
 }
 
 impl Symbolizer {
@@ -541,16 +661,14 @@ impl Symbolizer {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        let k = key(module);
-        self.ensure_module(module, &k).await;
-
-        // Symbols will always contain an entry after ensure_module (though it may be an Err).
-        self.symbols.lock().unwrap()[&k]
+        let cached_sym = self.get_symbols(module).await;
+        let sym = cached_sym
+            .get()
+            .unwrap()
             .as_ref()
-            .map(|sym| {
-                sym.fill_symbol(module, frame);
-            })
-            .map_err(|_| FillSymbolError {})
+            .map_err(|_| FillSymbolError {})?;
+        sym.fill_symbol(module, frame);
+        Ok(())
     }
 
     /// Collect various statistics on the symbols.
@@ -562,6 +680,7 @@ impl Symbolizer {
             .unwrap()
             .iter()
             .map(|(k, res)| {
+                let res = res.get().expect("Had uninitialized SymbolFile entry?");
                 let mut stats = SymbolStats::default();
                 match res {
                     Ok(sym) => {
@@ -596,9 +715,9 @@ impl Symbolizer {
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        let k = key(module);
-        self.ensure_module(module, &k).await;
-        if let Some(Ok(ref sym)) = self.symbols.lock().unwrap().get(&k) {
+        let cached_sym = self.get_symbols(module).await;
+        let sym = cached_sym.get().unwrap().as_ref();
+        if let Ok(sym) = sym {
             trace!("found symbols for address, searching for cfi entries");
             sym.walk_frame(module, walker)
         } else {
@@ -607,15 +726,34 @@ impl Symbolizer {
         }
     }
 
-    /// Ensures there is an entry in the `symbols` map for the given key
-    /// (although it may be an Error). Will not change the entry if it already
-    /// exists (so if they first time we look is an Error, it always will be).
-    async fn ensure_module(&self, module: &(dyn Module + Sync), k: &ModuleKey) {
-        if !self.symbols.lock().unwrap().contains_key(k) {
-            trace!("locating {:?}", k);
-            let res = self.supplier.locate_symbols(module).await;
-            self.symbols.lock().unwrap().insert(k.clone(), res);
-        }
+    /// Gets the fully parsed SymbolFile for a given module (or an Error).
+    ///
+    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
+    async fn get_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> CachedOperation<SymbolFile, SymbolError> {
+        // This clones an Arc<Once> that we will use to only do this operation once
+        let k = module_key(module);
+        let symbol_once = self.symbols.lock().unwrap().entry(k).or_default().clone();
+        symbol_once
+            .get_or_init(|| async {
+                trace!("locating symbols for module {}", module.code_file());
+                self.supplier.locate_symbols(module).await
+            })
+            .await;
+        symbol_once
+    }
+
+    /// Gets the path to a file for a given module (or an Error).
+    ///
+    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
+    pub async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        self.supplier.locate_file(module, file_kind).await
     }
 }
 
@@ -662,42 +800,42 @@ mod test {
         let debug_id = DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap();
         let m = SimpleModule::new("foo.pdb", debug_id);
         assert_eq!(
-            &relative_symbol_path(&m, "sym").unwrap(),
+            &breakpad_sym_lookup(&m).unwrap().cache_rel,
             "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
         );
 
         let m2 = SimpleModule::new("foo.pdb", debug_id);
         assert_eq!(
-            &relative_symbol_path(&m2, "bar").unwrap(),
-            "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.bar"
+            &breakpad_sym_lookup(&m2).unwrap().cache_rel,
+            "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
         );
 
         let m3 = SimpleModule::new("foo.xyz", debug_id);
         assert_eq!(
-            &relative_symbol_path(&m3, "sym").unwrap(),
+            &breakpad_sym_lookup(&m3).unwrap().cache_rel,
             "foo.xyz/ABCD1234ABCD1234ABCDABCD12345678a/foo.xyz.sym"
         );
 
         let m4 = SimpleModule::new("foo.xyz", debug_id);
         assert_eq!(
-            &relative_symbol_path(&m4, "bar").unwrap(),
-            "foo.xyz/ABCD1234ABCD1234ABCDABCD12345678a/foo.xyz.bar"
+            &breakpad_sym_lookup(&m4).unwrap().cache_rel,
+            "foo.xyz/ABCD1234ABCD1234ABCDABCD12345678a/foo.xyz.sym"
         );
 
         let bad = SimpleModule::default();
-        assert!(relative_symbol_path(&bad, "sym").is_none());
+        assert!(breakpad_sym_lookup(&bad).is_none());
 
         let bad2 = SimpleModule {
             debug_file: Some("foo".to_string()),
             ..SimpleModule::default()
         };
-        assert!(relative_symbol_path(&bad2, "sym").is_none());
+        assert!(breakpad_sym_lookup(&bad2).is_none());
 
         let bad3 = SimpleModule {
             debug_id: Some(debug_id),
             ..SimpleModule::default()
         };
-        assert!(relative_symbol_path(&bad3, "sym").is_none());
+        assert!(breakpad_sym_lookup(&bad3).is_none());
     }
 
     #[tokio::test]
@@ -706,7 +844,7 @@ mod test {
         {
             let m = SimpleModule::new("/path/to/foo.bin", debug_id);
             assert_eq!(
-                &relative_symbol_path(&m, "sym").unwrap(),
+                &breakpad_sym_lookup(&m).unwrap().cache_rel,
                 "foo.bin/ABCD1234ABCD1234ABCDABCD12345678a/foo.bin.sym"
             );
         }
@@ -714,7 +852,7 @@ mod test {
         {
             let m = SimpleModule::new("c:/path/to/foo.pdb", debug_id);
             assert_eq!(
-                &relative_symbol_path(&m, "sym").unwrap(),
+                &breakpad_sym_lookup(&m).unwrap().cache_rel,
                 "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
             );
         }
@@ -722,7 +860,7 @@ mod test {
         {
             let m = SimpleModule::new("c:\\path\\to\\foo.pdb", debug_id);
             assert_eq!(
-                &relative_symbol_path(&m, "sym").unwrap(),
+                &breakpad_sym_lookup(&m).unwrap().cache_rel,
                 "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
             );
         }
