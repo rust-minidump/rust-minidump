@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure the symbol client
     let mut client_args = HttpClientArgs::default();
     client_args.symbol_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
-    client_args.symbols_cache = std::env::temp_dir().join("minidump-cache");
+    client_args.symbol_cache = std::env::temp_dir().join("minidump-cache");
  
     // Use ProcessorOptions for detailed processor configuration
     let options = ProcessorOptions::default();

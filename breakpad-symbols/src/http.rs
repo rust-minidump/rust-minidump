@@ -58,7 +58,7 @@ impl HttpSymbolSupplier {
                 Url::parse(&u).ok()
             })
             .collect();
-        args.symbol_paths.push(args.symbols_cache.clone());
+        args.symbol_paths.push(args.symbol_cache.clone());
 
         // Setup the nested LocalClient we first query
         let mut local_client_args = LocalClientArgs::default();
@@ -71,8 +71,8 @@ impl HttpSymbolSupplier {
             cached_file_paths,
             urls,
             local,
-            cache: args.symbols_cache,
-            tmp: args.symbols_tmp,
+            cache: args.symbol_cache,
+            tmp: args.symbol_tmp,
         }
     }
 

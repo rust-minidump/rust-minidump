@@ -15,21 +15,15 @@ edition = "2018"
 travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
-default = ["breakpad-symbols"]
-
 # Allows construction of symbol files from native binaries
 dump_syms = ["breakpad-symbols/dump_syms"]
 
-# Allows retrieval of CABed symbol files from mozilla servers
+# Allows retrieval of CABed binaries from mozilla servers
 mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
-
-# Use symbolic instead of breakpad (needs --no-default-features)
-symbolic-symbols = []
-
 
 [dependencies]
 clap = { version = "3.1", features = ["cargo", "wrap_help", "derive"] }
-breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols", optional = true, features = ["http"] }
+breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols", features = ["http"] }
 minidump = { version = "0.11.0", path = "../minidump" }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
 minidump-processor = { version = "0.11.0", path = "../minidump-processor" }

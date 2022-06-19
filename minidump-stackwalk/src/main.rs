@@ -378,8 +378,8 @@ async fn main() {
                 let mut client_args = HttpClientArgs::default();
                 client_args.symbol_paths = symbols_paths;
                 client_args.symbol_urls = cli.symbols_url;
-                client_args.symbols_cache = symbols_cache;
-                client_args.symbols_tmp = symbols_tmp;
+                client_args.symbol_cache = symbols_cache;
+                client_args.symbol_tmp = symbols_tmp;
                 client_args.timeout = timeout;
                 SymbolClientImpl::http_client(client_args)
             } else if !symbols_paths.is_empty() {

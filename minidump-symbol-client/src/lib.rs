@@ -112,14 +112,14 @@ pub struct HttpClientArgs {
     /// The cache is queried before paths and urls (otherwise it wouldn't be much of a cache).
     /// ///
     /// Defaults to `std::env::temp_dir()`
-    pub symbols_cache: PathBuf,
+    pub symbol_cache: PathBuf,
 
     /// A directory where symbol files should be downloaded to
     /// before atomically swapping them into the cache.
     /// Has the same "temp" assumptions as symbols_cache.
     ///
     /// Defaults to `std::env::temp_dir()`
-    pub symbols_tmp: PathBuf,
+    pub symbol_tmp: PathBuf,
 
     /// A maximum time limit for a symbol file download. This
     /// is primarily defined to avoid getting stuck on buggy infinite downloads.
@@ -139,8 +139,8 @@ impl Default for HttpClientArgs {
         Self {
             symbol_paths: Vec::new(),
             symbol_urls: Vec::new(),
-            symbols_cache: std::env::temp_dir(),
-            symbols_tmp: std::env::temp_dir(),
+            symbol_cache: std::env::temp_dir(),
+            symbol_tmp: std::env::temp_dir(),
             timeout: std::time::Duration::from_secs(1000),
             max_connections: 40,
         }
