@@ -1208,6 +1208,25 @@ pub enum MipsRegisterNumbers {
     ReturnAddress = 31,
 }
 
+impl MipsRegisterNumbers {
+    pub const fn name(self) -> &'static str {
+        match self {
+            MipsRegisterNumbers::S0 => "s0",
+            MipsRegisterNumbers::S1 => "s1",
+            MipsRegisterNumbers::S2 => "s2",
+            MipsRegisterNumbers::S3 => "s3",
+            MipsRegisterNumbers::S4 => "s4",
+            MipsRegisterNumbers::S5 => "s5",
+            MipsRegisterNumbers::S6 => "s6",
+            MipsRegisterNumbers::S7 => "s7",
+            MipsRegisterNumbers::GlobalPointer => "gp",
+            MipsRegisterNumbers::StackPointer => "sp",
+            MipsRegisterNumbers::FramePointer => "fp",
+            MipsRegisterNumbers::ReturnAddress => "ra",
+        }
+    }
+}
+
 /// PPC floating point state
 #[derive(Debug, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]

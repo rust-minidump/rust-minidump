@@ -7,6 +7,7 @@ mod amd64;
 mod arm;
 mod arm64;
 mod arm64_old;
+mod mips;
 mod unwind;
 mod x86;
 
@@ -100,7 +101,6 @@ where
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
-        MinidumpRawContext::MIPS(ctx) => ctx.get_caller_frame(stack_memory),
          */
         MinidumpRawContext::Arm(ref ctx) => {
             ctx.get_caller_frame(
@@ -157,6 +157,17 @@ where
             )
             .await
         }
+        MinidumpRawContext::Mips(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                system_info,
+                symbol_provider,
+            )
+            .await
+        }
         _ => None,
     }
 }
@@ -199,13 +210,10 @@ where
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
             fill_source_line_info(&mut frame, modules, symbol_provider).await;
-            trace!(
-                "unwind: unwinding {}",
-                frame
-                    .function_name
-                    .clone()
-                    .unwrap_or_else(|| frame.instruction.to_string())
-            );
+            match frame.function_name.as_ref() {
+                Some(name) => trace!("unwind: unwinding {}", name),
+                None => trace!("unwind: unwinding 0x{:016x}", frame.instruction),
+            }
             frames.push(frame);
             let callee_frame = &frames.last().unwrap();
             let grand_callee_frame = frames.len().checked_sub(2).and_then(|idx| frames.get(idx));
