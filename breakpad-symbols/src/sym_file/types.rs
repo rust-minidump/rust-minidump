@@ -2,42 +2,20 @@
 // file at the top-level directory of this distribution.
 
 use range_map::{Range, RangeMap};
-use std::cmp::Ordering;
 use std::collections::HashMap;
 
 /// A publicly visible linker symbol.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct PublicSymbol {
     /// The symbol's address relative to the module's load address.
+    ///
+    /// This field is declared first so that the derived Ord implementation sorts
+    /// by address first. We take advantage of the sort order during address lookup.
     pub address: u64,
-    /// The size of parameters passed to the function.
-    pub parameter_size: u32,
     /// The name of the symbol.
     pub name: String,
-}
-
-impl Ord for PublicSymbol {
-    fn cmp(&self, other: &PublicSymbol) -> Ordering {
-        let o = self.address.cmp(&other.address);
-        if o != Ordering::Equal {
-            o
-        } else {
-            // Fall back to sorting by name if addresses are equal.
-            let nameo = self.name.cmp(&other.name);
-            if nameo != Ordering::Equal {
-                nameo
-            } else {
-                // Compare parameter size just for sanity.
-                self.parameter_size.cmp(&other.parameter_size)
-            }
-        }
-    }
-}
-
-impl PartialOrd for PublicSymbol {
-    fn partial_cmp(&self, other: &PublicSymbol) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    /// The size of parameters passed to the function.
+    pub parameter_size: u32,
 }
 
 /// A mapping from machine code bytes to source line and file.
