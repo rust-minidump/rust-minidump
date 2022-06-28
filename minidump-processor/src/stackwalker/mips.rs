@@ -20,7 +20,7 @@ const STACK_POINTER: &str = "sp";
 const PROGRAM_COUNTER: &str = "pc";
 const RETURN_ADDR: &str = "ra";
 const CALLEE_SAVED_REGS: &[&str] = &[
-    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "fp",
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "gp", "sp", "fp",
 ];
 
 /*"$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$to", "$t1",
