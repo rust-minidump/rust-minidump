@@ -298,17 +298,17 @@ pub enum FileError {
 #[derive(Debug)]
 pub struct FillSymbolError {
     // We don't want to yield a full SymbolError for fill_symbol
-    // as this would involve cloning bulky Error strings every time
-    // someone requested symbols for a missing module.
-    //
-    // As it turns out there's currently no reason to care about *why*
-    // fill_symbol, so for now this is just a dummy type until we have
-    // something to put here.
-    //
-    // The only reason fill_symbol *can* produce an Err is so that
-    // the caller can distinguish between "we had symbols, but this address
-    // didn't map to a function name" and "we had no symbols for that module"
-    // (this is used as a heuristic for stack scanning).
+// as this would involve cloning bulky Error strings every time
+// someone requested symbols for a missing module.
+//
+// As it turns out there's currently no reason to care about *why*
+// fill_symbol, so for now this is just a dummy type until we have
+// something to put here.
+//
+// The only reason fill_symbol *can* produce an Err is so that
+// the caller can distinguish between "we had symbols, but this address
+// didn't map to a function name" and "we had no symbols for that module"
+// (this is used as a heuristic for stack scanning).
 }
 
 impl PartialEq for SymbolError {
@@ -895,10 +895,10 @@ mod test {
 
         let supplier = SimpleSymbolSupplier::new(paths.clone());
         let bad = SimpleModule::default();
-        assert_eq!(
-            supplier.locate_symbols(&bad).await,
-            Err(SymbolError::NotFound)
-        );
+        match supplier.locate_symbols(&bad).await {
+            Err(SymbolError::NotFound) => {}
+            _ => panic!(),
+        }
 
         // Try loading symbols for each of two modules in each of the two
         // search paths.
@@ -920,10 +920,10 @@ mod test {
         {
             let m = SimpleModule::new(file, id);
             // No symbols present yet.
-            assert_eq!(
-                supplier.locate_symbols(&m).await,
-                Err(SymbolError::NotFound)
-            );
+            match supplier.locate_symbols(&m).await {
+                Err(SymbolError::NotFound) => {}
+                _ => panic!(),
+            }
             write_good_symbol_file(&path.join(sym));
             // Should load OK now that it exists.
             assert!(
@@ -937,10 +937,10 @@ mod test {
         let debug_id = DebugId::from_str("ffff0000-0000-0000-0000-abcd12345678-a").unwrap();
         let mal = SimpleModule::new("baz.pdb", debug_id);
         let sym = "baz.pdb/FFFF0000000000000000ABCD12345678a/baz.sym";
-        assert_eq!(
-            supplier.locate_symbols(&mal).await,
-            Err(SymbolError::NotFound)
-        );
+        match supplier.locate_symbols(&mal).await {
+            Err(SymbolError::NotFound) => {}
+            _ => panic!(),
+        }
         write_bad_symbol_file(&paths[0].join(sym));
         let res = supplier.locate_symbols(&mal).await;
         assert!(

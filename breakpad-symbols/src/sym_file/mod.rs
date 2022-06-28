@@ -339,7 +339,7 @@ impl SymbolFile {
             return;
         }
         let addr = frame.get_instruction() - module.base_address();
-        if let Some(func) = self.functions.get(addr) {
+        if let Some(func) = self.function_for_address(addr) {
             // TODO: although FUNC records have a parameter size, it appears that
             // they aren't to be trusted? The STACK WIN records are more reliable
             // when available. This is important precisely because these values
@@ -348,9 +348,9 @@ impl SymbolFile {
             // which affects the the stack's size!).
             //
             // Need to spend more time thinking about if this is the right approach
-            let parameter_size = if let Some(info) = self.win_stack_framedata_info.get(addr) {
+            let parameter_size = if let Some(info) = self.win_stack_framedata_info.get(&addr) {
                 info.parameter_size
-            } else if let Some(info) = self.win_stack_fpo_info.get(addr) {
+            } else if let Some(info) = self.win_stack_fpo_info.get(&addr) {
                 info.parameter_size
             } else {
                 func.parameter_size
@@ -362,7 +362,7 @@ impl SymbolFile {
                 parameter_size,
             );
             // See if there's source line info as well.
-            func.lines.get(addr).map(|line| {
+            func.line_for_address(addr).map(|line| {
                 self.files.get(&line.file).map(|file| {
                     frame.set_source_file(file, line.line, line.address + module.base_address());
                 })
@@ -378,37 +378,8 @@ impl SymbolFile {
             // so if the PUBLIC has a smaller base address than the nearest previous FUNC
             // to our target address, the PUBLIC must actually end before that FUNC and
             // therefore not actually apply to the target address.
-            //
-            // We get the nearest previous FUNC by getting the raw slice of ranges
-            // and binary searching for our base address. Rust's builtin binary search
-            // will fail to find the value since it uses strict equality *but* the Err
-            // will helpfully contain the index in the slice where our value "should"
-            // be inserted to preserve the sort. The element before this index is
-            // therefore the nearest previous value!
-            //
-            // Case analysis for this -1 because binary search is an off-by-one minefield:
-            //
-            // * if the address we were looking for came *before* every FUNC, binary_search
-            //   would yield "0" because that's where it should go to preserve the sort.
-            //   The checked_sub will then fail and make us just assume the PUBLIC is reasonable,
-            //   which is correct.
-            //
-            // * if we get 1, this saying we actually want element 0, so again -1 is
-            //   correct. (This generalizes to all other "reasonable" values, but 1 is easiest
-            //   to think about given the previous case's analysis.)
-            //
-            // * if the address we were looking for came *after* every FUNC, binary search
-            //   would yield "slice.len()", and the nearest FUNC is indeed at `len-1`, so
-            //   again correct.
-            let funcs_slice = self.functions.ranges_values().as_slice();
-            let prev_func = funcs_slice
-                .binary_search_by_key(&addr, |(range, _)| range.start)
-                .err()
-                .and_then(|idx| idx.checked_sub(1))
-                .and_then(|idx| funcs_slice.get(idx));
-
-            if let Some(prev_func) = prev_func {
-                if public.address <= prev_func.1.address {
+            if let Some(prev_func) = self.find_nearest_function(addr) {
+                if public.address <= prev_func.address {
                     // This PUBLIC is truncated by a FUNC before it gets to `addr`,
                     // so we shouldn't use it.
                     return;
@@ -432,9 +403,9 @@ impl SymbolFile {
 
         // Preferentially use framedata over fpo, because if both are present,
         // the former tends to be more precise (breakpad heuristic).
-        let win_stack_result = if let Some(info) = self.win_stack_framedata_info.get(addr) {
+        let win_stack_result = if let Some(info) = self.win_stack_framedata_info.get(&addr) {
             walker::walk_with_stack_win_framedata(info, walker)
-        } else if let Some(info) = self.win_stack_fpo_info.get(addr) {
+        } else if let Some(info) = self.win_stack_fpo_info.get(&addr) {
             walker::walk_with_stack_win_fpo(info, walker)
         } else {
             None
@@ -442,7 +413,7 @@ impl SymbolFile {
 
         // If STACK WIN failed, try STACK CFI
         win_stack_result.or_else(|| {
-            if let Some(info) = self.cfi_stack_info.get(addr) {
+            if let Some(info) = self.cfi_stack_info.get(&addr) {
                 // Don't use add_rules that come after this address
                 let mut count = 0;
                 let len = info.add_rules.len();
@@ -495,17 +466,17 @@ mod test {
             sym.find_nearest_public(0xFFFFFFFF).unwrap().name,
             "__from_strstr_to_strchr"
         );
-        assert_eq!(sym.functions.ranges_values().count(), 1065);
-        assert_eq!(sym.functions.get(0x1000).unwrap().name, "vswprintf");
-        assert_eq!(sym.functions.get(0x1012).unwrap().name, "vswprintf");
-        assert!(sym.functions.get(0x1013).is_none());
+        assert_eq!(sym.functions.len(), 1065);
+        assert_eq!(sym.function_for_address(0x1000).unwrap().name, "vswprintf");
+        assert_eq!(sym.function_for_address(0x1012).unwrap().name, "vswprintf");
+        assert!(sym.function_for_address(0x1013).is_none());
         // There are 1556 `STACK WIN 4` lines in the symbol file, but only 856
         // that don't overlap. However they all overlap in ways that we have
         // to handle in the wild.
-        assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1556);
-        assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 259);
+        assert_eq!(sym.win_stack_framedata_info.iter().count(), 1556);
+        assert_eq!(sym.win_stack_fpo_info.iter().count(), 259);
         assert_eq!(
-            sym.win_stack_framedata_info.get(0x41b0).unwrap().address,
+            sym.win_stack_framedata_info.get(&0x41b0).unwrap().address,
             0x41b0
         );
     }
@@ -529,19 +500,17 @@ mod test {
 
         assert_eq!(sym.files.len(), 1);
         assert_eq!(sym.publics.len(), 1);
-        assert_eq!(sym.functions.ranges_values().count(), 1);
-        assert_eq!(sym.functions.get(0x1000).unwrap().name, "another func");
+        assert_eq!(sym.functions.len(), 1);
         assert_eq!(
-            sym.functions
-                .get(0x1000)
-                .unwrap()
-                .lines
-                .ranges_values()
-                .count(),
-            1
+            sym.function_for_address(0x1000).unwrap().name,
+            "another func"
         );
+        assert_eq!(sym.function_for_address(0x1000).unwrap().lines.len(), 1);
         // test fallback
-        assert_eq!(sym.functions.get(0x1001).unwrap().name, "another func");
+        assert_eq!(
+            sym.function_for_address(0x1001).unwrap().name,
+            "another func"
+        );
     }
 
     #[test]

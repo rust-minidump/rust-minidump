@@ -29,7 +29,7 @@ dump_syms = { git = "https://github.com/mozilla/dump_syms", optional = true }
 tracing = { version = "0.1.34", features = ["log"] }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
 nom = "~1.2.2"
-range-map = "0.1.5"
+rangemap = "1"
 reqwest = { version = "0.11.6", default-features = false, features = [
     "gzip",
     "rustls-tls",

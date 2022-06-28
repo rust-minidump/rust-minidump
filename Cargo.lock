@@ -143,7 +143,7 @@ dependencies = [
  "dump_syms",
  "minidump-common",
  "nom 1.2.4",
- "range-map",
+ "rangemap",
  "reqwest",
  "tempfile",
  "thiserror",
@@ -1388,6 +1388,12 @@ checksum = "87dc8ff3b0f3e32dbba6e49c592c0191a3a2cabbf6f7e5a78e1010050b9a42e1"
 dependencies = [
  "num-traits 0.1.43",
 ]
+
+[[package]]
+name = "rangemap"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ea2d559b3970fe7aa56ce7432a3702ff4b20a57b543ae08b4850ee629353ea6"
 
 [[package]]
 name = "redox_syscall"

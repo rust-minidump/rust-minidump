@@ -1,8 +1,9 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use range_map::{Range, RangeMap};
+use rangemap::RangeMap;
 use std::collections::HashMap;
+use std::ops::Range;
 
 /// A publicly visible linker symbol.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -33,6 +34,12 @@ pub struct SourceLine {
     pub line: u32,
 }
 
+impl SourceLine {
+    pub fn end_address(&self) -> u64 {
+        self.address.saturating_add(self.size.into())
+    }
+}
+
 /// A source-language function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
@@ -45,18 +52,34 @@ pub struct Function {
     /// The name of the function as declared in the source.
     pub name: String,
     /// Source line information for this function.
-    pub lines: RangeMap<u64, SourceLine>,
+    pub lines: Vec<SourceLine>,
 }
 
 impl Function {
+    pub fn end_address(&self) -> u64 {
+        self.address.saturating_add(self.size.into())
+    }
+
     pub fn memory_range(&self) -> Option<Range<u64>> {
         if self.size == 0 {
             return None;
         }
-        Some(Range::new(
-            self.address,
-            self.address.checked_add(self.size as u64)? - 1,
-        ))
+        Some(self.address..self.end_address())
+    }
+
+    pub fn line_for_address(&self, address: u64) -> Option<&SourceLine> {
+        match self.lines.binary_search_by_key(&address, |l| l.address) {
+            Ok(i) => Some(&self.lines[i]),
+            Err(0) => None,
+            Err(i) => {
+                let l = &self.lines[i - 1];
+                if address < l.end_address() {
+                    Some(l)
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 
@@ -96,10 +119,7 @@ impl StackInfoCfi {
         if self.size == 0 {
             return None;
         }
-        Some(Range::new(
-            self.init.address,
-            self.init.address.checked_add(self.size as u64)? - 1,
-        ))
+        Some(self.init.address..self.init.address.checked_add(self.size as u64)?)
     }
 }
 
@@ -149,22 +169,19 @@ impl StackInfoWin {
         if self.size == 0 {
             return None;
         }
-        Some(Range::new(
-            self.address,
-            self.address.checked_add(self.size as u64)? - 1,
-        ))
+        Some(self.address..self.address.checked_add(self.size as u64)?)
     }
 }
 
 /// A parsed .sym file containing debug symbols.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct SymbolFile {
     /// The set of source files involved in compilation.
     pub files: HashMap<u32, String>,
     /// Publicly visible symbols.
     pub publics: Vec<PublicSymbol>,
     /// Functions.
-    pub functions: RangeMap<u64, Function>,
+    pub functions: Vec<Function>,
     /// DWARF CFI unwind information.
     pub cfi_stack_info: RangeMap<u64, StackInfoCfi>,
     /// Windows unwind information (frame data).
@@ -221,4 +238,28 @@ pub struct SymbolFile {
     /// was not mapped memory). In these situations the cfi entry *may*
     /// still be correct.
     pub cfi_eval_corruptions: u64,
+}
+
+impl SymbolFile {
+    /// Returns the closest function to the address for which `function.address <= address`.
+    pub fn find_nearest_function(&self, address: u64) -> Option<&Function> {
+        match self.functions.binary_search_by_key(&address, |f| f.address) {
+            // Case 1: function.address is an exact match
+            Ok(i) => Some(&self.functions[i]),
+            // Case 2: "No exact match, insert as the first element", i.e.
+            // the address is *before* the first function's address. No match.
+            Err(0) => None,
+            // Case 3: "No exact match, insert at position i > 0", so the
+            // function we are looking for is at i - 1.
+            Err(i) => Some(&self.functions[i - 1]),
+        }
+    }
+
+    /// Returns the function whose address range covers the given address.
+    pub fn function_for_address(&self, address: u64) -> Option<&Function> {
+        match self.find_nearest_function(address) {
+            Some(f) if address < f.end_address() => Some(f),
+            _ => None,
+        }
+    }
 }

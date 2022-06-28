@@ -3,18 +3,29 @@
 
 use nom::IResult::*;
 use nom::*;
-use range_map::{Range, RangeMap};
 use tracing::warn;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Range;
 use std::str;
 use std::str::FromStr;
 
-use minidump_common::traits::IntoRangeMapSafe;
-
 use crate::sym_file::types::*;
 use crate::SymbolError;
+
+trait RangeIntersects {
+    fn intersects(&self, other: &Self) -> bool;
+}
+
+impl<T: Ord> RangeIntersects for Range<T> {
+    fn intersects(&self, other: &Self) -> bool {
+        self.start < self.end
+            && other.start < other.end
+            && self.start <= other.end
+            && other.start < self.end
+    }
+}
 
 #[derive(Debug)]
 enum Line {
@@ -158,7 +169,7 @@ chain!(
             size,
             parameter_size,
             name: name.to_string(),
-            lines: RangeMap::new(),
+            lines: Vec::new(),
         }
     }
     ));
@@ -302,7 +313,7 @@ pub struct SymbolParser {
     // When building a RangeMap when need to sort an array of this
     // format anyway, so we might as well construct it directly and
     // save a giant allocation+copy.
-    functions: Vec<(Range<u64>, Function)>,
+    functions: Vec<Function>,
     cfi_stack_info: Vec<(Range<u64>, StackInfoCfi)>,
     win_stack_framedata_info: Vec<(Range<u64>, StackInfoWin)>,
     win_stack_fpo_info: Vec<(Range<u64>, StackInfoWin)>,
@@ -510,21 +521,18 @@ impl SymbolParser {
             Line::Function(mut cur, lines) => {
                 cur.lines = lines
                     .into_iter()
-                    .map(|l| {
+                    .filter(|l| {
                         // Line data from PDB files often has a zero-size line entry, so just
                         // filter those out.
-                        if l.size > 0 {
-                            if let Some(end) = l.address.checked_add(l.size as u64 - 1) {
-                                return (Some(Range::new(l.address, end)), l);
-                            }
-                        }
-
-                        (None, l)
+                        l.size > 0
                     })
-                    .into_rangemap_safe();
+                    .collect();
+                cur.lines.sort_by_key(|l| l.address);
+                cur.lines
+                    .dedup_by(|next, current| current.end_address() >= next.end_address());
 
-                if let Some(range) = cur.memory_range() {
-                    self.functions.push((range, cur));
+                if cur.size != 0 {
+                    self.functions.push(cur);
                 }
             }
             Line::StackCfi(mut cur) => {
@@ -550,14 +558,17 @@ impl SymbolParser {
 
         // Now sort everything and bundle it up in its final format.
         self.publics.sort();
+        self.functions.sort_by_key(|f| f.address);
+        self.functions
+            .dedup_by(|next, current| current.end_address() >= next.end_address());
 
         SymbolFile {
             files: self.files,
             publics: self.publics,
-            functions: into_rangemap_safe(self.functions),
-            cfi_stack_info: into_rangemap_safe(self.cfi_stack_info),
-            win_stack_framedata_info: into_rangemap_safe(self.win_stack_framedata_info),
-            win_stack_fpo_info: into_rangemap_safe(self.win_stack_fpo_info),
+            functions: self.functions,
+            cfi_stack_info: self.cfi_stack_info.into_iter().collect(),
+            win_stack_framedata_info: self.win_stack_framedata_info.into_iter().collect(),
+            win_stack_fpo_info: self.win_stack_fpo_info.into_iter().collect(),
             // Will get filled in by the caller
             url: self.url,
             ambiguities_repaired: 0,
@@ -566,26 +577,6 @@ impl SymbolParser {
             cfi_eval_corruptions: 0,
         }
     }
-}
-
-// Copied from minidump-common, because we've preconstructed the array to sort.
-fn into_rangemap_safe<V: Clone + Eq + Debug>(mut input: Vec<(Range<u64>, V)>) -> RangeMap<u64, V> {
-    input.sort_by_key(|x| x.0);
-    let mut vec: Vec<(Range<u64>, V)> = Vec::with_capacity(input.len());
-    for (range, val) in input {
-        if let Some((last_range, last_val)) = vec.last_mut() {
-            if range.start <= last_range.end && val != *last_val {
-                continue;
-            }
-
-            if range.start <= last_range.end.saturating_add(1) && &val == last_val {
-                last_range.end = std::cmp::max(range.end, last_range.end);
-                continue;
-            }
-        }
-        vec.push((range, val));
-    }
-    RangeMap::from_sorted_vec(vec)
 }
 
 #[cfg(test)]
@@ -693,7 +684,6 @@ fn test_public_with_m() {
 
 #[test]
 fn test_func_lines_no_lines() {
-    use range_map::RangeMap;
     let line = b"FUNC c184 30 0 nsQueryInterfaceWithError::operator()(nsID const&, void**) const\n";
     let rest = &b""[..];
     assert_eq!(
@@ -706,7 +696,7 @@ fn test_func_lines_no_lines() {
                 parameter_size: 0,
                 name: "nsQueryInterfaceWithError::operator()(nsID const&, void**) const"
                     .to_string(),
-                lines: RangeMap::new(),
+                lines: Vec::new(),
             }
         )
     );
@@ -720,13 +710,13 @@ fn test_func_lines_and_lines() {
 1020 10 62 15
 ";
     let file = SymbolFile::from_bytes(data).expect("failed to parse!");
-    let (_, f) = file.functions.ranges_values().next().unwrap();
+    let f = file.functions.first().unwrap();
     assert_eq!(f.address, 0x1000);
     assert_eq!(f.size, 0x30);
     assert_eq!(f.parameter_size, 0x10);
     assert_eq!(f.name, "some func".to_string());
     assert_eq!(
-        f.lines.get(0x1000).unwrap(),
+        f.line_for_address(0x1000).unwrap(),
         &SourceLine {
             address: 0x1000,
             size: 0x10,
@@ -735,35 +725,26 @@ fn test_func_lines_and_lines() {
         }
     );
     assert_eq!(
-        f.lines.ranges_values().collect::<Vec<_>>(),
+        f.lines,
         vec![
-            &(
-                Range::<u64>::new(0x1000, 0x100F),
-                SourceLine {
-                    address: 0x1000,
-                    size: 0x10,
-                    file: 7,
-                    line: 42,
-                },
-            ),
-            &(
-                Range::<u64>::new(0x1010, 0x101F),
-                SourceLine {
-                    address: 0x1010,
-                    size: 0x10,
-                    file: 8,
-                    line: 52,
-                },
-            ),
-            &(
-                Range::<u64>::new(0x1020, 0x102F),
-                SourceLine {
-                    address: 0x1020,
-                    size: 0x10,
-                    file: 15,
-                    line: 62,
-                },
-            ),
+            SourceLine {
+                address: 0x1000,
+                size: 0x10,
+                file: 7,
+                line: 42,
+            },
+            SourceLine {
+                address: 0x1010,
+                size: 0x10,
+                file: 8,
+                line: 52,
+            },
+            SourceLine {
+                address: 0x1020,
+                size: 0x10,
+                file: 15,
+                line: 62,
+            },
         ]
     );
 }
@@ -776,7 +757,7 @@ fn test_func_with_m() {
 1020 10 62 15
 ";
     let file = SymbolFile::from_bytes(data).expect("failed to parse!");
-    let (_, _f) = file.functions.ranges_values().next().unwrap();
+    let _ = file.functions.first().unwrap();
 }
 
 #[test]
@@ -875,7 +856,7 @@ STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
 ";
     let file = SymbolFile::from_bytes(data).expect("failed to parse!");
-    let (_, cfi) = file.cfi_stack_info.ranges_values().next().unwrap();
+    let (_, cfi) = file.cfi_stack_info.iter().next().unwrap();
     assert_eq!(
         cfi,
         &StackInfoCfi {
@@ -936,72 +917,58 @@ STACK CFI INIT f00f f0 more init rules
         assert_eq!(p.parameter_size, 0x3);
         assert_eq!(p.name, "func 2".to_string());
     }
-    assert_eq!(sym.functions.ranges_values().count(), 3);
-    let funcs = sym
-        .functions
-        .ranges_values()
-        .map(|&(_, ref f)| f)
-        .collect::<Vec<_>>();
+    assert_eq!(sym.functions.len(), 3);
     {
-        let f = &funcs[0];
+        let f = &sym.functions[0];
         assert_eq!(f.address, 0x900);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some other func".to_string());
-        assert_eq!(f.lines.ranges_values().count(), 0);
+        assert_eq!(f.lines.len(), 0);
     }
     {
-        let f = &funcs[1];
+        let f = &sym.functions[1];
         assert_eq!(f.address, 0x1000);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
         assert_eq!(
-            f.lines.ranges_values().collect::<Vec<_>>(),
+            f.lines,
             vec![
-                &(
-                    Range::new(0x1000, 0x100F),
-                    SourceLine {
-                        address: 0x1000,
-                        size: 0x10,
-                        file: 7,
-                        line: 42,
-                    },
-                ),
-                &(
-                    Range::new(0x1010, 0x101F),
-                    SourceLine {
-                        address: 0x1010,
-                        size: 0x10,
-                        file: 8,
-                        line: 52,
-                    },
-                ),
-                &(
-                    Range::new(0x1020, 0x102F),
-                    SourceLine {
-                        address: 0x1020,
-                        size: 0x10,
-                        file: 15,
-                        line: 62,
-                    },
-                ),
+                SourceLine {
+                    address: 0x1000,
+                    size: 0x10,
+                    file: 7,
+                    line: 42,
+                },
+                SourceLine {
+                    address: 0x1010,
+                    size: 0x10,
+                    file: 8,
+                    line: 52,
+                },
+                SourceLine {
+                    address: 0x1020,
+                    size: 0x10,
+                    file: 15,
+                    line: 62,
+                },
             ]
         );
     }
     {
-        let f = &funcs[2];
+        let f = &sym.functions[2];
         assert_eq!(f.address, 0x1100);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "a third func".to_string());
-        assert_eq!(f.lines.ranges_values().count(), 0);
+        assert_eq!(f.lines.len(), 0);
     }
-    assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
+    assert_eq!(sym.win_stack_framedata_info.iter().count(), 1);
     let ws = sym
         .win_stack_framedata_info
-        .ranges_values()
-        .map(|&(_, ref s)| s)
+        .iter()
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1018,11 +985,11 @@ STACK CFI INIT f00f f0 more init rules
             WinStackThing::ProgramString("prog string".to_string())
         );
     }
-    assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
+    assert_eq!(sym.win_stack_fpo_info.iter().count(), 1);
     let ws = sym
         .win_stack_fpo_info
-        .ranges_values()
-        .map(|&(_, ref s)| s)
+        .iter()
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1039,11 +1006,11 @@ STACK CFI INIT f00f f0 more init rules
             WinStackThing::AllocatesBasePointer(true)
         );
     }
-    assert_eq!(sym.cfi_stack_info.ranges_values().count(), 2);
+    assert_eq!(sym.cfi_stack_info.iter().count(), 2);
     let cs = sym
         .cfi_stack_info
-        .ranges_values()
-        .map(|&(_, ref s)| s.clone())
+        .iter()
+        .map(|(_, s)| s.clone())
         .collect::<Vec<_>>();
     assert_eq!(
         cs[0],
@@ -1111,39 +1078,40 @@ FUNC 1001 10 10 some func overlap contained
         assert_eq!(p.parameter_size, 0x3);
         assert_eq!(p.name, "func 2".to_string());
     }
-    assert_eq!(sym.functions.ranges_values().count(), 1);
-    let funcs = sym
-        .functions
-        .ranges_values()
-        .map(|&(_, ref f)| f)
-        .collect::<Vec<_>>();
+    assert_eq!(sym.functions.len(), 2);
+    assert!(sym
+        .function_for_address(0x1000)
+        .unwrap()
+        .name
+        .starts_with("some func"));
+    assert_eq!(sym.function_for_address(0x1030).unwrap().address, 0x1001);
     {
-        let f = &funcs[0];
+        let f = &sym.functions[0];
         assert_eq!(f.address, 0x1000);
         assert_eq!(f.size, 0x30);
         assert_eq!(f.parameter_size, 0x10);
         assert_eq!(f.name, "some func".to_string());
         assert_eq!(
-            f.lines.ranges_values().collect::<Vec<_>>(),
+            f.lines,
             vec![
-                &(
-                    Range::new(0x1000, 0x100F),
-                    SourceLine {
-                        address: 0x1000,
-                        size: 0x10,
-                        file: 0,
-                        line: 42,
-                    },
-                ),
-                &(
-                    Range::new(0x1010, 0x101F),
-                    SourceLine {
-                        address: 0x1010,
-                        size: 0x10,
-                        file: 0,
-                        line: 52,
-                    },
-                ),
+                SourceLine {
+                    address: 0x1000,
+                    size: 0x10,
+                    file: 0,
+                    line: 42,
+                },
+                SourceLine {
+                    address: 0x1001,
+                    size: 0x10,
+                    file: 0,
+                    line: 44,
+                },
+                SourceLine {
+                    address: 0x1010,
+                    size: 0x10,
+                    file: 0,
+                    line: 52,
+                },
             ]
         );
     }
@@ -1238,11 +1206,11 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
 ";
     let sym = parse_symbol_bytes(&bytes[..]).unwrap();
 
-    assert_eq!(sym.win_stack_framedata_info.ranges_values().count(), 1);
+    assert_eq!(sym.win_stack_framedata_info.iter().count(), 1);
     let ws = sym
         .win_stack_framedata_info
-        .ranges_values()
-        .map(|&(_, ref s)| s)
+        .iter()
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1259,11 +1227,11 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
             WinStackThing::ProgramString("prog string".to_string())
         );
     }
-    assert_eq!(sym.win_stack_fpo_info.ranges_values().count(), 1);
+    assert_eq!(sym.win_stack_fpo_info.iter().count(), 1);
     let ws = sym
         .win_stack_fpo_info
-        .ranges_values()
-        .map(|&(_, ref s)| s)
+        .iter()
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1286,7 +1254,7 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
 fn address_size_overflow() {
     let bytes = b"FUNC 1 2 3 x\nffffffffffffffff 2 0 0\n";
     let sym = parse_symbol_bytes(bytes.as_slice()).unwrap();
-    let fun = sym.functions.get(1).unwrap();
-    assert!(fun.lines.is_empty());
+    let fun = sym.function_for_address(1).unwrap();
+    assert_eq!(fun.line_for_address(0x1234), None);
     assert!(fun.name == "x");
 }
