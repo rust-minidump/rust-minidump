@@ -66,7 +66,7 @@ where
     symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
-    let caller_ra = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
+    let caller_ra = stack_walker.caller_ctx.get_register_always(RETURN_ADDR);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
     if instruction_seems_valid(caller_ra, modules, symbol_provider).await {
