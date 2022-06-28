@@ -72,7 +72,7 @@ where
     if instruction_seems_valid(caller_ra, modules, symbol_provider).await {
         stack_walker
             .caller_ctx
-            .set_register(PROGRAM_COUNTER, caller_ra - 8);
+            .set_register(PROGRAM_COUNTER, caller_ra - 2 * POINTER_WIDTH);
     }
 
     trace!(
@@ -190,7 +190,7 @@ impl Unwind for MipsContext {
         // enforce progress and avoid infinite loops.
 
         let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always("sp") as u64;
+        let last_sp = self.get_register_always(STACK_POINTER) as u64;
         if sp <= last_sp {
             // Arm leaf functions may not actually touch the stack (thanks
             // to the link register allowing you to "push" the return address
