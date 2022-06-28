@@ -1160,7 +1160,7 @@ impl Arm64RegisterNumbers {
 }
 
 /// MIPS floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
@@ -1171,7 +1171,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 /// A MIPS CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
