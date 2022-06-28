@@ -19,7 +19,7 @@ use std::io::prelude::*;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::path::Path;
 use std::str;
 use std::time::{Duration, SystemTime};
@@ -32,8 +32,8 @@ use crate::system_info::{Cpu, Os, PointerWidth};
 use minidump_common::errors::{self as err};
 use minidump_common::format::{self as md};
 use minidump_common::format::{CvSignature, MINIDUMP_STREAM_TYPE};
-use minidump_common::traits::{IntoRangeMapSafe, Module};
-use range_map::{Range, RangeMap};
+use minidump_common::traits::Module;
+use rangemap::RangeMap;
 use time::format_description::well_known::Rfc3339;
 
 /// An index into the contents of a minidump.
@@ -189,10 +189,10 @@ pub struct MinidumpLinuxMaps<'a> {
 /// A memory mapping entry for the process we are analyzing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinidumpLinuxMapInfo<'a> {
-    /// The first address this metadata applies to
-    pub base_address: u64,
-    /// The last address this metadata applies to
-    pub final_address: u64,
+    /// The start address of the range
+    pub start_address: u64,
+    /// The end address of the range
+    pub end_address: u64,
 
     /// The kind of mapping
     pub kind: MinidumpLinuxMapKind<'a>,
@@ -296,8 +296,8 @@ pub struct MinidumpModule {
 pub struct MinidumpModuleList {
     /// The modules, in the order they were stored in the minidump.
     modules: Vec<MinidumpModule>,
-    /// Map from address range to index in modules. Use `MinidumpModuleList::module_at_address`.
-    modules_by_addr: RangeMap<u64, usize>,
+    /// Indexes into `modules`, ordered by module base address.
+    sorted_modules: Vec<usize>,
 }
 
 /// A mapping of thread ids to their names.
@@ -545,8 +545,8 @@ pub struct MinidumpException<'a> {
 pub struct MinidumpMemoryListBase<'a, Descriptor> {
     /// The memory regions, in the order they were stored in the  minidump.
     regions: Vec<MinidumpMemoryBase<'a, Descriptor>>,
-    /// Map from address range to index in regions. Use `MinidumpMemoryList::memory_at_address`.
-    regions_by_addr: RangeMap<u64, usize>,
+    /// Indexes into `regions`, ordered by region base address.
+    sorted_regions: Vec<usize>,
 }
 
 /// A list of memory regions included in a minidump.
@@ -1001,16 +1001,6 @@ impl MinidumpModule {
         )?;
         Ok(())
     }
-
-    fn memory_range(&self) -> Option<Range<u64>> {
-        if self.size() == 0 {
-            return None;
-        }
-        Some(Range::new(
-            self.base_address(),
-            self.base_address().checked_add(self.size())? - 1,
-        ))
-    }
 }
 
 impl Module for MinidumpModule {
@@ -1157,10 +1147,7 @@ impl MinidumpUnloadedModule {
         if self.size() == 0 {
             return None;
         }
-        Some(Range::new(
-            self.base_address(),
-            self.base_address().checked_add(self.size())? - 1,
-        ))
+        Some(self.base_address()..self.base_address().checked_add(self.size())?)
     }
 }
 
@@ -1397,19 +1384,23 @@ impl MinidumpModuleList {
     pub fn new() -> MinidumpModuleList {
         MinidumpModuleList {
             modules: vec![],
-            modules_by_addr: RangeMap::new(),
+            sorted_modules: vec![],
         }
     }
     /// Create a `MinidumpModuleList` from a list of `MinidumpModule`s.
     pub fn from_modules(modules: Vec<MinidumpModule>) -> MinidumpModuleList {
-        let modules_by_addr = modules
-            .iter()
-            .enumerate()
-            .map(|(i, module)| (module.memory_range(), i))
-            .into_rangemap_safe();
+        let mut sorted_modules: Vec<usize> = (0..modules.len()).collect();
+        sorted_modules.sort_by_key(|i| modules[*i].base_address());
+        sorted_modules.dedup_by(|ni, ci| {
+            let cur = &modules[*ci];
+            let next = &modules[*ni];
+            let cur_end_address = cur.base_address().saturating_add(cur.size());
+            let next_end_address = next.base_address().saturating_add(next.size());
+            cur_end_address >= next_end_address
+        });
         MinidumpModuleList {
             modules,
-            modules_by_addr,
+            sorted_modules,
         }
     }
 
@@ -1426,9 +1417,22 @@ impl MinidumpModuleList {
 
     /// Return a `MinidumpModule` whose address range covers `address`.
     pub fn module_at_address(&self, address: u64) -> Option<&MinidumpModule> {
-        self.modules_by_addr
-            .get(address)
-            .map(|&index| &self.modules[index])
+        let nearest_module = match self
+            .sorted_modules
+            .binary_search_by_key(&address, |i| self.modules[*i].base_address())
+        {
+            Ok(i) => &self.modules[self.sorted_modules[i]],
+            Err(0) => return None,
+            Err(i) => &self.modules[self.sorted_modules[i - 1]],
+        };
+        let end_address = nearest_module
+            .base_address()
+            .saturating_add(nearest_module.size());
+        if address < end_address {
+            Some(nearest_module)
+        } else {
+            None
+        }
     }
 
     /// Iterate over the modules in arbitrary order.
@@ -1438,9 +1442,7 @@ impl MinidumpModuleList {
 
     /// Iterate over the modules in order by memory address.
     pub fn by_addr(&self) -> impl DoubleEndedIterator<Item = &MinidumpModule> {
-        self.modules_by_addr
-            .ranges_values()
-            .map(move |&(_, index)| &self.modules[index])
+        self.sorted_modules.iter().map(move |i| &self.modules[*i])
     }
 
     /// Write a human-readable description of this `MinidumpModuleList` to `f`.
@@ -1508,7 +1510,7 @@ impl MinidumpUnloadedModuleList {
             .filter_map(|i| modules[i].memory_range().map(|r| (r, i)))
             .collect::<Vec<_>>();
 
-        modules_by_addr.sort_by_key(|(range, _idx)| *range);
+        modules_by_addr.sort_by_key(|(range, _idx)| range.start);
 
         MinidumpUnloadedModuleList {
             modules,
@@ -1528,7 +1530,7 @@ impl MinidumpUnloadedModuleList {
         // for now (unloaded_modules should be a bounded list anyway).
         self.modules_by_addr
             .iter()
-            .filter(move |(range, _idx)| range.contains(address))
+            .filter(move |(range, _idx)| range.contains(&address))
             .map(move |(_range, idx)| &self.modules[*idx])
     }
 
@@ -1709,10 +1711,7 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         if self.size == 0 {
             return None;
         }
-        Some(Range::new(
-            self.base_address,
-            self.base_address.checked_add(self.size)? - 1,
-        ))
+        Some(self.base_address..self.base_address.checked_add(self.size)?)
     }
 }
 
@@ -1721,7 +1720,7 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
     pub fn new() -> MinidumpMemoryListBase<'mdmp, Descriptor> {
         MinidumpMemoryListBase {
             regions: vec![],
-            regions_by_addr: RangeMap::new(),
+            sorted_regions: vec![],
         }
     }
 
@@ -1729,14 +1728,18 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
     pub fn from_regions(
         regions: Vec<MinidumpMemoryBase<'mdmp, Descriptor>>,
     ) -> MinidumpMemoryListBase<'mdmp, Descriptor> {
-        let regions_by_addr = regions
-            .iter()
-            .enumerate()
-            .map(|(i, region)| (region.memory_range(), i))
-            .into_rangemap_safe();
+        let mut sorted_regions: Vec<usize> = (0..regions.len()).collect();
+        sorted_regions.sort_by_key(|i| regions[*i].base_address);
+        sorted_regions.dedup_by(|ni, ci| {
+            let cur = &regions[*ci];
+            let next = &regions[*ni];
+            let cur_end_address = cur.base_address.saturating_add(cur.size);
+            let next_end_address = next.base_address.saturating_add(next.size);
+            cur_end_address >= next_end_address
+        });
         MinidumpMemoryListBase {
             regions,
-            regions_by_addr,
+            sorted_regions,
         }
     }
 
@@ -1745,9 +1748,22 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
         &self,
         address: u64,
     ) -> Option<&MinidumpMemoryBase<'mdmp, Descriptor>> {
-        self.regions_by_addr
-            .get(address)
-            .map(|&index| &self.regions[index])
+        let nearest_region = match self
+            .sorted_regions
+            .binary_search_by_key(&address, |i| self.regions[*i].base_address)
+        {
+            Ok(i) => &self.regions[self.sorted_regions[i]],
+            Err(0) => return None,
+            Err(i) => &self.regions[self.sorted_regions[i - 1]],
+        };
+        let end_address = nearest_region
+            .base_address
+            .saturating_add(nearest_region.size);
+        if address < end_address {
+            Some(nearest_region)
+        } else {
+            None
+        }
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
@@ -1766,9 +1782,7 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
     pub fn by_addr<'slf>(
         &'slf self,
     ) -> impl Iterator<Item = &'slf MinidumpMemoryBase<'mdmp, Descriptor>> {
-        self.regions_by_addr
-            .ranges_values()
-            .map(move |&(_, index)| &self.regions[index])
+        self.sorted_regions.iter().map(move |i| &self.regions[*i])
     }
 }
 
@@ -1958,8 +1972,8 @@ impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
         let regions_by_addr = regions
             .iter()
             .enumerate()
-            .map(|(i, region)| (region.memory_range(), i))
-            .into_rangemap_safe();
+            .filter_map(|(i, region)| region.memory_range().map(|r| (r, i)))
+            .collect();
         MinidumpMemoryInfoList {
             regions,
             regions_by_addr,
@@ -1969,8 +1983,8 @@ impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
     /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
     pub fn memory_info_at_address(&self, address: u64) -> Option<&MinidumpMemoryInfo<'mdmp>> {
         self.regions_by_addr
-            .get(address)
-            .map(|&index| &self.regions[index])
+            .get(&address)
+            .map(|index| &self.regions[*index])
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
@@ -1986,8 +2000,8 @@ impl<'mdmp> MinidumpMemoryInfoList<'mdmp> {
     /// Iterate over the memory regions in order by memory address.
     pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpMemoryInfo<'mdmp>> {
         self.regions_by_addr
-            .ranges_values()
-            .map(move |&(_, index)| &self.regions[index])
+            .iter()
+            .map(move |(_, index)| &self.regions[*index])
     }
 
     /// Write a human-readable description.
@@ -2037,10 +2051,7 @@ impl<'a> MinidumpMemoryInfo<'a> {
         if self.raw.region_size == 0 {
             return None;
         }
-        Some(Range::new(
-            self.raw.base_address,
-            self.raw.base_address.checked_add(self.raw.region_size)? - 1,
-        ))
+        Some(self.raw.base_address..self.raw.base_address.checked_add(self.raw.region_size)?)
     }
 
     /// Whether this memory range was executable.
@@ -2093,8 +2104,8 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
         let regions_by_addr = regions
             .iter()
             .enumerate()
-            .map(|(i, region)| (region.memory_range(), i))
-            .into_rangemap_safe();
+            .filter_map(|(i, region)| region.memory_range().map(|r| (r, i)))
+            .collect();
         Self {
             regions,
             regions_by_addr,
@@ -2104,8 +2115,8 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
     /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
     pub fn memory_info_at_address(&self, address: u64) -> Option<&MinidumpLinuxMapInfo<'mdmp>> {
         self.regions_by_addr
-            .get(address)
-            .map(|&index| &self.regions[index])
+            .get(&address)
+            .map(|index| &self.regions[*index])
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
@@ -2116,8 +2127,8 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
     /// Iterate over the memory regions in order by memory address.
     pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = &'slf MinidumpLinuxMapInfo<'mdmp>> {
         self.regions_by_addr
-            .ranges_values()
-            .map(move |&(_, index)| &self.regions[index])
+            .iter()
+            .map(move |(_, index)| &self.regions[*index])
     }
 
     /// Write a human-readable description.
@@ -2182,7 +2193,7 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
 
         let mut tokens = line.split_ascii_whitespace();
 
-        let (base_address, final_address) = tokens
+        let (start_address, end_address) = tokens
             .next()
             .and_then(|range| range.split_once(b'-'))
             .and_then(|(start, end)| {
@@ -2285,8 +2296,8 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         };
 
         Ok(MinidumpLinuxMapInfo {
-            base_address,
-            final_address,
+            start_address,
+            end_address,
             kind,
             is_read,
             is_write,
@@ -2301,12 +2312,12 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         write!(
             f,
             "MINIDUMP_LINUX_MAP_INFO
-  base_address          = {:#x}
-  final_address         = {:#x}
+  start_address         = {:#x}
+  end_address           = {:#x}
   kind                  = {:#?}
   permissions           =\x20
 ",
-            self.base_address, self.final_address, self.kind,
+            self.start_address, self.end_address, self.kind,
         )?;
 
         if self.is_read {
@@ -2335,11 +2346,10 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
     }
 
     pub fn memory_range(&self) -> Option<Range<u64>> {
-        // final address is inclusive afaik
-        if self.base_address > self.final_address {
+        if self.start_address > self.end_address {
             return None;
         }
-        Some(Range::new(self.base_address, self.final_address))
+        Some(self.start_address..self.end_address)
     }
 
     /// Whether this memory range was executable.
@@ -5433,8 +5443,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let maps = maps.iter().collect::<Vec<_>>();
         assert_eq!(maps.len(), 2);
 
-        assert_eq!(maps[0].base_address, 0xa90206ca83eb2852);
-        assert_eq!(maps[0].final_address, 0xb90206ca83eb3852);
+        assert_eq!(maps[0].start_address, 0xa90206ca83eb2852);
+        assert_eq!(maps[0].end_address, 0xb90206ca83eb3852);
         assert_eq!(
             maps[0].kind,
             MinidumpLinuxMapKind::File(Cow::Borrowed(LinuxOsStr::from_bytes(
@@ -5448,8 +5458,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert!(!maps[0].is_shared);
         assert!(maps[0].is_executable());
 
-        assert_eq!(maps[1].base_address, 0xc70206ca83eb2852);
-        assert_eq!(maps[1].final_address, 0xde0206ca83eb2852);
+        assert_eq!(maps[1].start_address, 0xc70206ca83eb2852);
+        assert_eq!(maps[1].end_address, 0xde0206ca83eb2852);
         assert_eq!(
             maps[1].kind,
             MinidumpLinuxMapKind::DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
@@ -5485,9 +5495,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"  10a00-10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(
                 map.kind,
                 File(Cow::Borrowed(LinuxOsStr::from_bytes(
@@ -5508,11 +5518,11 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"ffffffffff600000-ffffffffff601000 -wxs  10bac9000 fd:05 1196511  /usr/lib64/ libtdb1.so   (deleted) ");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0xffffffffff600000);
-            assert_eq!(map.final_address, 0xffffffffff601000);
+            assert_eq!(map.start_address, 0xffffffffff600000);
+            assert_eq!(map.end_address, 0xffffffffff601000);
             assert_eq!(
                 map.memory_range(),
-                Some(Range::new(0xffffffffff600000, 0xffffffffff601000))
+                Some(0xffffffffff600000..0xffffffffff601000)
             );
             assert_eq!(
                 map.kind,
@@ -5534,9 +5544,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack] ");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, MainThreadStack);
 
             assert!(!map.is_read);
@@ -5552,9 +5562,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack:1234567] ");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, Stack(1234567));
 
             assert!(!map.is_read);
@@ -5570,9 +5580,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 --  10bac9000 fd:05 1196511  [heap]");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, Heap);
 
             assert!(!map.is_read);
@@ -5588,9 +5598,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [vdso]");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, Vdso);
 
             assert!(map.is_read);
@@ -5606,9 +5616,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [asdfasd]");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(
                 map.kind,
                 UnknownSpecial(Cow::Borrowed(LinuxOsStr::from_bytes(b"[asdfasd]")))
@@ -5627,9 +5637,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00 -r-  10bac9000 fd:05 1196511  ");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, AnonymousMap);
 
             assert!(map.is_read);
@@ -5645,9 +5655,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"10a00-10b00");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.start_address, 0x10a00);
+            assert_eq!(map.end_address, 0x10b00);
+            assert_eq!(map.memory_range(), Some(0x10a00..0x10b00));
             assert_eq!(map.kind, AnonymousMap);
 
             assert!(!map.is_read);
@@ -5663,8 +5673,8 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"fffff-10000");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0xfffff);
-            assert_eq!(map.final_address, 0x10000);
+            assert_eq!(map.start_address, 0xfffff);
+            assert_eq!(map.end_address, 0x10000);
             assert_eq!(map.memory_range(), None);
         }
 
@@ -5673,9 +5683,9 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             let map = parse(b"fffff-fffff");
             let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0xfffff);
-            assert_eq!(map.final_address, 0xfffff);
-            assert_eq!(map.memory_range(), Some(Range::new(0xfffff, 0xfffff)));
+            assert_eq!(map.start_address, 0xfffff);
+            assert_eq!(map.end_address, 0xfffff);
+            assert_eq!(map.memory_range(), Some(0xfffff..0xfffff));
         }
 
         {
@@ -5757,7 +5767,7 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
             Some(&STOCK_VERSION_INFO),
         )
         .cv_record(&cv_record);
-        // module4 is fully contained within module1
+        // module4 is fully contained within module1 and also fully contained within module3
         let module4 = SynthModule::new(
             Endian::Little,
             0x100000001,
@@ -5811,15 +5821,10 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules[4].size(), 0x4000);
         assert_eq!(modules[4].code_file(), "module 5");
 
-        // module_at_address should discard overlapping modules.
-        assert_eq!(module_list.by_addr().count(), 2);
-        assert_eq!(
-            module_list
-                .module_at_address(0x100001000)
-                .unwrap()
-                .code_file(),
-            "module 1"
-        );
+        // module_at_address should discard fully subsumed modules.
+        assert_eq!(module_list.by_addr().count(), 3);
+        // 0x100001000 can be either module 1 or module 3.
+        assert!(module_list.module_at_address(0x100001000).is_some());
         assert_eq!(
             module_list
                 .module_at_address(0x100005000)
@@ -5952,12 +5957,14 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(regions[4].base_address, 0x2000);
         assert_eq!(regions[4].size, 0x1000);
 
-        // memory_at_address should discard overlapping regions.
-        assert_eq!(memory_list.by_addr().count(), 2);
+        // memory_at_address should discard fully subsumed regions.
+        assert_eq!(memory_list.by_addr().count(), 3);
+
+        // This address is covered by region[0] and region[2] so memory_at_address
+        // is allowed to return either one of them.
         let m1 = memory_list.memory_at_address(0x1a00).unwrap();
-        assert_eq!(m1.base_address, 0x1000);
-        assert_eq!(m1.size, 0x1000);
-        assert_eq!(m1.bytes, &[0u8; 0x1000][..]);
+        assert!(m1.base_address + m1.size >= 0x1a00);
+
         let m2 = memory_list.memory_at_address(0x2a00).unwrap();
         assert_eq!(m2.base_address, 0x2000);
         assert_eq!(m2.size, 0x1000);

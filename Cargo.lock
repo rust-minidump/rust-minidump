@@ -1068,7 +1068,7 @@ dependencies = [
  "minidump-common",
  "minidump-synth",
  "num-traits 0.2.15",
- "range-map",
+ "rangemap",
  "scroll 0.11.0",
  "test-assembler",
  "thiserror",
