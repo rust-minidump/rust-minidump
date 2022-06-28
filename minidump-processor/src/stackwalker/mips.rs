@@ -130,6 +130,78 @@ where
     None
 }
 
+async fn get_caller_by_scan<P>(
+    ctx: &MipsContext,
+    callee: &StackFrame,
+    stack_memory: &MinidumpMemory<'_>,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider + Sync,
+{
+    const MAX_STACK_SIZE: Pointer = 1024;
+    const MIN_ARGS: Pointer = 4;
+    trace!("unwind: trying scan");
+    // Stack scanning is just walking from the end of the frame until we encounter
+    // a value on the stack that looks like a pointer into some code (it's an address
+    // in a range covered by one of our modules). If we find such an instruction,
+    // we assume it's an pc value that was pushed by the CALL instruction that created
+    // the current frame. The next frame is then assumed to end just before that
+    // pc value.
+    let valid = &callee.context.valid;
+    let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
+
+    let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
+    // In case of mips32 ABI stack frame of a nonleaf function
+    // must have minimum stack frame assigned for 4 arguments (4 words).
+    // Move stack pointer for 4 words to avoid reporting non-existing frames
+    // for all frames except the topmost one.
+    // There is no way of knowing if topmost frame belongs to a leaf or
+    // a nonleaf function.
+    if callee.trust != FrameTrust::Context {
+        last_sp += MIN_ARGS * POINTER_WIDTH;
+        count -= MIN_ARGS;
+    }
+
+    for i in 0..count {
+        let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        trace!("unwind: scanning address {caller_pc:#08x}");
+        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
+            let caller_fp =
+                stack_memory.get_memory_at_address((address_of_pc - POINTER_WIDTH) as u64)?;
+            // pc is pushed by CALL, so sp is just address_of_pc + ptr
+            let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
+
+            // Don't do any more validation, and don't try to restore fp
+            // (that's what breakpad does!)
+
+            trace!(
+                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}, caller_fp: {caller_fp:#08x}"
+            );
+
+            let mut caller_ctx = MipsContext::default();
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - 2 * POINTER_WIDTH);
+            caller_ctx.set_register(STACK_POINTER, caller_sp);
+            caller_ctx.set_register(FRAME_POINTER, caller_fp);
+
+            let mut valid = HashSet::new();
+            valid.insert(PROGRAM_COUNTER);
+            valid.insert(STACK_POINTER);
+            valid.insert(FRAME_POINTER);
+
+            let context = MinidumpContext {
+                raw: MinidumpRawContext::Mips(caller_ctx),
+                valid: MinidumpContextValidity::Some(valid),
+            };
+            return Some(StackFrame::from_context(context, FrameTrust::Scan));
+        }
+    }
+
+    None
+}
+
 async fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,
@@ -170,6 +242,9 @@ impl Unwind for MipsContext {
         // if frame.is_none() && grand_callee.is_none() {
         //     frame = get_caller_for_leaf(self, modules, syms).await;
         // }
+        if frame.is_none() {
+            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
+        }
         let mut frame = frame?;
 
         // We now check the frame to see if it looks like unwinding is complete,
