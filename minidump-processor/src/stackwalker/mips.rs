@@ -76,9 +76,7 @@ where
     }
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_ra: 0x{:016x}, caller_sp: 0x{:016x}",
-        caller_ra,
-        caller_sp,
+        "unwind: cfi evaluation was successful -- caller_ra: {caller_ra:#016x}, caller_sp: {caller_sp:#016x}"
     );
 
     // Do absolutely NO validation! Yep! As long as CFI evaluation succeeds
@@ -169,9 +167,9 @@ impl Unwind for MipsContext {
             frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
         }
         // if we are at the context frame, we try to take the RA directly from the registers
-        if frame.is_none() && grand_callee.is_none() {
-            frame = get_caller_for_leaf(self, modules, syms).await;
-        }
+        // if frame.is_none() && grand_callee.is_none() {
+        //     frame = get_caller_for_leaf(self, modules, syms).await;
+        // }
         let mut frame = frame?;
 
         // We now check the frame to see if it looks like unwinding is complete,
