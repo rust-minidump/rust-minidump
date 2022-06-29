@@ -117,7 +117,7 @@ where
     // the current frame. The next frame is then assumed to end just before that
     // pc value.
     let valid = &callee.context.valid;
-    let mut last_sp = ctx.get_register(STACK_POINTER, valid)? as u32;
+    let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
     // In case of mips32 ABI stack frame of a nonleaf function
