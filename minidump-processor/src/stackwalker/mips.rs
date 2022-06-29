@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use log::trace;
+use minidump::format::ContextFlagsCpu;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
@@ -12,16 +13,22 @@ use crate::{FrameTrust, StackFrame, SymbolProvider, SystemInfo};
 
 type MipsContext = minidump::format::CONTEXT_MIPS;
 type Pointer = <MipsContext as CpuContext>::Register;
-type Registers = minidump::format::MipsRegisterNumbers;
 
-const POINTER_WIDTH: Pointer = std::mem::size_of::<Pointer>() as Pointer;
-const FRAME_POINTER: &str = Registers::FramePointer.name();
 const STACK_POINTER: &str = "sp";
 const PROGRAM_COUNTER: &str = "pc";
 const RETURN_ADDR: &str = "ra";
 const CALLEE_SAVED_REGS: &[&str] = &[
     "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "gp", "sp", "fp",
 ];
+
+fn pointer_width(ctx: &MipsContext) -> u64 {
+    let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
+    if flags.contains(ContextFlagsCpu::CONTEXT_MIPS64) {
+        8
+    } else {
+        4
+    }
+}
 
 /*"$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$to", "$t1",
 "$t2",   "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3",
@@ -40,6 +47,7 @@ where
     P: SymbolProvider + Sync,
 {
     trace!("unwind: trying cfi");
+    let pointer_width = pointer_width(ctx);
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = modules.module_at_address(callee.instruction)?;
@@ -72,7 +80,7 @@ where
     if instruction_seems_valid(caller_ra, modules, symbol_provider).await {
         stack_walker
             .caller_ctx
-            .set_register(PROGRAM_COUNTER, caller_ra - 2 * POINTER_WIDTH);
+            .set_register(PROGRAM_COUNTER, caller_ra - 2 * pointer_width);
     }
 
     trace!(
@@ -142,6 +150,7 @@ where
 {
     const MAX_STACK_SIZE: Pointer = 1024;
     const MIN_ARGS: Pointer = 4;
+    let pointer_width = pointer_width(ctx);
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
@@ -152,7 +161,7 @@ where
     let valid = &callee.context.valid;
     let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
+    let mut count = MAX_STACK_SIZE / pointer_width;
     // In case of mips32 ABI stack frame of a nonleaf function
     // must have minimum stack frame assigned for 4 arguments (4 words).
     // Move stack pointer for 4 words to avoid reporting non-existing frames
@@ -160,36 +169,31 @@ where
     // There is no way of knowing if topmost frame belongs to a leaf or
     // a nonleaf function.
     if callee.trust != FrameTrust::Context {
-        last_sp += MIN_ARGS * POINTER_WIDTH;
+        last_sp += MIN_ARGS * pointer_width;
         count -= MIN_ARGS;
     }
 
     for i in 0..count {
-        let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
+        let address_of_pc = last_sp.checked_add(i * pointer_width)?;
         let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
-        trace!("unwind: scanning address {caller_pc:#08x}");
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
-            let caller_fp =
-                stack_memory.get_memory_at_address((address_of_pc - POINTER_WIDTH) as u64)?;
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
-            let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
+            let caller_sp = address_of_pc.checked_add(pointer_width)?;
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}, caller_fp: {caller_fp:#08x}"
+                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}"
             );
 
             let mut caller_ctx = MipsContext::default();
-            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - 2 * POINTER_WIDTH);
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - 2 * pointer_width);
             caller_ctx.set_register(STACK_POINTER, caller_sp);
-            caller_ctx.set_register(FRAME_POINTER, caller_fp);
 
             let mut valid = HashSet::new();
             valid.insert(PROGRAM_COUNTER);
             valid.insert(STACK_POINTER);
-            valid.insert(FRAME_POINTER);
 
             let context = MinidumpContext {
                 raw: MinidumpRawContext::Mips(caller_ctx),
