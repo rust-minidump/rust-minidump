@@ -107,7 +107,7 @@ where
     P: SymbolProvider + Sync,
 {
     const MAX_STACK_SIZE: u32 = 1024;
-    const MIN_ARGS: u32 = 0;
+    const MIN_ARGS: u32 = 4;
     const POINTER_WIDTH: u32 = 4;
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -204,7 +204,7 @@ where
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
+        let caller_pc = stack_memory.get_memory_at_address_be(address_of_pc)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
