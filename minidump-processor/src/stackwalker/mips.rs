@@ -1,11 +1,13 @@
 use std::collections::HashSet;
+use std::convert::TryFrom;
 
 use log::trace;
 use minidump::format::ContextFlagsCpu;
 use minidump::{
-    CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
-    MinidumpRawContext,
+    CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpMemory,
+    MinidumpModuleList, MinidumpRawContext,
 };
+use scroll::ctx::{SizeWith, TryFromCtx};
 
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
@@ -16,38 +18,27 @@ type Pointer = <MipsContext as CpuContext>::Register;
 
 const STACK_POINTER: &str = "sp";
 const PROGRAM_COUNTER: &str = "pc";
-const RETURN_ADDR: &str = "ra";
 const CALLEE_SAVED_REGS: &[&str] = &[
     "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "gp", "sp", "fp",
 ];
 
-fn pointer_width(ctx: &MipsContext) -> u64 {
-    let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
-    if flags.contains(ContextFlagsCpu::CONTEXT_MIPS64) {
-        8
-    } else {
-        4
-    }
-}
-
-/*"$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$to", "$t1",
-"$t2",   "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3",
-"$s4",   "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp",
-"$fp",   "$ra",*/
-
-async fn get_caller_by_cfi<P>(
-    ctx: &MipsContext,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory<'_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+async fn get_caller_by_cfi<'a, C, P>(
+    ctx: &'a C,
+    callee: &'a StackFrame,
+    grand_callee: Option<&'a StackFrame>,
+    stack_memory: &'a MinidumpMemory<'_>,
+    modules: &'a MinidumpModuleList,
+    symbol_provider: &'a P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
+    // all these bounds are essentially duplicated from `CfiStackWalker` :-(
+    C: CpuContext + IntoRawContext + Clone + Send + Sync,
+    C::Register: TryFrom<u64>,
+    u64: TryFrom<C::Register>,
+    C::Register: TryFromCtx<'a, Endian, [u8], Error = scroll::Error> + SizeWith<Endian>,
 {
     trace!("unwind: trying cfi");
-    let pointer_width = pointer_width(ctx);
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = modules.module_at_address(callee.instruction)?;
@@ -74,17 +65,11 @@ where
     symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
-    let caller_ra = stack_walker.caller_ctx.get_register_always(RETURN_ADDR);
+    let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
-    if instruction_seems_valid(caller_ra, modules, symbol_provider).await {
-        stack_walker
-            .caller_ctx
-            .set_register(PROGRAM_COUNTER, caller_ra - 2 * pointer_width);
-    }
-
     trace!(
-        "unwind: cfi evaluation was successful -- caller_ra: {caller_ra:#016x}, caller_sp: {caller_sp:#016x}"
+        "unwind: cfi evaluation was successful -- caller_pc: {caller_pc:#016x}, caller_sp: {caller_sp:#016x}"
     );
 
     // Do absolutely NO validation! Yep! As long as CFI evaluation succeeds
@@ -93,7 +78,7 @@ where
     // we should start with a baseline of parity.
 
     let context = MinidumpContext {
-        raw: MinidumpRawContext::Mips(stack_walker.caller_ctx),
+        raw: stack_walker.caller_ctx.into_ctx(),
         valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
     };
     Some(StackFrame::from_context(context, FrameTrust::CallFrameInfo))
@@ -110,34 +95,6 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
     }
 }
 
-async fn get_caller_for_leaf<P>(
-    ctx: &MipsContext,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
-) -> Option<StackFrame>
-where
-    P: SymbolProvider + Sync,
-{
-    trace!("unwind: trying leaf function context");
-
-    let return_addr = ctx.get_register_always(RETURN_ADDR);
-    if instruction_seems_valid(return_addr, modules, symbol_provider).await {
-        let mut caller_ctx = ctx.clone();
-        caller_ctx.set_register(PROGRAM_COUNTER, return_addr - 8);
-
-        let mut valid = HashSet::new();
-        valid.insert(PROGRAM_COUNTER);
-        valid.insert(STACK_POINTER);
-
-        let context = MinidumpContext {
-            raw: MinidumpRawContext::Mips(caller_ctx),
-            valid: MinidumpContextValidity::Some(valid),
-        };
-        return Some(StackFrame::from_context(context, FrameTrust::FramePointer));
-    }
-    None
-}
-
 async fn get_caller_by_scan<P>(
     ctx: &MipsContext,
     callee: &StackFrame,
@@ -148,8 +105,8 @@ async fn get_caller_by_scan<P>(
 where
     P: SymbolProvider + Sync,
 {
-    const MAX_STACK_SIZE: Pointer = 1024;
-    const MIN_ARGS: Pointer = 4;
+    const MAX_STACK_SIZE: u64 = 1024;
+    const MIN_ARGS: u64 = 4;
     let pointer_width = pointer_width(ctx);
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -287,5 +244,35 @@ impl Unwind for MipsContext {
         frame.instruction = ip - 8;
 
         Some(frame)
+    }
+}
+
+fn pointer_width(ctx: &MipsContext) -> u64 {
+    let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
+    if flags.contains(ContextFlagsCpu::CONTEXT_MIPS64) {
+        8
+    } else {
+        4
+    }
+}
+
+/// This is a hack to have a different [`CpuContext`] type/impl depending on the
+/// context flags of the inner [`MipsContext`]
+#[derive(Clone)]
+struct Mips32Context(MipsContext);
+
+impl IntoRawContext for Mips32Context {
+    fn into_ctx(self) -> MinidumpRawContext {
+        MinidumpRawContext::Mips(self.0)
+    }
+}
+
+trait IntoRawContext {
+    fn into_ctx(self) -> MinidumpRawContext;
+}
+
+impl IntoRawContext for MipsContext {
+    fn into_ctx(self) -> MinidumpRawContext {
+        MinidumpRawContext::Mips(self)
     }
 }
