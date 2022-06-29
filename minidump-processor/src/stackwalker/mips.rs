@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use log::trace;
 use minidump::format::ContextFlagsCpu;
@@ -95,7 +95,74 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
     }
 }
 
-async fn get_caller_by_scan<P>(
+async fn get_caller_by_scan32<P>(
+    ctx: &Mips32Context,
+    callee: &StackFrame,
+    stack_memory: &MinidumpMemory<'_>,
+    modules: &MinidumpModuleList,
+    symbol_provider: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider + Sync,
+{
+    const MAX_STACK_SIZE: u32 = 1024;
+    const MIN_ARGS: u32 = 4;
+    const POINTER_WIDTH: u32 = 4;
+    trace!("unwind: trying scan");
+    // Stack scanning is just walking from the end of the frame until we encounter
+    // a value on the stack that looks like a pointer into some code (it's an address
+    // in a range covered by one of our modules). If we find such an instruction,
+    // we assume it's an pc value that was pushed by the CALL instruction that created
+    // the current frame. The next frame is then assumed to end just before that
+    // pc value.
+    let valid = &callee.context.valid;
+    let mut last_sp = ctx.get_register(STACK_POINTER, valid)? as u32;
+
+    let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
+    // In case of mips32 ABI stack frame of a nonleaf function
+    // must have minimum stack frame assigned for 4 arguments (4 words).
+    // Move stack pointer for 4 words to avoid reporting non-existing frames
+    // for all frames except the topmost one.
+    // There is no way of knowing if topmost frame belongs to a leaf or
+    // a nonleaf function.
+    if callee.trust != FrameTrust::Context {
+        last_sp += MIN_ARGS * POINTER_WIDTH;
+        count -= MIN_ARGS;
+    }
+
+    for i in 0..count {
+        let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
+            // pc is pushed by CALL, so sp is just address_of_pc + ptr
+            let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
+
+            // Don't do any more validation, and don't try to restore fp
+            // (that's what breakpad does!)
+
+            trace!(
+                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}"
+            );
+
+            let mut caller_ctx = MipsContext::default();
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - (2 * POINTER_WIDTH as u64));
+            caller_ctx.set_register(STACK_POINTER, caller_sp as u64);
+
+            let mut valid = HashSet::new();
+            valid.insert(PROGRAM_COUNTER);
+            valid.insert(STACK_POINTER);
+
+            let context = MinidumpContext {
+                raw: MinidumpRawContext::Mips(caller_ctx),
+                valid: MinidumpContextValidity::Some(valid),
+            };
+            return Some(StackFrame::from_context(context, FrameTrust::Scan));
+        }
+    }
+
+    None
+}
+async fn get_caller_by_scan64<P>(
     ctx: &MipsContext,
     callee: &StackFrame,
     stack_memory: &MinidumpMemory<'_>,
@@ -107,7 +174,7 @@ where
 {
     const MAX_STACK_SIZE: u64 = 1024;
     const MIN_ARGS: u64 = 4;
-    let pointer_width = pointer_width(ctx);
+    const POINTER_WIDTH: u64 = 8;
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
@@ -118,7 +185,7 @@ where
     let valid = &callee.context.valid;
     let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    let mut count = MAX_STACK_SIZE / pointer_width;
+    let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
     // In case of mips32 ABI stack frame of a nonleaf function
     // must have minimum stack frame assigned for 4 arguments (4 words).
     // Move stack pointer for 4 words to avoid reporting non-existing frames
@@ -126,16 +193,16 @@ where
     // There is no way of knowing if topmost frame belongs to a leaf or
     // a nonleaf function.
     if callee.trust != FrameTrust::Context {
-        last_sp += MIN_ARGS * pointer_width;
+        last_sp += MIN_ARGS * POINTER_WIDTH;
         count -= MIN_ARGS;
     }
 
     for i in 0..count {
-        let address_of_pc = last_sp.checked_add(i * pointer_width)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
-            let caller_sp = address_of_pc.checked_add(pointer_width)?;
+            let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)
@@ -145,7 +212,7 @@ where
             );
 
             let mut caller_ctx = MipsContext::default();
-            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - 2 * pointer_width);
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - (2 * POINTER_WIDTH));
             caller_ctx.set_register(STACK_POINTER, caller_sp);
 
             let mut valid = HashSet::new();
@@ -192,20 +259,40 @@ impl Unwind for MipsContext {
     where
         P: SymbolProvider + Sync,
     {
+        let ctx = Mips32Context::try_from(self.clone());
         let stack = stack_memory.as_ref()?;
 
         // .await doesn't like closures, so don't use Option chaining
         let mut frame = None;
         if frame.is_none() {
-            frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
+            match &ctx {
+                Ok(mips32) => {
+                    frame =
+                        get_caller_by_cfi(mips32, callee, grand_callee, stack, modules, syms).await
+                }
+                Err(mips64) => {
+                    frame =
+                        get_caller_by_cfi(mips64, callee, grand_callee, stack, modules, syms).await
+                }
+            }
+        }
+        if frame.is_none() {
+            match &ctx {
+                Ok(mips32) => {
+                    frame = get_caller_by_scan32(mips32, callee, stack, modules, syms).await
+                }
+                Err(mips64) => {
+                    frame = get_caller_by_scan64(mips64, callee, stack, modules, syms).await
+                }
+            }
         }
         // if we are at the context frame, we try to take the RA directly from the registers
         // if frame.is_none() && grand_callee.is_none() {
         //     frame = get_caller_for_leaf(self, modules, syms).await;
         // }
-        if frame.is_none() {
-            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
-        }
+        // if frame.is_none() {
+        //     frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
+        // }
         let mut frame = frame?;
 
         // We now check the frame to see if it looks like unwinding is complete,
@@ -261,6 +348,28 @@ fn pointer_width(ctx: &MipsContext) -> u64 {
 #[derive(Clone)]
 struct Mips32Context(MipsContext);
 
+impl CpuContext for Mips32Context {
+    type Register = u32;
+
+    const REGISTERS: &'static [&'static str] = <MipsContext as CpuContext>::REGISTERS;
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        self.0.get_register_always(reg) as u32
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        self.0.set_register(reg, val.into())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        self.0.stack_pointer_register_name()
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        self.0.instruction_pointer_register_name()
+    }
+}
+
 impl IntoRawContext for Mips32Context {
     fn into_ctx(self) -> MinidumpRawContext {
         MinidumpRawContext::Mips(self.0)
@@ -274,5 +383,18 @@ trait IntoRawContext {
 impl IntoRawContext for MipsContext {
     fn into_ctx(self) -> MinidumpRawContext {
         MinidumpRawContext::Mips(self)
+    }
+}
+
+impl TryFrom<MipsContext> for Mips32Context {
+    type Error = MipsContext;
+
+    fn try_from(ctx: MipsContext) -> Result<Self, Self::Error> {
+        if ContextFlagsCpu::from_flags(ctx.context_flags).contains(ContextFlagsCpu::CONTEXT_MIPS64)
+        {
+            Err(ctx)
+        } else {
+            Ok(Self(ctx))
+        }
     }
 }
