@@ -10,13 +10,13 @@ use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
-use log::trace;
 use minidump::format::CONTEXT_X86;
 use minidump::{
     MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
 };
 use std::collections::HashSet;
+use tracing::trace;
 
 type Pointer = u32;
 const POINTER_WIDTH: Pointer = 4;
@@ -36,7 +36,7 @@ async fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying cfi");
+    trace!("trying cfi");
 
     let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
@@ -75,7 +75,7 @@ where
     let caller_sp = stack_walker.caller_ctx.esp;
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        "cfi evaluation was successful -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
         caller_ip,
         caller_sp,
     );
@@ -98,7 +98,7 @@ where
     //
     // It also has some weird scanning to try to adjust the computed bp?
 
-    trace!("unwind: cfi result seems valid");
+    trace!("cfi result seems valid");
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::X86(stack_walker.caller_ctx),
@@ -128,7 +128,7 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying frame pointer");
+    trace!("trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
@@ -176,7 +176,7 @@ where
     // desirable.
 
     trace!(
-        "unwind: frame pointer seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+        "frame pointer seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
         caller_ip,
         caller_sp,
     );
@@ -208,7 +208,7 @@ async fn get_caller_by_scan<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -219,7 +219,7 @@ where
         MinidumpContextValidity::All => Some(ctx.ebp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
-                trace!("unwind: cannot scan without stack pointer");
+                trace!("cannot scan without stack pointer");
                 return None;
             }
             if which.contains(FRAME_POINTER_REGISTER) {
@@ -301,7 +301,7 @@ where
             }
 
             trace!(
-                "unwind: scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+                "scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
                 caller_ip,
                 caller_sp,
             );
@@ -423,14 +423,14 @@ impl Unwind for CONTEXT_X86 {
         // if the instruction is within the first ~page of memory, it's basically
         // null, and we can assume unwinding is complete.
         if frame.context.get_instruction_pointer() < 4096 {
-            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
         // If the new stack pointer is at a lower address than the old,
         // then that's clearly incorrect. Treat this as end-of-stack to
         // enforce progress and avoid infinite loops.
         if frame.context.get_stack_pointer() <= self.esp as u64 {
-            trace!("unwind: stack pointer went backwards, assuming unwind complete");
+            trace!("stack pointer went backwards, assuming unwind complete");
             return None;
         }
 

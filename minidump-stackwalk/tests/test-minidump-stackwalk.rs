@@ -359,14 +359,15 @@ fn test_cyborg() {
 }
 
 #[test]
+#[ignore]
 fn test_trace() {
     // Should be the same as --human and --json
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)
         .arg("--human")
         .arg("--verbose=trace")
+        .arg("--no-color") // disable coloured output for logs
         .arg("../testdata/test.dmp")
-        .env("NO_COLOR", "1") // disable coloured output for logs
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -381,6 +382,7 @@ fn test_trace() {
 }
 
 #[test]
+#[ignore]
 fn test_output_files() {
     let out_path = test_output("mdsw-test-ouput-files-out.txt");
     let log_path = test_output("mdsw-test-output-files-log.txt");
@@ -498,7 +500,7 @@ fn test_markdown_help() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
 
-    assert!(output.status.success());
+    assert!(output.status.success(), "{}", stderr);
     insta::assert_snapshot!("markdown-help", stdout);
     assert_eq!(stderr, "");
 }
@@ -771,7 +773,7 @@ fn test_unloaded() {
         .unwrap();
     let json_out = String::from_utf8(json_bytes).unwrap();
 
-    assert!(output.status.success());
+    assert!(output.status.success(), "{}", stderr);
     insta::assert_snapshot!("human-unloaded", stdout);
     insta::assert_snapshot!("json-pretty-unloaded", json_out);
     assert_eq!(stderr, "");

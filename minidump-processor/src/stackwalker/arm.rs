@@ -8,13 +8,13 @@ use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
-use log::trace;
 use minidump::system_info::Os;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext,
 };
 use std::collections::HashSet;
+use tracing::trace;
 
 type ArmContext = minidump::format::CONTEXT_ARM;
 type Pointer = <ArmContext as CpuContext>::Register;
@@ -38,7 +38,7 @@ async fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying cfi");
+    trace!("trying cfi");
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = modules.module_at_address(callee.instruction)?;
@@ -70,7 +70,7 @@ where
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        "cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_pc,
         caller_sp,
     );
@@ -119,7 +119,7 @@ where
         return None;
     }
 
-    trace!("unwind: trying frame pointer");
+    trace!("trying frame pointer");
     // Assume that the standard %fp-using ARM calling convention is in use.
     // The main quirk of this ABI is that the return address doesn't need to
     // be restored from the stack -- it's already in the link register (lr).
@@ -166,7 +166,7 @@ where
     // Don't do any more validation, just assume it worked.
 
     trace!(
-        "unwind: frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        "frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_pc,
         caller_sp,
     );
@@ -200,7 +200,7 @@ async fn get_caller_by_scan<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -233,7 +233,7 @@ where
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: 0x{:08x}, caller_sp: 0x{:08x}",
+                "scan seems valid -- caller_pc: 0x{:08x}, caller_sp: 0x{:08x}",
                 caller_pc,
                 caller_sp,
             );
@@ -348,7 +348,7 @@ impl Unwind for ArmContext {
         // if the instruction is within the first ~page of memory, it's basically
         // null, and we can assume unwinding is complete.
         if frame.context.get_instruction_pointer() < 4096 {
-            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
         // If the new stack pointer is at a lower address than the old,
@@ -364,7 +364,7 @@ impl Unwind for ArmContext {
             // more strict validation to avoid infinite loops.
             let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
             if !is_leaf {
-                trace!("unwind: stack pointer went backwards, assuming unwind complete");
+                trace!("stack pointer went backwards, assuming unwind complete");
                 return None;
             }
         }

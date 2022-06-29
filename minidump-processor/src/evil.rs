@@ -1,4 +1,3 @@
-use log::error;
 use serde_json::map::Map;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -6,6 +5,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::str::FromStr;
+use tracing::error;
 
 /// Things extracted from the Evil JSON File
 #[derive(Debug, Default)]

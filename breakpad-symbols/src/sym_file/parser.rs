@@ -1,10 +1,10 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use log::warn;
 use nom::IResult::*;
 use nom::*;
 use range_map::{Range, RangeMap};
+use tracing::warn;
 
 use std::collections::HashMap;
 use std::fmt::Debug;

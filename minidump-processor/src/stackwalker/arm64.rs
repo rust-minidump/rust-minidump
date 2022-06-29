@@ -8,12 +8,12 @@ use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
-use log::trace;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
     MinidumpRawContext, Module,
 };
 use std::collections::HashSet;
+use tracing::trace;
 
 type ArmContext = minidump::format::CONTEXT_ARM64;
 type Pointer = <ArmContext as CpuContext>::Register;
@@ -39,7 +39,7 @@ async fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying cfi");
+    trace!("trying cfi");
 
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
@@ -73,7 +73,7 @@ where
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        "cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_pc,
         caller_sp,
     );
@@ -116,7 +116,7 @@ fn get_caller_by_frame_pointer<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying frame pointer");
+    trace!("trying frame pointer");
     // Assume that the standard %fp-using ARM64 calling convention is in use.
     // The main quirk of this ABI is that the return address doesn't need to
     // be restored from the stack -- it's already in the link register (lr).
@@ -175,14 +175,14 @@ where
 
     // Don't accept obviously wrong instruction pointers.
     if is_non_canonical(caller_pc) {
-        trace!("unwind: rejecting frame pointer result for unreasonable instruction pointer");
+        trace!("rejecting frame pointer result for unreasonable instruction pointer");
         return None;
     }
 
     // Don't actually validate that the stack makes sense (duplicating breakpad behaviour).
 
     trace!(
-        "unwind: frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
+        "frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_pc,
         caller_sp,
     );
@@ -282,7 +282,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
         // a module so we don't start corrupting normal pointers that are just
         // in modules we don't know about.
         if modules.module_at_address(stripped).is_some() {
-            // trace!("unwind: stripped pointer {:016x} -> {:016x}", ptr, stripped);
+            // trace!("stripped pointer {:016x} -> {:016x}", ptr, stripped);
             return stripped;
         }
     }
@@ -300,7 +300,7 @@ async fn get_caller_by_scan<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -333,7 +333,7 @@ where
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: 0x{:08x}, caller_sp: 0x{:08x}",
+                "scan seems valid -- caller_pc: 0x{:08x}, caller_sp: 0x{:08x}",
                 caller_pc,
                 caller_sp,
             );
@@ -456,7 +456,7 @@ impl Unwind for ArmContext {
         // if the instruction is within the first ~page of memory, it's basically
         // null, and we can assume unwinding is complete.
         if frame.context.get_instruction_pointer() < 4096 {
-            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
 
@@ -474,7 +474,7 @@ impl Unwind for ArmContext {
             // more strict validation to avoid infinite loops.
             let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
             if !is_leaf {
-                trace!("unwind: stack pointer went backwards, assuming unwind complete");
+                trace!("stack pointer went backwards, assuming unwind complete");
                 return None;
             }
         }

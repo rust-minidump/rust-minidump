@@ -10,7 +10,6 @@ use crate::process_state::{FrameTrust, StackFrame};
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
-use log::trace;
 use minidump::format::CONTEXT_AMD64;
 use minidump::system_info::Os;
 use minidump::{
@@ -18,6 +17,7 @@ use minidump::{
     MinidumpRawContext,
 };
 use std::collections::HashSet;
+use tracing::trace;
 
 type Pointer = u64;
 const POINTER_WIDTH: Pointer = 8;
@@ -38,7 +38,7 @@ async fn get_caller_by_cfi<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying cfi");
+    trace!("trying cfi");
 
     let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
@@ -77,7 +77,7 @@ where
     let caller_sp = stack_walker.caller_ctx.rsp;
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
+        "cfi evaluation was successful -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_ip,
         caller_sp,
     );
@@ -87,7 +87,7 @@ where
     // values are correct. I Don't Like This, but it's what breakpad does and
     // we should start with a baseline of parity.
 
-    trace!("unwind: cfi result seems valid");
+    trace!("cfi result seems valid");
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::Amd64(stack_walker.caller_ctx),
@@ -130,7 +130,7 @@ where
         return None;
     }
 
-    trace!("unwind: trying frame pointer");
+    trace!("trying frame pointer");
     if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
@@ -181,7 +181,7 @@ where
     // Since we're assuming coherent frame pointers, check that the frame pointers
     // and stack pointers are well-ordered.
     if caller_sp <= last_bp || caller_bp < caller_sp {
-        trace!("unwind: rejecting frame pointer result for unreasonable frame pointer");
+        trace!("rejecting frame pointer result for unreasonable frame pointer");
         return None;
     }
     // Since we're assuming coherent frame pointers, check that the resulting
@@ -189,17 +189,17 @@ where
     let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp as u64)?;
     // Don't accept obviously wrong instruction pointers.
     if is_non_canonical(caller_ip) {
-        trace!("unwind: rejecting frame pointer result for unreasonable instruction pointer");
+        trace!("rejecting frame pointer result for unreasonable instruction pointer");
         return None;
     }
     // Don't accept obviously wrong stack pointers.
     if !stack_seems_valid(caller_sp, last_sp, stack_memory) {
-        trace!("unwind: rejecting frame pointer result for unreasonable stack pointer");
+        trace!("rejecting frame pointer result for unreasonable stack pointer");
         return None;
     }
 
     trace!(
-        "unwind: frame pointer seems valid -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
+        "frame pointer seems valid -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
         caller_ip,
         caller_sp,
     );
@@ -231,7 +231,7 @@ async fn get_caller_by_scan<P>(
 where
     P: SymbolProvider + Sync,
 {
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -242,7 +242,7 @@ where
         MinidumpContextValidity::All => Some(ctx.rbp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
-                trace!("unwind: cannot scan without stack pointer");
+                trace!("cannot scan without stack pointer");
                 return None;
             }
             if which.contains(FRAME_POINTER_REGISTER) {
@@ -327,7 +327,7 @@ where
             }
 
             trace!(
-                "unwind: scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
+                "scan seems valid -- caller_ip: 0x{:08x}, caller_sp: 0x{:08x}",
                 caller_ip,
                 caller_sp,
             );
@@ -461,14 +461,14 @@ impl Unwind for CONTEXT_AMD64 {
         // if the instruction is within the first ~page of memory, it's basically
         // null, and we can assume unwinding is complete.
         if frame.context.get_instruction_pointer() < 4096 {
-            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
         // If the new stack pointer is at a lower address than the old,
         // then that's clearly incorrect. Treat this as end-of-stack to
         // enforce progress and avoid infinite loops.
         if frame.context.get_stack_pointer() <= self.rsp {
-            trace!("unwind: stack pointer went backwards, assuming unwind complete");
+            trace!("stack pointer went backwards, assuming unwind complete");
             return None;
         }
 

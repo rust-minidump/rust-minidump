@@ -1,365 +1,270 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use std::boxed::Box;
-use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::panic;
-use std::path::Path;
-use std::str::FromStr;
 use std::time::Duration;
+use std::{boxed::Box, path::PathBuf};
 
 use minidump::*;
 use minidump_processor::{
     http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
 };
 
-use clap::{AppSettings, Arg, ArgGroup, Command};
-use log::error;
-use simplelog::{
-    ColorChoice, ConfigBuilder, Level, LevelFilter, TermLogger, TerminalMode, WriteLogger,
-};
+use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
+use tracing::error;
+use tracing::level_filters::LevelFilter;
 
-fn make_app() -> Command<'static> {
-    Command::new("minidump-stackwalk")
-        .version(clap::crate_version!())
-        .about("Analyzes minidumps and produces a report (either human-readable or JSON).")
-        .next_line_help(true)
-        .setting(AppSettings::DeriveDisplayOrder)
-        .override_usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...")
-        .arg(Arg::new("json").long("json").long_help(
-            "Emit a machine-readable JSON report.
+/// Analyzes minidumps and produces a report (either human-readable or JSON)
+///
+/// NOTES:
+///
+/// Purpose of Symbols:
+///
+/// Symbols are used for two purposes:
+///
+///  1. To fill in more information about each frame of the backtraces. (function names, lines, etc.)
+///  2. To do produce a more *accurate* backtrace. This is primarily accomplished with
+///     call frame information (CFI), but just knowing what parts of a module maps to actual
+///     code is also useful!
+///
+/// Supported Symbol Formats:
+///
+/// Currently only breakpad text symbol files are supported, although we hope to eventually
+/// support native formats like PDB and DWARF as well.
+///
+/// Breakpad Symbol Files:
+///
+/// Breakpad symbol files are basically a simplified version of the information found in
+/// native debuginfo formats. We recommend using a version of dump_syms to generate them.
+///
+/// See:
+/// * <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md>
+/// * mozilla's dump_syms (co-developed with this program): <https://github.com/mozilla/dump_syms>
+#[derive(Parser)]
+#[clap(version, about, long_about = None)]
+#[clap(propagate_version = true)]
+#[clap(group(ArgGroup::new("output-format").args(&[
+    "json",
+    "human",
+    "cyborg",
+    "dump",
+    "help-markdown",
+])))]
+#[clap(override_usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]..."))]
+#[clap(setting(AppSettings::DeriveDisplayOrder))]
+#[clap(verbatim_doc_comment)]
+struct Cli {
+    /// Emit a human-readable report (the default)
+    ///
+    /// The human-readable report does not have a specified format, and may not have as
+    /// many details as the JSON format. It is intended for quickly inspecting
+    /// a crash or debugging rust-minidump itself.
+    #[clap(long)]
+    human: bool,
 
-The schema for this output is officially documented here:
-https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md",
-        ))
-        .arg(Arg::new("human").long("human").long_help(
-            "Emit a human-readable report (the default).
+    /// Emit a machine-readable JSON report
+    ///
+    /// The schema for this output is officially documented here:
+    /// <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
+    #[clap(long)]
+    json: bool,
 
-The human-readable report does not have a specified format, and may not have as \
-many details as the JSON format. It is intended for quickly inspecting \
-a crash or debugging rust-minidump itself.",
-        ))
-        .arg(
-            Arg::new("cyborg")
-                .long("cyborg")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "Combine --human and --json
+    /// Combine --human and --json
+    ///
+    /// Because this creates two output streams, you must specify a path to write the --json
+    /// output to. The --human output will be the 'primary' output and default to stdout, which
+    /// can be configured with --output-file as normal.
+    #[clap(long)]
+    cyborg: Option<PathBuf>,
 
-Because this creates two output streams, you must specify a path to write the --json \
-output to. The --human output will be the 'primary' output and default to stdout, which \
-can be configured with --output-file as normal.",
-                ),
-        )
-        .arg(Arg::new("dump").long("dump").long_help(
-            "Dump the 'raw' contents of the minidump.
+    /// Dump the 'raw' contents of the minidump
+    ///
+    /// This is an implementation of the functionality of the old minidump_dump tool.
+    /// It minimally parses and interprets the minidump in an attempt to produce a
+    /// fairly 'raw' dump of the minidump's contents. This is most useful for debugging
+    /// minidump-stackwalk itself, or a misbehaving minidump generator.
+    #[clap(long)]
+    dump: bool,
 
-This is an implementation of the functionality of the old minidump_dump tool. \
-It minimally parses and interprets the minidump in an attempt to produce a \
-fairly 'raw' dump of the minidump's contents. This is most useful for debugging \
-minidump-stackwalk itself, or a misbehaving minidump generator.",
-        ))
-        .arg(
-            Arg::new("help-markdown")
-                .long("help-markdown")
-                .long_help("Print --help but formatted as markdown (used for generating docs)")
-                .hide(true),
-        )
-        .group(ArgGroup::new("output-format").args(&[
-            "json",
-            "human",
-            "cyborg",
-            "dump",
-            "help-markdown",
-        ]))
-        .arg(
-            Arg::new("features")
-                .long("features")
-                .possible_values(&["stable-basic", "stable-all", "unstable-all"])
-                .default_value("stable-basic")
-                .takes_value(true)
-                .long_help(
-                    "Specify at a high-level how much analysis to perform.
+    /// Print --help but formatted as markdown (used for generating docs)
+    #[clap(long, hide = true)]
+    help_markdown: bool,
 
-This flag provides a way to more blindly opt into Extra Analysis without having to know about \
-the specific features of minidump-stackwalk. This is equivalent to ProcessorOptions in \
-minidump-processor. The current supported values are:
+    /// Specify at a high-level how much analysis to perform
+    ///
+    /// This flag provides a way to more blindly opt into Extra Analysis without having
+    /// to know about the specific features of minidump-stackwalk. This is equivalent to
+    /// ProcessorOptions in minidump-processor. The current supported values are:
+    ///  
+    /// * stable-basic (default): give me solid detailed analysis that most people would want
+    /// * stable-all: turn on extra detailed analysis.
+    /// * unstable-all: turn on the weird and experimental stuff.
+    ///  
+    /// stable-all enables: nothing (currently identical to stable-basic)
+    ///  
+    /// unstable-all enables: `--recover-function-args`
+    ///  
+    /// minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able
+    /// to introduce new features which may be experimental or expensive. To balance these two
+    /// concerns, new features will usually be disabled by default and given a specific flag,
+    /// but still more easily 'discovered' by anyone who uses this flag.
+    ///  
+    /// Anyone using minidump-stackwalk who is *really* worried about the output being stable
+    /// should probably not use this flag in production, but its use is recommended for casual
+    /// human usage or for checking "what's new".
+    ///  
+    /// Features under unstable-all may be deprecated and become noops. Features which require
+    /// additional input (such as `--evil-json`) cannot be affected by this, and must still be
+    /// manually 'discovered'.
+    #[clap(long, default_value = "stable-basic")]
+    #[clap(possible_values = ["stable-basic", "stable-all", "unstable-all"])]
+    #[clap(verbatim_doc_comment)]
+    features: String,
 
-* stable-basic (default): give me solid detailed analysis that most people would want
-* stable-all: turn on extra detailed analysis.
-* unstable-all: turn on the weird and experimental stuff.
+    /// How verbose logging should be (log level)
+    ///
+    /// The unwinder has been heavily instrumented with `trace` logging, so if you want to
+    /// debug why an unwind happened the way it did, --verbose=trace is very useful
+    /// (all unwinder logging will be prefixed with `unwind:`).
+    #[clap(long)]
+    #[clap(default_value = "error")]
+    #[clap(possible_values = ["off", "error", "warn", "info", "debug", "trace"])]
+    verbose: LevelFilter,
 
-stable-all enables: nothing (currently identical to stable-basic)
+    /// Where to write the output to (if unspecified, stdout is used)
+    #[clap(long)]
+    output_file: Option<PathBuf>,
 
-unstable-all enables: `--recover-function-args`
+    /// Where to write logs to (if unspecified, stderr is used)
+    #[clap(long)]
+    log_file: Option<PathBuf>,
 
-minidump-stackwalk wants to be a reliable and stable tool, but we also want to be able to \
-introduce new features which may be experimental or expensive. To balance these two concerns, \
-new features will usually be disabled by default and given a specific flag, but still more \
-easily 'discovered' by anyone who uses this flag.
+    /// Prevent the output/logging from using ANSI coloring
+    ///
+    /// Output written to a file via --log-file, --output-file, or --cyborg
+    /// is always --no-color, so this just forces stdout/stderr printing.
+    #[clap(long)]
+    no_color: bool,
 
-Anyone using minidump-stackwalk who is *really* worried about the output being stable \
-should probably not use this flag in production, but its use is recommended for casual
-human usage or for checking \"what's new\".
+    /// Pretty-print --json output
+    #[clap(long)]
+    pretty: bool,
 
-Features under unstable-all may be deprecated and become noops. Features which require \
-additional input (such as `--evil-json`) cannot be affected by this, and must still be \
-manually 'discovered'.",
-                ),
-        )
-        .arg(
-            Arg::new("output-file")
-                .long("output-file")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .help("Where to write the output to (if unspecified, stdout is used)"),
-        )
-        .arg(
-            Arg::new("log-file")
-                .long("log-file")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .help("Where to write logs to (if unspecified, stderr is used)"),
-        )
-        .arg(
-            Arg::new("verbose")
-                .long("verbose")
-                .possible_values(&["off", "error", "warn", "info", "debug", "trace"])
-                .default_value("error")
-                .takes_value(true)
-                .long_help(
-                    "Set the logging level.
+    /// Provide a briefer --human report
+    ///
+    /// Only provides the top-level summary and a backtrace of the crashing thread.
+    #[clap(long)]
+    brief: bool,
 
-The unwinder has been heavily instrumented with `trace` logging, so if you want to debug why \
-an unwind happened the way it did, --verbose=trace is very useful (all unwinder logging will \
-be prefixed with `unwind:`).",
-                ),
-        )
-        .arg(
-            Arg::new("pretty")
-                .long("pretty")
-                .help("Pretty-print --json output."),
-        )
-        .arg(Arg::new("brief").long("brief").help(
-            "Provide a briefer --human report.
+    /// **UNSTABLE** An input JSON file with the extra information.
+    ///
+    /// This is a gross hack for some legacy side-channel information that mozilla uses.
+    /// It will hopefully be phased out and deprecated in favour of just using custom
+    /// streams in the minidump itself.
+    #[clap(long)]
+    evil_json: Option<PathBuf>,
 
-Only provides the top-level summary and a backtrace of the crashing thread.",
-        ))
-        .arg(
-            Arg::new("evil-json")
-                .long("evil-json")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "**[UNSTABLE]** An input JSON file with the extra information.
+    /// **UNSTABLE** Heuristically recover function arguments
+    ///
+    /// This is an experimental feature, which currently only shows up in --human output.
+    #[clap(long)]
+    recover_function_args: bool,
 
-This is a gross hack for some legacy side-channel information that mozilla uses. It will \
-hopefully be phased out and deprecated in favour of just using custom streams in the \
-minidump itself.",
-                ),
-        )
-        .arg(
-            Arg::new("recover-function-args")
-                .long("recover-function-args")
-                .help(
-                    "**[UNSTABLE]** Heuristically recover function arguments
+    /// base URL from which URLs to symbol files can be constructed
+    ///
+    /// If multiple symbols-url values are provided, they will each be tried in order until
+    /// one resolves.
+    ///
+    /// The server the base URL points to is expected to conform to the Tecken
+    /// symbol server protocol. For more details, see the Tecken docs:
+    ///
+    /// <https://tecken.readthedocs.io/en/latest/>
+    ///
+    /// Example symbols-url values:
+    /// * microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
+    /// * mozilla's symbols-server: <https://symbols.mozilla.org/>
+    #[clap(long)]
+    #[clap(verbatim_doc_comment)]
+    symbols_url: Vec<String>,
 
-This is an experimental feature, which currently only shows up in --human output.",
-                ),
-        )
-        .arg(
-            Arg::new("symbols-url")
-                .long("symbols-url")
-                .multiple_occurrences(true)
-                .takes_value(true)
-                .long_help(
-                    "base URL from which URLs to symbol files can be constructed.
+    /// A directory in which downloaded symbols can be stored
+    ///
+    /// Symbol files can be very large, so we recommend placing cached files in your
+    /// system's temp directory so that it can garbage collect unused ones for you.
+    /// To this end, the default value for this flag is a `rust-minidump-cache`
+    /// subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
+    ///
+    /// symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't
+    /// mean anything to you, don't worry about it, you're probably not doing something
+    /// that will run afoul of it).
+    #[clap(long)]
+    symbols_cache: Option<PathBuf>,
 
-If multiple symbols-url values are provided, they will each be tried in order until \
-one resolves.
+    /// A directory to use as temp space for downloading symbols.
+    ///
+    /// A temp dir is necessary to allow for multiple rust-minidump instances to share a
+    /// cache without race conditions. Files to be added to the cache will be constructed
+    /// in this location before being atomically moved to the cache.
+    ///
+    /// If no path is specified, `std::env::temp_dir()` will be used to improve portability.
+    /// See the rust documentation for how to set that value if you wish to use something
+    /// other than your system's default temp directory.
+    ///
+    /// symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't
+    /// mean anything to you, don't worry about it, you're probably not doing something
+    /// that will run afoul of it).
+    #[clap(long)]
+    symbols_tmp: Option<PathBuf>,
 
-The server the base URL points to is expected to conform to the Tecken \
-symbol server protocol. For more details, see the Tecken docs:
+    /// The maximum amount of time (in seconds) a symbol file download is allowed to take
+    ///
+    /// This is necessary to enforce forward progress on misbehaving http responses.
+    #[clap(long, default_value_t = 1000)]
+    symbols_download_timeout_secs: u64,
 
-https://tecken.readthedocs.io/en/latest/
+    /// Path to the minidump file to analyze
+    minidump: PathBuf,
 
-Example symbols-url value: https://symbols.mozilla.org/",
-                ),
-        )
-        .arg(
-            Arg::new("symbols-cache")
-                .long("symbols-cache")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "A directory in which downloaded symbols can be stored.
-                    
-Symbol files can be very large, so we recommend placing cached files in your \
-system's temp directory so that it can garbage collect unused ones for you. \
-To this end, the default value for this flag is a `rust-minidump-cache` \
-subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
+    /// Path to a symbol file.
+    ///
+    /// If multiple symbols-path values are provided, all symbol files will be merged
+    /// into minidump-stackwalk's symbol database.
+    #[clap(long)]
+    symbols_path: Vec<PathBuf>,
 
-symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean anything to \
-you, don't worry about it, you're probably not doing something that will run afoul of it).",
-                ),
-        )
-        .arg(
-            Arg::new("symbols-tmp")
-                .long("symbols-tmp")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "A directory to use as temp space for downloading symbols.
-
-A temp dir is necessary to allow for multiple rust-minidump instances to share a cache without \
-race conditions. Files to be added to the cache will be constructed in this location before \
-being atomically moved to the cache.
-
-If no path is specified, `std::env::temp_dir()` will be used to improve portability. \
-See the rust documentation for how to set that value if you wish to use something other than \
-your system's default temp directory.
-
-symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean anything to \
-you, don't worry about it, you're probably not doing something that will run afoul of it).",
-                ),
-        )
-        .arg(
-            Arg::new("symbol-download-timeout-secs")
-                .long("symbol-download-timeout-secs")
-                .default_value("1000")
-                .takes_value(true)
-                .help(
-                    "The maximum amount of time (in seconds) a symbol file download is allowed \
-to take.
-
-This is necessary to enforce forward progress on misbehaving http responses.",
-                ),
-        )
-        .arg(
-            Arg::new("minidump")
-                .required_unless_present("help-markdown")
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .help("Path to the minidump file to analyze."),
-        )
-        .arg(
-            Arg::new("symbols-path")
-                .long("symbols-path")
-                .multiple_occurrences(true)
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "Path to a symbol file.
-
-If multiple symbols-path values are provided, all symbol files will be merged \
-into minidump-stackwalk's symbol database.",
-                ),
-        )
-        .arg(
-            Arg::new("symbols-path-legacy")
-                .multiple_values(true)
-                .takes_value(true)
-                .allow_invalid_utf8(true)
-                .long_help(
-                    "Path to a symbol file. (Passed positionally)
-
-If multiple symbols-path-legacy values are provided, all symbol files will be merged \
-into minidump-stackwalk's symbol database.",
-                ),
-        )
-        .after_help(
-            "
-NOTES:
-
-Purpose of Symbols:
-
-  Symbols are used for two purposes:
-
-  1. To fill in more information about each frame of the backtraces. (function names, lines, etc.)
-
-  2. To do produce a more *accurate* backtrace. This is primarily accomplished with \
-call frame information (CFI), but just knowing what parts of a module maps to actual \
-code is also useful!
-
-Supported Symbol Formats:
-
-  Currently only breakpad text symbol files are supported, although we hope to eventually \
-support native formats like PDB and DWARF as well.
-
-Breakpad Symbol Files:
-
-  Breakpad symbol files are basically a simplified version of the information found in \
-native debuginfo formats. We recommend using a version of dump_syms to generate them.
-
-  See:
-    * https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
-    * mozilla's dump_syms (co-developed with this program): https://github.com/mozilla/dump_syms
-
-",
-        )
+    /// Path to a symbol file. (Passed positionally)
+    ///
+    /// If multiple symbols-path-legacy values are provided, all symbol files will be merged
+    /// into minidump-stackwalk's symbol database.
+    symbols_path_legacy: Vec<PathBuf>,
 }
 
 #[cfg_attr(test, allow(dead_code))]
 #[tokio::main]
 async fn main() {
-    let matches = make_app().get_matches();
-
-    // This is a little hack to generate a markdown version of the --help message,
-    // to be used by rust-minidump devs to regenerate docs. Not officially part
-    // of our public API.
-    if matches.is_present("help-markdown") {
-        print_help_markdown();
-        return;
-    }
-
-    let output_file = matches
-        .value_of_os("output-file")
-        .map(|os_str| Path::new(os_str).to_owned());
-
-    let log_file = matches
-        .value_of_os("log-file")
-        .map(|os_str| Path::new(os_str).to_owned());
-
-    let verbosity = match matches.value_of("verbose").unwrap() {
-        "off" => LevelFilter::Off,
-        "warn" => LevelFilter::Warn,
-        "info" => LevelFilter::Info,
-        "debug" => LevelFilter::Debug,
-        "trace" => LevelFilter::Trace,
-        _ => LevelFilter::Error,
-    };
+    let cli = Cli::parse();
 
     // Init the logger (and make trace logging less noisy)
-    if let Some(log_path) = log_file {
+    if let Some(log_path) = &cli.log_file {
         let log_file = File::create(log_path).unwrap();
-        let _ = WriteLogger::init(
-            verbosity,
-            ConfigBuilder::new()
-                .set_location_level(LevelFilter::Off)
-                .set_time_level(LevelFilter::Off)
-                .set_thread_level(LevelFilter::Off)
-                .set_target_level(LevelFilter::Off)
-                .build(),
-            log_file,
-        )
-        .unwrap();
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(cli.verbose)
+            .with_target(false)
+            .without_time()
+            .with_ansi(false)
+            .with_writer(log_file)
+            .init();
     } else {
-        let _ = TermLogger::init(
-            verbosity,
-            ConfigBuilder::new()
-                .set_location_level(LevelFilter::Off)
-                .set_time_level(LevelFilter::Off)
-                .set_thread_level(LevelFilter::Off)
-                .set_target_level(LevelFilter::Off)
-                .set_level_color(Level::Trace, None)
-                .build(),
-            TerminalMode::Stderr,
-            ColorChoice::Auto,
-        );
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(cli.verbose)
+            .with_target(false)
+            .without_time()
+            .with_ansi(!cli.no_color)
+            .with_writer(std::io::stderr)
+            .init();
     }
 
     // Set a panic hook to redirect to the logger
@@ -385,8 +290,16 @@ async fn main() {
         );
     }));
 
+    // This is a little hack to generate a markdown version of the --help message,
+    // to be used by rust-minidump devs to regenerate docs. Not officially part
+    // of our public API.
+    if cli.help_markdown {
+        print_help_markdown(&mut std::io::stdout()).expect("help-markdown failed");
+        return;
+    }
+
     // Pick the default options
-    let mut options = match matches.value_of("features").unwrap() {
+    let mut options = match &*cli.features {
         "stable-basic" => ProcessorOptions::stable_basic(),
         "stable-all" => ProcessorOptions::stable_all(),
         "unstable-all" => ProcessorOptions::unstable_all(),
@@ -394,95 +307,60 @@ async fn main() {
     };
 
     // Now overload the defaults
-    options.evil_json = matches.value_of_os("evil-json").map(Path::new);
-    if matches.is_present("recover-function-args") {
-        options.recover_function_args = true;
-    }
+    options.evil_json = cli.evil_json.as_deref();
+    options.recover_function_args = cli.recover_function_args;
 
     let temp_dir = std::env::temp_dir();
 
-    let mut symbols_paths = matches
-        .values_of_os("symbols-path")
-        .map(|v| {
-            v.map(|os_str| Path::new(os_str).to_owned())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(Vec::new);
-    let symbols_paths_legacy = matches
-        .values_of_os("symbols-path-legacy")
-        .map(|v| {
-            v.map(|os_str| Path::new(os_str).to_owned())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(Vec::new);
-    symbols_paths.extend(symbols_paths_legacy);
+    let mut symbols_paths = cli.symbols_path;
+    symbols_paths.extend(cli.symbols_path_legacy);
 
     // Default to env::temp_dir()/rust-minidump-cache
-    let symbols_cache = matches
-        .value_of_os("symbols-cache")
-        .map(|os_str| Path::new(os_str).to_owned())
+    let symbols_cache = cli
+        .symbols_cache
         .unwrap_or_else(|| temp_dir.join("rust-minidump-cache"));
 
     // Default to env::temp_dir()
-    let symbols_tmp = matches
-        .value_of_os("symbols-tmp")
-        .map(|os_str| Path::new(os_str).to_owned())
-        .unwrap_or(temp_dir);
+    let symbols_tmp = cli.symbols_tmp.unwrap_or(temp_dir);
 
-    let symbols_urls = matches
-        .values_of("symbols-url")
-        .map(|v| v.map(String::from).collect::<Vec<_>>())
-        .unwrap_or_else(Vec::new);
-
-    let timeout = matches
-        .value_of("symbol-download-timeout-secs")
-        .and_then(|x| u64::from_str(x).ok())
-        .map(Duration::from_secs)
-        .unwrap();
-
-    let minidump_path = matches.value_of_os("minidump").map(Path::new).unwrap();
+    let timeout = Duration::from_secs(cli.symbols_download_timeout_secs);
 
     // Determine the kind of output we're producing -- dump, json, human, or cyborg (both).
     // Although we have a --human argument it's mostly just there to make the documentation
     // more clear. human output is enabled by default, and --json disables it.
     // Mutual exclusion is enforced by an ArgGroup, but it doesn't understand that "human"
     // is the implicit default, so we have to do some munging here.
-    let raw_dump = matches.is_present("dump");
-    let mut json = matches.is_present("json");
     // Human is just enabled if nothing else is
+    let raw_dump = cli.dump;
+    let mut json = cli.json;
     let mut human = !json && !raw_dump;
     // Cyborg is just "desugarred" to --json --human
-    let cyborg = matches.value_of_os("cyborg").map(Path::new);
-
-    if cyborg.is_some() {
+    if cli.cyborg.is_some() {
         human = true;
         json = true;
     }
 
     // Now check if arguments that tweak the output are valid. We can't use
     // Arg::requires because clap doesn't understand --json being implicitly enabled.
-    let pretty = matches.is_present("pretty");
-    let brief = matches.is_present("brief");
-
-    if pretty && !json {
+    if cli.pretty && !json {
         error!("Humans must be hideous! (The --pretty and --human flags cannot both be set)");
         std::process::exit(1);
     }
 
-    if brief && !human {
+    if cli.brief && !human {
         error!("Robots cannot be brief! (The --brief flag is only valid for --human output (or --cyborg)");
         std::process::exit(1);
     }
 
     // Ok now let's do the thing!!!!
 
-    match Minidump::read_path(minidump_path) {
+    match Minidump::read_path(cli.minidump) {
         Ok(dump) => {
             let mut stdout;
             let mut output_f;
-            let cyborg_output_f = cyborg.map(|path| File::create(path).unwrap());
+            let cyborg_output_f = cli.cyborg.map(|path| File::create(path).unwrap());
 
-            let mut output: &mut dyn Write = if let Some(output_path) = output_file {
+            let mut output: &mut dyn Write = if let Some(output_path) = cli.output_file {
                 output_f = File::create(output_path).unwrap();
                 &mut output_f
             } else {
@@ -497,10 +375,10 @@ async fn main() {
 
             let mut provider = MultiSymbolProvider::new();
 
-            if !symbols_urls.is_empty() {
+            if !cli.symbols_url.is_empty() {
                 provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
                     symbols_paths,
-                    symbols_urls,
+                    cli.symbols_url,
                     symbols_cache,
                     symbols_tmp,
                     timeout,
@@ -516,7 +394,7 @@ async fn main() {
                 Ok(state) => {
                     // Print the human output if requested (always uses the "real" output).
                     if human {
-                        if brief {
+                        if cli.brief {
                             state.print_brief(&mut output).unwrap();
                         } else {
                             state.print(&mut output).unwrap();
@@ -526,9 +404,9 @@ async fn main() {
                     // Print the json output if requested (using "cyborg" output if available).
                     if json {
                         if let Some(mut cyborg_output_f) = cyborg_output_f {
-                            state.print_json(&mut cyborg_output_f, pretty).unwrap();
+                            state.print_json(&mut cyborg_output_f, cli.pretty).unwrap();
                         } else {
-                            state.print_json(&mut output, pretty).unwrap();
+                            state.print_json(&mut output, cli.pretty).unwrap();
                         }
                     }
                 }
@@ -545,63 +423,108 @@ async fn main() {
     }
 }
 
-fn print_help_markdown() {
-    let mut help_buf = Vec::new();
-
+fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+    let app_name = "minidump-stackwalk";
+    let pretty_app_name = "minidump-stackwalk";
     // Make a new App to get the help message this time.
-    make_app().write_long_help(&mut help_buf).unwrap();
-    let help = String::from_utf8(help_buf).unwrap();
 
-    println!("# minidump-stackwalk CLI manual");
-    println!();
-    println!("> This manual can be regenerated with `minidump-stackwalk --help-markdown please`");
-    println!();
+    writeln!(out, "# {pretty_app_name} CLI manual")?;
+    writeln!(out)?;
+    writeln!(
+        out,
+        "> This manual can be regenerated with `{pretty_app_name} --help-markdown`"
+    )?;
+    writeln!(out)?;
 
-    // First line is --version
-    let mut lines = help.lines();
-    println!("Version: `{}`", lines.next().unwrap());
-    println!();
+    let mut cli = Cli::command();
+    let full_command = &mut cli;
+    full_command.build();
+    let mut todo = vec![full_command];
+    let mut is_full_command = true;
 
-    for line in lines {
-        // Use a trailing colon to indicate a heading
-        if let Some(heading) = line.strip_suffix(':') {
-            if !line.starts_with(' ') {
-                // SCREAMING headers are Main headings
-                if heading.to_ascii_uppercase() == heading {
-                    println!("# {}", heading);
-                } else {
-                    println!("## {}", heading);
+    while let Some(command) = todo.pop() {
+        let mut help_buf = Vec::new();
+        command.write_long_help(&mut help_buf).unwrap();
+        let help = String::from_utf8(help_buf).unwrap();
+
+        // First line is --version
+        let mut lines = help.lines();
+        let version_line = lines.next().unwrap();
+        let subcommand_name = command.get_name();
+        let pretty_subcommand_name;
+
+        if is_full_command {
+            pretty_subcommand_name = String::new();
+            writeln!(out, "Version: `{version_line}`")?;
+            writeln!(out)?;
+        } else {
+            pretty_subcommand_name = format!("{pretty_app_name} {subcommand_name} ");
+            // Give subcommands some breathing room
+            writeln!(out, "<br><br><br>")?;
+            writeln!(out, "## {pretty_subcommand_name}")?;
+        }
+
+        let mut in_subcommands_listing = false;
+        let mut in_usage = false;
+        for line in lines {
+            // Use a trailing colon to indicate a heading
+            if let Some(heading) = line.strip_suffix(':') {
+                if !line.starts_with(' ') {
+                    // SCREAMING headers are Main headings
+                    if heading.to_ascii_uppercase() == heading {
+                        in_subcommands_listing = heading == "SUBCOMMANDS";
+                        in_usage = heading == "USAGE";
+
+                        writeln!(out, "### {pretty_subcommand_name}{heading}")?;
+                    } else {
+                        writeln!(out, "### {heading}")?;
+                    }
+                    continue;
                 }
+            }
+
+            if in_subcommands_listing && !line.starts_with("     ") {
+                // subcommand names are list items
+                let own_subcommand_name = line.trim();
+                write!(
+                    out,
+                    "* [{own_subcommand_name}](#{app_name}-{own_subcommand_name}): "
+                )?;
                 continue;
             }
+            // The rest is indented, get rid of that
+            let line = line.trim();
+
+            // Usage strings get wrapped in full code blocks
+            if in_usage && line.starts_with(pretty_app_name) {
+                writeln!(out, "```")?;
+                writeln!(out, "{line}")?;
+                writeln!(out, "```")?;
+                continue;
+            }
+
+            // argument names are subheadings
+            if line.starts_with('-') || line.starts_with('<') {
+                writeln!(out, "#### `{line}`")?;
+                continue;
+            }
+
+            // escape default/value strings
+            if line.starts_with('[') {
+                writeln!(out, "\\{line}  ")?;
+                continue;
+            }
+
+            // Normal paragraph text
+            writeln!(out, "{line}")?;
         }
+        writeln!(out)?;
 
-        // Usage strings get wrapped in full code blocks
-        if line.starts_with("minidump-stackwalk ") {
-            println!("```");
-            println!("{}", line);
-            println!("```");
-            continue;
-        }
-
-        // The rest is indented, get rid of that
-        let line = line.trim();
-
-        // argument names are subheadings
-        if line.starts_with('-') || line.starts_with('<') {
-            println!("### `{}`", line);
-            continue;
-        }
-
-        // escape default/value strings
-        if line.starts_with('[') {
-            println!("\\{}", line);
-            continue;
-        }
-
-        // Normal paragraph text
-        println!("{}", line);
+        todo.extend(command.get_subcommands_mut());
+        is_full_command = false;
     }
+
+    Ok(())
 }
 
 fn print_minidump_dump<'a, T, W>(dump: &Minidump<'a, T>, output: &mut W) -> std::io::Result<()>

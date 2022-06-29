@@ -3,11 +3,11 @@
 use crate::{FrameSymbolizer, FrameWalker, Module, SymbolError};
 
 pub use crate::sym_file::types::*;
-use log::trace;
 pub use parser::SymbolParser;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use tracing::trace;
 
 mod parser;
 mod types;
@@ -106,7 +106,7 @@ impl SymbolFile {
                     fully_consumed = false;
                     just_finished_recovering = true;
                     parser.lines += 1;
-                    trace!("symbols: RECOVERY: complete!");
+                    trace!("RECOVERY: complete!");
                 } else {
                     // No newline, discard everything
                     let amount = input.len();
@@ -142,17 +142,11 @@ impl SymbolFile {
                     if new_cap > MAX_BUFFER_CAPACITY {
                         // TIME TO PANIC!!! This line is catastrophically big, just start
                         // discarding bytes until we hit a newline.
-                        trace!(
-                            "symbols: RECOVERY: discarding enormous line {}",
-                            parser.lines
-                        );
+                        trace!("RECOVERY: discarding enormous line {}", parser.lines);
                         in_panic_recovery = true;
                         continue;
                     }
-                    trace!(
-                        "symbols: parser out of space? trying more ({}KB)",
-                        new_cap / 1024
-                    );
+                    trace!("parser out of space? trying more ({}KB)", new_cap / 1024);
                     buf.grow(new_cap);
                     tried_to_grow = true;
                     continue;
@@ -228,7 +222,7 @@ impl SymbolFile {
                     fully_consumed = false;
                     just_finished_recovering = true;
                     parser.lines += 1;
-                    trace!("symbols: PANIC RECOVERY: complete!");
+                    trace!("PANIC RECOVERY: complete!");
                 } else {
                     // No newline, discard everything
                     let amount = input.len();
@@ -280,17 +274,11 @@ impl SymbolFile {
                     if new_cap > MAX_BUFFER_CAPACITY {
                         // TIME TO PANIC!!! This line is catastrophically big, just start
                         // discarding bytes until we hit a newline.
-                        trace!(
-                            "symbols: RECOVERY: discarding enormous line {}",
-                            parser.lines
-                        );
+                        trace!("RECOVERY: discarding enormous line {}", parser.lines);
                         in_panic_recovery = true;
                         continue;
                     }
-                    trace!(
-                        "symbols: parser out of space? trying more ({}KB)",
-                        new_cap / 1024
-                    );
+                    trace!("parser out of space? trying more ({}KB)", new_cap / 1024);
                     buf.grow(new_cap);
                     tried_to_grow = true;
                     continue;

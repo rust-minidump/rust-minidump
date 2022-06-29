@@ -13,9 +13,9 @@ mod x86;
 
 use crate::process_state::*;
 use crate::{FrameWalker, SymbolProvider, SystemInfo};
-use log::trace;
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
+use tracing::trace;
 
 use self::unwind::Unwind;
 use std::collections::HashSet;
@@ -195,7 +195,10 @@ async fn fill_source_line_info<P>(
     }
 }
 
+#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = thread_id, name = thread_name.unwrap_or("")))]
 pub async fn walk_stack<P>(
+    thread_id: u32,
+    thread_name: Option<&str>,
     maybe_context: &Option<&MinidumpContext>,
     stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
@@ -210,14 +213,18 @@ where
     let mut frames = vec![];
     let mut info = CallStackInfo::Ok;
     if let Some(context) = *maybe_context {
-        trace!("unwind: starting stack unwind");
+        trace!(
+            "starting stack unwind of thread {} {}",
+            thread_id,
+            thread_name.unwrap_or("")
+        );
         let ctx = context.clone();
         let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
         while let Some(mut frame) = maybe_frame {
             fill_source_line_info(&mut frame, modules, symbol_provider).await;
             match frame.function_name.as_ref() {
-                Some(name) => trace!("unwind: unwinding {}", name),
-                None => trace!("unwind: unwinding 0x{:016x}", frame.instruction),
+                Some(name) => trace!("unwinding {}", name),
+                None => trace!("unwinding 0x{:016x}", frame.instruction),
             }
             frames.push(frame);
             let callee_frame = &frames.last().unwrap();
@@ -232,7 +239,11 @@ where
             )
             .await;
         }
-        trace!("unwind: finished stack unwind\n");
+        trace!(
+            "finished stack unwind of thread {} {}\n",
+            thread_id,
+            thread_name.unwrap_or("")
+        );
     } else {
         info = CallStackInfo::MissingContext;
     }

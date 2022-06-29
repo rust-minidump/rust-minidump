@@ -59,6 +59,8 @@ impl TestFixture {
         };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(
+            0,
+            None,
             &Some(&context),
             Some(&stack_memory),
             &self.modules,
