@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 use std::convert::TryFrom;
 
-use log::trace;
 use minidump::format::ContextFlagsCpu;
 use minidump::{
     CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpMemory,
     MinidumpModuleList, MinidumpRawContext,
 };
 use scroll::ctx::{SizeWith, TryFromCtx};
+use tracing::trace;
 
 use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
