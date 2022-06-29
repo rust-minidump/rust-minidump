@@ -134,7 +134,7 @@ where
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_pc: u32 = stack_memory.get_memory_at_address_be(address_of_pc as u64)?;
-        trace!("unwind: trying addr 0x{address_of_pc:08x}: 0x{caller_pc:08x}");
+        //trace!("unwind: trying addr 0x{address_of_pc:08x}: 0x{caller_pc:08x}");
         if instruction_seems_valid(caller_pc as u64, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
