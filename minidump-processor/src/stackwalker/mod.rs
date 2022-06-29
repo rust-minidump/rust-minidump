@@ -33,6 +33,7 @@ struct CfiStackWalker<'a, C: CpuContext> {
     caller_validity: HashSet<&'static str>,
 
     stack_memory: &'a MinidumpMemory<'a>,
+    endianness: scroll::Endian,
 }
 
 impl<'a, C> FrameWalker for CfiStackWalker<'a, C>
@@ -52,7 +53,11 @@ where
         self.grand_callee_parameter_size
     }
     fn get_register_at_address(&self, address: u64) -> Option<u64> {
-        let result: Option<C::Register> = self.stack_memory.get_memory_at_address(address);
+        let result: Option<C::Register> = if self.endianness == scroll::LE {
+            self.stack_memory.get_memory_at_address(address)
+        } else {
+            self.stack_memory.get_memory_at_address_be(address)
+        };
         result.and_then(|val| u64::try_from(val).ok())
     }
     fn get_callee_register(&self, name: &str) -> Option<u64> {

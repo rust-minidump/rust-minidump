@@ -1665,7 +1665,6 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
     pub fn get_memory_at_address<T>(&self, addr: u64) -> Option<T>
     where
         T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
-        T: SizeWith<scroll::Endian>,
     {
         // XXX: Instead of checking the base+size validity on each access, maybe
         // move this check to a different place?
@@ -1673,6 +1672,22 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         let start = addr.checked_sub(self.base_address)? as usize;
 
         self.bytes.pread_with::<T>(start, LE).ok()
+    }
+
+    /// Get `mem::size_of::<T>()` bytes of memory at `addr` from this region, in Big-Endian.
+    ///
+    /// Return `None` if the requested address range falls out of the bounds
+    /// of this memory region.
+    pub fn get_memory_at_address_be<T>(&self, addr: u64) -> Option<T>
+    where
+        T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
+    {
+        // XXX: Instead of checking the base+size validity on each access, maybe
+        // move this check to a different place?
+        let _end = self.base_address.checked_add(self.size)?;
+        let start = addr.checked_sub(self.base_address)? as usize;
+
+        self.bytes.pread_with::<T>(start, BE).ok()
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.

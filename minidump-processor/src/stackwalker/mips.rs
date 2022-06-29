@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use log::trace;
 use minidump::format::ContextFlagsCpu;
@@ -60,6 +60,7 @@ where
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
+        endianness: scroll::BE,
     };
 
     symbol_provider
@@ -106,7 +107,7 @@ where
     P: SymbolProvider + Sync,
 {
     const MAX_STACK_SIZE: u32 = 1024;
-    const MIN_ARGS: u32 = 4;
+    const MIN_ARGS: u32 = 0;
     const POINTER_WIDTH: u32 = 4;
     trace!("unwind: trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
@@ -132,8 +133,9 @@ where
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
-        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
+        let caller_pc: u32 = stack_memory.get_memory_at_address_be(address_of_pc as u64)?;
+        trace!("unwind: trying addr 0x{address_of_pc:08x}: 0x{caller_pc:08x}");
+        if instruction_seems_valid(caller_pc as u64, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
@@ -141,11 +143,14 @@ where
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}"
+                "unwind: scan seems valid -- caller_pc: 0x{caller_pc:08x}, caller_sp: 0x{caller_sp:08x}"
             );
 
             let mut caller_ctx = MipsContext::default();
-            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - (2 * POINTER_WIDTH as u64));
+            caller_ctx.set_register(
+                PROGRAM_COUNTER,
+                caller_pc as u64 - (2 * POINTER_WIDTH as u64),
+            );
             caller_ctx.set_register(STACK_POINTER, caller_sp as u64);
 
             let mut valid = HashSet::new();
@@ -331,15 +336,6 @@ impl Unwind for MipsContext {
         frame.instruction = ip - 8;
 
         Some(frame)
-    }
-}
-
-fn pointer_width(ctx: &MipsContext) -> u64 {
-    let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
-    if flags.contains(ContextFlagsCpu::CONTEXT_MIPS64) {
-        8
-    } else {
-        4
     }
 }
 
