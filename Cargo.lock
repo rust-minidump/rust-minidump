@@ -459,7 +459,8 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 [[package]]
 name = "dump_syms"
 version = "1.0.1"
-source = "git+https://github.com/mozilla/dump_syms#29c131802494c52e9e89597f1d763f79e797b348"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd7cef69d011a323f8e1dfeae1a99ca34a2e5ffb6951a96647843fe49317f546"
 dependencies = [
  "anyhow",
  "bitflags",
