@@ -34,11 +34,33 @@ enum Line {
     StackCfi(StackInfoCfi),
 }
 
-/// Match a hex string, parse it to a u64.
-fn hex_str_u64(input: &[u8]) -> IResult<&[u8], u64> {
-    map_res(map_res(hex_digit1, str::from_utf8), |s| {
-        u64::from_str_radix(s, 16)
-    })(input)
+/// Match a hex string, parse it to a u32 or a u64.
+fn hex_str<T: std::ops::Shl<T, Output = T> + std::ops::BitOr<T, Output = T> + From<u8>>(
+    input: &[u8],
+) -> IResult<&[u8], T> {
+    // Consume up to max_len digits. For u32 that's 8 digits and for u64 that's 16 digits.
+    // Two hex digits form one byte.
+    let max_len = mem::size_of::<T>() * 2;
+
+    let mut res: T = T::from(0);
+    let mut k = 0;
+    for v in input.iter().take(max_len) {
+        let digit = match (*v as char).to_digit(16) {
+            Some(v) => v,
+            None => break,
+        };
+        res = res << T::from(4);
+        res = res | T::from(digit as u8);
+        k += 1;
+    }
+    if k == 0 {
+        return Err(Err::Error(Error::from_error_kind(
+            input,
+            ErrorKind::HexDigit,
+        )));
+    }
+    let remaining = &input[k..];
+    Ok((remaining, res))
 }
 
 /// Match a decimal string, parse it to a u32.
@@ -143,7 +165,7 @@ fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
     let (input, _) = terminated(tag("PUBLIC"), multispace1)(input)?;
     let (input, (_multiple, address, parameter_size, name)) = cut(tuple((
         opt(terminated(tag("m"), multispace1)),
-        terminated(hex_str_u64, multispace1),
+        terminated(hex_str::<u64>, multispace1),
         terminated(hex_u32, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
@@ -160,7 +182,7 @@ fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
 // Matches line data after a FUNC record.
 fn func_line_data(input: &[u8]) -> IResult<&[u8], SourceLine> {
     let (input, (address, size, line, file)) = tuple((
-        terminated(hex_str_u64, multispace1),
+        terminated(hex_str::<u64>, multispace1),
         terminated(hex_u32, multispace1),
         terminated(decimal_u32, multispace1),
         terminated(decimal_u32, my_eol),
@@ -181,7 +203,7 @@ fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
     let (input, _) = terminated(tag("FUNC"), multispace1)(input)?;
     let (input, (_multiple, address, size, parameter_size, name)) = cut(tuple((
         opt(terminated(tag("m"), multispace1)),
-        terminated(hex_str_u64, multispace1),
+        terminated(hex_str::<u64>, multispace1),
         terminated(hex_u32, multispace1),
         terminated(hex_u32, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
@@ -218,7 +240,7 @@ fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
         ),
     ) = cut(tuple((
         terminated(single(is_hex_digit), multispace1), // ty
-        terminated(hex_str_u64, multispace1),          // address
+        terminated(hex_str::<u64>, multispace1),       // address
         terminated(hex_u32, multispace1),              // code_size
         terminated(hex_u32, multispace1),              // prologue_size
         terminated(hex_u32, multispace1),              // epilogue_size
@@ -280,7 +302,7 @@ fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
 fn stack_cfi(input: &[u8]) -> IResult<&[u8], CfiRules> {
     let (input, _) = terminated(tag("STACK CFI"), multispace1)(input)?;
     let (input, (address, rules)) = cut(tuple((
-        terminated(hex_str_u64, multispace1),
+        terminated(hex_str::<u64>, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -296,7 +318,7 @@ fn stack_cfi(input: &[u8]) -> IResult<&[u8], CfiRules> {
 fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
     let (input, _) = terminated(tag("STACK CFI INIT"), multispace1)(input)?;
     let (input, (address, size, rules)) = cut(tuple((
-        terminated(hex_str_u64, multispace1),
+        terminated(hex_str::<u64>, multispace1),
         terminated(hex_u32, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
