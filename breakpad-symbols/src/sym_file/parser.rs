@@ -7,7 +7,6 @@ use nom::character::complete::{char, digit1, hex_digit1, multispace1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
-use nom::multi::many0;
 use nom::number::complete::hex_u32;
 use nom::sequence::{preceded, terminated, tuple};
 use nom::{Err, IResult};
@@ -16,8 +15,7 @@ use tracing::warn;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::str;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 
 use minidump_common::traits::IntoRangeMapSafe;
 
@@ -57,7 +55,7 @@ fn non_space(input: &[u8]) -> IResult<&[u8], &[u8]> {
 /// This is different from `line_ending` which doesn't accept `\r` if it isn't
 /// followed by `\n`.
 fn my_eol(input: &[u8]) -> IResult<&[u8], char> {
-    preceded(many0(char('\r')), char('\n'))(input)
+    preceded(take_while(|b| b == b'\r'), char('\n'))(input)
 }
 
 /// Accept everything except `\r` and `\n`.
