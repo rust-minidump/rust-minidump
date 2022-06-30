@@ -3,7 +3,7 @@
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::{char, digit1, hex_digit1, multispace1};
+use nom::character::complete::{char, hex_digit1, multispace1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
@@ -14,8 +14,9 @@ use range_map::{Range, RangeMap};
 use tracing::warn;
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::str::{self, FromStr};
+use std::{mem, str};
 
 use minidump_common::traits::IntoRangeMapSafe;
 
@@ -41,8 +42,32 @@ fn hex_str_u64(input: &[u8]) -> IResult<&[u8], u64> {
 }
 
 /// Match a decimal string, parse it to a u32.
+///
+/// This is doing everything manually so that we only look at each byte once.
+/// With a naive implementation you might be looking at them three times: First
+/// you might get a slice of acceptable characters from nom, then you might parse
+/// that slice into a str (checking for utf-8 unnecessarily), and then you might
+/// parse that string into a decimal number.
 fn decimal_u32(input: &[u8]) -> IResult<&[u8], u32> {
-    map_res(map_res(digit1, str::from_utf8), FromStr::from_str)(input)
+    const MAX_LEN: usize = 10; // u32::MAX has 10 decimal digits
+    let mut res: u64 = 0;
+    let mut k = 0;
+    for v in input.iter().take(MAX_LEN) {
+        let digit = *v as char;
+        let digit_value = match digit.to_digit(10) {
+            Some(v) => v,
+            None => break,
+        };
+        res = res * 10 + digit_value as u64;
+        k += 1;
+    }
+    if k == 0 {
+        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Digit)));
+    }
+    let res = u32::try_from(res)
+        .map_err(|_| Err::Error(Error::from_error_kind(input, ErrorKind::TooLarge)))?;
+    let remaining = &input[k..];
+    Ok((remaining, res))
 }
 
 /// Take 0 or more non-space bytes.
