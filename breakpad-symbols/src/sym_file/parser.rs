@@ -7,7 +7,6 @@ use nom::character::complete::{char, hex_digit1, multispace1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
-use nom::number::complete::hex_u32;
 use nom::sequence::{preceded, terminated, tuple};
 use nom::{Err, IResult};
 use range_map::{Range, RangeMap};
@@ -166,7 +165,7 @@ fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
     let (input, (_multiple, address, parameter_size, name)) = cut(tuple((
         opt(terminated(tag("m"), multispace1)),
         terminated(hex_str::<u64>, multispace1),
-        terminated(hex_u32, multispace1),
+        terminated(hex_str::<u32>, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -183,7 +182,7 @@ fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
 fn func_line_data(input: &[u8]) -> IResult<&[u8], SourceLine> {
     let (input, (address, size, line, file)) = tuple((
         terminated(hex_str::<u64>, multispace1),
-        terminated(hex_u32, multispace1),
+        terminated(hex_str::<u32>, multispace1),
         terminated(decimal_u32, multispace1),
         terminated(decimal_u32, my_eol),
     ))(input)?;
@@ -204,8 +203,8 @@ fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
     let (input, (_multiple, address, size, parameter_size, name)) = cut(tuple((
         opt(terminated(tag("m"), multispace1)),
         terminated(hex_str::<u64>, multispace1),
-        terminated(hex_u32, multispace1),
-        terminated(hex_u32, multispace1),
+        terminated(hex_str::<u32>, multispace1),
+        terminated(hex_str::<u32>, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -241,13 +240,13 @@ fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
     ) = cut(tuple((
         terminated(single(is_hex_digit), multispace1), // ty
         terminated(hex_str::<u64>, multispace1),       // address
-        terminated(hex_u32, multispace1),              // code_size
-        terminated(hex_u32, multispace1),              // prologue_size
-        terminated(hex_u32, multispace1),              // epilogue_size
-        terminated(hex_u32, multispace1),              // parameter_size
-        terminated(hex_u32, multispace1),              // saved_register_size
-        terminated(hex_u32, multispace1),              // local_size
-        terminated(hex_u32, multispace1),              // max_stack_size
+        terminated(hex_str::<u32>, multispace1),       // code_size
+        terminated(hex_str::<u32>, multispace1),       // prologue_size
+        terminated(hex_str::<u32>, multispace1),       // epilogue_size
+        terminated(hex_str::<u32>, multispace1),       // parameter_size
+        terminated(hex_str::<u32>, multispace1),       // saved_register_size
+        terminated(hex_str::<u32>, multispace1),       // local_size
+        terminated(hex_str::<u32>, multispace1),       // max_stack_size
         terminated(map(single(is_digit), |b| b == b'1'), multispace1), // has_program_string
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
@@ -319,7 +318,7 @@ fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
     let (input, _) = terminated(tag("STACK CFI INIT"), multispace1)(input)?;
     let (input, (address, size, rules)) = cut(tuple((
         terminated(hex_str::<u64>, multispace1),
-        terminated(hex_u32, multispace1),
+        terminated(hex_str::<u32>, multispace1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
