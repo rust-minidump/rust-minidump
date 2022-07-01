@@ -3,7 +3,7 @@
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::{char, hex_digit1, multispace1};
+use nom::character::complete::{char, hex_digit1, space1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
@@ -126,34 +126,34 @@ fn single(predicate: fn(u8) -> bool) -> impl Fn(&[u8]) -> IResult<&[u8], u8> {
 
 // Matches a MODULE record.
 fn module_line(input: &[u8]) -> IResult<&[u8], ()> {
-    let (input, _) = terminated(tag("MODULE"), multispace1)(input)?;
+    let (input, _) = terminated(tag("MODULE"), space1)(input)?;
     let (input, _) = cut(tuple((
-        terminated(non_space, multispace1),  // os
-        terminated(non_space, multispace1),  // cpu
-        terminated(hex_digit1, multispace1), // debug id
-        terminated(not_my_eol, my_eol),      // filename
+        terminated(non_space, space1),  // os
+        terminated(non_space, space1),  // cpu
+        terminated(hex_digit1, space1), // debug id
+        terminated(not_my_eol, my_eol), // filename
     )))(input)?;
     Ok((input, ()))
 }
 
 // Matches an INFO URL record.
 fn info_url(input: &[u8]) -> IResult<&[u8], Info> {
-    let (input, _) = terminated(tag("INFO URL"), multispace1)(input)?;
+    let (input, _) = terminated(tag("INFO URL"), space1)(input)?;
     let (input, url) = cut(terminated(map_res(not_my_eol, str::from_utf8), my_eol))(input)?;
     Ok((input, Info::Url(url.to_string())))
 }
 
 // Matches other INFO records.
 fn info_line(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    let (input, _) = terminated(tag("INFO"), multispace1)(input)?;
+    let (input, _) = terminated(tag("INFO"), space1)(input)?;
     cut(terminated(not_my_eol, my_eol))(input)
 }
 
 // Matches a FILE record.
 fn file_line(input: &[u8]) -> IResult<&[u8], (u32, String)> {
-    let (input, _) = terminated(tag("FILE"), multispace1)(input)?;
+    let (input, _) = terminated(tag("FILE"), space1)(input)?;
     let (input, (id, filename)) = cut(tuple((
-        terminated(decimal_u32, multispace1),
+        terminated(decimal_u32, space1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((input, (id, filename.to_string())))
@@ -161,11 +161,11 @@ fn file_line(input: &[u8]) -> IResult<&[u8], (u32, String)> {
 
 // Matches a PUBLIC record.
 fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
-    let (input, _) = terminated(tag("PUBLIC"), multispace1)(input)?;
+    let (input, _) = terminated(tag("PUBLIC"), space1)(input)?;
     let (input, (_multiple, address, parameter_size, name)) = cut(tuple((
-        opt(terminated(tag("m"), multispace1)),
-        terminated(hex_str::<u64>, multispace1),
-        terminated(hex_str::<u32>, multispace1),
+        opt(terminated(tag("m"), space1)),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -181,9 +181,9 @@ fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
 // Matches line data after a FUNC record.
 fn func_line_data(input: &[u8]) -> IResult<&[u8], SourceLine> {
     let (input, (address, size, line, file)) = tuple((
-        terminated(hex_str::<u64>, multispace1),
-        terminated(hex_str::<u32>, multispace1),
-        terminated(decimal_u32, multispace1),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(decimal_u32, space1),
         terminated(decimal_u32, my_eol),
     ))(input)?;
     Ok((
@@ -199,12 +199,12 @@ fn func_line_data(input: &[u8]) -> IResult<&[u8], SourceLine> {
 
 // Matches a FUNC record.
 fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
-    let (input, _) = terminated(tag("FUNC"), multispace1)(input)?;
+    let (input, _) = terminated(tag("FUNC"), space1)(input)?;
     let (input, (_multiple, address, size, parameter_size, name)) = cut(tuple((
-        opt(terminated(tag("m"), multispace1)),
-        terminated(hex_str::<u64>, multispace1),
-        terminated(hex_str::<u32>, multispace1),
-        terminated(hex_str::<u32>, multispace1),
+        opt(terminated(tag("m"), space1)),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(hex_str::<u32>, space1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -221,7 +221,7 @@ fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
 
 // Matches a STACK WIN record.
 fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
-    let (input, _) = terminated(tag("STACK WIN"), multispace1)(input)?;
+    let (input, _) = terminated(tag("STACK WIN"), space1)(input)?;
     let (
         input,
         (
@@ -238,16 +238,16 @@ fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
             rest,
         ),
     ) = cut(tuple((
-        terminated(single(is_hex_digit), multispace1), // ty
-        terminated(hex_str::<u64>, multispace1),       // address
-        terminated(hex_str::<u32>, multispace1),       // code_size
-        terminated(hex_str::<u32>, multispace1),       // prologue_size
-        terminated(hex_str::<u32>, multispace1),       // epilogue_size
-        terminated(hex_str::<u32>, multispace1),       // parameter_size
-        terminated(hex_str::<u32>, multispace1),       // saved_register_size
-        terminated(hex_str::<u32>, multispace1),       // local_size
-        terminated(hex_str::<u32>, multispace1),       // max_stack_size
-        terminated(map(single(is_digit), |b| b == b'1'), multispace1), // has_program_string
+        terminated(single(is_hex_digit), space1), // ty
+        terminated(hex_str::<u64>, space1),       // address
+        terminated(hex_str::<u32>, space1),       // code_size
+        terminated(hex_str::<u32>, space1),       // prologue_size
+        terminated(hex_str::<u32>, space1),       // epilogue_size
+        terminated(hex_str::<u32>, space1),       // parameter_size
+        terminated(hex_str::<u32>, space1),       // saved_register_size
+        terminated(hex_str::<u32>, space1),       // local_size
+        terminated(hex_str::<u32>, space1),       // max_stack_size
+        terminated(map(single(is_digit), |b| b == b'1'), space1), // has_program_string
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
 
@@ -299,9 +299,9 @@ fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
 
 // Matches a STACK CFI record.
 fn stack_cfi(input: &[u8]) -> IResult<&[u8], CfiRules> {
-    let (input, _) = terminated(tag("STACK CFI"), multispace1)(input)?;
+    let (input, _) = terminated(tag("STACK CFI"), space1)(input)?;
     let (input, (address, rules)) = cut(tuple((
-        terminated(hex_str::<u64>, multispace1),
+        terminated(hex_str::<u64>, space1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -315,10 +315,10 @@ fn stack_cfi(input: &[u8]) -> IResult<&[u8], CfiRules> {
 
 // Matches a STACK CFI INIT record.
 fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
-    let (input, _) = terminated(tag("STACK CFI INIT"), multispace1)(input)?;
+    let (input, _) = terminated(tag("STACK CFI INIT"), space1)(input)?;
     let (input, (address, size, rules)) = cut(tuple((
-        terminated(hex_str::<u64>, multispace1),
-        terminated(hex_str::<u32>, multispace1),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((
@@ -763,6 +763,18 @@ fn test_func_lines_no_lines() {
                 lines: RangeMap::new(),
             }
         ))
+    );
+}
+
+#[test]
+fn test_truncated_func() {
+    let line = b"FUNC 1000\n1000 10 42 7\n";
+    assert_eq!(
+        func_line(line),
+        Err(Err::Failure(Error {
+            input: &line[9..],
+            code: ErrorKind::Space
+        }))
     );
 }
 
