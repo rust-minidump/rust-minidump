@@ -356,93 +356,110 @@ where
         .and_then(evil::handle_evil)
         .unwrap_or_default();
 
-    let mut threads = vec![];
-    let mut requesting_thread = None;
-    for (i, thread) in thread_list.threads.iter().enumerate() {
-        let id = thread.raw.thread_id;
+    let requesting_thread = std::sync::Mutex::new(None);
 
-        // If this is the thread that wrote the dump, skip processing it.
-        if dump_thread_id.is_some() && dump_thread_id.unwrap() == id {
-            threads.push(CallStack::with_info(id, CallStackInfo::DumpThreadSkipped));
-            continue;
-        }
+    let threads;
+    {
+        let dump_system_info = &dump_system_info;
+        let misc_info = &misc_info;
+        let exception_context = &exception_context;
+        let memory_list = &memory_list;
+        let thread_names = &thread_names;
+        let evil = &evil;
+        let modules = &modules;
+        let system_info = &system_info;
+        let unloaded_modules = &unloaded_modules;
+        let options = &options;
+        let requesting_thread = &requesting_thread;
+        threads = futures_util::future::join_all(thread_list.threads.iter().enumerate().map(
+            |(i, thread)| async move {
+                let id = thread.raw.thread_id;
 
-        let thread_context = thread.context(&dump_system_info, misc_info.as_ref());
-        // If this thread requested the dump then try to use the exception
-        // context if it exists. (prefer the exception stream's thread id over
-        // the breakpad info stream's thread id.)
-        let context = if crashing_thread_id
-            .or(requesting_thread_id)
-            .map(|id| id == thread.raw.thread_id)
-            .unwrap_or(false)
-        {
-            requesting_thread = Some(i);
-            exception_context.as_deref().or(thread_context.as_deref())
-        } else {
-            thread_context.as_deref()
-        };
-
-        let mut stack_memory = thread.stack_memory(&memory_list);
-        // Always chose the memory region that is referenced by the context,
-        // as the `exception_context` may refer to a different memory region than
-        // the `thread_context`, which in turn would fail to stack walk.
-        let stack_ptr = context.as_ref().map(|ctx| ctx.get_stack_pointer());
-        if let Some(stack_ptr) = stack_ptr {
-            let contains_stack_ptr = stack_memory
-                .as_ref()
-                .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
-                .is_some();
-            if !contains_stack_ptr {
-                stack_memory = memory_list
-                    .memory_at_address(stack_ptr)
-                    .map(Cow::Borrowed)
-                    .or(stack_memory);
-            }
-        }
-
-        let name = thread_names
-            .get_name(thread.raw.thread_id)
-            .map(|cow| cow.into_owned())
-            .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
-        let mut stack = stackwalker::walk_stack(
-            id,
-            name.as_deref(),
-            &context,
-            stack_memory.as_deref(),
-            &modules,
-            &system_info,
-            symbol_provider,
-        )
-        .await;
-        stack.thread_id = id;
-        stack.thread_name = name;
-        for frame in &mut stack.frames {
-            // If the frame doesn't have a loaded module, try to find an unloaded module
-            // that overlaps with its address range. The may be multiple, so record all
-            // of them and the offsets this frame has in them.
-            if frame.module.is_none() {
-                let mut offsets = BTreeMap::new();
-                for unloaded in unloaded_modules.modules_at_address(frame.instruction) {
-                    let offset = frame.instruction - unloaded.raw.base_of_image;
-                    offsets
-                        .entry(unloaded.name.clone())
-                        .or_insert_with(BTreeSet::new)
-                        .insert(offset);
+                // If this is the thread that wrote the dump, skip processing it.
+                if dump_thread_id.is_some() && dump_thread_id.unwrap() == id {
+                    return CallStack::with_info(id, CallStackInfo::DumpThreadSkipped);
                 }
 
-                frame.unloaded_modules = offsets;
-            }
-        }
+                let thread_context = thread.context(&dump_system_info, misc_info.as_ref());
+                // If this thread requested the dump then try to use the exception
+                // context if it exists. (prefer the exception stream's thread id over
+                // the breakpad info stream's thread id.)
+                let context = if crashing_thread_id
+                    .or(requesting_thread_id)
+                    .map(|id| id == thread.raw.thread_id)
+                    .unwrap_or(false)
+                {
+                    *requesting_thread.lock().unwrap() = Some(i);
+                    exception_context.as_deref().or(thread_context.as_deref())
+                } else {
+                    thread_context.as_deref()
+                };
 
-        stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
+                let mut stack_memory = thread.stack_memory(&memory_list);
+                // Always chose the memory region that is referenced by the context,
+                // as the `exception_context` may refer to a different memory region than
+                // the `thread_context`, which in turn would fail to stack walk.
+                let stack_ptr = context.as_ref().map(|ctx| ctx.get_stack_pointer());
+                if let Some(stack_ptr) = stack_ptr {
+                    let contains_stack_ptr = stack_memory
+                        .as_ref()
+                        .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
+                        .is_some();
+                    if !contains_stack_ptr {
+                        stack_memory = memory_list
+                            .memory_at_address(stack_ptr)
+                            .map(Cow::Borrowed)
+                            .or(stack_memory);
+                    }
+                }
 
-        if options.recover_function_args {
-            arg_recovery::fill_arguments(&mut stack, stack_memory.as_deref());
-        }
+                let name = thread_names
+                    .get_name(thread.raw.thread_id)
+                    .map(|cow| cow.into_owned())
+                    .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
+                let mut stack = stackwalker::walk_stack(
+                    id,
+                    name.as_deref(),
+                    &context,
+                    stack_memory.as_deref(),
+                    &modules,
+                    &system_info,
+                    symbol_provider,
+                )
+                .await;
+                stack.thread_id = id;
+                stack.thread_name = name;
+                for frame in &mut stack.frames {
+                    // If the frame doesn't have a loaded module, try to find an unloaded module
+                    // that overlaps with its address range. The may be multiple, so record all
+                    // of them and the offsets this frame has in them.
+                    if frame.module.is_none() {
+                        let mut offsets = BTreeMap::new();
+                        for unloaded in unloaded_modules.modules_at_address(frame.instruction) {
+                            let offset = frame.instruction - unloaded.raw.base_of_image;
+                            offsets
+                                .entry(unloaded.name.clone())
+                                .or_insert_with(BTreeSet::new)
+                                .insert(offset);
+                        }
 
-        threads.push(stack);
+                        frame.unloaded_modules = offsets;
+                    }
+                }
+
+                stack.last_error_value = thread.last_error(system_info.cpu, &memory_list);
+
+                if options.recover_function_args {
+                    arg_recovery::fill_arguments(&mut stack, stack_memory.as_deref());
+                }
+
+                stack
+            },
+        ))
+        .await
+        .into_iter()
+        .collect::<Vec<_>>();
     }
-
     // Collect up info on unimplemented/unknown modules
     let unknown_streams = dump.unknown_streams().collect();
     let unimplemented_streams = dump.unimplemented_streams().collect();
@@ -458,7 +475,7 @@ where
         crash_reason,
         crash_address,
         assertion,
-        requesting_thread,
+        requesting_thread: requesting_thread.into_inner().unwrap(),
         system_info,
         linux_standard_base,
         mac_crash_info,

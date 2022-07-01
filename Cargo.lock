@@ -1101,6 +1101,7 @@ dependencies = [
  "breakpad-symbols",
  "debugid 0.8.0",
  "doc-comment",
+ "futures-util",
  "memmap2",
  "minidump",
  "minidump-common",
