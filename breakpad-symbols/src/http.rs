@@ -1,13 +1,21 @@
 //! Contains HTTP symbol retrieval specific functionality
 
+use crate::sym_file::StreamingSymbolParser;
 use crate::*;
 use reqwest::{Client, Url};
-use std::fs;
-use std::io::{self, Write};
+use std::ffi::OsString;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tempfile::NamedTempFile;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, trace, warn};
+
+struct PartialDownload {
+    file: tokio::fs::File,
+    temp_path: PathBuf,
+    dest_path: PathBuf,
+}
 
 /// A key that uniquely identifies a File associated with a module
 type FileKey = (ModuleKey, FileKind);
@@ -20,6 +28,7 @@ pub struct HttpSymbolSupplier {
     /// File paths that are known to be in the cache
     #[allow(clippy::type_complexity)]
     cached_file_paths: Mutex<HashMap<FileKey, CachedOperation<(PathBuf, Option<Url>), FileError>>>,
+
     /// HTTP Client to use for fetching symbols.
     client: Client,
     /// URLs to search for symbols.
@@ -142,16 +151,7 @@ fn file_key(module: &(dyn Module + Sync), file_kind: FileKind) -> FileKey {
     (module_key(module), file_kind)
 }
 
-fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTempFile> {
-    // Use tempfile to save things to our cache to ensure proper
-    // atomicity of writes. We may want multiple instances of rust-minidump
-    // to be sharing a cache, and we don't want one instance to see another
-    // instance's partially written results.
-    //
-    // tempfile is designed explicitly for this purpose, and will handle all
-    // the platform-specific details and do its best to cleanup if things
-    // crash.
-
+async fn create_cache_file(final_path: &Path) -> io::Result<PartialDownload> {
     // First ensure that the target directory in the cache exists
     let base = final_path.parent().ok_or_else(|| {
         io::Error::new(
@@ -159,12 +159,50 @@ fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTemp
             format!("Bad cache path: {:?}", final_path),
         )
     })?;
-    fs::create_dir_all(&base)?;
+    fs::create_dir_all(&base).await?;
 
-    NamedTempFile::new_in(tmp_path)
+    // Try to create a new file in the final destination with `.part` added to the extension.
+    // Use an attempt counter to vaguely allow multiple processes to race on this, without them
+    // having to cooperate in any way. If there's only one instance this will just work reasonably.
+    let dest_path = final_path.to_owned();
+    let mut temp_path = dest_path.clone();
+    let mut new_ext = temp_path.extension().unwrap().to_owned();
+    new_ext.push(".part");
+    let mut num_attempts = 0;
+    loop {
+        // Try successive .0, .1, ... extensions to not fall over for garbage and other processes
+        let mut cur_ext = OsString::new();
+        cur_ext.push(&new_ext);
+        cur_ext.push(".");
+        cur_ext.push(num_attempts.to_string());
+        temp_path.set_extension(&cur_ext);
+
+        match fs::File::create(&temp_path).await {
+            Ok(file) => {
+                return Ok(PartialDownload {
+                    file,
+                    dest_path,
+                    temp_path,
+                });
+            }
+            Err(e) => {
+                if let io::ErrorKind::AlreadyExists = e.kind() {
+                    if num_attempts > 5 {
+                        // Give up, something fucky is happening
+                        // (this isn't great, but, WIP?)
+                        return Err(e);
+                    } else {
+                        num_attempts += 1;
+                        continue;
+                    }
+                }
+                return Err(e);
+            }
+        }
+    }
 }
 
-fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> io::Result<()> {
+async fn commit_cache_file(mut download: PartialDownload, url: &Url) -> io::Result<()> {
     // Append any extra metadata we also want to be cached as "INFO" lines,
     // because this is an established format that parsers will ignore the
     // contents of by default.
@@ -172,16 +210,11 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
     // INFO URL allows us to properly report the url we retrieved a symbol file
     // from, even when the file is loaded from our on-disk cache.
     let cache_metadata = format!("INFO URL {}\n", url);
-    temp.write_all(cache_metadata.as_bytes())?;
-
-    // TODO: don't do this
-    if final_path.exists() {
-        fs::remove_file(final_path)?;
-    }
+    download.file.write_all(cache_metadata.as_bytes()).await?;
 
     // If another process already wrote this entry, prefer their value to
     // avoid needless file system churn.
-    temp.persist_noclobber(final_path)?;
+    fs::rename(&download.temp_path, &download.dest_path).await?;
 
     Ok(())
 }
@@ -193,7 +226,7 @@ async fn fetch_symbol_file(
     base_url: &Url,
     module: &(dyn Module + Sync),
     cache: &Path,
-    tmp: &Path,
+    _tmp: &Path,
 ) -> Result<SymbolFile, SymbolError> {
     trace!("HttpSymbolSupplier trying symbol server {}", base_url);
     // This function is a bit of a complicated mess because we want to write
@@ -215,7 +248,7 @@ async fn fetch_symbol_file(
         .append_pair("code_file", crate::basename(&module.code_file()))
         .append_pair("code_id", code_id.as_str());
     debug!("Trying {}", url);
-    let res = client
+    let mut res = client
         .get(url.clone())
         .send()
         .await
@@ -224,30 +257,36 @@ async fn fetch_symbol_file(
 
     // Now try to create the temp cache file (not yet in the cache)
     let final_cache_path = cache.join(sym_lookup.cache_rel);
-    let mut temp = create_cache_file(tmp, &final_cache_path)
+    let mut temp = create_cache_file(&final_cache_path)
+        .await
         .map_err(|e| {
             warn!("Failed to save symbol file in local disk cache: {}", e);
         })
         .ok();
 
-    // Now stream parse the file as it downloads.
-    let mut symbol_file = SymbolFile::parse_async(res, |data| {
-        // While we're downloading+parsing, save this data to the the disk cache too
+    let mut parser = StreamingSymbolParser::new();
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    {
+        parser.add_input(&chunk)?;
         if let Some(file) = temp.as_mut() {
-            if let Err(e) = file.write_all(data) {
+            if let Err(e) = file.file.write_all(&chunk).await {
                 // Give up on caching this.
                 warn!("Failed to save symbol file in local disk cache: {}", e);
                 temp = None;
             }
         }
-    })
-    .await?;
+    }
+    // Now stream parse the file as it downloads.
+    let mut symbol_file = parser.finish()?;
     // Make note of what URL this symbol file was downloaded from.
     symbol_file.url = Some(url.to_string());
 
     // Try to finish the cache file and atomically swap it into the cache.
     if let Some(temp) = temp {
-        let _ = commit_cache_file(temp, &final_cache_path, &url).map_err(|e| {
+        let _ = commit_cache_file(temp, &url).await.map_err(|e| {
             warn!("Failed to save symbol file in local disk cache: {}", e);
         });
     }
@@ -264,7 +303,7 @@ async fn fetch_lookup(
     base_url: &Url,
     lookup: &FileLookup,
     cache: &Path,
-    tmp: &Path,
+    _tmp: &Path,
 ) -> Result<(PathBuf, Option<Url>), SymbolError> {
     // First try to GET the file from a server
     let url = base_url
@@ -280,7 +319,7 @@ async fn fetch_lookup(
 
     // Now try to create the temp cache file (not yet in the cache)
     let final_cache_path = cache.join(&lookup.cache_rel);
-    let mut temp = create_cache_file(tmp, &final_cache_path)?;
+    let mut temp = create_cache_file(&final_cache_path).await?;
 
     // Now stream the contents to our file
     while let Some(chunk) = res
@@ -288,11 +327,12 @@ async fn fetch_lookup(
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
     {
-        temp.write_all(&chunk[..])?;
+        temp.file.write_all(&chunk[..]).await?;
     }
 
     // And swap it into the cache
-    temp.persist_noclobber(&final_cache_path)
+    fs::rename(&temp.temp_path, &temp.dest_path)
+        .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     trace!("symbols: fetched native binary: {}", lookup.cache_rel);
@@ -322,8 +362,9 @@ async fn fetch_cab_lookup(
         .map_err(|_| FileError::NotFound)?;
 
     let cab_bytes = res.bytes().await.map_err(|_| FileError::NotFound)?;
-    let final_cache_path =
-        unpack_cabinet_file(&cab_bytes, lookup, cache, tmp).map_err(|_| FileError::NotFound)?;
+    let final_cache_path = unpack_cabinet_file(&cab_bytes, lookup, cache, tmp)
+        .await
+        .map_err(|_| FileError::NotFound)?;
 
     trace!("symbols: fetched native binary: {}", lookup.cache_rel);
 
@@ -342,11 +383,11 @@ async fn fetch_cab_lookup(
 }
 
 #[cfg(feature = "mozilla_cab_symbols")]
-pub fn unpack_cabinet_file(
+pub async fn unpack_cabinet_file(
     buf: &[u8],
     lookup: &FileLookup,
     cache: &Path,
-    tmp: &Path,
+    _tmp: &Path,
 ) -> Result<PathBuf, std::io::Error> {
     trace!("symbols: unpacking CAB file: {}", lookup.cache_rel);
     // try to find a file in a cabinet archive and unpack it to the destination
@@ -375,12 +416,12 @@ pub fn unpack_cabinet_file(
     let mut reader = cab.read_file(&cab_file)?;
 
     // Now try to create the temp cache file (not yet in the cache)
-    let mut temp = create_cache_file(tmp, &final_cache_path)?;
-    std::io::copy(&mut reader, &mut temp)?;
-
+    let mut temp = create_cache_file(&final_cache_path).await?;
+    let mut std_file = temp.file.into_std().await;
+    std::io::copy(&mut reader, &mut std_file)?;
+    temp.file = fs::File::from_std(std_file);
     // And swap it into the cache
-    temp.persist_noclobber(&final_cache_path)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::rename(&temp.temp_path, &temp.dest_path).await?;
 
     Ok(final_cache_path)
 }
@@ -449,12 +490,12 @@ async fn dump_syms(
 
     {
         // Write extra metadata to the file
-        let mut temp = std::fs::File::options().append(true).open(output)?;
+        let mut temp = fs::OpenOptions::new().append(true).open(output).await?;
         let mut cache_metadata = String::new();
         for url in urls {
             cache_metadata.push_str(&format!("INFO URL {}\n", url));
         }
-        temp.write_all(cache_metadata.as_bytes())?;
+        temp.write_all(cache_metadata.as_bytes()).await?;
     }
 
     Ok(())

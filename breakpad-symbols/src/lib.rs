@@ -43,10 +43,10 @@ use tracing::trace;
 
 use std::boxed::Box;
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::{borrow::Cow, sync::Arc};
+use tokio::fs;
 
 pub use minidump_common::{traits::Module, utils::basename};
 pub use sym_file::walker;
@@ -370,7 +370,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
             .locate_file(module, FileKind::BreakpadSym)
             .await
             .map_err(|_| SymbolError::NotFound)?;
-        let symbols = SymbolFile::from_file(&file_path).map_err(|e| {
+        let symbols = SymbolFile::from_file_async(&file_path).await.map_err(|e| {
             trace!("SimpleSymbolSupplier failed: {}", e);
             e
         })?;
@@ -388,7 +388,11 @@ impl SymbolSupplier for SimpleSymbolSupplier {
         if let Some(lookup) = lookup(module, file_kind) {
             for path in self.paths.iter() {
                 let test_path = path.join(&lookup.cache_rel);
-                if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
+                if fs::metadata(&test_path)
+                    .await
+                    .ok()
+                    .map_or(false, |m| m.is_file())
+                {
                     trace!("SimpleSymbolSupplier found file {}", test_path.display());
                     return Ok(test_path);
                 }
@@ -741,8 +745,6 @@ impl Symbolizer {
     }
 
     /// Gets the path to a file for a given module (or an Error).
-    ///
-    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
     pub async fn get_file_path(
         &self,
         module: &(dyn Module + Sync),

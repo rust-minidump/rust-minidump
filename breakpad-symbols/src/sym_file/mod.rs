@@ -69,267 +69,182 @@ pub mod walker;
 static MAX_BUFFER_CAPACITY: usize = 1024 * 160;
 static INITIAL_BUFFER_CAPACITY: usize = 1024 * 10;
 
-impl SymbolFile {
-    /// Parse a SymbolFile from the given Reader.
-    ///
-    /// Every time a chunk of the input is parsed, that chunk will
-    /// be passed to `callback` to allow you to do something else
-    /// with the data as it's streamed in (e.g. you can save the
-    /// input to a cache).
-    ///
-    /// The reader is wrapped in a buffer reader so you shouldn't
-    /// buffer the input yourself.
-    pub fn parse<R: Read>(
-        mut input_reader: R,
-        mut callback: impl FnMut(&[u8]),
-    ) -> Result<SymbolFile, SymbolError> {
-        let mut buf = circular::Buffer::with_capacity(INITIAL_BUFFER_CAPACITY);
-        let mut parser = SymbolParser::new();
-        let mut fully_consumed = false;
-        let mut tried_to_grow = false;
-        let mut in_panic_recovery = false;
-        let mut just_finished_recovering = false;
-        let mut total_consumed = 0u64;
-        loop {
-            if in_panic_recovery {
-                // PANIC RECOVERY MODE! DISCARD BYTES UNTIL NEWLINE.
-                let input = buf.data();
-                if let Some(new_line_idx) = input.iter().position(|&byte| byte == b'\n') {
-                    // Hooray, we found a new line! Consume up to and including that, and resume.
-                    let amount = new_line_idx + 1;
-                    callback(&input[..amount]);
-                    buf.consume(amount);
-                    total_consumed += amount as u64;
+pub struct StreamingSymbolParser {
+    buf: circular::Buffer,
+    parser: SymbolParser,
 
-                    // Back to normal!
-                    in_panic_recovery = false;
-                    fully_consumed = false;
-                    just_finished_recovering = true;
-                    parser.lines += 1;
-                    trace!("RECOVERY: complete!");
-                } else {
-                    // No newline, discard everything
-                    let amount = input.len();
-                    callback(&input[..amount]);
-                    buf.consume(amount);
-                    total_consumed += amount as u64;
+    fully_consumed: bool,
+    tried_to_grow: bool,
+    in_panic_recovery: bool,
+    just_finished_recovering: bool,
+    total_consumed: u64,
+}
 
-                    // If the next read returns 0 bytes, then that's a proper EOF!
-                    fully_consumed = true;
-                }
-            }
+impl StreamingSymbolParser {
+    pub fn new() -> Self {
+        Self {
+            buf: circular::Buffer::with_capacity(INITIAL_BUFFER_CAPACITY),
+            parser: SymbolParser::new(),
 
-            // Read the data in, and tell the circular buffer about the new data
-            let size = input_reader.read(buf.space())?;
-            buf.fill(size);
-
-            if size == 0 {
-                // If the reader returned no more bytes, this can be either mean
-                // EOF or the buffer is out of capacity. There are a lot of cases
-                // to consider, so let's go through them one at a time...
-                if just_finished_recovering && !buf.data().is_empty() {
-                    // We just finished PANIC RECOVERY, but there's still bytes in
-                    // the buffer. Assume that is parseable and resume normal parsing
-                    // (do nothing, fallthrough to normal path).
-                } else if fully_consumed {
-                    // Success! The last iteration cleared the buffer and we still got
-                    // no more bytes, so that's a proper EOF with a complete parse!
-                    return Ok(parser.finish());
-                } else if !tried_to_grow {
-                    // We still have some stuff in the buffer, assume this is because
-                    // the buffer is full, and try to make it BIGGER and ask for more again.
-                    let new_cap = buf.capacity().saturating_mul(2);
-                    if new_cap > MAX_BUFFER_CAPACITY {
-                        // TIME TO PANIC!!! This line is catastrophically big, just start
-                        // discarding bytes until we hit a newline.
-                        trace!("RECOVERY: discarding enormous line {}", parser.lines);
-                        in_panic_recovery = true;
-                        continue;
-                    }
-                    trace!("parser out of space? trying more ({}KB)", new_cap / 1024);
-                    buf.grow(new_cap);
-                    tried_to_grow = true;
-                    continue;
-                } else if total_consumed == 0 {
-                    // We grew the buffer and still got no more bytes, so it's a proper EOF.
-                    // But actually, we never consumed any bytes, so this is an empty file?
-                    // Give a better error message for that.
-                    return Err(SymbolError::ParseError(
-                        "empty SymbolFile (probably something wrong with your debuginfo tooling?)",
-                        0,
-                    ));
-                } else {
-                    // Ok give up, this input is just impossible.
-                    return Err(SymbolError::ParseError(
-                        "unexpected EOF during parsing of SymbolFile (or a line was too long?)",
-                        parser.lines,
-                    ));
-                }
-            } else {
-                tried_to_grow = false;
-            }
-
-            if in_panic_recovery {
-                // Don't run the normal parser while we're still recovering!
-                continue;
-            }
-            just_finished_recovering = false;
-
-            // Ask the parser to parse more of the input
-            let input = buf.data();
-            let consumed = parser.parse_more(input)?;
-            total_consumed += consumed as u64;
-
-            // Give the other consumer of this Reader a chance to use this data.
-            callback(&input[..consumed]);
-
-            // Remember for the next iteration if all the input was consumed.
-            fully_consumed = input.len() == consumed;
-            buf.consume(consumed);
+            fully_consumed: false,
+            tried_to_grow: false,
+            in_panic_recovery: false,
+            just_finished_recovering: false,
+            total_consumed: 0u64,
         }
     }
 
-    /// `parse` but async
-    #[cfg(feature = "http")]
-    pub async fn parse_async(
-        mut response: reqwest::Response,
-        mut callback: impl FnMut(&[u8]),
-    ) -> Result<SymbolFile, SymbolError> {
-        let mut chunk;
-        let mut slice = &[][..];
-        let mut input_reader = &mut slice;
-        let mut buf = circular::Buffer::with_capacity(INITIAL_BUFFER_CAPACITY);
-        let mut parser = SymbolParser::new();
+    pub fn add_input(&mut self, mut slice: &[u8]) -> Result<(), SymbolError> {
+        let input_reader = &mut slice;
 
-        let mut fully_consumed = false;
-        let mut tried_to_grow = false;
-        let mut in_panic_recovery = false;
-        let mut just_finished_recovering = false;
-        let mut total_consumed = 0u64;
         loop {
-            if in_panic_recovery {
+            if self.in_panic_recovery {
                 // PANIC RECOVERY MODE! DISCARD BYTES UNTIL NEWLINE.
-                let input = buf.data();
+                let input = self.buf.data();
                 if let Some(new_line_idx) = input.iter().position(|&byte| byte == b'\n') {
                     // Hooray, we found a new line! Consume up to and including that, and resume.
                     let amount = new_line_idx + 1;
-                    callback(&input[..amount]);
-                    buf.consume(amount);
-                    total_consumed += amount as u64;
+                    self.buf.consume(amount);
+                    self.total_consumed += amount as u64;
 
                     // Back to normal!
-                    in_panic_recovery = false;
-                    fully_consumed = false;
-                    just_finished_recovering = true;
-                    parser.lines += 1;
+                    self.in_panic_recovery = false;
+                    self.fully_consumed = false;
+                    self.just_finished_recovering = true;
+                    self.parser.lines += 1;
                     trace!("PANIC RECOVERY: complete!");
                 } else {
                     // No newline, discard everything
                     let amount = input.len();
-                    callback(&input[..amount]);
-                    buf.consume(amount);
-                    total_consumed += amount as u64;
+                    self.buf.consume(amount);
+                    self.total_consumed += amount as u64;
 
                     // If the next read returns 0 bytes, then that's a proper EOF!
-                    fully_consumed = true;
+                    self.fully_consumed = true;
                 }
             }
 
-            // Little rube-goldberg machine to stream the contents:
-            // * get a chunk (Bytes) from the Response
-            // * get its underlying slice
-            // * then get a mutable reference to that slice
-            // * then Read that mutable reference in our circular buffer
-            // * when the slice runs out, get the next chunk and repeat
-            if input_reader.is_empty() {
-                chunk = response
-                    .chunk()
-                    .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .unwrap_or_default();
-                slice = &chunk[..];
-                input_reader = &mut slice;
+            // If there's no more input, and we didn't just recover, then we're all done
+            // If we *did* just recover we should poll the input again just to avoid an
+            // extra wasted trip to the parser in case there is some input left.
+            if input_reader.is_empty() && !self.just_finished_recovering {
+                return Ok(());
             }
 
             // Read the data in, and tell the circular buffer about the new data
-            let size = input_reader.read(buf.space())?;
-            buf.fill(size);
+            let size = input_reader.read(self.buf.space())?;
+            self.buf.fill(size);
 
             if size == 0 {
-                // If the reader returned no more bytes, this can be either mean
-                // EOF or the buffer is out of capacity. There are a lot of cases
-                // to consider, so let's go through them one at a time...
-                if just_finished_recovering && !buf.data().is_empty() {
+                // If the buf failed to read out any more bytes, then it's out of capacity
+                // or we just finished recovering
+                if self.just_finished_recovering && !self.buf.data().is_empty() {
                     // We just finished PANIC RECOVERY, but there's still bytes in
                     // the buffer. Assume that is parseable and resume normal parsing
                     // (do nothing, fallthrough to normal path).
-                } else if fully_consumed {
-                    // Success! The last iteration cleared the buffer and we still got
-                    // no more bytes, so that's a proper EOF with a complete parse!
-                    return Ok(parser.finish());
-                } else if !tried_to_grow {
+                } else if !self.tried_to_grow {
                     // We still have some stuff in the buffer, assume this is because
                     // the buffer is full, and try to make it BIGGER and ask for more again.
-                    let new_cap = buf.capacity().saturating_mul(2);
+                    let new_cap = self.buf.capacity().saturating_mul(2);
                     if new_cap > MAX_BUFFER_CAPACITY {
                         // TIME TO PANIC!!! This line is catastrophically big, just start
                         // discarding bytes until we hit a newline.
-                        trace!("RECOVERY: discarding enormous line {}", parser.lines);
-                        in_panic_recovery = true;
+                        trace!("RECOVERY: discarding enormous line {}", self.parser.lines);
+                        self.in_panic_recovery = true;
                         continue;
                     }
                     trace!("parser out of space? trying more ({}KB)", new_cap / 1024);
-                    buf.grow(new_cap);
-                    tried_to_grow = true;
+                    self.buf.grow(new_cap);
+                    self.tried_to_grow = true;
                     continue;
-                } else if total_consumed == 0 {
-                    // We grew the buffer and still got no more bytes, so it's a proper EOF.
-                    // But actually, we never consumed any bytes, so this is an empty file?
-                    // Give a better error message for that.
-                    return Err(SymbolError::ParseError(
-                        "empty SymbolFile (probably something wrong with your debuginfo tooling?)",
-                        0,
-                    ));
                 } else {
                     // Ok give up, this input is just impossible.
                     return Err(SymbolError::ParseError(
                         "unexpected EOF during parsing of SymbolFile (or a line was too long?)",
-                        parser.lines,
+                        self.parser.lines,
                     ));
                 }
             } else {
-                tried_to_grow = false;
+                self.tried_to_grow = false;
             }
 
-            if in_panic_recovery {
+            if self.in_panic_recovery {
                 // Don't run the normal parser while we're still recovering!
                 continue;
             }
-            just_finished_recovering = false;
+            self.just_finished_recovering = false;
 
             // Ask the parser to parse more of the input
-            let input = buf.data();
-            let consumed = parser.parse_more(input)?;
-            total_consumed += consumed as u64;
-
-            // Give the other consumer of this Reader a chance to use this data.
-            callback(&input[..consumed]);
+            let input = self.buf.data();
+            let consumed = self.parser.parse_more(input)?;
+            self.total_consumed += consumed as u64;
 
             // Remember for the next iteration if all the input was consumed.
-            fully_consumed = input.len() == consumed;
-            buf.consume(consumed);
+            self.fully_consumed = input.len() == consumed;
+            self.buf.consume(consumed);
         }
     }
 
+    pub fn finish(self) -> Result<SymbolFile, SymbolError> {
+        if self.total_consumed == 0 {
+            // We never consumed any bytes, so this is an empty file?
+            // Give a better error message for that.
+            Err(SymbolError::ParseError(
+                "empty SymbolFile (probably something wrong with your debuginfo tooling?)",
+                0,
+            ))
+        } else if self.fully_consumed {
+            // Success! The last iteration cleared the buffer and we still got
+            // no more bytes, so that's a proper EOF with a complete parse!
+            Ok(self.parser.finish())
+        } else {
+            // Ok give up, this input is just impossible.
+            Err(SymbolError::ParseError(
+                "unexpected EOF during parsing of SymbolFile (or a line was too long?)",
+                self.parser.lines,
+            ))
+        }
+    }
+}
+
+impl SymbolFile {
     // Parse a SymbolFile from bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<SymbolFile, SymbolError> {
-        Self::parse(bytes, |_| ())
+        let mut parser = StreamingSymbolParser::new();
+        parser.add_input(bytes)?;
+        parser.finish()
     }
 
     // Parse a SymbolFile from a file.
     pub fn from_file(path: &Path) -> Result<SymbolFile, SymbolError> {
-        let file = File::open(path)?;
-        Self::parse(file, |_| ())
+        let mut file = File::open(path)?;
+        let mut buf = vec![0; 1024 * 8];
+        let mut parser = StreamingSymbolParser::new();
+        loop {
+            let n = file.read(&mut buf[..])?;
+            if n == 0 {
+                break;
+            }
+            parser.add_input(&buf[..n])?;
+        }
+        parser.finish()
+    }
+
+    // Parse a SymbolFile from a file.
+    pub async fn from_file_async(path: &Path) -> Result<SymbolFile, SymbolError> {
+        use tokio::io::AsyncReadExt;
+
+        let mut file = tokio::fs::File::open(path).await?;
+        let mut buf = vec![0; 1024 * 8];
+        let mut parser = StreamingSymbolParser::new();
+        loop {
+            let n = file.read(&mut buf[..]).await?;
+            if n == 0 {
+                break;
+            }
+            parser.add_input(&buf[..n])?;
+        }
+        parser.finish()
     }
 
     /// Fill in as much source information for `frame` as possible.

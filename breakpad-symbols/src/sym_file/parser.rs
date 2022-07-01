@@ -644,7 +644,7 @@ fn into_rangemap_safe<V: Clone + Eq + Debug>(mut input: Vec<(Range<u64>, V)>) ->
 
 #[cfg(test)]
 fn parse_symbol_bytes(data: &[u8]) -> Result<SymbolFile, SymbolError> {
-    SymbolFile::parse(data, |_| ())
+    SymbolFile::from_bytes(data)
 }
 
 #[test]
