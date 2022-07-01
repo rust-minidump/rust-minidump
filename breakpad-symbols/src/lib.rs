@@ -452,6 +452,9 @@ pub trait FrameSymbolizer {
     fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
     /// Set the source file and (1-based) line number this frame represents.
     fn set_source_file(&mut self, file: &str, line: u32, base: u64);
+    /// Add an inline frame. This method can be called multiple times, in the
+    /// order "outside to inside".
+    fn add_inline_frame(&mut self, _name: &str, _file: Option<&str>, _line: Option<u32>) {}
 }
 
 pub trait FrameWalker {

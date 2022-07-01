@@ -6,6 +6,7 @@ pub use crate::sym_file::types::*;
 pub use parser::SymbolParser;
 use std::fs::File;
 use std::io::Read;
+use std::ops::Deref;
 use std::path::Path;
 use tracing::trace;
 
@@ -361,10 +362,73 @@ impl SymbolFile {
                 func.address + module.base_address(),
                 parameter_size,
             );
-            // See if there's source line info as well.
-            if let Some((file_id, line, line_address)) = func.get_outermost_source_location(addr) {
+
+            // See if there's source line and inline info as well.
+            //
+            // In the following, we transform data between two different representations of inline calls.
+            // The input shape has function names associated with the location of the call to that function.
+            // The output shape has function names associated with a location *inside* that function.
+            //
+            // Input:
+            //
+            //   (
+            //       outer_name,
+            //       inline_calls: [ // Each location is the line of the *call* to the function
+            //           (inline_call_location[0], inline_name[0]),
+            //           (inline_call_location[1], inline_name[1]),
+            //           (inline_call_location[2], inline_name[2]),
+            //       ]
+            //       innermost_location,
+            //   )
+            //
+            // Output:
+            //
+            //   ( // Each location is the line *inside* the function
+            //       (outer_name, inline_call_location[0]),
+            //       inlines: [
+            //           (inline_name[0], inline_call_location[1]),
+            //           (inline_name[1], inline_call_location[2]),
+            //           (inline_name[2], innermost_location),
+            //       ]
+            //   )
+            if let Some((file_id, line, address, next_inline_origin)) =
+                func.get_outermost_source_location(addr)
+            {
                 if let Some(file) = self.files.get(&file_id) {
-                    frame.set_source_file(file, line, line_address + module.base_address());
+                    frame.set_source_file(file, line, address + module.base_address());
+                }
+
+                if let Some(mut inline_origin) = next_inline_origin {
+                    // There is an inline call at the address.
+                    // Enumerate all inlines at the address one by one by looking up
+                    // successively deeper call depths.
+                    // The call to `get_outermost_source_location` above looked up depth 0, so here
+                    // we start at depth 1.
+                    for depth in 1.. {
+                        match func.get_inlinee_at_depth(depth, addr) {
+                            Some((call_file_id, call_line, _address, next_inline_origin)) => {
+                                // We found another inline frame.
+                                let call_file = self.files.get(&call_file_id).map(Deref::deref);
+                                if let Some(name) = self.inline_origins.get(&inline_origin) {
+                                    frame.add_inline_frame(&*name, call_file, Some(call_line));
+                                }
+
+                                inline_origin = next_inline_origin;
+                            }
+                            None => break,
+                        }
+                    }
+                    // We've run out of inline calls but we still have to output the final frame.
+                    let (file, line) = match func.get_innermost_source_location(addr) {
+                        Some((file_id, line, _)) => (
+                            self.files.get(&file_id).map(Deref::deref),
+                            if line != 0 { Some(line) } else { None },
+                        ),
+                        None => (None, None),
+                    };
+                    if let Some(name) = self.inline_origins.get(&inline_origin) {
+                        frame.add_inline_frame(&*name, file, line);
+                    }
                 }
             }
         } else if let Some(public) = self.find_nearest_public(addr) {

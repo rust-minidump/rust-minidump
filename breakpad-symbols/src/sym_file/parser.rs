@@ -688,6 +688,7 @@ impl SymbolParser {
             files: self.files,
             publics: self.publics,
             functions: into_rangemap_safe(self.functions),
+            inline_origins: self.inline_origins,
             cfi_stack_info: into_rangemap_safe(self.cfi_stack_info),
             win_stack_framedata_info: into_rangemap_safe(self.win_stack_framedata_info),
             win_stack_fpo_info: into_rangemap_safe(self.win_stack_fpo_info),

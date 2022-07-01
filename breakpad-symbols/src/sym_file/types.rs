@@ -80,15 +80,15 @@ impl Function {
         ))
     }
 
-    /// Returns `(file_id, line, address)` of the line or inline record that
+    /// Returns `(file_id, line, address, inline_origin)` of the line or inline record that
     /// covers the given address at the outermost level (i.e. not inside any
     /// inlined calls).
-    pub fn get_outermost_source_location(&self, addr: u64) -> Option<(u32, u32, u64)> {
-        if let Some((call_file, call_line, address, _)) = self.get_inlinee_at_depth(0, addr) {
-            return Some((call_file, call_line, address));
+    pub fn get_outermost_source_location(&self, addr: u64) -> Option<(u32, u32, u64, Option<u32>)> {
+        if let Some((call_file, call_line, address, origin)) = self.get_inlinee_at_depth(0, addr) {
+            return Some((call_file, call_line, address, Some(origin)));
         }
         let line = self.lines.get(addr)?;
-        Some((line.file, line.line, line.address))
+        Some((line.file, line.line, line.address, None))
     }
 
     /// Returns `(file_id, line, address)` of the line record that covers the
@@ -236,6 +236,8 @@ pub struct SymbolFile {
     pub publics: Vec<PublicSymbol>,
     /// Functions.
     pub functions: RangeMap<u64, Function>,
+    /// Function names for inlined functions.
+    pub inline_origins: HashMap<u32, String>,
     /// DWARF CFI unwind information.
     pub cfi_stack_info: RangeMap<u64, StackInfoCfi>,
     /// Windows unwind information (frame data).
