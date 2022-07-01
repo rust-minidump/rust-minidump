@@ -33,6 +33,25 @@ pub struct SourceLine {
     pub line: u32,
 }
 
+/// A single range which is covered by an inlined function call.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Inlinee {
+    /// The depth of the inline call.
+    pub depth: u32,
+    /// The start address relative to the module's load address.
+    pub address: u64,
+    /// The size of this range of instructions in bytes.
+    pub size: u32,
+    /// The source file which contains the function call.
+    ///
+    /// This is an index into `SymbolFile::files`.
+    pub call_file: u32,
+    /// The line number in `call_file` for the function call.
+    pub call_line: u32,
+    /// The function name, as an index into `SymbolFile::inline_origins`.
+    pub origin_id: u32,
+}
+
 /// A source-language function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
@@ -46,6 +65,8 @@ pub struct Function {
     pub name: String,
     /// Source line information for this function.
     pub lines: RangeMap<u64, SourceLine>,
+    /// Inlinee information for this function, sorted by (depth, address).
+    pub inlinees: Vec<Inlinee>,
 }
 
 impl Function {
@@ -57,6 +78,56 @@ impl Function {
             self.address,
             self.address.checked_add(self.size as u64)? - 1,
         ))
+    }
+
+    /// Returns `(file_id, line, address)` of the line or inline record that
+    /// covers the given address at the outermost level (i.e. not inside any
+    /// inlined calls).
+    pub fn get_outermost_source_location(&self, addr: u64) -> Option<(u32, u32, u64)> {
+        if let Some((call_file, call_line, address, _)) = self.get_inlinee_at_depth(0, addr) {
+            return Some((call_file, call_line, address));
+        }
+        let line = self.lines.get(addr)?;
+        Some((line.file, line.line, line.address))
+    }
+
+    /// Returns `(file_id, line, address)` of the line record that covers the
+    /// given address. Line records describe locations at the innermost level
+    /// of inline calls at that address.
+    pub fn get_innermost_source_location(&self, addr: u64) -> Option<(u32, u32, u64)> {
+        let line = self.lines.get(addr)?;
+        Some((line.file, line.line, line.address))
+    }
+
+    /// Returns `(call_file_id, call_line, address, inline_origin)` of the
+    /// inlinee record that covers the given address at the given depth.
+    pub fn get_inlinee_at_depth(&self, depth: u32, addr: u64) -> Option<(u32, u32, u64, u32)> {
+        let inlinee = match self
+            .inlinees
+            .binary_search_by_key(&(depth, addr), |inlinee| (inlinee.depth, inlinee.address))
+        {
+            // Exact match
+            Ok(index) => &self.inlinees[index],
+            // No match, insertion index is zero => before first element
+            Err(0) => return None,
+            // No exact match, insertion index points after inlinee whose (depth, addr) is < what were looking for
+            // => subtract 1 to get candidate
+            Err(index) => &self.inlinees[index - 1],
+        };
+        if inlinee.depth != depth {
+            return None;
+        }
+        let end_address = inlinee.address.checked_add(inlinee.size as u64)?;
+        if addr < end_address {
+            Some((
+                inlinee.call_file,
+                inlinee.call_line,
+                inlinee.address,
+                inlinee.origin_id,
+            ))
+        } else {
+            None
+        }
     }
 }
 

@@ -3,10 +3,11 @@
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::{char, hex_digit1, space1};
+use nom::character::complete::{hex_digit1, space1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
+use nom::multi::separated_list1;
 use nom::sequence::{preceded, terminated, tuple};
 use nom::{Err, IResult};
 use range_map::{Range, RangeMap};
@@ -27,8 +28,9 @@ enum Line {
     Module,
     Info(Info),
     File(u32, String),
+    InlineOrigin(u32, String),
     Public(PublicSymbol),
-    Function(Function, Vec<SourceLine>),
+    Function(Function, Vec<SourceLine>, Vec<Inlinee>),
     StackWin(WinFrameType),
     StackCfi(StackInfoCfi),
 }
@@ -100,8 +102,8 @@ fn non_space(input: &[u8]) -> IResult<&[u8], &[u8]> {
 ///
 /// This is different from `line_ending` which doesn't accept `\r` if it isn't
 /// followed by `\n`.
-fn my_eol(input: &[u8]) -> IResult<&[u8], char> {
-    preceded(take_while(|b| b == b'\r'), char('\n'))(input)
+fn my_eol(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    preceded(take_while(|b| b == b'\r'), tag(b"\n"))(input)
 }
 
 /// Accept everything except `\r` and `\n`.
@@ -157,6 +159,16 @@ fn file_line(input: &[u8]) -> IResult<&[u8], (u32, String)> {
         terminated(map_res(not_my_eol, str::from_utf8), my_eol),
     )))(input)?;
     Ok((input, (id, filename.to_string())))
+}
+
+// Matches an INLINE_ORIGIN record.
+fn inline_origin_line(input: &[u8]) -> IResult<&[u8], (u32, String)> {
+    let (input, _) = terminated(tag("INLINE_ORIGIN"), space1)(input)?;
+    let (input, (id, function)) = cut(tuple((
+        terminated(decimal_u32, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((input, (id, function.to_string())))
 }
 
 // Matches a PUBLIC record.
@@ -215,7 +227,43 @@ fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
             parameter_size,
             name: name.to_string(),
             lines: RangeMap::new(),
+            inlinees: Vec::new(),
         },
+    ))
+}
+
+// Matches one entry of the form <address> <size> which is used at the end of an INLINE record
+fn inline_address_range(input: &[u8]) -> IResult<&[u8], (u64, u32)> {
+    tuple((terminated(hex_str::<u64>, space1), hex_str::<u32>))(input)
+}
+
+// Matches an INLINE record.
+///
+/// An INLINE record has the form `INLINE <inline_nest_level> <call_site_line> <call_site_file_id> <origin_id> [<address> <size>]+`.
+fn inline_line(input: &[u8]) -> IResult<&[u8], impl Iterator<Item = Inlinee>> {
+    let (input, _) = terminated(tag("INLINE"), space1)(input)?;
+    let (input, (depth, call_line, call_file, origin_id)) = cut(tuple((
+        terminated(decimal_u32, space1),
+        terminated(decimal_u32, space1),
+        terminated(decimal_u32, space1),
+        terminated(decimal_u32, space1),
+    )))(input)?;
+    let (input, address_ranges) = cut(terminated(
+        separated_list1(space1, inline_address_range),
+        my_eol,
+    ))(input)?;
+    Ok((
+        input,
+        address_ranges
+            .into_iter()
+            .map(move |(address, size)| Inlinee {
+                address,
+                size,
+                call_file,
+                call_line,
+                depth,
+                origin_id,
+            }),
     ))
 }
 
@@ -340,8 +388,9 @@ fn line(input: &[u8]) -> IResult<&[u8], Line> {
         map(info_url, Line::Info),
         map(info_line, |_| Line::Info(Info::Unknown)),
         map(file_line, |(i, f)| Line::File(i, f)),
+        map(inline_origin_line, |(i, f)| Line::InlineOrigin(i, f)),
         map(public_line, Line::Public),
-        map(func_line, |f| Line::Function(f, Vec::new())),
+        map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
         map(stack_win_line, Line::StackWin),
         map(stack_cfi_init, Line::StackCfi),
         map(module_line, |_| Line::Module),
@@ -358,6 +407,7 @@ fn line(input: &[u8]) -> IResult<&[u8], Line> {
 #[derive(Debug, Default)]
 pub struct SymbolParser {
     files: HashMap<u32, String>,
+    inline_origins: HashMap<u32, String>,
     publics: Vec<PublicSymbol>,
 
     // When building a RangeMap when need to sort an array of this
@@ -418,19 +468,20 @@ impl SymbolParser {
             // We `take` and then reconstitute the item for borrowing/move
             // reasons.
             match self.cur_item.take() {
-                Some(Line::Function(cur, mut lines)) => match func_line_data(input) {
-                    Ok((new_input, line)) => {
-                        lines.push(line);
-                        input = new_input;
-                        self.cur_item = Some(Line::Function(cur, lines));
-                        self.lines += 1;
-                        continue;
+                Some(Line::Function(cur, mut lines, mut inlinees)) => {
+                    match self.parse_func_subline(input, &mut lines, &mut inlinees) {
+                        Ok((new_input, ())) => {
+                            input = new_input;
+                            self.cur_item = Some(Line::Function(cur, lines, inlinees));
+                            self.lines += 1;
+                            continue;
+                        }
+                        Err(_) => {
+                            self.finish_item(Line::Function(cur, lines, inlinees));
+                            continue;
+                        }
                     }
-                    Err(_) => {
-                        self.finish_item(Line::Function(cur, lines));
-                        continue;
-                    }
-                },
+                }
                 Some(Line::StackCfi(mut cur)) => match stack_cfi(input) {
                     Ok((new_input, line)) => {
                         cur.add_rules.push(line);
@@ -483,6 +534,9 @@ impl SymbolParser {
                 }
                 Line::File(id, filename) => {
                     self.files.insert(id, filename.to_string());
+                }
+                Line::InlineOrigin(id, function) => {
+                    self.inline_origins.insert(id, function.to_string());
                 }
                 Line::Public(p) => {
                     self.publics.push(p);
@@ -542,7 +596,7 @@ impl SymbolParser {
                         _ => {}
                     }
                 }
-                item @ Line::Function(_, _) => {
+                item @ Line::Function(_, _, _) => {
                     // More sublines to parse
                     self.cur_item = Some(item);
                 }
@@ -557,25 +611,50 @@ impl SymbolParser {
         }
     }
 
+    /// Parses a single line which is following a FUNC line.
+    fn parse_func_subline<'a>(
+        &mut self,
+        input: &'a [u8],
+        lines: &mut Vec<SourceLine>,
+        inlinees: &mut Vec<Inlinee>,
+    ) -> IResult<&'a [u8], ()> {
+        // We can have three different types of sublines: INLINE_ORIGIN, INLINE, or line records.
+        // Check them one by one.
+        // We're not using nom's `alt()` here because we'd need to find a common return type.
+        if input.starts_with(b"INLINE_ORIGIN ") {
+            let (input, (id, function)) = inline_origin_line(input)?;
+            self.inline_origins.insert(id, function);
+            return Ok((input, ()));
+        }
+        if input.starts_with(b"INLINE ") {
+            let (input, new_inlinees) = inline_line(input)?;
+            inlinees.extend(new_inlinees);
+            return Ok((input, ()));
+        }
+        let (input, line) = func_line_data(input)?;
+        lines.push(line);
+        Ok((input, ()))
+    }
+
     /// Finish processing an item (cur_item) which had sublines.
     /// We now have all the sublines, so it's complete.
     fn finish_item(&mut self, item: Line) {
         match item {
-            Line::Function(mut cur, lines) => {
+            Line::Function(mut cur, lines, mut inlinees) => {
                 cur.lines = lines
                     .into_iter()
+                    // Line data from PDB files often has a zero-size line entry, so just
+                    // filter those out.
+                    .filter(|l| l.size > 0)
                     .map(|l| {
-                        // Line data from PDB files often has a zero-size line entry, so just
-                        // filter those out.
-                        if l.size > 0 {
-                            if let Some(end) = l.address.checked_add(l.size as u64 - 1) {
-                                return (Some(Range::new(l.address, end)), l);
-                            }
-                        }
-
-                        (None, l)
+                        let end_address = l.address.checked_add(l.size as u64 - 1);
+                        let range = end_address.map(|end| Range::new(l.address, end));
+                        (range, l)
                     })
                     .into_rangemap_safe();
+
+                inlinees.sort();
+                cur.inlinees = inlinees;
 
                 if let Some(range) = cur.memory_range() {
                     self.functions.push((range, cur));
@@ -761,6 +840,7 @@ fn test_func_lines_no_lines() {
                 name: "nsQueryInterfaceWithError::operator()(nsID const&, void**) const"
                     .to_string(),
                 lines: RangeMap::new(),
+                inlinees: Vec::new(),
             }
         ))
     );
@@ -779,10 +859,54 @@ fn test_truncated_func() {
 }
 
 #[test]
+fn test_inline_line_single_range() {
+    let line = b"INLINE 0 3082 52 1410 49200 10\n";
+    assert_eq!(
+        inline_line(line).unwrap().1.collect::<Vec<_>>(),
+        vec![Inlinee {
+            depth: 0,
+            address: 0x49200,
+            size: 0x10,
+            call_file: 52,
+            call_line: 3082,
+            origin_id: 1410
+        }]
+    )
+}
+
+#[test]
+fn test_inline_line_multiple_ranges() {
+    let line = b"INLINE 6 642 8 207 8b110 18 8b154 18\n";
+    assert_eq!(
+        inline_line(line).unwrap().1.collect::<Vec<_>>(),
+        vec![
+            Inlinee {
+                depth: 6,
+                address: 0x8b110,
+                size: 0x18,
+                call_file: 8,
+                call_line: 642,
+                origin_id: 207
+            },
+            Inlinee {
+                depth: 6,
+                address: 0x8b154,
+                size: 0x18,
+                call_file: 8,
+                call_line: 642,
+                origin_id: 207
+            }
+        ]
+    )
+}
+
+#[test]
 fn test_func_lines_and_lines() {
     let data = b"FUNC 1000 30 10 some func
 1000 10 42 7
+INLINE_ORIGIN 16 inlined_function_name()
 1010 10 52 8
+INLINE 0 23 9 16 1020 10
 1020 10 62 15
 ";
     let file = SymbolFile::from_bytes(data).expect("failed to parse!");
@@ -831,6 +955,17 @@ fn test_func_lines_and_lines() {
                 },
             ),
         ]
+    );
+    assert_eq!(
+        f.inlinees,
+        vec![Inlinee {
+            depth: 0,
+            address: 0x1020,
+            size: 0x10,
+            call_file: 9,
+            call_line: 23,
+            origin_id: 16
+        }]
     );
 }
 

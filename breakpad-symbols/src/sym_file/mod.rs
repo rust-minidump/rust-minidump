@@ -362,11 +362,11 @@ impl SymbolFile {
                 parameter_size,
             );
             // See if there's source line info as well.
-            func.lines.get(addr).map(|line| {
-                self.files.get(&line.file).map(|file| {
-                    frame.set_source_file(file, line.line, line.address + module.base_address());
-                })
-            });
+            if let Some((file_id, line, line_address)) = func.get_outermost_source_location(addr) {
+                if let Some(file) = self.files.get(&file_id) {
+                    frame.set_source_file(file, line, line_address + module.base_address());
+                }
+            }
         } else if let Some(public) = self.find_nearest_public(addr) {
             // We couldn't find a valid FUNC record, but we could find a PUBLIC record.
             // Unfortauntely, PUBLIC records don't have end-points, so this could be
