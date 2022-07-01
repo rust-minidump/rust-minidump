@@ -63,6 +63,17 @@ pub struct FunctionArg {
     pub value: Option<u64>,
 }
 
+/// A stack frame in an inlined function.
+#[derive(Debug)]
+pub struct InlineFrame {
+    /// The name of the function
+    pub function_name: String,
+    /// The file name of the stack frame
+    pub source_file_name: Option<String>,
+    /// The line number of the stack frame
+    pub source_line: Option<u32>,
+}
+
 /// A single stack frame produced from unwinding a thread's stack.
 #[derive(Debug, Clone)]
 pub struct StackFrame {
@@ -156,6 +167,9 @@ pub struct StackFrame {
     /// The start address of the source line, may be omitted if debug symbols
     /// are not available.
     pub source_line_base: Option<u64>,
+
+    /// Any inline frames that cover the frame address, ordered from outside to inside.
+    pub inlines: Vec<InlineFrame>,
 
     /// Amount of trust the stack walker has in the instruction pointer
     /// of this frame.
@@ -321,6 +335,7 @@ impl StackFrame {
             source_file_name: None,
             source_line: None,
             source_line_base: None,
+            inlines: Vec::new(),
             arguments: None,
             trust,
             context,
@@ -341,6 +356,16 @@ impl FrameSymbolizer for StackFrame {
         self.source_file_name = Some(String::from(file));
         self.source_line = Some(line);
         self.source_line_base = Some(base);
+    }
+    /// This function can be called multiple times, for the inlines that cover the
+    /// address at various levels of inlining. The call order is from outside to
+    /// inside.
+    fn add_inline_frame(&mut self, name: &str, file: Option<&str>, line: Option<u32>) {
+        self.inlines.push(InlineFrame {
+            function_name: name.to_string(),
+            source_file_name: file.map(ToString::to_string),
+            source_line: line,
+        })
     }
 }
 
@@ -410,6 +435,7 @@ impl CallStack {
     ///
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
+    /// This currently does not output inline frames.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         if self.frames.is_empty() {
             writeln!(f, "<no frames>")?;
@@ -857,6 +883,21 @@ Unknown streams encountered:
                     // optional
                     "line": frame.source_line,
                     "offset": json_hex(frame.instruction),
+                    // optional
+                    "inlines": if !frame.inlines.is_empty() {
+                        // In the JSON, inline frames are ordered from inside to outside.
+                        // In frame.inlines, they are ordered from outside to inside.
+                        // So we need to reverse the order here.
+                        Some(frame.inlines.iter().rev().map(|frame| {
+                            json!({
+                                "function": frame.function_name,
+                                "file": frame.source_file_name,
+                                "line": frame.source_line,
+                            })
+                        }).collect::<Vec<_>>())
+                    } else {
+                        None
+                    },
                     // optional
                     "module_offset": frame
                         .module
