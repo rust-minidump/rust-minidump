@@ -348,6 +348,9 @@ pub trait SymbolSupplier {
 ///
 /// See [`breakpad_sym_lookup`] for details on how paths are searched.
 pub struct SimpleSymbolSupplier {
+    inner: Arc<SimpleSymbolSupplierInner>,
+}
+pub struct SimpleSymbolSupplierInner {
     /// Local disk paths in which to search for symbols.
     paths: Vec<PathBuf>,
 }
@@ -355,53 +358,89 @@ pub struct SimpleSymbolSupplier {
 impl SimpleSymbolSupplier {
     /// Instantiate a new `SimpleSymbolSupplier` that will search in `paths`.
     pub fn new(paths: Vec<PathBuf>) -> SimpleSymbolSupplier {
-        SimpleSymbolSupplier { paths }
+        SimpleSymbolSupplier {
+            inner: Arc::new(SimpleSymbolSupplierInner { paths }),
+        }
     }
 }
 
 #[async_trait]
 impl SymbolSupplier for SimpleSymbolSupplier {
-    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(module = crate::basename(&*module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
-        let file_path = self
-            .locate_file(module, FileKind::BreakpadSym)
+        let this = self.inner.clone();
+        let module = shared_module(module);
+        tokio::spawn(async move { simple_locate_symbols(this, module).await })
             .await
-            .map_err(|_| SymbolError::NotFound)?;
-        let symbols = SymbolFile::from_file_async(&file_path).await.map_err(|e| {
-            trace!("SimpleSymbolSupplier failed: {}", e);
-            e
-        })?;
-        trace!("SimpleSymbolSupplier parsed file!");
-        Ok(symbols)
+            .unwrap()
     }
 
-    #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&*module.code_file())))]
     async fn locate_file(
         &self,
         module: &(dyn Module + Sync),
         file_kind: FileKind,
     ) -> Result<PathBuf, FileError> {
-        trace!("SimpleSymbolSupplier search");
-        if let Some(lookup) = lookup(module, file_kind) {
-            for path in self.paths.iter() {
-                let test_path = path.join(&lookup.cache_rel);
-                if fs::metadata(&test_path)
-                    .await
-                    .ok()
-                    .map_or(false, |m| m.is_file())
-                {
-                    trace!("SimpleSymbolSupplier found file {}", test_path.display());
-                    return Ok(test_path);
-                }
-            }
-        } else {
-            trace!("SimpleSymbolSupplier could not build symbol_path");
-        }
-        Err(FileError::NotFound)
+        let this = self.inner.clone();
+        let module = shared_module(module);
+        tokio::spawn(async move { simple_locate_file(this, module, file_kind).await })
+            .await
+            .unwrap()
     }
+}
+
+pub fn shared_module(module: &(dyn Module + Sync)) -> Arc<SimpleModule> {
+    Arc::new(SimpleModule {
+        base_address: Some(module.base_address()),
+        size: Some(module.size()),
+        code_file: Some(module.code_file().to_string()),
+        code_identifier: module.code_identifier(),
+        debug_file: module.debug_file().map(|s| s.into_owned()),
+        debug_id: module.debug_identifier(),
+        version: module.version().map(|s| s.into_owned()),
+    })
+}
+
+#[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(module = crate::basename(&*module.code_file())))]
+async fn simple_locate_symbols(
+    this: Arc<SimpleSymbolSupplierInner>,
+    module: Arc<SimpleModule>,
+) -> Result<SymbolFile, SymbolError> {
+    let file_path = simple_locate_file(this, module, FileKind::BreakpadSym)
+        .await
+        .map_err(|_| SymbolError::NotFound)?;
+    let symbols = SymbolFile::from_file_async(&file_path).await.map_err(|e| {
+        trace!("SimpleSymbolSupplier failed: {}", e);
+        e
+    })?;
+    trace!("SimpleSymbolSupplier parsed file!");
+    Ok(symbols)
+}
+
+#[tracing::instrument(level = "trace", skip(this, module), fields(module = crate::basename(&*module.code_file())))]
+async fn simple_locate_file(
+    this: Arc<SimpleSymbolSupplierInner>,
+    module: Arc<SimpleModule>,
+    file_kind: FileKind,
+) -> Result<PathBuf, FileError> {
+    trace!("SimpleSymbolSupplier search");
+    if let Some(lookup) = lookup(&*module, file_kind) {
+        for path in this.paths.iter() {
+            let test_path = path.join(&lookup.cache_rel);
+            if fs::metadata(&test_path)
+                .await
+                .ok()
+                .map_or(false, |m| m.is_file())
+            {
+                trace!("SimpleSymbolSupplier found file {}", test_path.display());
+                return Ok(test_path);
+            }
+        }
+    } else {
+        trace!("SimpleSymbolSupplier could not build symbol_path");
+    }
+    Err(FileError::NotFound)
 }
 
 /// A SymbolSupplier that maps module names (code_files) to an in-memory string.
