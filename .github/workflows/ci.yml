@@ -123,4 +123,16 @@ jobs:
           PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: test
+          args: --workspace --all-features
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: test
           args: --workspace --examples --bins
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: test
+          args: --workspace --all-features --examples --bins 

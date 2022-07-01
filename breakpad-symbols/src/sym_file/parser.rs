@@ -1,15 +1,21 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use nom::IResult::*;
-use nom::*;
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_while};
+use nom::character::complete::{char, hex_digit1, space1};
+use nom::character::{is_digit, is_hex_digit};
+use nom::combinator::{cut, map, map_res, opt};
+use nom::error::{Error, ErrorKind, ParseError};
+use nom::sequence::{preceded, terminated, tuple};
+use nom::{Err, IResult};
 use range_map::{Range, RangeMap};
 use tracing::warn;
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::str;
-use std::str::FromStr;
+use std::{mem, str};
 
 use minidump_common::traits::IntoRangeMapSafe;
 
@@ -27,265 +33,320 @@ enum Line {
     StackCfi(StackInfoCfi),
 }
 
-// Nom's `eol` doesn't use complete! so it will return Incomplete.
-named!(
-    my_eol<char>,
-    complete!(preceded!(many0!(char!('\r')), char!('\n')))
-);
+/// Match a hex string, parse it to a u32 or a u64.
+fn hex_str<T: std::ops::Shl<T, Output = T> + std::ops::BitOr<T, Output = T> + From<u8>>(
+    input: &[u8],
+) -> IResult<&[u8], T> {
+    // Consume up to max_len digits. For u32 that's 8 digits and for u64 that's 16 digits.
+    // Two hex digits form one byte.
+    let max_len = mem::size_of::<T>() * 2;
 
-// Match a hex string, parse it t)o a u64.
-named!(hex_str_u64<&[u8], u64>,
-       map_res!(map_res!(hex_digit, str::from_utf8), |s| u64::from_str_radix(s, 16)));
+    let mut res: T = T::from(0);
+    let mut k = 0;
+    for v in input.iter().take(max_len) {
+        let digit = match (*v as char).to_digit(16) {
+            Some(v) => v,
+            None => break,
+        };
+        res = res << T::from(4);
+        res = res | T::from(digit as u8);
+        k += 1;
+    }
+    if k == 0 {
+        return Err(Err::Error(Error::from_error_kind(
+            input,
+            ErrorKind::HexDigit,
+        )));
+    }
+    let remaining = &input[k..];
+    Ok((remaining, res))
+}
 
-// Match a decimal string, parse it to a u32.
-named!(decimal_u32<&[u8], u32>, map_res!(map_res!(digit, str::from_utf8), FromStr::from_str));
+/// Match a decimal string, parse it to a u32.
+///
+/// This is doing everything manually so that we only look at each byte once.
+/// With a naive implementation you might be looking at them three times: First
+/// you might get a slice of acceptable characters from nom, then you might parse
+/// that slice into a str (checking for utf-8 unnecessarily), and then you might
+/// parse that string into a decimal number.
+fn decimal_u32(input: &[u8]) -> IResult<&[u8], u32> {
+    const MAX_LEN: usize = 10; // u32::MAX has 10 decimal digits
+    let mut res: u64 = 0;
+    let mut k = 0;
+    for v in input.iter().take(MAX_LEN) {
+        let digit = *v as char;
+        let digit_value = match digit.to_digit(10) {
+            Some(v) => v,
+            None => break,
+        };
+        res = res * 10 + digit_value as u64;
+        k += 1;
+    }
+    if k == 0 {
+        return Err(Err::Error(Error::from_error_kind(input, ErrorKind::Digit)));
+    }
+    let res = u32::try_from(res)
+        .map_err(|_| Err::Error(Error::from_error_kind(input, ErrorKind::TooLarge)))?;
+    let remaining = &input[k..];
+    Ok((remaining, res))
+}
+
+/// Take 0 or more non-space bytes.
+fn non_space(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    take_while(|c: u8| c != b' ')(input)
+}
+
+/// Accept `\n` with an arbitrary number of preceding `\r` bytes.
+///
+/// This is different from `line_ending` which doesn't accept `\r` if it isn't
+/// followed by `\n`.
+fn my_eol(input: &[u8]) -> IResult<&[u8], char> {
+    preceded(take_while(|b| b == b'\r'), char('\n'))(input)
+}
+
+/// Accept everything except `\r` and `\n`.
+///
+/// This is different from `not_line_ending` which rejects its input if it's
+/// followed by a `\r` which is not immediately followed by a `\n`.
+fn not_my_eol(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    take_while(|b| b != b'\r' && b != b'\n')(input)
+}
+
+/// Parse a single byte if it matches the predicate.
+///
+/// nom has `satisfy`, which is similar. It differs in the argument type of the
+/// predicate: `satisfy`'s predicate takes `char`, whereas `single`'s predicate
+/// takes `u8`.
+fn single(predicate: fn(u8) -> bool) -> impl Fn(&[u8]) -> IResult<&[u8], u8> {
+    move |i: &[u8]| match i.split_first() {
+        Some((b, rest)) if predicate(*b) => Ok((rest, *b)),
+        _ => Err(Err::Error(Error::from_error_kind(i, ErrorKind::Satisfy))),
+    }
+}
 
 // Matches a MODULE record.
-named!(module_line<&[u8], ()>,
-  chain!(
-    tag!("MODULE") ~
-          space     ~
-          // os
-    alphanumeric ~
-          space ~
-          // cpu
-    take_until!(" ") ~
-          space ~
-          // debug id
-    hex_digit ~
-          space ~
-          // filename
-    not_line_ending ~
-    my_eol ,
-    || {}
-));
+fn module_line(input: &[u8]) -> IResult<&[u8], ()> {
+    let (input, _) = terminated(tag("MODULE"), space1)(input)?;
+    let (input, _) = cut(tuple((
+        terminated(non_space, space1),  // os
+        terminated(non_space, space1),  // cpu
+        terminated(hex_digit1, space1), // debug id
+        terminated(not_my_eol, my_eol), // filename
+    )))(input)?;
+    Ok((input, ()))
+}
 
 // Matches an INFO URL record.
-named!(
-    info_url<&[u8], Info>,
-    chain!(
-        tag!("INFO URL") ~
-        space ~
-        url: map_res!(not_line_ending, str::from_utf8) ~
-        my_eol,
-          ||{ Info::Url(url.to_string()) }
-    )
-);
+fn info_url(input: &[u8]) -> IResult<&[u8], Info> {
+    let (input, _) = terminated(tag("INFO URL"), space1)(input)?;
+    let (input, url) = cut(terminated(map_res(not_my_eol, str::from_utf8), my_eol))(input)?;
+    Ok((input, Info::Url(url.to_string())))
+}
 
 // Matches other INFO records.
-named!(
-    info_line,
-    chain!(
-        tag!("INFO") ~
-        space ~
-        x: not_line_ending ~
-        my_eol,
-          ||{ x }
-    )
-);
+fn info_line(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let (input, _) = terminated(tag("INFO"), space1)(input)?;
+    cut(terminated(not_my_eol, my_eol))(input)
+}
 
 // Matches a FILE record.
-named!(file_line<&[u8], (u32, String)>,
-  chain!(
-    tag!("FILE") ~
-    space ~
-    id: decimal_u32 ~
-    space ~
-    filename: map_res!(not_line_ending, str::from_utf8) ~
-    my_eol ,
-      ||{ (id, filename.to_string()) }
-));
+fn file_line(input: &[u8]) -> IResult<&[u8], (u32, String)> {
+    let (input, _) = terminated(tag("FILE"), space1)(input)?;
+    let (input, (id, filename)) = cut(tuple((
+        terminated(decimal_u32, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((input, (id, filename.to_string())))
+}
 
 // Matches a PUBLIC record.
-named!(public_line<&[u8], PublicSymbol>,
-  chain!(
-    tag!("PUBLIC") ~
-    preceded!(space, tag!("m"))? ~
-    space ~
-    address: hex_str_u64 ~
-    space ~
-    parameter_size: hex_u32 ~
-    space ~
-    name: map_res!(not_line_ending, str::from_utf8) ~
-    my_eol ,
-      || {
-          PublicSymbol {
-              address,
-              parameter_size,
-              name: name.to_string()
-          }
-      }
-));
+fn public_line(input: &[u8]) -> IResult<&[u8], PublicSymbol> {
+    let (input, _) = terminated(tag("PUBLIC"), space1)(input)?;
+    let (input, (_multiple, address, parameter_size, name)) = cut(tuple((
+        opt(terminated(tag("m"), space1)),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((
+        input,
+        PublicSymbol {
+            address,
+            parameter_size,
+            name: name.to_string(),
+        },
+    ))
+}
 
 // Matches line data after a FUNC record.
-named!(func_line_data<&[u8], SourceLine>,
-  chain!(
-    address: hex_str_u64 ~
-    space ~
-    size: hex_u32 ~
-    space ~
-    line: decimal_u32 ~
-    space ~
-    filenum: decimal_u32 ~
-    my_eol ,
-      || {
-          SourceLine {
-              address,
-              size,
-              file: filenum,
-              line,
-          }
-      }
-));
+fn func_line_data(input: &[u8]) -> IResult<&[u8], SourceLine> {
+    let (input, (address, size, line, file)) = tuple((
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(decimal_u32, space1),
+        terminated(decimal_u32, my_eol),
+    ))(input)?;
+    Ok((
+        input,
+        SourceLine {
+            address,
+            size,
+            file,
+            line,
+        },
+    ))
+}
 
 // Matches a FUNC record.
-named!(func_line<&[u8], Function>,
-chain!(
-  tag!("FUNC") ~
-  preceded!(space, tag!("m"))? ~
-  space ~
-  address: hex_str_u64 ~
-  space ~
-  size: hex_u32 ~
-  space ~
-  parameter_size: hex_u32 ~
-  space ~
-  name: map_res!(not_line_ending, str::from_utf8) ~
-  my_eol ,
-    || {
+fn func_line(input: &[u8]) -> IResult<&[u8], Function> {
+    let (input, _) = terminated(tag("FUNC"), space1)(input)?;
+    let (input, (_multiple, address, size, parameter_size, name)) = cut(tuple((
+        opt(terminated(tag("m"), space1)),
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((
+        input,
         Function {
             address,
             size,
             parameter_size,
             name: name.to_string(),
             lines: RangeMap::new(),
-        }
-    }
-    ));
+        },
+    ))
+}
 
 // Matches a STACK WIN record.
-named!(stack_win_line<&[u8], WinFrameType>,
-  chain!(
-    // Use this for debugging the parser:
-    // line: peek!(map_res!(not_line_ending, str::from_utf8)) ~
-    tag!("STACK WIN") ~
-    space ~
-    // Frame type, currently ignored.
-    ty: hex_digit ~
-    space ~
-    address: hex_str_u64 ~
-    space ~
-    code_size: hex_u32 ~
-    space ~
-    prologue_size: hex_u32 ~
-    space ~
-    epilogue_size: hex_u32 ~
-    space ~
-    parameter_size: hex_u32 ~
-    space ~
-    saved_register_size: hex_u32 ~
-    space ~
-    local_size: hex_u32 ~
-    space ~
-    max_stack_size: hex_u32 ~
-    space ~
-    has_program_string: map_res!(map_res!(digit, str::from_utf8), |s| -> Result<bool,()> { Ok(s == "1") }) ~
-    space ~
-    rest: map_res!(not_line_ending, str::from_utf8) ~
-    my_eol ,
-      || {
-          // Sometimes has_program_string is just wrong. We could try to infer which one is right
-          // but this is rare enough that it's better to just play it safe and discard the input.
-          let really_has_program_string = ty == b"4";
-          if really_has_program_string != has_program_string {
-            let kind = match ty {
-              b"4" => "FrameData",
-              b"0" => "Fpo",
-              _ => "Unknown Type!",
-            };
-            warn!("STACK WIN entry had inconsistent values for type and has_program_string, discarding corrupt entry");
-            // warn!("  {}", &line);
-            warn!("  type: {} ({}), has_program_string: {}, final_arg: {}", str::from_utf8(ty).unwrap_or(""), kind, has_program_string, rest);
+fn stack_win_line(input: &[u8]) -> IResult<&[u8], WinFrameType> {
+    let (input, _) = terminated(tag("STACK WIN"), space1)(input)?;
+    let (
+        input,
+        (
+            ty,
+            address,
+            code_size,
+            prologue_size,
+            epilogue_size,
+            parameter_size,
+            saved_register_size,
+            local_size,
+            max_stack_size,
+            has_program_string,
+            rest,
+        ),
+    ) = cut(tuple((
+        terminated(single(is_hex_digit), space1), // ty
+        terminated(hex_str::<u64>, space1),       // address
+        terminated(hex_str::<u32>, space1),       // code_size
+        terminated(hex_str::<u32>, space1),       // prologue_size
+        terminated(hex_str::<u32>, space1),       // epilogue_size
+        terminated(hex_str::<u32>, space1),       // parameter_size
+        terminated(hex_str::<u32>, space1),       // saved_register_size
+        terminated(hex_str::<u32>, space1),       // local_size
+        terminated(hex_str::<u32>, space1),       // max_stack_size
+        terminated(map(single(is_digit), |b| b == b'1'), space1), // has_program_string
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
 
-            return WinFrameType::Unhandled;
-          }
+    // Sometimes has_program_string is just wrong. We could try to infer which one is right
+    // but this is rare enough that it's better to just play it safe and discard the input.
+    let really_has_program_string = ty == b'4';
+    if really_has_program_string != has_program_string {
+        let kind = match ty {
+            b'4' => "FrameData",
+            b'0' => "Fpo",
+            _ => "Unknown Type!",
+        };
+        warn!("STACK WIN entry had inconsistent values for type and has_program_string, discarding corrupt entry");
+        // warn!("  {}", &line);
+        warn!(
+            "  type: {} ({}), has_program_string: {}, final_arg: {}",
+            str::from_utf8(&[ty]).unwrap_or(""),
+            kind,
+            has_program_string,
+            rest
+        );
 
-          let program_string_or_base_pointer = if really_has_program_string {
-              WinStackThing::ProgramString(rest.to_string())
-          } else {
-              WinStackThing::AllocatesBasePointer(rest == "1")
-          };
-          let info = StackInfoWin {
-              address,
-              size: code_size,
-              prologue_size,
-              epilogue_size,
-              parameter_size,
-              saved_register_size,
-              local_size,
-              max_stack_size,
-              program_string_or_base_pointer,
-          };
-          match ty {
-              b"4" => WinFrameType::FrameData(info),
-              b"0" => WinFrameType::Fpo(info),
-              _ => WinFrameType::Unhandled,
-          }
-      }
-));
+        return Ok((input, WinFrameType::Unhandled));
+    }
+
+    let program_string_or_base_pointer = if really_has_program_string {
+        WinStackThing::ProgramString(rest.to_string())
+    } else {
+        WinStackThing::AllocatesBasePointer(rest == "1")
+    };
+    let info = StackInfoWin {
+        address,
+        size: code_size,
+        prologue_size,
+        epilogue_size,
+        parameter_size,
+        saved_register_size,
+        local_size,
+        max_stack_size,
+        program_string_or_base_pointer,
+    };
+    let frame_type = match ty {
+        b'4' => WinFrameType::FrameData(info),
+        b'0' => WinFrameType::Fpo(info),
+        _ => WinFrameType::Unhandled,
+    };
+    Ok((input, frame_type))
+}
 
 // Matches a STACK CFI record.
-named!(stack_cfi<&[u8], CfiRules>,
-chain!(
-    tag!("STACK CFI") ~
-        space ~
-        address: hex_str_u64 ~
-        space ~
-        rules: map_res!(not_line_ending, str::from_utf8) ~
-        my_eol ,
-    || {
+fn stack_cfi(input: &[u8]) -> IResult<&[u8], CfiRules> {
+    let (input, _) = terminated(tag("STACK CFI"), space1)(input)?;
+    let (input, (address, rules)) = cut(tuple((
+        terminated(hex_str::<u64>, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((
+        input,
         CfiRules {
             address,
             rules: rules.to_string(),
-        }
-    }
-    ));
+        },
+    ))
+}
 
 // Matches a STACK CFI INIT record.
-named!(stack_cfi_init<&[u8], StackInfoCfi>,
-  chain!(
-    tag!("STACK CFI INIT") ~
-    space ~
-    address: hex_str_u64 ~
-    space ~
-    size: hex_u32 ~
-    space ~
-    rules: map_res!(not_line_ending, str::from_utf8) ~
-    my_eol ,
-      || {
-          StackInfoCfi {
-              init: CfiRules {
-                  address,
-                  rules: rules.to_string(),
-              },
-              size,
-              add_rules: Default::default(),
-          }
-      }
-));
+fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
+    let (input, _) = terminated(tag("STACK CFI INIT"), space1)(input)?;
+    let (input, (address, size, rules)) = cut(tuple((
+        terminated(hex_str::<u64>, space1),
+        terminated(hex_str::<u32>, space1),
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol),
+    )))(input)?;
+    Ok((
+        input,
+        StackInfoCfi {
+            init: CfiRules {
+                address,
+                rules: rules.to_string(),
+            },
+            size,
+            add_rules: Default::default(),
+        },
+    ))
+}
 
 // Parse any of the line data that can occur in the body of a symbol file.
-named!(line<&[u8], Line>,
-  alt!(
-    info_url => { Line::Info } |
-    info_line => { |_| Line::Info(Info::Unknown) } |
-    file_line => { |(i,f)| Line::File(i, f) } |
-    public_line => { Line::Public } |
-    func_line => { |f| Line::Function(f, Vec::new()) } |
-    stack_win_line => { Line::StackWin } |
-    stack_cfi_init => { Line::StackCfi } |
-    module_line => { |_| Line::Module }
-));
+fn line(input: &[u8]) -> IResult<&[u8], Line> {
+    alt((
+        map(info_url, Line::Info),
+        map(info_line, |_| Line::Info(Info::Unknown)),
+        map(file_line, |(i, f)| Line::File(i, f)),
+        map(public_line, Line::Public),
+        map(func_line, |f| Line::Function(f, Vec::new())),
+        map(stack_win_line, Line::StackWin),
+        map(stack_cfi_init, Line::StackCfi),
+        map(module_line, |_| Line::Module),
+    ))(input)
+}
 
 /// A parser for SymbolFiles.
 ///
@@ -358,27 +419,27 @@ impl SymbolParser {
             // reasons.
             match self.cur_item.take() {
                 Some(Line::Function(cur, mut lines)) => match func_line_data(input) {
-                    Done(new_input, line) => {
+                    Ok((new_input, line)) => {
                         lines.push(line);
                         input = new_input;
                         self.cur_item = Some(Line::Function(cur, lines));
                         self.lines += 1;
                         continue;
                     }
-                    Error(_) | Incomplete(_) => {
+                    Err(_) => {
                         self.finish_item(Line::Function(cur, lines));
                         continue;
                     }
                 },
                 Some(Line::StackCfi(mut cur)) => match stack_cfi(input) {
-                    Done(new_input, line) => {
+                    Ok((new_input, line)) => {
                         cur.add_rules.push(line);
                         input = new_input;
                         self.cur_item = Some(Line::StackCfi(cur));
                         self.lines += 1;
                         continue;
                     }
-                    Error(_) | Incomplete(_) => {
+                    Err(_) => {
                         self.finish_item(Line::StackCfi(cur));
                         continue;
                     }
@@ -390,22 +451,15 @@ impl SymbolParser {
 
             // Parse a top-level item, and first handle the Result
             let line = match line(input) {
-                Done(new_input, line) => {
+                Ok((new_input, line)) => {
                     // Success! Advance the input.
                     input = new_input;
                     line
                 }
-                Error(_) => {
+                Err(_) => {
                     // The file has a completely corrupt line,
                     // conservatively reject the entire parse.
                     return Err(SymbolError::ParseError("failed to parse file", self.lines));
-                }
-                Incomplete(_) => {
-                    // One of our sub-parsers wants more input, which normally
-                    // would be fine for a streaming parser, bust the newline
-                    // preprocessing we do means this should never happen.
-                    // So Incomplete input is just another kind of parsing Error.
-                    return Err(SymbolError::ParseError("line was incomplete!", self.lines));
                 }
             };
 
@@ -597,14 +651,14 @@ fn parse_symbol_bytes(data: &[u8]) -> Result<SymbolFile, SymbolError> {
 fn test_module_line() {
     let line = b"MODULE Linux x86 D3096ED481217FD4C16B29CD9BC208BA0 firefox-bin\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Done(rest, ()));
+    assert_eq!(module_line(line), Ok((rest, ())));
 }
 
 #[test]
 fn test_module_line_filename_spaces() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox x y z\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Done(rest, ()));
+    assert_eq!(module_line(line), Ok((rest, ())));
 }
 
 /// Sometimes dump_syms on Windows does weird things and produces multiple carriage returns
@@ -613,7 +667,7 @@ fn test_module_line_filename_spaces() {
 fn test_module_line_crcrlf() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox\r\r\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Done(rest, ()));
+    assert_eq!(module_line(line), Ok((rest, ())));
 }
 
 #[test]
@@ -621,7 +675,7 @@ fn test_info_line() {
     let line = b"INFO blah blah blah\n";
     let bits = &b"blah blah blah"[..];
     let rest = &b""[..];
-    assert_eq!(info_line(line), Done(rest, bits));
+    assert_eq!(info_line(line), Ok((rest, bits)));
 }
 
 #[test]
@@ -629,7 +683,7 @@ fn test_info_line2() {
     let line = b"INFO   CODE_ID   abc xyz\n";
     let bits = &b"CODE_ID   abc xyz"[..];
     let rest = &b""[..];
-    assert_eq!(info_line(line), Done(rest, bits));
+    assert_eq!(info_line(line), Ok((rest, bits)));
 }
 
 #[test]
@@ -637,14 +691,14 @@ fn test_info_url() {
     let line = b"INFO URL https://www.example.com\n";
     let url = "https://www.example.com".to_string();
     let rest = &b""[..];
-    assert_eq!(info_url(line), Done(rest, Info::Url(url)));
+    assert_eq!(info_url(line), Ok((rest, Info::Url(url))));
 }
 
 #[test]
 fn test_file_line() {
     let line = b"FILE 1 foo.c\n";
     let rest = &b""[..];
-    assert_eq!(file_line(line), Done(rest, (1, String::from("foo.c"))));
+    assert_eq!(file_line(line), Ok((rest, (1, String::from("foo.c")))));
 }
 
 #[test]
@@ -653,7 +707,7 @@ fn test_file_line_spaces() {
     let rest = &b""[..];
     assert_eq!(
         file_line(line),
-        Done(rest, (1234, String::from("foo bar.xyz")))
+        Ok((rest, (1234, String::from("foo bar.xyz"))))
     );
 }
 
@@ -663,14 +717,14 @@ fn test_public_line() {
     let rest = &b""[..];
     assert_eq!(
         public_line(line),
-        Done(
+        Ok((
             rest,
             PublicSymbol {
                 address: 0xf00d,
                 parameter_size: 0xd00d,
                 name: "some func".to_string(),
             }
-        )
+        ))
     );
 }
 
@@ -680,14 +734,14 @@ fn test_public_with_m() {
     let rest = &b""[..];
     assert_eq!(
         public_line(line),
-        Done(
+        Ok((
             rest,
             PublicSymbol {
                 address: 0xf00d,
                 parameter_size: 0xd00d,
                 name: "some func".to_string(),
             }
-        )
+        ))
     );
 }
 
@@ -698,7 +752,7 @@ fn test_func_lines_no_lines() {
     let rest = &b""[..];
     assert_eq!(
         func_line(line),
-        Done(
+        Ok((
             rest,
             Function {
                 address: 0xc184,
@@ -708,7 +762,19 @@ fn test_func_lines_no_lines() {
                     .to_string(),
                 lines: RangeMap::new(),
             }
-        )
+        ))
+    );
+}
+
+#[test]
+fn test_truncated_func() {
+    let line = b"FUNC 1000\n1000 10 42 7\n";
+    assert_eq!(
+        func_line(line),
+        Err(Err::Failure(Error {
+            input: &line[9..],
+            code: ErrorKind::Space
+        }))
     );
 }
 
@@ -784,7 +850,7 @@ fn test_stack_win_line_program_string() {
     let line =
         b"STACK WIN 4 2170 14 a1 b2 c3 d4 e5 f6 1 $eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =\n";
     match stack_win_line(line) {
-        Done(rest, WinFrameType::FrameData(stack)) => {
+        Ok((rest, WinFrameType::FrameData(stack))) => {
             assert_eq!(rest, &b""[..]);
             assert_eq!(stack.address, 0x2170);
             assert_eq!(stack.size, 0x14);
@@ -801,8 +867,7 @@ fn test_stack_win_line_program_string() {
                 )
             );
         }
-        Error(e) => panic!("{}", format!("Parse error: {:?}", e)),
-        Incomplete(_) => panic!("Incomplete parse!"),
+        Err(e) => panic!("{}", format!("Parse error: {:?}", e)),
         _ => panic!("Something bad happened"),
     }
 }
@@ -811,7 +876,7 @@ fn test_stack_win_line_program_string() {
 fn test_stack_win_line_frame_data() {
     let line = b"STACK WIN 0 1000 30 a1 b2 c3 d4 e5 f6 0 1\n";
     match stack_win_line(line) {
-        Done(rest, WinFrameType::Fpo(stack)) => {
+        Ok((rest, WinFrameType::Fpo(stack))) => {
             assert_eq!(rest, &b""[..]);
             assert_eq!(stack.address, 0x1000);
             assert_eq!(stack.size, 0x30);
@@ -826,8 +891,7 @@ fn test_stack_win_line_frame_data() {
                 WinStackThing::AllocatesBasePointer(true)
             );
         }
-        Error(e) => panic!("{}", format!("Parse error: {:?}", e)),
-        Incomplete(_) => panic!("Incomplete parse!"),
+        Err(e) => panic!("{}", format!("Parse error: {:?}", e)),
         _ => panic!("Something bad happened"),
     }
 }
@@ -838,13 +902,13 @@ fn test_stack_cfi() {
     let rest = &b""[..];
     assert_eq!(
         stack_cfi(line),
-        Done(
+        Ok((
             rest,
             CfiRules {
                 address: 0xdeadf00d,
                 rules: "some rules".to_string(),
             }
-        )
+        ))
     );
 }
 
@@ -854,7 +918,7 @@ fn test_stack_cfi_init() {
     let rest = &b""[..];
     assert_eq!(
         stack_cfi_init(line),
-        Done(
+        Ok((
             rest,
             StackInfoCfi {
                 init: CfiRules {
@@ -864,7 +928,7 @@ fn test_stack_cfi_init() {
                 size: 0xabc,
                 add_rules: vec![],
             }
-        )
+        ))
     );
 }
 
