@@ -38,7 +38,7 @@ where
     u64: TryFrom<C::Register>,
     C::Register: TryFromCtx<'a, Endian, [u8], Error = scroll::Error> + SizeWith<Endian>,
 {
-    trace!("unwind: trying cfi");
+    trace!("trying cfi");
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = modules.module_at_address(callee.instruction)?;
@@ -60,7 +60,6 @@ where
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
-        endianness: scroll::BE,
     };
 
     symbol_provider
@@ -70,7 +69,7 @@ where
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
 
     trace!(
-        "unwind: cfi evaluation was successful -- caller_pc: {caller_pc:#016x}, caller_sp: {caller_sp:#016x}"
+        "cfi evaluation was successful -- caller_pc: 0x{caller_pc:016x}, caller_sp: 0x{caller_sp:016x}"
     );
 
     // Do absolutely NO validation! Yep! As long as CFI evaluation succeeds
@@ -109,23 +108,23 @@ where
     const MAX_STACK_SIZE: u32 = 1024;
     const MIN_ARGS: u32 = 4;
     const POINTER_WIDTH: u32 = 4;
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
-    // we assume it's an pc value that was pushed by the CALL instruction that created
-    // the current frame. The next frame is then assumed to end just before that
-    // pc value.
+    // we assume it's a `ra` value that was saved on the stack by the callee in
+    // its function prologue, following a `jal` (call) instruction of the caller.
+    // The next frame is then assumed to end just before that `ra` value.
     let valid = &callee.context.valid;
     let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
-    // In case of mips32 ABI stack frame of a nonleaf function
-    // must have minimum stack frame assigned for 4 arguments (4 words).
+    // In case of mips32 ABI the stack frame of a non-leaf function
+    // must have a minimum stack frame size for 4 arguments (4 words).
     // Move stack pointer for 4 words to avoid reporting non-existing frames
     // for all frames except the topmost one.
     // There is no way of knowing if topmost frame belongs to a leaf or
-    // a nonleaf function.
+    // a non-leaf function.
     if callee.trust != FrameTrust::Context {
         last_sp += MIN_ARGS * POINTER_WIDTH;
         count -= MIN_ARGS;
@@ -133,17 +132,18 @@ where
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc: u32 = stack_memory.get_memory_at_address_be(address_of_pc as u64)?;
+        let caller_pc: u32 = stack_memory.get_memory_at_address(address_of_pc as u64)?;
         //trace!("unwind: trying addr 0x{address_of_pc:08x}: 0x{caller_pc:08x}");
         if instruction_seems_valid(caller_pc as u64, modules, symbol_provider).await {
-            // pc is pushed by CALL, so sp is just address_of_pc + ptr
+            // `ra` is usually saved directly at the bottom of the frame,
+            // so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: 0x{caller_pc:08x}, caller_sp: 0x{caller_sp:08x}"
+                "scan seems valid -- caller_pc: 0x{caller_pc:016x}, caller_sp: 0x{caller_sp:016x}"
             );
 
             let mut caller_ctx = MipsContext::default();
@@ -167,6 +167,7 @@ where
 
     None
 }
+
 async fn get_caller_by_scan64<P>(
     ctx: &MipsContext,
     callee: &StackFrame,
@@ -178,42 +179,32 @@ where
     P: SymbolProvider + Sync,
 {
     const MAX_STACK_SIZE: u64 = 1024;
-    const MIN_ARGS: u64 = 4;
     const POINTER_WIDTH: u64 = 8;
-    trace!("unwind: trying scan");
+    trace!("trying scan");
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
-    // we assume it's an pc value that was pushed by the CALL instruction that created
-    // the current frame. The next frame is then assumed to end just before that
-    // pc value.
+    // we assume it's a `ra` value that was saved on the stack by the callee in
+    // its function prologue, following a `jal` (call) instruction of the caller.
+    // The next frame is then assumed to end just before that `ra` value.
     let valid = &callee.context.valid;
-    let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
+    let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
-    // In case of mips32 ABI stack frame of a nonleaf function
-    // must have minimum stack frame assigned for 4 arguments (4 words).
-    // Move stack pointer for 4 words to avoid reporting non-existing frames
-    // for all frames except the topmost one.
-    // There is no way of knowing if topmost frame belongs to a leaf or
-    // a nonleaf function.
-    if callee.trust != FrameTrust::Context {
-        last_sp += MIN_ARGS * POINTER_WIDTH;
-        count -= MIN_ARGS;
-    }
+    let count = MAX_STACK_SIZE / POINTER_WIDTH;
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address_be(address_of_pc)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
-            // pc is pushed by CALL, so sp is just address_of_pc + ptr
+            // `ra` is usually saved directly at the bottom of the frame,
+            // so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
             // Don't do any more validation, and don't try to restore fp
             // (that's what breakpad does!)
 
             trace!(
-                "unwind: scan seems valid -- caller_pc: {caller_pc:#08x}, caller_sp: {caller_sp:#08x}"
+                "scan seems valid -- caller_pc: 0x{caller_pc:016x}, caller_sp: 0x{caller_sp:016x}"
             );
 
             let mut caller_ctx = MipsContext::default();
@@ -307,7 +298,7 @@ impl Unwind for MipsContext {
         // if the instruction is within the first ~page of memory, it's basically
         // null, and we can assume unwinding is complete.
         if frame.context.get_instruction_pointer() < 4096 {
-            trace!("unwind: instruction pointer was nullish, assuming unwind complete");
+            trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
 
@@ -325,7 +316,7 @@ impl Unwind for MipsContext {
             // more strict validation to avoid infinite loops.
             let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
             if !is_leaf {
-                trace!("unwind: stack pointer went backwards, assuming unwind complete");
+                trace!("stack pointer went backwards, assuming unwind complete");
                 return None;
             }
         }

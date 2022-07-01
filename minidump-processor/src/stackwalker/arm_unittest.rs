@@ -53,6 +53,7 @@ impl TestFixture {
             base_address: base,
             size,
             bytes: &stack,
+            endian: scroll::LE,
         };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
         walk_stack(

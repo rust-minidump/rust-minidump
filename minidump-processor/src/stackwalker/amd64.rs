@@ -67,7 +67,6 @@ where
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
-        endianness: scroll::LE,
     };
 
     symbol_provider

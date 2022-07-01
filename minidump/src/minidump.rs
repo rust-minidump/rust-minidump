@@ -335,7 +335,7 @@ pub struct MinidumpThread<'a> {
     context: Option<&'a [u8]>,
     /// The stack memory for the thread, if present.
     stack: Option<MinidumpMemory<'a>>,
-    /// Saved endianess for lazy parsing.
+    /// Saved endianness for lazy parsing.
     endian: scroll::Endian,
 }
 
@@ -378,6 +378,8 @@ pub struct MinidumpMemoryBase<'a, Descriptor> {
     pub size: u64,
     /// The contents of the memory.
     pub bytes: &'a [u8],
+    /// The endianness of the minidump which is used for memory accesses.
+    pub endian: scroll::Endian,
 }
 
 /// A region of memory from the process that wrote the minidump.
@@ -1602,6 +1604,7 @@ impl<'a> MinidumpMemory<'a> {
     pub fn read(
         desc: &md::MINIDUMP_MEMORY_DESCRIPTOR,
         data: &'a [u8],
+        endian: scroll::Endian,
     ) -> Result<MinidumpMemory<'a>, Error> {
         if desc.memory.rva == 0 || desc.memory.data_size == 0 {
             // Windows will sometimes emit null stack RVAs, indicating that
@@ -1616,6 +1619,7 @@ impl<'a> MinidumpMemory<'a> {
             base_address: desc.start_of_memory_range,
             size: desc.memory.data_size as u64,
             bytes,
+            endian,
         })
     }
 
@@ -1671,23 +1675,7 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
         let _end = self.base_address.checked_add(self.size)?;
         let start = addr.checked_sub(self.base_address)? as usize;
 
-        self.bytes.pread_with::<T>(start, LE).ok()
-    }
-
-    /// Get `mem::size_of::<T>()` bytes of memory at `addr` from this region, in Big-Endian.
-    ///
-    /// Return `None` if the requested address range falls out of the bounds
-    /// of this memory region.
-    pub fn get_memory_at_address_be<T>(&self, addr: u64) -> Option<T>
-    where
-        T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
-    {
-        // XXX: Instead of checking the base+size validity on each access, maybe
-        // move this check to a different place?
-        let _end = self.base_address.checked_add(self.size)?;
-        let start = addr.checked_sub(self.base_address)? as usize;
-
-        self.bytes.pread_with::<T>(start, BE).ok()
+        self.bytes.pread_with::<T>(start, self.endian).ok()
     }
 
     /// Write the contents of this `MinidumpMemory` to `f` as a hex string.
@@ -1850,7 +1838,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemoryList<'a> {
         // read memory contents for each region
         let mut regions = Vec::with_capacity(descriptors.len());
         for raw in descriptors.into_iter() {
-            if let Ok(memory) = MinidumpMemory::read(&raw, all) {
+            if let Ok(memory) = MinidumpMemory::read(&raw, all, endian) {
                 regions.push(memory);
             } else {
                 // Just skip over corrupt entries and try to limp along.
@@ -1916,6 +1904,7 @@ impl<'a> MinidumpStream<'a> for MinidumpMemory64List<'a> {
                 base_address: raw.start_of_memory_range,
                 size: raw.data_size,
                 bytes,
+                endian,
             });
 
             rva = end;
@@ -2649,7 +2638,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadList<'a> {
 
             // Try to get the stack memory here, but the `stack_memory` method will
             // attempt a fallback method with access to other streams.
-            let stack = MinidumpMemory::read(&raw.stack, all).ok();
+            let stack = MinidumpMemory::read(&raw.stack, all, endian).ok();
             threads.push(MinidumpThread {
                 raw,
                 context,
