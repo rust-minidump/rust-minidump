@@ -318,8 +318,8 @@ impl Unwind for MipsContext {
         let sp = frame.context.get_stack_pointer();
         let last_sp = self.get_register_always(STACK_POINTER) as u64;
         if sp <= last_sp {
-            // Arm leaf functions may not actually touch the stack (thanks
-            // to the link register allowing you to "push" the return address
+            // Mips leaf functions may not actually touch the stack (thanks
+            // to the return address register allowing you to "push" the return address
             // to a register), so we need to permit the stack pointer to not
             // change for the first frame of the unwind. After that we need
             // more strict validation to avoid infinite loops.
@@ -332,6 +332,7 @@ impl Unwind for MipsContext {
 
         // Ok, the frame now seems well and truly valid, do final cleanup.
 
+        // The Mips `jal` instruction always sets $ra to PC + 8
         let ip = frame.context.get_instruction_pointer() as u64;
         frame.instruction = ip - 8;
 
