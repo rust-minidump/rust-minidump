@@ -43,6 +43,7 @@ impl TestFixture {
             base_address: base,
             size,
             bytes: &stack,
+            endian: minidump::Endian::Little,
         };
         let system_info = SystemInfo {
             os: Os::Windows,
