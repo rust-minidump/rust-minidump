@@ -70,6 +70,29 @@ where
 
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
+    let new_valid = MinidumpContextValidity::Some(stack_walker.caller_validity);
+
+    // Apply ptr auth stripping
+    let caller_pc = ptr_auth_strip(modules, caller_pc);
+    stack_walker
+        .caller_ctx
+        .set_register(PROGRAM_COUNTER, caller_pc);
+    if let Some(lr) = stack_walker
+        .caller_ctx
+        .get_register(LINK_REGISTER, &new_valid)
+    {
+        stack_walker
+            .caller_ctx
+            .set_register(LINK_REGISTER, ptr_auth_strip(modules, lr));
+    }
+    if let Some(fp) = stack_walker
+        .caller_ctx
+        .get_register(FRAME_POINTER, &new_valid)
+    {
+        stack_walker
+            .caller_ctx
+            .set_register(FRAME_POINTER, ptr_auth_strip(modules, fp));
+    }
 
     trace!(
         "cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
@@ -88,7 +111,7 @@ where
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::OldArm64(stack_walker.caller_ctx),
-        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
+        valid: new_valid,
     };
     Some(StackFrame::from_context(context, FrameTrust::CallFrameInfo))
 }
