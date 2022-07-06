@@ -1,6 +1,81 @@
+# Version 0.12.0 (not yet released)
+
+Commit: TBD
+
+Lots of fixes and experiments. This change is largely backcompat but we changed a lot of
+dependencies and have significantly changed ARM/ARM64 stackwalking results (mostly for the better,
+but in some specific situations you may get worse results, see below).
+
+
+## ARM/ARM64 Stackwalker fixes
+
+All 3 ARM stackwalkers (ARM, ARM64, ARM64_OLD) had completely nonsensical understandings of how lr/fp works.
+These issues were inherited from breakpad, and still persist in that codebase. We also now ptr_auth_strip in
+more places and more precisely, improving CFI unwinding.
+
+The old code treated lr as always containing the current return address, and a *pushed* lr to be a callee-saved version of the caller's lr. This is just completely wrong. 
+
+lr is mostly a general purpose register that can contain anything, because it's automatically overwritten whenever you make a call -- the callee simply cannot save it! Most functions will immediately push lr on startup, but thiss is pushing *their* lr, and therefore their return address. It's more accurate to think of this as saving the caller's pc.
+
+This is a much simpler situation, so the fix was mostly just to rip out a ton of bad code and add/fix tests.
+
+However this fix may cause a regression in some situations for the *first* frame of the stackwalk. This frame may have a valid lr register value, and if the frame is a proper leaf function (or crashed in the prologue), that lr won't be available on the stack. Without CFI/unwind-tables, we aren't aware of any way to detect that we're in this situation, so we simply assume it's not happening. 
+
+If it *does* happen, then we will effectively end up unwinding our caller instead of ourselves -- but correctly. As a result, the caller will be skipped over, but the rest of the backtrace will behave as normal. Previously we would always assume lr was valid, so we would always handle this situation correctly (but mishandle the much more common non-leaf case).
+
+In the future we may refine our heuristics for the top frame if we determine there's reasonably reliable ways to do that.
+
+## Inlinee info
+
+WIP, not yet landed
+
+We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to report all the inlined functions for a given address in the binary, improving the quality of backtraces. The inlinee info is... 
+
+* WIP new library fields
+* WIP new json fields
+* WIP new human output?
+
+## Experimental native debuginfo support!
+
+breakpad-symbols/minidump-processor/minidump-stackwalk now have new **disabled-by-default** features
+
+* `dump_syms` feature
+    * enables fetching binaries from --symbols-url assuming it is a Microsoft Symbol Server.
+        the binaries will still be processed into native .sym files, and those will be cached.
+    * this will make `--symbols-url=https://msdl.microsoft.com/download/symbols/` work
+    * because this increases the number of urls we query and we are currently very serial in our http
+        queries, this may significantly increase runtime!
+    * this implies the `http` feature (disabled by default unless you're using minidump-stackwalk)
+
+* `mozilla_cab_symbols` feature
+    * enables the dump_syms feature to also check additional paths that mozilla uses for CABed binaries.
+        If it would check for `firefox.exe`, it will now also check for `firefox.ex_`
+
+More generally, breakpad-symbols now has machinery for explicitly requesting binaries. this isn't fully
+built out but may be useful in the future for implementingthings like bitflip/integrity checks.
+
+## Breakpad-symbols has finally migrated from nom **1.2.2** to nom 7.
+
+This came with a nice ~20% reduction in overall runtime, not necessarily because of the migration itself,
+but because the author took the time to clean up some inefficiencies along the way.
+
+RIP to the funniest old code in the project, thanks mstange!
+
+## Migrated to `tracing` over `log`
+
+We not emit more structured logs, making it a little harder to read but easier to grep specific tasks
+
+## Added more windows-specific error codes from Windows SDK version 10.0.22621.0
+
+You may get some better error pretty-printing
+
+
+
+
+
 # Version 0.11.0 (2022-05-19)
 
-Commit: TODO
+Commit: [4a60e95fd1fceda67aa61cef85461d65457ab046](https://github.com/rust-minidump/rust-minidump/commit/4a60e95fd1fceda67aa61cef85461d65457ab046)
 
 * Update `debugid` and `uuid` dependencies to `0.8.0` and `1.0.0` respectively.
 * Make retrieval from http source an optional feature of `breakpad-symbols`.
