@@ -77,6 +77,7 @@ where
     stack_walker
         .caller_ctx
         .set_register(PROGRAM_COUNTER, caller_pc);
+    // Nothing should really ever restore lr, but CFI is more magic so whatever sure
     if let Some(lr) = stack_walker
         .caller_ctx
         .get_register(LINK_REGISTER, &new_valid)
@@ -275,41 +276,59 @@ fn get_link_register_by_frame_pointer(
 fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
     // ARMv8.3 introduced a code hardening system called "Pointer Authentication"
     // which is used on Apple platforms. It adds some extra high bits to the
-    // several pointers when they get pushed to memory. Interestingly
-    // this doesn't seem to affect return addresses pushed by a function call,
-    // but it does affect lr/fp registers that get pushed to the stack.
+    // several pointers when they get pushed to memory, including the return
+    // address (lr) and frame pointer (fp), which both get pushed at the start
+    // of most non-leaf functions.
     //
-    // Rather than actually thinking about how to recover the key and properly
-    // decode this, let's apply a simple heuristic. We get the maximum address
-    // that's contained in a module we know about, which will have some highest
-    // bit that is set. We can then safely mask out any bit that's higher than
-    // that one, which will hopefully mask out all the weird security stuff
-    // in the high bits.
-    if let Some(last_module) = modules.by_addr().next_back() {
-        // Get the highest mappable address
-        let mut mask = last_module.base_address() + last_module.size();
-        // Repeatedly OR this value with its shifted self to "smear" its
-        // highest set bit down to all lower bits. This will get us a
-        // mask we can use to AND out any bits that are higher.
-        mask |= mask >> 1;
-        mask |= mask >> 1;
-        mask |= mask >> 2;
-        mask |= mask >> 4;
-        mask |= mask >> 8;
-        mask |= mask >> 16;
-        mask |= mask >> 32;
-        let stripped = ptr & mask;
+    // We lack some of the proper context to implement the "strip" primitive, because
+    // the amount of bits that are "real" pointer depends on various extensions like
+    // pointer tagging and how big page tables are. If we allocate too many bits to
+    // "real" then we can get ptr_auth bits in our pointers, and if we allocate too
+    // few we can end up truncating our pointers. Thankfully we'll usually have a bit
+    // a bit of margin from pointers not having the highest real bits set.
+    //
+    // To help us guess, we have a few pieces of information:
+    //
+    // * Apple seems to default to a 24/40 split, so 40 bits for the "real" is a good baseline
+    // * We know the address ranges of various loaded/unloaded modules
+    // * We know the address range of the stacks
+    // * We *can* know the address range of some sections of the heap (MemoryList)
+    // * We *can* know the page mappings (MemoryInfo)
+    //
+    // Right now we only incorporate the first two. Ideally we would process all those sources
+    // once at the start of stack walking and pass it down to the ARM stackwalker but that's
+    // a lot of annoying rewiring that won't necessarily improve results.
+    let apple_default_max_addr = (1 << 40) - 1;
+    let max_module_addr = modules
+        .by_addr()
+        .next_back()
+        .map(|last_module| {
+            last_module
+                .base_address()
+                .saturating_add(last_module.size())
+        })
+        .unwrap_or(0);
+    let max_addr = u64::max(apple_default_max_addr, max_module_addr);
 
-        // Only actually use this stripped value if it ended up pointing in
-        // a module so we don't start corrupting normal pointers that are just
-        // in modules we don't know about.
-        if modules.module_at_address(stripped).is_some() {
-            // trace!("stripped pointer {:016x} -> {:016x}", ptr, stripped);
-            return stripped;
-        }
-    }
+    // We can convert a "highest" address into a suitable mask by getting the next_power_of_two
+    // (a single bit >= the max) and subtracting one from it (producing all 1's <= that bit).
+    // There are two corner cases to this:
+    //
+    // * the next_power_of_two being 2^65, in which case our mask should be !0 (all ones)
+    // * the max addr being a power of two already means we will actually lose that one value
+    //
+    // The first case is handled by using checked_next_power_of_two. The second case isn't really
+    // handled by it very improbable. We do however make sure the apple max isn't a power of two.
+    let mask = max_addr
+        .checked_next_power_of_two()
+        .map(|high_bit| high_bit - 1)
+        .unwrap_or(!0);
 
-    ptr
+    // In principle, if we've done a good job of computing the mask, we can apply it regardless
+    // of if there's any ptr auth bits. Either it will clear the auth or be a noop. We don't
+    // check if this messes up, because there's too many subtleties like JITed code to reliably
+    // detect this going awry.
+    ptr & mask
 }
 
 async fn get_caller_by_scan<P>(

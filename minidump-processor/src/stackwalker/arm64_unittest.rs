@@ -34,6 +34,19 @@ impl TestFixture {
         }
     }
 
+    pub fn high_module() -> TestFixture {
+        TestFixture {
+            raw: Context::default(),
+            // Same as new but with a really high module to stretch ptr auth stripping
+            modules: MinidumpModuleList::from_modules(vec![
+                MinidumpModule::new(0x40000000, 0x10000, "module1"),
+                MinidumpModule::new(0x50000000, 0x10000, "module2"),
+                MinidumpModule::new(0x10000000000000, 0x10000, "module2"),
+            ]),
+            symbols: HashMap::new(),
+        }
+    }
+
     pub async fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::Arm64(self.raw.clone()),
@@ -422,7 +435,7 @@ async fn test_frame_pointer() {
 }
 
 #[tokio::test]
-async fn test_ptr_auth_strip() {
+async fn test_frame_pointer_ptr_auth_strip() {
     // Same as the basic frame pointer test but extra high bits have been set which
     // must be masked out. This is vaguely emulating Arm Pointer Authentication,
     // although very synthetically. This might break if we implement more accurate
@@ -535,8 +548,17 @@ const CALLEE_SAVE_REGS: &[&str] = &[
     "pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
+fn init_cfi_state_high_module() -> (TestFixture, Section, Context, MinidumpContextValidity) {
+    init_cfi_state_common(TestFixture::high_module())
+}
+
 fn init_cfi_state() -> (TestFixture, Section, Context, MinidumpContextValidity) {
-    let mut f = TestFixture::new();
+    init_cfi_state_common(TestFixture::new())
+}
+
+fn init_cfi_state_common(
+    mut f: TestFixture,
+) -> (TestFixture, Section, Context, MinidumpContextValidity) {
     let symbols = [
         // The youngest frame's function.
         "FUNC 4000 1000 10 enchiridion\n",
@@ -576,9 +598,9 @@ fn init_cfi_state() -> (TestFixture, Section, Context, MinidumpContextValidity) 
     ];
     f.add_symbols(String::from("module1"), symbols.concat());
 
-    f.raw.set_register("pc", 0x0000000040005510);
-    f.raw.set_register("sp", 0x0000000080000000);
-    f.raw.set_register("fp", 0xe11081128112e110);
+    f.raw.set_register("pc", 0x0000_0000_4000_5510);
+    f.raw.set_register("sp", 0x0000_0000_8000_0000);
+    f.raw.set_register("fp", 0x0000_00a2_8112_e110);
     f.raw.set_register("x19", 0x5e68b5d5b5d55e68);
     f.raw.set_register("x20", 0x34f3ebd1ebd134f3);
     f.raw.set_register("x21", 0x74bca31ea31e74bc);
@@ -642,6 +664,8 @@ async fn check_cfi(
                     );
                 }
                 return;
+            } else {
+                unreachable!()
             }
         }
     }
@@ -668,8 +692,8 @@ async fn test_cfi_at_4001() {
     stack = stack
         .D64(0x5e68b5d5b5d55e68) // saved x19
         .D64(0x34f3ebd1ebd134f3) // saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -690,8 +714,8 @@ async fn test_cfi_at_4002() {
     stack = stack
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -719,8 +743,8 @@ async fn test_cfi_at_4003() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -750,8 +774,8 @@ async fn test_cfi_at_4004() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -771,6 +795,70 @@ async fn test_cfi_at_4004() {
 }
 
 #[tokio::test]
+async fn test_cfi_at_4005_ptr_auth_strip_apple() {
+    // This is the same as the normal 4005 test but with extra garabage (auth) bits
+    // set in the high 24 bits. This emulates what apple platforms looks like.
+
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
+        .D64(0xff3dfb81fb81ff3d) // no longer saved x19
+        .D64(0x34f3ebd1ebd134f3) // no longer saved x20
+        .D64(0xae23_45a2_8112_e110) // saved fp WITH AUTH
+        .D64(0xae1d_f700_4000_5510) // return address WITH AUTH
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap());
+    expected.iregs[1] = 0xdd5a48c848c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("x1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x0000000040004005);
+    f.raw.iregs[1] = 0xfb756319fb756319;
+
+    check_cfi(f, stack, expected, expected_valid).await;
+}
+
+#[tokio::test]
+async fn test_cfi_at_4005_ptr_auth_strip_high() {
+    // This is the same as the normal 4005 test but with extra garabage (auth) bits
+    // set in the **extra** high bits. This emulates what android platforms look like.
+
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state_high_module();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
+        .D64(0xff3dfb81fb81ff3d) // no longer saved x19
+        .D64(0x34f3ebd1ebd134f3) // no longer saved x20
+        .D64(0x1003_45a2_8112_e110) // saved fp WITH AUTH
+        .D64(0x100d_f700_4000_5510) // return address WITH AUTH
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap());
+    expected.set_register("fp", 0x0003_45a2_8112_e110);
+    expected.set_register("pc", 0x000d_f700_4000_5510);
+    expected.iregs[1] = 0xdd5a48c848c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("x1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x0000000040004005);
+    f.raw.iregs[1] = 0xfb756319fb756319;
+
+    check_cfi(f, stack, expected, expected_valid).await;
+}
+
+#[tokio::test]
 async fn test_cfi_at_4005() {
     // Here we move the .cfa, but provide an explicit rule to recover the SP,
     // so again there should be no change in the registers recovered.
@@ -782,8 +870,8 @@ async fn test_cfi_at_4005() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -814,7 +902,7 @@ async fn test_cfi_at_4006() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
+        .D64(0x0000_00a2_8112_e110) // saved fp
         .D64(0xf8d157835783f8d1) // .ra rule recovers this, which is garbage
         .mark(&frame1_sp)
         .append_repeated(0, 120);
@@ -903,7 +991,9 @@ async fn test_frame_pointer_barely_no_overflow() {
     // our code doesn't randomly overflow *AND* isn't overzealous in
     // its overflow guards.
 
-    let mut f = TestFixture::new();
+    // We add an extra module here to
+    let mut f = TestFixture::high_module();
+
     let mut stack = Section::new();
 
     type Pointer = u64;
