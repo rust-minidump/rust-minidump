@@ -24,7 +24,7 @@ const POINTER_WIDTH: Pointer = std::mem::size_of::<Pointer>() as Pointer;
 const FRAME_POINTER: &str = Registers::FramePointer.name();
 const STACK_POINTER: &str = Registers::StackPointer.name();
 const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
-const LINK_REGISTER: &str = Registers::LinkRegister.name();
+const _LINK_REGISTER: &str = Registers::LinkRegister.name();
 const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", "fp"];
 
 async fn get_caller_by_cfi<P>(
@@ -127,21 +127,18 @@ where
     //
     // In the standard calling convention, the following happens:
     //
-    // PUSH fp, lr    (save fp and lr to the stack -- ARM pushes in pairs)
-    // fp := sp       (update the frame pointer to the current stack pointer)
-    // lr := pc       (save the return address in the link register)
+    // lr := return_address   (done implicitly by a call)
+    // PUSH fp, lr            (save fp and lr to the stack -- ARM pushes in pairs)
+    // fp := sp               (update the frame pointer to the current stack pointer)
     //
     // So to restore the caller's registers, we have:
     //
-    // pc := lr
     // sp := fp + ptr*2
-    // lr := *(fp + ptr)
+    // pc := *(fp + ptr)
     // fp := *fp
     let valid = &callee.context.valid;
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    // Unlike ARM64, we don't bother trying really hard to restore lr
-    let last_lr = ctx.get_register(LINK_REGISTER, valid)?;
 
     if last_fp as u32 >= u32::MAX - POINTER_WIDTH as u32 * 2 {
         // Although this code generally works fine if the pointer math overflows,
@@ -149,7 +146,7 @@ where
         // drowning the rest of the code in checked_add.
         return None;
     }
-    let (caller_fp, caller_lr, caller_sp) = if last_fp == 0 {
+    let (caller_fp, caller_pc, caller_sp) = if last_fp == 0 {
         // In this case we want unwinding to stop. One of the termination conditions in get_caller_frame
         // is that caller_sp <= last_sp. Therefore we can force termination by setting caller_sp = last_sp.
         (0, 0, last_sp)
@@ -160,7 +157,6 @@ where
             last_fp + POINTER_WIDTH * 2,
         )
     };
-    let caller_pc = last_lr;
 
     // Don't do any more validation, just assume it worked.
 
@@ -172,13 +168,11 @@ where
 
     let mut caller_ctx = ArmContext::default();
     caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
-    caller_ctx.set_register(LINK_REGISTER, caller_lr);
     caller_ctx.set_register(FRAME_POINTER, caller_fp);
     caller_ctx.set_register(STACK_POINTER, caller_sp);
 
     let mut valid = HashSet::new();
     valid.insert(PROGRAM_COUNTER);
-    valid.insert(LINK_REGISTER);
     valid.insert(FRAME_POINTER);
     valid.insert(STACK_POINTER);
 
