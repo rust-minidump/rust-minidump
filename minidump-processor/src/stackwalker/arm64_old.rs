@@ -131,7 +131,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
+    _grand_callee: Option<&StackFrame>,
     stack_memory: &MinidumpMemory<'_>,
     modules: &MinidumpModuleList,
     _symbol_provider: &P,
@@ -140,34 +140,70 @@ where
     P: SymbolProvider + Sync,
 {
     trace!("trying frame pointer");
-    // Assume that the standard %fp-using ARM64 calling convention is in use.
-    // The main quirk of this ABI is that the return address doesn't need to
-    // be restored from the stack -- it's already in the link register (lr).
-    // But that means we need to save/restore lr itself so that the *caller's*
-    // return address can be recovered.
+    // Ok so there exists 3 kinds of stackframes in ARM64:
     //
-    // In the standard calling convention, the following happens:
+    // * stackless leaves
+    // * stackful leaves
+    // * normal frames
     //
-    // PUSH fp, lr    (save fp and lr to the stack -- ARM64 pushes in pairs)
-    // fp := sp       (update the frame pointer to the current stack pointer)
-    // lr := pc       (save the return address in the link register)
+    //
+    // # Normal Frames
+    //
+    // Let's start with normal frames. In the standard calling convention, the following happens:
+    //
+    // lr := return_address   (performed implicitly by ARM's function call instruction)
+    // PUSH fp, lr            (save fp and lr to the stack -- ARM64 pushes in pairs)
+    // fp := sp               (update the frame pointer to the current stack pointer)
     //
     // So to restore the caller's registers, we have:
     //
-    // pc := lr
+    // pc := *(fp + ptr)      (this will get the return address, usual offset caveats apply)
     // sp := fp + ptr*2
-    // lr := *(fp + ptr)
     // fp := *fp
+    //
+    // Note that although we push lr, we don't restore lr. That's because lr is just our
+    // return address, and is therefore essentially a "saved" pc. lr is caller-saved *and*
+    // automatically overwritten by every CALL, so the callee (the frame we're unwinding right now)
+    // has no business ever knowing it, let alone restoring it. lr is generally just saved
+    // immediately and then used as a free general purpose register, and therefore will generally
+    // contain random garbage unrelated to unwinding.
+    //
+    //
+    // # Leaf Functions
+    //
+    // Now leaf functions are a bit messier. These are functions which don't call other functions
+    // and therefore don't actually ever need to save lr or fp. As such, they can be entirely
+    // stackless, although they don't have to be. So calling a leaf function is just:
+    //
+    // lr := return_address
+    // <possibly some pushes, but maybe not>
+    //
+    // And to restore the caller's registers, we have:
+    //
+    // pc := lr
+    // sp := sp - <some arbitrary value>
+    // fp := fp
+    //
+    // Unfortunately, we're unaware of any way to "detect" that a function is a leaf or not
+    // without symbols/cfi just telling you that. Since we're in frame pointer unwinding,
+    // we probably don't have those available! And even if we did, we still wouldn't know if
+    // the frame was stackless or not, so we wouldn't know how to restore sp reliably and might
+    // get the stack in a weird state for subsequent (possibly CFI-based) frames.
+    // Also, if we incorrectly guess a frame is a leaf, we'll also use a probably-random-garbage
+    // lr as a pc and potentially halluncinate a bunch.
+    //
+    //
+    // # Conclusion
+    //
+    // At the moment we think it's safest/best to just always assume we're unwinding a normal
+    // frame. Statistically this is true (most frames are, even if they happen to be at the
+    // top of the stack when we crash), and if the frame *is* a leaf then our `fp` is likely
+    // to be the correct fp of the next frame. This will effectively result in us unwinding
+    // our caller instead of ourselves, causing the caller to be omitted from the backtrace
+    // but otherwise perfectly syncing up for the rest of the frames.
     let valid = &callee.context.valid;
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let last_lr = match ctx.get_register(LINK_REGISTER, valid) {
-        Some(lr) => ptr_auth_strip(modules, lr),
-        None => {
-            // FIXME: it would be good to write this back to the callee's ctx/validity
-            get_link_register_by_frame_pointer(ctx, valid, stack_memory, grand_callee, modules)?
-        }
-    };
 
     if last_fp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
         // Although this code generally works fine if the pointer math overflows,
@@ -176,7 +212,7 @@ where
         return None;
     }
 
-    let (caller_fp, caller_lr, caller_sp) = if last_fp == 0 {
+    let (caller_fp, caller_pc, caller_sp) = if last_fp == 0 {
         // In this case we want unwinding to stop. One of the termination conditions in get_caller_frame
         // is that caller_sp <= last_sp. Therefore we can force termination by setting caller_sp = last_sp.
         (0, 0, last_sp)
@@ -187,14 +223,8 @@ where
             last_fp + POINTER_WIDTH * 2,
         )
     };
-    let caller_lr = ptr_auth_strip(modules, caller_lr);
-    let caller_pc = last_lr;
-
-    // TODO: restore all the other callee-save registers that weren't touched.
-    // unclear: does this mean we need to be aware of ".undef" entries at this point?
-
-    // Breakpad's tests don't like it we validate the frame pointer's value,
-    // so we don't check that.
+    let caller_fp = ptr_auth_strip(modules, caller_fp);
+    let caller_pc = ptr_auth_strip(modules, caller_pc);
 
     // Don't accept obviously wrong instruction pointers.
     if is_non_canonical(caller_pc) {
@@ -212,13 +242,11 @@ where
 
     let mut caller_ctx = ArmContext::default();
     caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
-    caller_ctx.set_register(LINK_REGISTER, caller_lr);
     caller_ctx.set_register(FRAME_POINTER, caller_fp);
     caller_ctx.set_register(STACK_POINTER, caller_sp);
 
     let mut valid = HashSet::new();
     valid.insert(PROGRAM_COUNTER);
-    valid.insert(LINK_REGISTER);
     valid.insert(FRAME_POINTER);
     valid.insert(STACK_POINTER);
 
@@ -227,50 +255,6 @@ where
         valid: MinidumpContextValidity::Some(valid),
     };
     Some(StackFrame::from_context(context, FrameTrust::FramePointer))
-}
-
-/// Restores the callee's link register from the stack.
-fn get_link_register_by_frame_pointer(
-    ctx: &ArmContext,
-    valid: &MinidumpContextValidity,
-    stack_memory: &MinidumpMemory<'_>,
-    grand_callee: Option<&StackFrame>,
-    modules: &MinidumpModuleList,
-) -> Option<Pointer> {
-    // It may happen that whatever unwinding strategy we're using managed to
-    // restore %fp but didn't restore %lr. Frame-pointer-based unwinding requires
-    // %lr because it contains the return address (the caller's %pc).
-    //
-    // In the standard ARM64 calling convention %fp and %lr are pushed together,
-    // so if the grand-callee appears to have been called with that convention
-    // then we can recover %lr using its %fp.
-
-    // We need the grand_callee's frame pointer
-    let grand_callee = grand_callee?;
-    let last_last_fp = if let MinidumpRawContext::OldArm64(ref ctx) = grand_callee.context.raw {
-        ctx.get_register(FRAME_POINTER, &grand_callee.context.valid)?
-    } else {
-        return None;
-    };
-    let presumed_last_fp: Pointer = stack_memory.get_memory_at_address(last_last_fp as u64)?;
-
-    // Make sure fp and sp aren't obviously garbage (are well-ordered)
-    let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
-    let last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    if last_fp <= last_sp {
-        return None;
-    }
-
-    // Make sure the grand-callee and callee agree on the value of fp
-    if presumed_last_fp != last_fp {
-        return None;
-    }
-
-    // Now that we're pretty confident that frame pointers are valid, restore
-    // the callee's %lr, which should be right next to where its %fp is saved.
-    let last_lr = stack_memory.get_memory_at_address(last_last_fp + POINTER_WIDTH)?;
-
-    Some(ptr_auth_strip(modules, last_lr))
 }
 
 fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
