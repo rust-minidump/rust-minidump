@@ -269,7 +269,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
     // pointer tagging and how big page tables are. If we allocate too many bits to
     // "real" then we can get ptr_auth bits in our pointers, and if we allocate too
     // few we can end up truncating our pointers. Thankfully we'll usually have a bit
-    // a bit of margin from pointers not having the highest real bits set.
+    // of margin from pointers not having the highest real bits set.
     //
     // To help us guess, we have a few pieces of information:
     //
