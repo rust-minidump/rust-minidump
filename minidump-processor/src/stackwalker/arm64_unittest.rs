@@ -1276,9 +1276,6 @@ async fn test_frame_pointer_infinite_equality() {
     //
     // This is just a copy-paste of test_frame_pointer except for the line
     // "EVIL INFINITE FRAME POINTER" has been changed from frame2_fp to frame1_fp.
-
-    // Frame-pointer-based unwinding
-    // Frame-pointer-based unwinding
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
