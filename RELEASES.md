@@ -25,6 +25,20 @@ If it *does* happen, then we will effectively end up unwinding our caller instea
 
 In the future we may refine our heuristics for the top frame if we determine there's reasonably reliable ways to do that.
 
+
+## Support for MIPS unwinding!
+
+minidump-processor/minidump-stackwalk now have minimal support for unwinding MIPS (32-bit and 64-bit)!
+
+The current implementation only supports Scanning and CFI, because frame pointers seem to be too unreliable
+(at least for the examples we have).
+
+This should be enabled by default and run automatically, although we don't have a lot of tests or experience,
+so there's a reasonable chance there's a lot of bugs. symbolic and dump_syms are working on improving the quality
+of MIPS CFI as well.
+
+
+
 ## Inlinee info
 
 WIP, not yet landed
