@@ -43,6 +43,7 @@ impl TestFixture {
             base_address: base,
             size,
             bytes: &stack,
+            endian: scroll::LE,
         };
         let system_info = SystemInfo {
             os: Os::Windows,

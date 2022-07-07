@@ -1160,7 +1160,7 @@ impl Arm64RegisterNumbers {
 }
 
 /// MIPS floating point state
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct FLOATING_SAVE_AREA_MIPS {
     pub regs: [u64; 32],
@@ -1171,7 +1171,7 @@ pub struct FLOATING_SAVE_AREA_MIPS {
 /// A MIPS CPU context
 ///
 /// This is a Breakpad extension, as there is no definition of `CONTEXT` for MIPS in WinNT.h.
-#[derive(Debug, Clone, Pread, SizeWith)]
+#[derive(Debug, Default, Clone, Pread, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct CONTEXT_MIPS {
     pub context_flags: u32,
@@ -1206,6 +1206,25 @@ pub enum MipsRegisterNumbers {
     StackPointer = 29,
     FramePointer = 30,
     ReturnAddress = 31,
+}
+
+impl MipsRegisterNumbers {
+    pub const fn name(self) -> &'static str {
+        match self {
+            MipsRegisterNumbers::S0 => "s0",
+            MipsRegisterNumbers::S1 => "s1",
+            MipsRegisterNumbers::S2 => "s2",
+            MipsRegisterNumbers::S3 => "s3",
+            MipsRegisterNumbers::S4 => "s4",
+            MipsRegisterNumbers::S5 => "s5",
+            MipsRegisterNumbers::S6 => "s6",
+            MipsRegisterNumbers::S7 => "s7",
+            MipsRegisterNumbers::GlobalPointer => "gp",
+            MipsRegisterNumbers::StackPointer => "sp",
+            MipsRegisterNumbers::FramePointer => "fp",
+            MipsRegisterNumbers::ReturnAddress => "ra",
+        }
+    }
 }
 
 /// PPC floating point state
