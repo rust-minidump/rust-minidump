@@ -222,6 +222,10 @@ pub struct BitFlip {
     pub offset: u64,
     pub in_dump: Vec<u8>,
     pub in_binary: Vec<u8>,
+    pub flip_offset: u64,
+    pub flip_count: u64,
+    pub flip_in_dump: Vec<u8>,
+    pub flip_in_binary: Vec<u8>,
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -749,6 +753,7 @@ Unknown streams encountered:
 
         // Curry self for use in `map`
         let json_hex = |val: u64| -> String { self.json_hex(val) };
+        let json_hex_arr = |val: &[u8]| -> String { self.json_hex_arr(val) };
 
         let mut output = json!({
             // Currently unused, we either produce no output or successful output.
@@ -896,9 +901,13 @@ Unknown streams encountered:
                     "checked": self.integrity.bit_flips.checked,
                     "failures": self.integrity.bit_flips.failures.iter().map(|flip| json!({
                         "module": basename(&flip.module.name),
-                        "offset": flip.offset,
-                        "in_dump": flip.in_dump,
-                        "in_binary": flip.in_binary,
+                        "offset": json_hex(flip.offset),
+                        "in_dmp": json_hex_arr(&flip.in_dump),
+                        "in_bin": json_hex_arr(&flip.in_binary),
+                        "flip_offset": json_hex(flip.flip_offset),
+                        "flip_count": flip.flip_count,
+                        "flip_in_dmp": json_hex_arr(&flip.flip_in_dump),
+                        "flip_in_bin": json_hex_arr(&flip.flip_in_binary),
                     })).collect::<Vec<_>>(),
                 },
             }),
@@ -956,5 +965,14 @@ Unknown streams encountered:
                 format!("0x{:016x}", val)
             }
         }
+    }
+
+    fn json_hex_arr(&self, val: &[u8]) -> String {
+        use std::fmt::Write;
+        let mut output = String::new();
+        for byte in val {
+            write!(&mut output, "{:02x}", byte).unwrap();
+        }
+        output
     }
 }

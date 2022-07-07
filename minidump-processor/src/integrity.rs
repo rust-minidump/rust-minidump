@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 
 use crate::{BitFlip, BitFlips, FileKind, Integrity, SymbolProvider};
 use breakpad_symbols::Module;
@@ -43,10 +43,29 @@ pub async fn check_memory_for_flip(
         let offset = base_addr - module.base_address();
         if let Ok(path) = symbols.get_file_path(module, FileKind::Binary).await {
             let mut binary = File::open(&path)?;
-            let in_binary = vec![0; memory_size as usize];
+            let mut in_binary = vec![0; memory_size as usize];
             binary.seek(SeekFrom::Start(offset))?;
-            if in_binary != memory.bytes {
+            binary.read_exact(&mut in_binary[..])?;
+
+            let mut first_flip = 0;
+            let mut last_flip = 0;
+            let mut flip_count = 0u64;
+            for (idx, (a, b)) in in_binary.iter().zip(memory.bytes.iter()).enumerate() {
+                if a != b {
+                    if flip_count == 0 {
+                        first_flip = idx;
+                    }
+                    last_flip = idx;
+                    flip_count += 1;
+                }
+            }
+
+            if flip_count != 0 {
                 return Ok(Some(BitFlip {
+                    flip_offset: first_flip as u64,
+                    flip_count,
+                    flip_in_dump: memory.bytes[first_flip..=last_flip].to_owned(),
+                    flip_in_binary: in_binary[first_flip..=last_flip].to_owned(),
                     module: module.clone(),
                     offset,
                     in_dump: memory.bytes.to_owned(),
