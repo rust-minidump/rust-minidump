@@ -33,11 +33,15 @@ The human-readable report does not have a specified format, and may not have as 
 details as the JSON format. It is intended for quickly inspecting a crash or debugging
 rust-minidump itself.
 
+Can be simplified with --brief
+
 #### `--json`
 Emit a machine-readable JSON report
 
 The schema for this output is officially documented here:
 #### `<https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>`
+
+Can be pretty-printed with --pretty
 
 #### `--cyborg <CYBORG>`
 Combine --human and --json
@@ -53,6 +57,8 @@ This is an implementation of the functionality of the old minidump_dump tool. It
 minimally parses and interprets the minidump in an attempt to produce a fairly 'raw'
 dump of the minidump's contents. This is most useful for debugging minidump-stackwalk
 itself, or a misbehaving minidump generator.
+
+Can be simplified with --brief
 
 #### `--features <FEATURES>`
 Specify at a high-level how much analysis to perform
@@ -111,9 +117,11 @@ Output written to a file via --log-file, --output-file, or --cyborg is always
 Pretty-print --json output
 
 #### `--brief`
-Provide a briefer --human report
+Provide a briefer --human or --dump report
 
-Only provides the top-level summary and a backtrace of the crashing thread.
+For human: Only provides the top-level summary and a backtrace of the crashing thread.
+
+For dump: Omits all memory hexdumps.
 
 #### `--evil-json <EVIL_JSON>`
 **UNSTABLE** An input JSON file with the extra information.

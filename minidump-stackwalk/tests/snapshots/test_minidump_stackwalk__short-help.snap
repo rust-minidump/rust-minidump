@@ -46,7 +46,7 @@ OPTIONS:
             Pretty-print --json output
 
         --brief
-            Provide a briefer --human report
+            Provide a briefer --human or --dump report
 
         --evil-json <EVIL_JSON>
             **UNSTABLE** An input JSON file with the extra information

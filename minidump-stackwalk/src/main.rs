@@ -62,6 +62,8 @@ struct Cli {
     /// The human-readable report does not have a specified format, and may not have as
     /// many details as the JSON format. It is intended for quickly inspecting
     /// a crash or debugging rust-minidump itself.
+    ///
+    /// Can be simplified with --brief
     #[clap(long)]
     human: bool,
 
@@ -69,6 +71,8 @@ struct Cli {
     ///
     /// The schema for this output is officially documented here:
     /// <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
+    ///
+    /// Can be pretty-printed with --pretty
     #[clap(long)]
     json: bool,
 
@@ -86,6 +90,8 @@ struct Cli {
     /// It minimally parses and interprets the minidump in an attempt to produce a
     /// fairly 'raw' dump of the minidump's contents. This is most useful for debugging
     /// minidump-stackwalk itself, or a misbehaving minidump generator.
+    ///
+    /// Can be simplified with --brief
     #[clap(long)]
     dump: bool,
 
@@ -153,9 +159,11 @@ struct Cli {
     #[clap(long)]
     pretty: bool,
 
-    /// Provide a briefer --human report
+    /// Provide a briefer --human or --dump report
     ///
-    /// Only provides the top-level summary and a backtrace of the crashing thread.
+    /// For human: Only provides the top-level summary and a backtrace of the crashing thread.
+    ///
+    /// For dump: Omits all memory hexdumps.
     #[clap(long)]
     brief: bool,
 
@@ -347,8 +355,8 @@ async fn main() {
         std::process::exit(1);
     }
 
-    if cli.brief && !human {
-        error!("Robots cannot be brief! (The --brief flag is only valid for --human output (or --cyborg)");
+    if cli.brief && !(human || raw_dump) {
+        error!("Robots cannot be brief! (The --brief flag is only valid for --human, --cyborg, and --dump)");
         std::process::exit(1);
     }
 
@@ -370,7 +378,7 @@ async fn main() {
 
             // minidump_dump mode
             if raw_dump {
-                return print_minidump_dump(&dump, &mut output).unwrap();
+                return print_minidump_dump(&dump, &mut output, cli.brief).unwrap();
             }
 
             let mut provider = MultiSymbolProvider::new();
@@ -527,7 +535,11 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-fn print_minidump_dump<'a, T, W>(dump: &Minidump<'a, T>, output: &mut W) -> std::io::Result<()>
+fn print_minidump_dump<'a, T, W>(
+    dump: &Minidump<'a, T>,
+    output: &mut W,
+    brief: bool,
+) -> std::io::Result<()>
 where
     T: Deref<Target = [u8]> + 'a,
     W: Write,
@@ -546,6 +558,7 @@ where
             memory_list.as_ref(),
             system_info.as_ref(),
             misc_info.as_ref(),
+            brief,
         )?;
     }
     if let Ok(module_list) = dump.get_stream::<MinidumpModuleList>() {
@@ -555,10 +568,10 @@ where
         module_list.print(output)?;
     }
     if let Some(memory_list) = memory_list {
-        memory_list.print(output)?;
+        memory_list.print(output, brief)?;
     }
     if let Some(memory64_list) = memory64_list {
-        memory64_list.print(output)?;
+        memory64_list.print(output, brief)?;
     }
     if let Ok(memory_info_list) = dump.get_stream::<MinidumpMemoryInfoList<'_>>() {
         memory_info_list.print(output)?;

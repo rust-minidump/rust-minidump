@@ -1,0 +1,702 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: stdout
+---
+MDRawHeader
+  signature            = 0x504d444d
+  version              = 0x5128a793
+  stream_count         = 9
+  stream_directory_rva = 0x20
+  checksum             = 0x0
+  time_date_stamp      = 0x45d35f73 2007-02-14T19:13:55Z
+  flags                = 0x0
+
+mDirectory[0]
+MDRawDirectory
+  stream_type        = 0x3 (ThreadListStream)
+  location.data_size = 100
+  location.rva       = 0x184
+
+mDirectory[1]
+MDRawDirectory
+  stream_type        = 0x4 (ModuleListStream)
+  location.data_size = 1408
+  location.rva       = 0x1e8
+
+mDirectory[2]
+MDRawDirectory
+  stream_type        = 0x5 (MemoryListStream)
+  location.data_size = 52
+  location.rva       = 0x1505
+
+mDirectory[3]
+MDRawDirectory
+  stream_type        = 0x6 (ExceptionStream)
+  location.data_size = 168
+  location.rva       = 0xdc
+
+mDirectory[4]
+MDRawDirectory
+  stream_type        = 0x7 (SystemInfoStream)
+  location.data_size = 56
+  location.rva       = 0x8c
+
+mDirectory[5]
+MDRawDirectory
+  stream_type        = 0xf (MiscInfoStream)
+  location.data_size = 24
+  location.rva       = 0xc4
+
+mDirectory[6]
+MDRawDirectory
+  stream_type        = 0x47670001 (BreakpadInfoStream)
+  location.data_size = 12
+  location.rva       = 0x14f9
+
+mDirectory[8]
+MDRawDirectory
+  stream_type        = 0x0 (UnusedStream)
+  location.data_size = 0
+  location.rva       = 0x0
+
+Streams:
+  stream type 0x0 (UnusedStream) at index 8
+  stream type 0x3 (ThreadListStream) at index 0
+  stream type 0x4 (ModuleListStream) at index 1
+  stream type 0x5 (MemoryListStream) at index 2
+  stream type 0x6 (ExceptionStream) at index 3
+  stream type 0x7 (SystemInfoStream) at index 4
+  stream type 0xf (MiscInfoStream) at index 5
+  stream type 0x47670001 (BreakpadInfoStream) at index 6
+
+MinidumpThreadList
+  thread_count = 2
+
+thread[0]
+MINIDUMP_THREAD
+  thread_id                   = 0xbf4
+  suspend_count               = 0
+  priority_class              = 0x0
+  priority                    = 0x0
+  teb                         = 0x7ffdf000
+  stack.start_of_memory_range = 0x12f31c
+  stack.memory.data_size      = 0xce4
+  stack.memory.rva            = 0x1639
+  thread_context.data_size    = 0x2cc
+  thread_context.rva          = 0xd94
+
+CONTEXT_X86
+  context_flags                = 0x1003f
+  dr0                          = 0x0
+  dr1                          = 0x0
+  dr2                          = 0x0
+  dr3                          = 0x0
+  dr6                          = 0x0
+  dr7                          = 0x0
+  float_save.control_word      = 0xffff027f
+  float_save.status_word       = 0xffff0000
+  float_save.tag_word          = 0xffffffff
+  float_save.error_offset      = 0x0
+  float_save.error_selector    = 0x220000
+  float_save.data_offset       = 0x0
+  float_save.data_selector     = 0xffff0000
+  float_save.register_area[80] = 0x0000000018b72200000118b72200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  float_save.cr0_npx_state     = 0x0
+  gs                           = 0x0
+  fs                           = 0x3b
+  es                           = 0x23
+  ds                           = 0x23
+  edi                          = 0x0
+  esi                          = 0x7b8
+  ebx                          = 0x7c883780
+  edx                          = 0x7c97c0d8
+  ecx                          = 0x7c80b46e
+  eax                          = 0x400000
+  ebp                          = 0x12f384
+  eip                          = 0x7c90eb94
+  cs                           = 0x1b
+  eflags                       = 0x246
+  esp                          = 0x12f320
+  ss                           = 0x23
+  extended_registers[512]      = 0x7f0200000000220000000000000000000000000000000000801f0000ffff00000000000018b72200000100000000000018b72200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004509917c4e09917c38b622002400020024b42200020000009041917c0070fd7f0510907cccb22200000000009cb3220018ee907c7009917cc0e4977c6f3e917c623e917c08020000dcb62200b4b622001e000000000000000000000000000000000000002eb42200000000000f000000020000001e00200000fcfd7f2f63796764726976652f632f444f43554d457e312f4d4d454e544f7e312f4c4f43414c537e312f54656d7000000000000000000130b422000000004300000000000000001efcfd7f4509917c4e09917c5ad9000008b32200b4b62200
+
+
+thread[1]
+MINIDUMP_THREAD
+  thread_id                   = 0x11c0
+  suspend_count               = 0
+  priority_class              = 0x0
+  priority                    = 0x0
+  teb                         = 0x7ffde000
+  stack.start_of_memory_range = 0x97f6e8
+  stack.memory.data_size      = 0x918
+  stack.memory.rva            = 0x231d
+  thread_context.data_size    = 0x2cc
+  thread_context.rva          = 0x1060
+
+CONTEXT_X86
+  context_flags                = 0x1003f
+  dr0                          = 0x0
+  dr1                          = 0x0
+  dr2                          = 0x0
+  dr3                          = 0x0
+  dr6                          = 0x0
+  dr7                          = 0x0
+  float_save.control_word      = 0xffff027f
+  float_save.status_word       = 0xffff0000
+  float_save.tag_word          = 0xffffffff
+  float_save.error_offset      = 0x0
+  float_save.error_selector    = 0x870000
+  float_save.data_offset       = 0x0
+  float_save.data_selector     = 0xffff0000
+  float_save.register_area[80] = 0x84fb120000001400320778071400000014000000f4fe1200a0fd120018eeb0fd12003815917c961534ff120034ff12000000e7712a0f2a0000005400ccfb120068514000584d540000002a000000f4fe
+  float_save.cr0_npx_state     = 0x0
+  gs                           = 0x0
+  fs                           = 0x3b
+  es                           = 0x23
+  ds                           = 0x23
+  edi                          = 0x145b00
+  esi                          = 0x145aa8
+  ebx                          = 0x145ad0
+  edx                          = 0x7c90eb94
+  ecx                          = 0x7
+  eax                          = 0xa80000
+  ebp                          = 0x97f6fc
+  eip                          = 0x7c90eb94
+  cs                           = 0x1b
+  eflags                       = 0x246
+  esp                          = 0x97f6ec
+  ss                           = 0x23
+  extended_registers[512]      = 0x7f0200000000870000000000000000000000000000000000801f0000ccfb120084fb1200000014003207917c050000007807140000001400000000005cfb1200f4fe1200a0fd120018ee907c2d020000b0fd12003815917c9615917ceb06917c34ff120034ff12000000000060000000e7712a0f2a0000005400000000000000ccfb120068514000584d870034fc1200540000002a000000f4fe1200f8fe12002c2f4000584d87005e00000034fc12005400000000000000b0fe1200f4fe1200c0fe12005f21400034fc12002a0000003b762a0f91214000303132330000870038393a3b3c3d3e3f4041424300000000070000003bd11e2340061400b858101e5e03e0652e005c00320033003100650064003100780114002d0066003300380034002d0000000000390034002d0062003800350038002d0031003000984e1400350065003000330065003000360035002e0064006d0070000000907c08000000ffffffff8832917cbeb4807c780114001d00f40b784e14000401000044fd120050fd1200c01e240078011400bdb9807ca04e14007c80c2770000000008fd120078011400ecfc1200f0fc1200e6b9807cffffffff7c80c27708fd12001c00000024fd1200e92a867c7c80c277b45a887c8037887c2d0200000080c2770000c17780000000005003000010000020000000780114005cff12001648847c091b917c
+
+
+MinidumpModuleList
+  module_count = 13
+
+module[0]
+MINIDUMP_MODULE
+  base_of_image                   = 0x400000
+  size_of_image                   = 0x2d000
+  checksum                        = 0x0
+  time_date_stamp                 = 0x45d35f6c 2007-02-14T19:13:48Z
+  module_name_rva                 = 0x78a
+  version_info.signature          = 0x0
+  version_info.struct_version     = 0x0
+  version_info.file_version       = 0x0:0x0
+  version_info.product_version    = 0x0:0x0
+  version_info.file_flags_mask    = 0x0
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x0
+  version_info.file_type          = 0x0
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 40
+  cv_record.rva                   = 0x132c
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "c:\test_app.exe"
+  (code_identifier)               = "45d35f6c2d000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 5a9832e5-2872-41c1-838e-d98914e9b7ff
+  (cv_record).age                 = 1
+  (cv_record).pdb_file_name       = "c:\test_app.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "c:\test_app.pdb"
+  (debug_identifier)              = "5a9832e5-2872-41c1-838e-d98914e9b7ff-1"
+  (version)                       = ""
+
+module[1]
+MINIDUMP_MODULE
+  base_of_image                   = 0x7c900000
+  size_of_image                   = 0xb0000
+  checksum                        = 0xaf2f7
+  time_date_stamp                 = 0x411096b4 2004-08-04T07:56:36Z
+  module_name_rva                 = 0x7ae
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 34
+  cv_record.rva                   = 0x1354
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\ntdll.dll"
+  (code_identifier)               = "411096b4b0000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 36515fb5-d043-45e4-91f6-72fa2e2878c0
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "ntdll.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "ntdll.pdb"
+  (debug_identifier)              = "36515fb5-d043-45e4-91f6-72fa2e2878c0-2"
+  (version)                       = "5.1.2600.2180"
+
+module[2]
+MINIDUMP_MODULE
+  base_of_image                   = 0x7c800000
+  size_of_image                   = 0xf4000
+  checksum                        = 0xf724d
+  time_date_stamp                 = 0x44ab9a84 2006-07-05T10:55:00Z
+  module_name_rva                 = 0x7ee
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280b81
+  version_info.product_version    = 0x50001:0xa280b81
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 37
+  cv_record.rva                   = 0x1376
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\kernel32.dll"
+  (code_identifier)               = "44ab9a84f4000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = bce8785c-57b4-4245-a669-896b6a19b954
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "kernel32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "kernel32.pdb"
+  (debug_identifier)              = "bce8785c-57b4-4245-a669-896b6a19b954-2"
+  (version)                       = "5.1.2600.2945"
+
+module[3]
+MINIDUMP_MODULE
+  base_of_image                   = 0x774e0000
+  size_of_image                   = 0x13d000
+  checksum                        = 0x13dc6b
+  time_date_stamp                 = 0x42e5be93 2005-07-26T04:39:47Z
+  module_name_rva                 = 0x834
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280aa6
+  version_info.product_version    = 0x50001:0xa280aa6
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 34
+  cv_record.rva                   = 0x139b
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\ole32.dll"
+  (code_identifier)               = "42e5be9313d000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 683b65b2-46f4-4187-96d2-ee6d4c55eb11
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "ole32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "ole32.pdb"
+  (debug_identifier)              = "683b65b2-46f4-4187-96d2-ee6d4c55eb11-2"
+  (version)                       = "5.1.2600.2726"
+
+module[4]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77dd0000
+  size_of_image                   = 0x9b000
+  checksum                        = 0xa0de4
+  time_date_stamp                 = 0x411096a7 2004-08-04T07:56:23Z
+  module_name_rva                 = 0x874
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 37
+  cv_record.rva                   = 0x13bd
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\advapi32.dll"
+  (code_identifier)               = "411096a79b000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 455d6c5f-184d-45bb-b5c5-f30f82975114
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "advapi32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "advapi32.pdb"
+  (debug_identifier)              = "455d6c5f-184d-45bb-b5c5-f30f82975114-2"
+  (version)                       = "5.1.2600.2180"
+
+module[5]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77e70000
+  size_of_image                   = 0x91000
+  checksum                        = 0x9c482
+  time_date_stamp                 = 0x411096ae 2004-08-04T07:56:30Z
+  module_name_rva                 = 0x8ba
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 35
+  cv_record.rva                   = 0x13e2
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\rpcrt4.dll"
+  (code_identifier)               = "411096ae91000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = bea45a72-1da1-41da-a3ba-86b3a2031153
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "rpcrt4.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "rpcrt4.pdb"
+  (debug_identifier)              = "bea45a72-1da1-41da-a3ba-86b3a2031153-2"
+  (version)                       = "5.1.2600.2180"
+
+module[6]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77f10000
+  size_of_image                   = 0x47000
+  checksum                        = 0x4d0d0
+  time_date_stamp                 = 0x43b34feb 2005-12-29T02:54:35Z
+  module_name_rva                 = 0x8fc
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280b02
+  version_info.product_version    = 0x50001:0xa280b02
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 34
+  cv_record.rva                   = 0x1405
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\gdi32.dll"
+  (code_identifier)               = "43b34feb47000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = c0ea66be-00a6-4bd7-aef7-9e443a91869c
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "gdi32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "gdi32.pdb"
+  (debug_identifier)              = "c0ea66be-00a6-4bd7-aef7-9e443a91869c-2"
+  (version)                       = "5.1.2600.2818"
+
+module[7]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77d40000
+  size_of_image                   = 0x90000
+  checksum                        = 0x9505c
+  time_date_stamp                 = 0x42260159 2005-03-02T18:09:29Z
+  module_name_rva                 = 0x93c
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280a3e
+  version_info.product_version    = 0x50001:0xa280a3e
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 35
+  cv_record.rva                   = 0x1427
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\user32.dll"
+  (code_identifier)               = "4226015990000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = ee2b714d-83a3-4c9d-8802-7621272f8326
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "user32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "user32.pdb"
+  (debug_identifier)              = "ee2b714d-83a3-4c9d-8802-7621272f8326-2"
+  (version)                       = "5.1.2600.2622"
+
+module[8]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77c10000
+  size_of_image                   = 0x58000
+  checksum                        = 0x57cd3
+  time_date_stamp                 = 0x41109752 2004-08-04T07:59:14Z
+  module_name_rva                 = 0x97e
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x70000:0xa280884
+  version_info.product_version    = 0x60001:0x21be0884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x1
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 35
+  cv_record.rva                   = 0x144a
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\msvcrt.dll"
+  (code_identifier)               = "4110975258000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = a678f3c3-0ded-426b-8390-32b996987e38
+  (cv_record).age                 = 1
+  (cv_record).pdb_file_name       = "msvcrt.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "msvcrt.pdb"
+  (debug_identifier)              = "a678f3c3-0ded-426b-8390-32b996987e38-1"
+  (version)                       = "7.0.2600.2180"
+
+module[9]
+MINIDUMP_MODULE
+  base_of_image                   = 0x76390000
+  size_of_image                   = 0x1d000
+  checksum                        = 0x2a024
+  time_date_stamp                 = 0x411096ae 2004-08-04T07:56:30Z
+  module_name_rva                 = 0x9c0
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 34
+  cv_record.rva                   = 0x146d
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\imm32.dll"
+  (code_identifier)               = "411096ae1d000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 2c17a49c-251b-4c8e-b9e2-ad13d7d9ea16
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "imm32.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "imm32.pdb"
+  (debug_identifier)              = "2c17a49c-251b-4c8e-b9e2-ad13d7d9ea16-2"
+  (version)                       = "5.1.2600.2180"
+
+module[10]
+MINIDUMP_MODULE
+  base_of_image                   = 0x59a60000
+  size_of_image                   = 0xa1000
+  checksum                        = 0xa8824
+  time_date_stamp                 = 0x4110969a 2004-08-04T07:56:10Z
+  module_name_rva                 = 0xa00
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 36
+  cv_record.rva                   = 0x148f
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\dbghelp.dll"
+  (code_identifier)               = "4110969aa1000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 39559573-e21b-46f2-8e28-6923be9e6a76
+  (cv_record).age                 = 1
+  (cv_record).pdb_file_name       = "dbghelp.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "dbghelp.pdb"
+  (debug_identifier)              = "39559573-e21b-46f2-8e28-6923be9e6a76-1"
+  (version)                       = "5.1.2600.2180"
+
+module[11]
+MINIDUMP_MODULE
+  base_of_image                   = 0x77c00000
+  size_of_image                   = 0x8000
+  checksum                        = 0x11d78
+  time_date_stamp                 = 0x411096b7 2004-08-04T07:56:39Z
+  module_name_rva                 = 0xa44
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 36
+  cv_record.rva                   = 0x14b3
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\version.dll"
+  (code_identifier)               = "411096b78000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = 180a90c4-0384-463e-82dd-c45b2c8ab76e
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "version.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "version.pdb"
+  (debug_identifier)              = "180a90c4-0384-463e-82dd-c45b2c8ab76e-2"
+  (version)                       = "5.1.2600.2180"
+
+module[12]
+MINIDUMP_MODULE
+  base_of_image                   = 0x76bf0000
+  size_of_image                   = 0xb000
+  checksum                        = 0xa29b
+  time_date_stamp                 = 0x411096ca 2004-08-04T07:56:58Z
+  module_name_rva                 = 0xa88
+  version_info.signature          = 0xfeef04bd
+  version_info.struct_version     = 0x10000
+  version_info.file_version       = 0x50001:0xa280884
+  version_info.product_version    = 0x50001:0xa280884
+  version_info.file_flags_mask    = 0x3f
+  version_info.file_flags         = 0x0
+  version_info.file_os            = 0x40004
+  version_info.file_type          = 0x2
+  version_info.file_subtype       = 0x0
+  version_info.file_date          = 0x0:0x0
+  cv_record.data_size             = 34
+  cv_record.rva                   = 0x14d7
+  misc_record.data_size           = 0
+  misc_record.rva                 = 0x0
+  (code_file)                     = "C:\WINDOWS\system32\psapi.dll"
+  (code_identifier)               = "411096cab000"
+  (cv_record).cv_signature        = 0x53445352
+  (cv_record).signature           = a5c3a1f9-689f-43d8-ad22-8a0929388970
+  (cv_record).age                 = 2
+  (cv_record).pdb_file_name       = "psapi.pdb"
+  (misc_record)                   = (null)
+  (debug_file)                    = "psapi.pdb"
+  (debug_identifier)              = "a5c3a1f9-689f-43d8-ad22-8a0929388970-2"
+  (version)                       = "5.1.2600.2180"
+
+MinidumpMemoryList
+  region_count = 3
+
+region[0]
+MINIDUMP_MEMORY_DESCRIPTOR
+  start_of_memory_range = 0x7c90eb14
+  memory.data_size      = 0x100
+  memory.rva            = 0x1539
+
+region[1]
+MINIDUMP_MEMORY_DESCRIPTOR
+  start_of_memory_range = 0x12f31c
+  memory.data_size      = 0xce4
+  memory.rva            = 0x1639
+
+region[2]
+MINIDUMP_MEMORY_DESCRIPTOR
+  start_of_memory_range = 0x97f6e8
+  memory.data_size      = 0x918
+  memory.rva            = 0x231d
+
+MINIDUMP_EXCEPTION
+  thread_id                                  = 0xbf4
+  exception_record.exception_code            = 0xc0000005
+  exception_record.exception_flags           = 0x0
+  exception_record.exception_record          = 0x0
+  exception_record.exception_address         = 0x40429e
+  exception_record.number_parameters         = 2
+  exception_record.exception_information[ 0] = 0x1
+  exception_record.exception_information[ 1] = 0x45
+  thread_context.data_size                   = 716
+  thread_context.rva                         = 0xac8
+
+CONTEXT_X86
+  context_flags                = 0x1003f
+  dr0                          = 0x0
+  dr1                          = 0x0
+  dr2                          = 0x0
+  dr3                          = 0x0
+  dr6                          = 0x0
+  dr7                          = 0x0
+  float_save.control_word      = 0xffff027f
+  float_save.status_word       = 0xffff0000
+  float_save.tag_word          = 0xffffffff
+  float_save.error_offset      = 0x0
+  float_save.error_selector    = 0x220000
+  float_save.data_offset       = 0x0
+  float_save.data_selector     = 0xffff0000
+  float_save.register_area[80] = 0x0000000018b72200000118b72200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  float_save.cr0_npx_state     = 0x0
+  gs                           = 0x0
+  fs                           = 0x3b
+  es                           = 0x23
+  ds                           = 0x23
+  edi                          = 0xa28
+  esi                          = 0x2
+  ebx                          = 0x7c80abc1
+  edx                          = 0x42bc58
+  ecx                          = 0x12fe94
+  eax                          = 0x45
+  ebp                          = 0x12fe88
+  eip                          = 0x40429e
+  cs                           = 0x1b
+  eflags                       = 0x10246
+  esp                          = 0x12fe84
+  ss                           = 0x23
+  extended_registers[512]      = 0x7f0200000000220000000000000000000000000000000000801f0000ffff00000000000018b72200000100000000000018b72200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004509917c4e09917c38b622002400020024b42200020000009041917c0070fd7f0510907cccb22200000000009cb3220018ee907c7009917cc0e4977c6f3e917c623e917c08020000dcb62200b4b622001e000000000000000000000000000000000000002eb42200000000000f000000020000001e00200000fcfd7f2f63796764726976652f632f444f43554d457e312f4d4d454e544f7e312f4c4f43414c537e312f54656d7000000000000000000130b422000000004300000000000000001efcfd7f4509917c4e09917c5ad9000008b32200b4b62200
+
+MINIDUMP_SYSTEM_INFO
+  processor_architecture                     = 0x0
+  processor_level                            = 6
+  processor_revision                         = 0xd08
+  number_of_processors                       = 1
+  product_type                               = 1
+  major_version                              = 5
+  minor_version                              = 1
+  build_number                               = 2600
+  platform_id                                = 0x2
+  csd_version_rva                            = 0x768
+  suite_mask                                 = 0x100
+  (version)                                  = 5.1.2600 Service Pack 2
+  (cpu_info)                                 = GenuineIntel family 6 model 13 stepping 8
+
+MINIDUMP_MISC_INFO
+  size_of_info                 = 24
+  flags1                       = 3
+  process_id                   = 3932
+  process_create_time          = 0x45d35f73 2007-02-14T19:13:55Z
+  process_user_time            = 0
+  process_kernel_time          = 0
+  processor_max_mhz            = (invalid)
+  processor_current_mhz        = (invalid)
+  processor_mhz_limit          = (invalid)
+  processor_max_idle_state     = (invalid)
+  processor_current_idle_state = (invalid)
+  process_integrity_level      = (invalid)
+  process_execute_flags        = (invalid)
+  protected_process            = (invalid)
+  time_zone_id                 = (invalid)
+  time_zone                    = (invalid)
+  build_string                 = (invalid)
+  dbg_bld_str                  = (invalid)
+  xstate_data                  = (invalid)
+  process_cookie               = (invalid)
+
+MINIDUMP_BREAKPAD_INFO
+  validity             = 0x3
+  dump_thread_id       = 0x11c0
+  requesting_thread_id = 0xbf4
+
+
