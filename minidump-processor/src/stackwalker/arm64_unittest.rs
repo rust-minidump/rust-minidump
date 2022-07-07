@@ -34,6 +34,33 @@ impl TestFixture {
         }
     }
 
+    pub fn high_module() -> TestFixture {
+        TestFixture {
+            raw: Context::default(),
+            // Same as new but with a really high module to stretch ptr auth stripping
+            modules: MinidumpModuleList::from_modules(vec![
+                MinidumpModule::new(0x40000000, 0x10000, "module1"),
+                MinidumpModule::new(0x50000000, 0x10000, "module2"),
+                MinidumpModule::new(0x10000000000000, 0x10000, "high-module"),
+            ]),
+            symbols: HashMap::new(),
+        }
+    }
+
+    pub fn highest_module() -> TestFixture {
+        TestFixture {
+            raw: Context::default(),
+            // Same as new but with a module so high it sets the maximum address bit
+            // effectively disabling stripping
+            modules: MinidumpModuleList::from_modules(vec![
+                MinidumpModule::new(0x40000000, 0x10000, "module1"),
+                MinidumpModule::new(0x50000000, 0x10000, "module2"),
+                MinidumpModule::new(0xa000_0000_0000_0000, 0x10000, "highest-module"),
+            ]),
+            symbols: HashMap::new(),
+        }
+    }
+
     pub async fn walk_stack(&self, stack: Section) -> CallStack {
         let context = MinidumpContext {
             raw: MinidumpRawContext::Arm64(self.raw.clone()),
@@ -330,6 +357,7 @@ async fn test_frame_pointer() {
     let return_address2 = 0x50000900u64;
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
+    let frame0_fp = Label::new();
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
@@ -338,26 +366,29 @@ async fn test_frame_pointer() {
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame1_fp) // next fp will point to the next value
-        .D64(&frame2_fp) // save current frame pointer
-        .D64(return_address2) // save current link register
+        .mark(&frame0_fp) // next fp will point to the next value
+        .D64(&frame1_fp) // save current frame pointer
+        .D64(return_address1) // save current link register
         .mark(&frame1_sp)
         // frame 1
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame2_fp)
-        .D64(0)
-        .D64(0)
+        .mark(&frame1_fp)
+        .D64(&frame2_fp)
+        .D64(return_address2)
         .mark(&frame2_sp)
         // frame 2
         .append_repeated(0, 64) // Whatever values on the stack.
         .D64(0x0000000D) // junk that's not
-        .D64(0xF0000000); // a return address.
+        .D64(0xF0000000) // a return address.
+        .mark(&frame2_fp) // next fp will point to the next value
+        .D64(0)
+        .D64(0);
 
     f.raw.set_register("pc", 0x40005510);
-    f.raw.set_register("lr", return_address1);
-    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("lr", 0x1fe0fe10);
+    f.raw.set_register("fp", frame0_fp.value().unwrap());
     f.raw.set_register("sp", stack.start().value().unwrap());
 
     let s = f.walk_stack(stack).await;
@@ -376,21 +407,20 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap()
             );
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
-                frame2_fp.value().unwrap()
+                frame1_fp.value().unwrap()
             );
         } else {
             unreachable!();
@@ -403,19 +433,21 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), 0);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame2_sp.value().unwrap()
             );
-            assert_eq!(ctx.get_register("fp", valid).unwrap(), 0);
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
         } else {
             unreachable!();
         }
@@ -423,7 +455,168 @@ async fn test_frame_pointer() {
 }
 
 #[tokio::test]
-async fn test_ptr_auth_strip() {
+async fn test_frame_pointer_stackless_leaf() {
+    // Same as test_frame_pointer but frame0 is a stackless leaf.
+    //
+    // In the current implementation we will misunderstand this slightly
+    // and basically "lose" frame 1, but still properly recover frame 2.
+    // THIS TEST BREAKING MIGHT MEAN YOU'VE MADE THINGS WORK BETTER!
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u64;
+    let return_address2 = 0x50000900u64;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0 (all junk!)
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_sp)
+        // frame 1 (this is sadly dropped)
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_fp)
+        .D64(&frame2_fp)
+        .D64(return_address2)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 64) // Whatever values on the stack.
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address.
+        .mark(&frame2_fp) // next fp will point to the next value
+        .D64(0)
+        .D64(0);
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1); // we will sadly ignore this
+    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 2 (found as Frame 1)
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 3);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_frame_pointer_stackful_leaf() {
+    // Same as test_frame_pointer but frame0 is a stackful leaf.
+    //
+    // In the current implementation we will misunderstand this slightly
+    // and basically "lose" frame 1, but still properly recover frame 2.
+    // THIS TEST BREAKING MIGHT MEAN YOU'VE MADE THINGS WORK BETTER!
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u64;
+    let return_address2 = 0x50000900u64;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0 (literally nothing!)
+        .mark(&frame1_sp)
+        // frame 1 (this is sadly dropped)
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_fp)
+        .D64(&frame2_fp)
+        .D64(return_address2)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 64) // Whatever values on the stack.
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address.
+        .mark(&frame2_fp) // next fp will point to the next value
+        .D64(0)
+        .D64(0);
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1); // we will sadly ignore this
+    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 2 (found as Frame 1)
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 3);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_frame_pointer_ptr_auth_strip() {
     // Same as the basic frame pointer test but extra high bits have been set which
     // must be masked out. This is vaguely emulating Arm Pointer Authentication,
     // although very synthetically. This might break if we implement more accurate
@@ -435,39 +628,48 @@ async fn test_ptr_auth_strip() {
 
     let return_address1 = 0x50000100u64;
     let return_address2 = 0x50000900u64;
-    let authenticated_return_address1 = return_address1 | 0x13420000000000u64;
-    let authenticated_return_address2 = return_address2 | 0x1110000000000000u64;
+    let authenticated_return_address1 = return_address1 | 0x0013_4300_0000_0000;
+    let authenticated_return_address2 = return_address2 | 0x1110_0000_0000_0000;
 
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
+    let frame0_fp = Label::new();
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
+    let authenticated_frame1_fp = Label::new();
+    let authenticated_frame2_fp = Label::new();
 
     stack = stack
         // frame 0
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame1_fp) // next fp will point to the next value
-        .D64(&frame2_fp) // save current frame pointer
-        .D64(authenticated_return_address2) // save current link register
+        .mark(&frame0_fp) // next fp will point to the next value
+        .D64(&authenticated_frame1_fp) // save current frame pointer
+        .D64(authenticated_return_address1) // save current link register
         .mark(&frame1_sp)
         // frame 1
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame2_fp)
-        .D64(0)
-        .D64(0)
+        .mark(&frame1_fp)
+        .D64(&authenticated_frame2_fp)
+        .D64(authenticated_return_address2)
         .mark(&frame2_sp)
         // frame 2
         .append_repeated(0, 64) // Whatever values on the stack.
         .D64(0x0000000D) // junk that's not
-        .D64(0xF0000000); // a return address.
+        .D64(0xF0000000) // a return address.
+        .mark(&frame2_fp) // next fp will point to the next value
+        .D64(0)
+        .D64(0);
+
+    authenticated_frame1_fp.set_const(frame1_fp.value().unwrap() | 0xa310_0000_0000_0000);
+    authenticated_frame2_fp.set_const(frame2_fp.value().unwrap() | 0xf31e_0700_0000_0000);
 
     f.raw.set_register("pc", 0x40005510);
-    f.raw.set_register("lr", authenticated_return_address1);
-    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("lr", 0x1fe0fe10);
+    f.raw.set_register("fp", frame0_fp.value().unwrap());
     f.raw.set_register("sp", stack.start().value().unwrap());
 
     let s = f.walk_stack(stack).await;
@@ -486,21 +688,20 @@ async fn test_ptr_auth_strip() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap()
             );
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
-                frame2_fp.value().unwrap()
+                frame1_fp.value().unwrap()
             );
         } else {
             unreachable!();
@@ -513,19 +714,21 @@ async fn test_ptr_auth_strip() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), 0);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame2_sp.value().unwrap()
             );
-            assert_eq!(ctx.get_register("fp", valid).unwrap(), 0);
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
         } else {
             unreachable!();
         }
@@ -536,8 +739,17 @@ const CALLEE_SAVE_REGS: &[&str] = &[
     "pc", "sp", "fp", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
+fn init_cfi_state_high_module() -> (TestFixture, Section, Context, MinidumpContextValidity) {
+    init_cfi_state_common(TestFixture::high_module())
+}
+
 fn init_cfi_state() -> (TestFixture, Section, Context, MinidumpContextValidity) {
-    let mut f = TestFixture::new();
+    init_cfi_state_common(TestFixture::new())
+}
+
+fn init_cfi_state_common(
+    mut f: TestFixture,
+) -> (TestFixture, Section, Context, MinidumpContextValidity) {
     let symbols = [
         // The youngest frame's function.
         "FUNC 4000 1000 10 enchiridion\n",
@@ -577,9 +789,9 @@ fn init_cfi_state() -> (TestFixture, Section, Context, MinidumpContextValidity) 
     ];
     f.add_symbols(String::from("module1"), symbols.concat());
 
-    f.raw.set_register("pc", 0x0000000040005510);
-    f.raw.set_register("sp", 0x0000000080000000);
-    f.raw.set_register("fp", 0xe11081128112e110);
+    f.raw.set_register("pc", 0x0000_0000_4000_5510);
+    f.raw.set_register("sp", 0x0000_0000_8000_0000);
+    f.raw.set_register("fp", 0x0000_00a2_8112_e110);
     f.raw.set_register("x19", 0x5e68b5d5b5d55e68);
     f.raw.set_register("x20", 0x34f3ebd1ebd134f3);
     f.raw.set_register("x21", 0x74bca31ea31e74bc);
@@ -643,6 +855,8 @@ async fn check_cfi(
                     );
                 }
                 return;
+            } else {
+                unreachable!()
             }
         }
     }
@@ -669,8 +883,8 @@ async fn test_cfi_at_4001() {
     stack = stack
         .D64(0x5e68b5d5b5d55e68) // saved x19
         .D64(0x34f3ebd1ebd134f3) // saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -691,8 +905,8 @@ async fn test_cfi_at_4002() {
     stack = stack
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -720,8 +934,8 @@ async fn test_cfi_at_4003() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -751,8 +965,8 @@ async fn test_cfi_at_4004() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -772,6 +986,70 @@ async fn test_cfi_at_4004() {
 }
 
 #[tokio::test]
+async fn test_cfi_at_4005_ptr_auth_strip_apple() {
+    // This is the same as the normal 4005 test but with extra garabage (auth) bits
+    // set in the high 24 bits. This emulates what apple platforms looks like.
+
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
+        .D64(0xff3dfb81fb81ff3d) // no longer saved x19
+        .D64(0x34f3ebd1ebd134f3) // no longer saved x20
+        .D64(0xae23_45a2_8112_e110) // saved fp WITH AUTH
+        .D64(0xae1d_f700_4000_5510) // return address WITH AUTH
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap());
+    expected.iregs[1] = 0xdd5a48c848c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("x1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x0000000040004005);
+    f.raw.iregs[1] = 0xfb756319fb756319;
+
+    check_cfi(f, stack, expected, expected_valid).await;
+}
+
+#[tokio::test]
+async fn test_cfi_at_4005_ptr_auth_strip_high() {
+    // This is the same as the normal 4005 test but with extra garabage (auth) bits
+    // set in the **extra** high bits. This emulates what android platforms look like.
+
+    let (mut f, mut stack, mut expected, mut expected_valid) = init_cfi_state_high_module();
+
+    let frame1_sp = Label::new();
+    stack = stack
+        .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
+        .D64(0xff3dfb81fb81ff3d) // no longer saved x19
+        .D64(0x34f3ebd1ebd134f3) // no longer saved x20
+        .D64(0x1003_45a2_8112_e110) // saved fp WITH AUTH
+        .D64(0x100d_f700_4000_5510) // return address WITH AUTH
+        .mark(&frame1_sp)
+        .append_repeated(0, 120);
+
+    expected.set_register("sp", frame1_sp.value().unwrap());
+    expected.set_register("fp", 0x0003_45a2_8112_e110);
+    expected.set_register("pc", 0x000d_f700_4000_5510);
+    expected.iregs[1] = 0xdd5a48c848c8dd5a;
+    if let MinidumpContextValidity::Some(ref mut which) = expected_valid {
+        which.insert("x1");
+    } else {
+        unreachable!();
+    }
+
+    f.raw.set_register("pc", 0x0000000040004005);
+    f.raw.iregs[1] = 0xfb756319fb756319;
+
+    check_cfi(f, stack, expected, expected_valid).await;
+}
+
+#[tokio::test]
 async fn test_cfi_at_4005() {
     // Here we move the .cfa, but provide an explicit rule to recover the SP,
     // so again there should be no change in the registers recovered.
@@ -783,8 +1061,8 @@ async fn test_cfi_at_4005() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
-        .D64(0x0000000040005510) // return address
+        .D64(0x0000_00a2_8112_e110) // saved fp
+        .D64(0x0000_0000_4000_5510) // return address
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
@@ -815,7 +1093,7 @@ async fn test_cfi_at_4006() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xe11081128112e110) // saved fp
+        .D64(0x0000_00a2_8112_e110) // saved fp
         .D64(0xf8d157835783f8d1) // .ra rule recovers this, which is garbage
         .mark(&frame1_sp)
         .append_repeated(0, 120);
@@ -904,7 +1182,9 @@ async fn test_frame_pointer_barely_no_overflow() {
     // our code doesn't randomly overflow *AND* isn't overzealous in
     // its overflow guards.
 
-    let mut f = TestFixture::new();
+    // We set the highest module here to bypass ptr auth stripping entirely and stress overflows
+    let mut f = TestFixture::highest_module();
+
     let mut stack = Section::new();
 
     type Pointer = u64;
@@ -923,7 +1203,7 @@ async fn test_frame_pointer_barely_no_overflow() {
     stack = stack
         // frame 0
         .mark(&frame0_fp)
-        .D64(&frame1_fp) // caller-pushed %rbp
+        .D64(&frame1_fp) //
         .D64(return_address) // actual return address
         // frame 1
         .mark(&frame1_sp)
@@ -963,7 +1243,7 @@ async fn test_frame_pointer_barely_no_overflow() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
@@ -978,7 +1258,6 @@ async fn test_frame_pointer_barely_no_overflow() {
                 ctx.get_register("fp", valid).unwrap(),
                 frame1_fp.value().unwrap() as Pointer
             );
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address);
         } else {
             unreachable!();
         }
@@ -998,8 +1277,6 @@ async fn test_frame_pointer_infinite_equality() {
     //
     // This is just a copy-paste of test_frame_pointer except for the line
     // "EVIL INFINITE FRAME POINTER" has been changed from frame2_fp to frame1_fp.
-
-    // Frame-pointer-based unwinding
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
@@ -1008,6 +1285,7 @@ async fn test_frame_pointer_infinite_equality() {
     let return_address2 = 0x50000900u64;
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
+    let frame0_fp = Label::new();
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
@@ -1016,26 +1294,29 @@ async fn test_frame_pointer_infinite_equality() {
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame1_fp) // next fp will point to the next value
-        .D64(&frame1_fp) // <--- EVIL INFINITE FRAME POINTER
-        .D64(return_address2) // save current link register
+        .mark(&frame0_fp) // next fp will point to the next value
+        .D64(&frame0_fp) // EVIL INFINITE FRAME POINTER
+        .D64(return_address1) // save current link register
         .mark(&frame1_sp)
         // frame 1
         .append_repeated(0, 64) // space
         .D64(0x0000000D) // junk that's not
         .D64(0xF0000000) // a return address
-        .mark(&frame2_fp)
-        .D64(0)
-        .D64(0)
+        .mark(&frame1_fp)
+        .D64(&frame2_fp)
+        .D64(return_address2)
         .mark(&frame2_sp)
         // frame 2
         .append_repeated(0, 64) // Whatever values on the stack.
         .D64(0x0000000D) // junk that's not
-        .D64(0xF0000000); // a return address.
+        .D64(0xF0000000) // a return address.
+        .mark(&frame2_fp) // next fp will point to the next value
+        .D64(0)
+        .D64(0);
 
     f.raw.set_register("pc", 0x40005510);
-    f.raw.set_register("lr", return_address1);
-    f.raw.set_register("fp", frame1_fp.value().unwrap());
+    f.raw.set_register("lr", 0x1fe0fe10);
+    f.raw.set_register("fp", frame0_fp.value().unwrap());
     f.raw.set_register("sp", stack.start().value().unwrap());
 
     let s = f.walk_stack(stack).await;
@@ -1049,26 +1330,25 @@ async fn test_frame_pointer_infinite_equality() {
     }
 
     {
-        // Frame 1
+        // Frame 1 (a messed up hybrid of frame0 and frame1)
         let frame = &s.frames[1];
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap()
             );
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
-                frame1_fp.value().unwrap()
+                frame0_fp.value().unwrap()
             );
         } else {
             unreachable!();

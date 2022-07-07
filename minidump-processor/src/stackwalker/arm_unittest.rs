@@ -359,6 +359,7 @@ async fn test_frame_pointer() {
     let return_address2 = 0x50000900u32;
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
+    let frame0_fp = Label::new();
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
@@ -367,26 +368,29 @@ async fn test_frame_pointer() {
         .append_repeated(0, 32) // space
         .D32(0x0000000D) // junk that's not
         .D32(0xF0000000) // a return address
-        .mark(&frame1_fp) // next fp will point to the next value
-        .D32(&frame2_fp) // save current frame pointer
-        .D32(return_address2) // save current link register
+        .mark(&frame0_fp) // next fp will point to the next value
+        .D32(&frame1_fp) // save current frame pointer
+        .D32(return_address1) // save current link register
         .mark(&frame1_sp)
         // frame 1
         .append_repeated(0, 32) // space
         .D32(0x0000000D) // junk that's not
         .D32(0xF0000000) // a return address
-        .mark(&frame2_fp)
-        .D32(0)
-        .D32(0)
+        .mark(&frame1_fp)
+        .D32(&frame2_fp)
+        .D32(return_address2)
         .mark(&frame2_sp)
         // frame 2
         .append_repeated(0, 32) // Whatever values on the stack.
         .D32(0x0000000D) // junk that's not
-        .D32(0xF0000000); // a return address.
+        .D32(0xF0000000) // a return address.
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(0);
 
     f.raw.set_register("pc", 0x40005510);
     f.raw.set_register("lr", return_address1);
-    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw.set_register("fp", frame0_fp.value().unwrap() as u32);
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
@@ -406,21 +410,20 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap() as u32
             );
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
-                frame2_fp.value().unwrap() as u32
+                frame1_fp.value().unwrap() as u32
             );
         } else {
             unreachable!();
@@ -433,19 +436,184 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), 0);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame2_sp.value().unwrap() as u32
             );
-            assert_eq!(ctx.get_register("fp", valid).unwrap(), 0);
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap() as u32
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_frame_pointer_stackless_leaf() {
+    // Same as test_frame_pointer but frame0 is a stackless leaf.
+    //
+    // In the current implementation we will misunderstand this slightly
+    // and basically "lose" frame 1, but still properly recover frame 2.
+    // THIS TEST BREAKING MIGHT MEAN YOU'VE MADE THINGS WORK BETTER!
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u32;
+    let return_address2 = 0x50000900u32;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0 (literally nothing!)
+        .mark(&frame1_sp)
+        // frame 1 (this is sadly dropped)
+        .append_repeated(0, 32) // space
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame1_fp)
+        .D32(&frame2_fp)
+        .D32(return_address2)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 32) // Whatever values on the stack.
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address.
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(0);
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1); // we will sadly ignore this
+    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw
+        .set_register("sp", stack.start().value().unwrap() as u32);
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 2 (Found as Frame 1)
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 3);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap() as u32
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap() as u32
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_frame_pointer_stackful_leaf() {
+    // Same as test_frame_pointer but frame0 is a stackful leaf.
+    //
+    // In the current implementation we will misunderstand this slightly
+    // and basically "lose" frame 1, but still properly recover frame 2.
+    // THIS TEST BREAKING MIGHT MEAN YOU'VE MADE THINGS WORK BETTER!
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let return_address1 = 0x50000100u32;
+    let return_address2 = 0x50000900u32;
+    let frame1_sp = Label::new();
+    let frame2_sp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+
+    stack = stack
+        // frame 0 (all junk!)
+        .append_repeated(0, 64) // space
+        .D64(0x0000000D) // junk that's not
+        .D64(0xF0000000) // a return address
+        .mark(&frame1_sp)
+        // frame 1 (this is sadly dropped)
+        .append_repeated(0, 32) // space
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address
+        .mark(&frame1_fp)
+        .D32(&frame2_fp)
+        .D32(return_address2)
+        .mark(&frame2_sp)
+        // frame 2
+        .append_repeated(0, 32) // Whatever values on the stack.
+        .D32(0x0000000D) // junk that's not
+        .D32(0xF0000000) // a return address.
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(0);
+
+    f.raw.set_register("pc", 0x40005510);
+    f.raw.set_register("lr", return_address1); // we will sadly ignore this
+    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw
+        .set_register("sp", stack.start().value().unwrap() as u32);
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 2);
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 2 (Found as Frame 1)
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = valid {
+            assert_eq!(which.len(), 3);
+        } else {
+            unreachable!();
+        }
+
+        if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame2_sp.value().unwrap() as u32
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap() as u32
+            );
         } else {
             unreachable!();
         }
@@ -473,6 +641,7 @@ async fn test_frame_pointer_infinite_equality() {
     let return_address2 = 0x50000900u32;
     let frame1_sp = Label::new();
     let frame2_sp = Label::new();
+    let frame0_fp = Label::new();
     let frame1_fp = Label::new();
     let frame2_fp = Label::new();
 
@@ -481,26 +650,29 @@ async fn test_frame_pointer_infinite_equality() {
         .append_repeated(0, 32) // space
         .D32(0x0000000D) // junk that's not
         .D32(0xF0000000) // a return address
-        .mark(&frame1_fp) // next fp will point to the next value
-        .D32(&frame1_fp) // <--- EVIL INFINITE FRAME POINTER
-        .D32(return_address2) // save current link register
+        .mark(&frame0_fp) // next fp will point to the next value
+        .D32(&frame0_fp) // EVIL INFINITE FRAME POINTER
+        .D32(return_address1) // save current link register
         .mark(&frame1_sp)
         // frame 1
         .append_repeated(0, 32) // space
         .D32(0x0000000D) // junk that's not
         .D32(0xF0000000) // a return address
-        .mark(&frame2_fp)
-        .D32(0)
-        .D32(0)
+        .mark(&frame1_fp)
+        .D32(&frame2_fp)
+        .D32(return_address2)
         .mark(&frame2_sp)
         // frame 2
         .append_repeated(0, 32) // Whatever values on the stack.
         .D32(0x0000000D) // junk that's not
-        .D32(0xF0000000); // a return address.
+        .D32(0xF0000000) // a return address.
+        .mark(&frame2_fp)
+        .D32(0)
+        .D32(0);
 
     f.raw.set_register("pc", 0x40005510);
     f.raw.set_register("lr", return_address1);
-    f.raw.set_register("fp", frame1_fp.value().unwrap() as u32);
+    f.raw.set_register("fp", frame0_fp.value().unwrap() as u32);
     f.raw
         .set_register("sp", stack.start().value().unwrap() as u32);
 
@@ -515,26 +687,25 @@ async fn test_frame_pointer_infinite_equality() {
     }
 
     {
-        // Frame 1
+        // Frame 1 (a messed up combination of frame 0 and 1)
         let frame = &s.frames[1];
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
 
         if let MinidumpRawContext::Arm(ctx) = &frame.context.raw {
             assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address1);
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
             assert_eq!(
                 ctx.get_register("sp", valid).unwrap(),
                 frame1_sp.value().unwrap() as u32
             );
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
-                frame1_fp.value().unwrap() as u32
+                frame0_fp.value().unwrap() as u32
             );
         } else {
             unreachable!();
@@ -991,7 +1162,7 @@ async fn test_frame_pointer_barely_no_overflow() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 4);
+            assert_eq!(which.len(), 3);
         } else {
             unreachable!();
         }
@@ -1006,7 +1177,6 @@ async fn test_frame_pointer_barely_no_overflow() {
                 ctx.get_register("fp", valid).unwrap(),
                 frame1_fp.value().unwrap() as Pointer
             );
-            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address);
         } else {
             unreachable!();
         }
