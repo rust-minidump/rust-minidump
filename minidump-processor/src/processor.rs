@@ -9,12 +9,12 @@ use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
 
-use crate::arg_recovery;
 use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
+use crate::{arg_recovery, integrity};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -450,6 +450,8 @@ where
     // Get symbol stats from the symbolizer
     let symbol_stats = symbol_provider.stats();
 
+    let integrity = integrity::check_integrity(&memory_list, &modules, symbol_provider).await;
+
     Ok(ProcessState {
         process_id,
         time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
@@ -468,5 +470,6 @@ where
         unknown_streams,
         unimplemented_streams,
         symbol_stats,
+        integrity,
     })
 }

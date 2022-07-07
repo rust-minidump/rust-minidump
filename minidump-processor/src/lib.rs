@@ -78,6 +78,7 @@ doc_comment::doctest!("../README.md");
 
 mod arg_recovery;
 mod evil;
+mod integrity;
 mod process_state;
 mod processor;
 mod stackwalker;

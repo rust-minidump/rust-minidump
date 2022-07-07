@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 160
 expression: stdout
 ---
 {
@@ -81,6 +80,12 @@ expression: stdout
     "last_error_value": null,
     "thread_name": null,
     "threads_index": 0
+  },
+  "integrity": {
+    "bit_flips": {
+      "checked": true,
+      "failures": []
+    }
   },
   "lsb_release": null,
   "mac_crash_info": null,

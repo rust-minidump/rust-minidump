@@ -208,6 +208,22 @@ pub struct LinuxStandardBase {
     pub description: String,
 }
 
+pub struct Integrity {
+    pub bit_flips: BitFlips,
+}
+
+pub struct BitFlips {
+    pub checked: bool,
+    pub failures: Vec<BitFlip>,
+}
+
+pub struct BitFlip {
+    pub module: MinidumpModule,
+    pub offset: u64,
+    pub in_dump: Vec<u8>,
+    pub in_binary: Vec<u8>,
+}
+
 /// The state of a process as recorded by a `Minidump`.
 pub struct ProcessState {
     /// The PID of the process.
@@ -259,6 +275,7 @@ pub struct ProcessState {
     pub unknown_streams: Vec<MinidumpUnknownStream>,
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
     pub symbol_stats: HashMap<String, SymbolStats>,
+    pub integrity: Integrity,
 }
 
 impl FrameTrust {
@@ -873,6 +890,18 @@ Unknown streams encountered:
                 "filename": module.name,
                 "cert_subject": self.cert_info.get(&module.name),
             })).collect::<Vec<_>>(),
+
+            "integrity": json!({
+                "bit_flips": {
+                    "checked": self.integrity.bit_flips.checked,
+                    "failures": self.integrity.bit_flips.failures.iter().map(|flip| json!({
+                        "module": basename(&flip.module.name),
+                        "offset": flip.offset,
+                        "in_dump": flip.in_dump,
+                        "in_binary": flip.in_binary,
+                    })).collect::<Vec<_>>(),
+                },
+            }),
         });
 
         if let Some(requesting_thread) = self.requesting_thread {

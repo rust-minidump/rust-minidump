@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 776
 expression: json_out
 ---
 {
@@ -9,6 +8,12 @@ expression: json_out
     "assertion": null,
     "crashing_thread": null,
     "type": null
+  },
+  "integrity": {
+    "bit_flips": {
+      "checked": true,
+      "failures": []
+    }
   },
   "lsb_release": null,
   "mac_crash_info": null,
