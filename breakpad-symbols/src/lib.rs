@@ -223,7 +223,7 @@ pub fn binary_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
 
     Some(FileLookup {
         cache_rel: [debug_leaf, &debug_id.breakpad().to_string(), bin_leaf].join("/"),
-        server_rel: [bin_leaf, &code_id.to_string(), bin_leaf].join("/"),
+        server_rel: [bin_leaf, code_id.as_ref(), bin_leaf].join("/"),
     })
 }
 

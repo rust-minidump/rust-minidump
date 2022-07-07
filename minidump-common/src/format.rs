@@ -153,7 +153,7 @@ pub struct MINIDUMP_DIRECTORY {
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ne-minidumpapiset-minidump_stream_type
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum MINIDUMP_STREAM_TYPE {
     /// An unused stream directory entry
     UnusedStream = 0,
@@ -431,7 +431,7 @@ pub const VS_FFI_STRUCVERSION: u32 = 0x00010000;
 /// [sym]: http://web.archive.org/web/20070915060650/http://www.x86.org/ftp/manuals/tools/sym.pdf
 /// [win2k]: https://dl.acm.org/citation.cfm?id=375734
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum CvSignature {
     /// PDB 2.0 CodeView data: 'NB10': [`CV_INFO_PDB20`]
     Pdb20 = 0x3031424e,
@@ -1032,7 +1032,7 @@ pub struct CONTEXT_ARM {
 
 /// Offsets into [`CONTEXT_ARM::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum ArmRegisterNumbers {
     IosFramePointer = 7,
     FramePointer = 11,
@@ -1144,7 +1144,7 @@ pub struct CONTEXT_ARM64 {
 
 /// Offsets into [`CONTEXT_ARM64::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Arm64RegisterNumbers {
     FramePointer = 29,
     LinkRegister = 30,
@@ -1192,7 +1192,7 @@ pub struct CONTEXT_MIPS {
 
 /// Offsets into [`CONTEXT_MIPS::iregs`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum MipsRegisterNumbers {
     S0 = 16,
     S1 = 17,
@@ -1269,7 +1269,7 @@ pub struct CONTEXT_PPC {
 
 /// Offsets into [`CONTEXT_PPC::gpr`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum PpcRegisterNumbers {
     StackPointer = 1,
 }
@@ -1295,7 +1295,7 @@ pub struct CONTEXT_PPC64 {
 
 /// Offsets into [`CONTEXT_PPC64::gpr`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Ppc64RegisterNumbers {
     StackPointer = 1,
 }
@@ -1329,7 +1329,7 @@ pub struct CONTEXT_SPARC {
 
 /// Offsets into [`CONTEXT_SPARC::g_r`] for registers with a dedicated or conventional purpose
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SparcRegisterNumbers {
     StackPointer = 14,
 }
@@ -1466,7 +1466,7 @@ pub struct MINIDUMP_SYSTEM_INFO {
 /// Many of these are taken from definitions in WinNT.h, but several of them are
 /// Breakpad extensions.
 #[repr(u16)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_INTEL = 0,
     PROCESSOR_ARCHITECTURE_MIPS = 1,
@@ -1498,7 +1498,7 @@ pub enum ProcessorArchitecture {
 /// The Windows values here are taken from defines in WinNT.h, but the rest are Breakpad
 /// extensions.
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum PlatformId {
     /// Windows 3.1
     VER_PLATFORM_WIN32s = 1,
@@ -1950,7 +1950,7 @@ pub struct MINIDUMP_ASSERTION_INFO {
 ///
 /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#1011
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum AssertionType {
     Unknown = 0,
     InvalidParameter = 1,

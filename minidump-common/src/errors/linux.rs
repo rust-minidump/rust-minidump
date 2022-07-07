@@ -10,7 +10,7 @@ use enum_primitive_derive::Primitive;
 ///
 /// These are primarily signal numbers from bits/signum.h.
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinux {
     /// Hangup (POSIX)
     SIGHUP = 0x1u32,
@@ -79,7 +79,7 @@ pub enum ExceptionCodeLinux {
 }
 
 // These values come from asm-generic/siginfo.h
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 #[repr(i32)]
 pub enum ExceptionCodeLinuxSicode {
     SI_USER = 0,
@@ -94,7 +94,7 @@ pub enum ExceptionCodeLinuxSicode {
     SI_ASYNCNL = -60i32,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigillKind {
     ILL_ILLOPC = 1,
     ILL_ILLOPN = 2,
@@ -107,7 +107,7 @@ pub enum ExceptionCodeLinuxSigillKind {
     ILL_BADIADDR = 9,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigtrapKind {
     TRAP_BRKPT = 1,
     TRAP_TRACE = 2,
@@ -117,7 +117,7 @@ pub enum ExceptionCodeLinuxSigtrapKind {
     TRAP_PERF = 6,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigfpeKind {
     FPE_INTDIV = 1,
     FPE_INTOVF = 2,
@@ -129,7 +129,7 @@ pub enum ExceptionCodeLinuxSigfpeKind {
     FPE_FLTSUB = 8,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigsegvKind {
     SEGV_MAPERR = 1,
     SEGV_ACCERR = 2,
@@ -137,7 +137,7 @@ pub enum ExceptionCodeLinuxSigsegvKind {
     SEGV_PKUERR = 4,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigbusKind {
     BUS_ADRALN = 1,
     BUS_ADRERR = 2,
@@ -146,7 +146,7 @@ pub enum ExceptionCodeLinuxSigbusKind {
     BUS_MCEERR_AO = 5,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeLinuxSigsysKind {
     SYS_SECCOMP = 1,
     SYS_USER_DISPATCH = 2,

@@ -14,7 +14,7 @@ use minidump_common::format::ProcessorArchitecture::*;
 /// Known operating systems
 ///
 /// This is a slightly nicer layer over the `PlatformId` enum defined in the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Os {
     Windows,
     MacOs,
@@ -84,7 +84,7 @@ impl fmt::Display for Os {
 ///
 /// This is a slightly nicer layer over the `ProcessorArchitecture` enum defined in
 /// the minidump-common crate.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Cpu {
     X86,
@@ -100,7 +100,7 @@ pub enum Cpu {
 }
 
 /// Supported CPU pointer widths
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PointerWidth {
     Bits32,
     Bits64,
