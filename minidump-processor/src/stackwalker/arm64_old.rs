@@ -273,8 +273,8 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
     //
     // To help us guess, we have a few pieces of information:
     //
-    // * Apple seems to default to a 24/40 split, so 40 bits for the "real" is a good baseline
-    // * We know the address ranges of various loaded/unloaded modules
+    // * Apple seems to default to a 17/47 split, so 47 bits for "real" is a good baseline
+    // * We know the address ranges of various loaded (and unloaded modules)
     // * We know the address range of the stacks
     // * We *can* know the address range of some sections of the heap (MemoryList)
     // * We *can* know the page mappings (MemoryInfo)
@@ -282,7 +282,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
     // Right now we only incorporate the first two. Ideally we would process all those sources
     // once at the start of stack walking and pass it down to the ARM stackwalker but that's
     // a lot of annoying rewiring that won't necessarily improve results.
-    let apple_default_max_addr = (1 << 40) - 1;
+    let apple_default_max_addr = (1 << 47) - 1;
     let max_module_addr = modules
         .by_addr()
         .next_back()
