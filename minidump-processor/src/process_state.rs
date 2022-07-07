@@ -19,7 +19,7 @@ use serde_json::json;
 /// Indicates how well the instruction pointer derived during
 /// stack walking is trusted. Since the stack walker can resort to
 /// stack scanning, it can wind up with dubious frames.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FrameTrust {
     /// Unknown
     None,
@@ -169,7 +169,7 @@ pub struct StackFrame {
 }
 
 /// Information about the results of unwinding a thread's stack.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CallStackInfo {
     /// Everything went great.
     Ok,

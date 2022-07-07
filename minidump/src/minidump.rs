@@ -72,7 +72,7 @@ where
 }
 
 /// Errors encountered while reading a `Minidump`.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error("File not found")]
     FileNotFound,
@@ -467,7 +467,7 @@ pub struct MinidumpLinuxProcStatus<'a> {
 }
 
 /// The reason for a process crash.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CrashReason {
     /// A Mac/iOS error code with no other interesting details.
     MacGeneral(err::ExceptionCodeMac, u32),

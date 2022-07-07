@@ -10,7 +10,7 @@ use enum_primitive_derive::Primitive;
 ///
 /// These values come from WinBase.h and WinNT.h with a few additions.
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeWindows {
     EXCEPTION_GUARD_PAGE = 0x80000001u32,
     EXCEPTION_DATATYPE_MISALIGNMENT = 0x80000002,
@@ -57,7 +57,7 @@ pub enum ExceptionCodeWindows {
 ///   | sed -r 's@([0-9]+) ([A-Z_0-9]+)@    \2 = \L\1,@'
 /// ```
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum WinErrorWindows {
     ERROR_SUCCESS = 0,
     ERROR_INVALID_FUNCTION = 1,
@@ -2899,7 +2899,7 @@ pub enum WinErrorWindows {
 ///   | sed -r 's@(0x[048C][0-9A-F]+) ([A-Z_0-9]+)@    \2 = \L\1,@'
 /// ```
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum NtStatusWindows {
     STATUS_SUCCESS = 0x00000000u32,
     STATUS_WAIT_1 = 0x00000001,
@@ -5748,7 +5748,7 @@ pub enum NtStatusWindows {
 /// | sed -r 's@([0-9]+) ([A-Z_0-9]+)@    \2 = \1,@'
 /// ```
 #[repr(u64)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum FastFailCode {
     FAST_FAIL_LEGACY_GS_VIOLATION = 0,
     FAST_FAIL_VTGUARD_CHECK_FAILURE = 1,
@@ -5827,7 +5827,7 @@ pub enum FastFailCode {
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record
 #[repr(u64)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeWindowsAccessType {
     READ = 0,
     WRITE = 1,
@@ -5841,7 +5841,7 @@ pub enum ExceptionCodeWindowsAccessType {
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record
 #[repr(u64)]
-#[derive(Copy, Clone, PartialEq, Debug, Primitive)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeWindowsInPageErrorType {
     READ = 0,
     WRITE = 1,

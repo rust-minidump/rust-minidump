@@ -989,7 +989,7 @@ impl CpuContext for md::CONTEXT_SPARC {
 }
 
 /// Information about which registers are valid in a `MinidumpContext`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MinidumpContextValidity {
     // All registers are valid.
     All,
