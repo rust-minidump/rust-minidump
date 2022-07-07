@@ -126,7 +126,7 @@ where
     // There is no way of knowing if topmost frame belongs to a leaf or
     // a non-leaf function.
     if callee.trust != FrameTrust::Context {
-        last_sp += MIN_ARGS * POINTER_WIDTH;
+        last_sp = last_sp.checked_add(MIN_ARGS * POINTER_WIDTH)?;
         count -= MIN_ARGS;
     }
 
@@ -147,10 +147,7 @@ where
             );
 
             let mut caller_ctx = MipsContext::default();
-            caller_ctx.set_register(
-                PROGRAM_COUNTER,
-                caller_pc as u64 - (2 * POINTER_WIDTH as u64),
-            );
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc as u64);
             caller_ctx.set_register(STACK_POINTER, caller_sp as u64);
 
             let mut valid = HashSet::new();
@@ -208,7 +205,7 @@ where
             );
 
             let mut caller_ctx = MipsContext::default();
-            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc - (2 * POINTER_WIDTH));
+            caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
             caller_ctx.set_register(STACK_POINTER, caller_sp);
 
             let mut valid = HashSet::new();
@@ -282,13 +279,6 @@ impl Unwind for MipsContext {
                 }
             }
         }
-        // if we are at the context frame, we try to take the RA directly from the registers
-        // if frame.is_none() && grand_callee.is_none() {
-        //     frame = get_caller_for_leaf(self, modules, syms).await;
-        // }
-        // if frame.is_none() {
-        //     frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
-        // }
         let mut frame = frame?;
 
         // We now check the frame to see if it looks like unwinding is complete,

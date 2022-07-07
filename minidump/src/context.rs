@@ -1560,8 +1560,38 @@ impl MinidumpContext {
                     writeln!(f, "  d{:<2} = {:#x}", i, reg)?;
                 }
             }
-            MinidumpRawContext::Mips(_) => {
-                unimplemented!();
+            MinidumpRawContext::Mips(ref raw) => {
+                write!(
+                    f,
+                    r#"CONTEXT_MIPS
+  context_flags       = {:#x}
+"#,
+                    raw.context_flags
+                )?;
+
+                use md::MipsRegisterNumbers;
+                const MIPS_REGS: &[MipsRegisterNumbers] = &[
+                    MipsRegisterNumbers::S0,
+                    MipsRegisterNumbers::S1,
+                    MipsRegisterNumbers::S2,
+                    MipsRegisterNumbers::S3,
+                    MipsRegisterNumbers::S4,
+                    MipsRegisterNumbers::S5,
+                    MipsRegisterNumbers::S6,
+                    MipsRegisterNumbers::S7,
+                    MipsRegisterNumbers::GlobalPointer,
+                    MipsRegisterNumbers::StackPointer,
+                    MipsRegisterNumbers::FramePointer,
+                    MipsRegisterNumbers::ReturnAddress,
+                ];
+                for reg in MIPS_REGS {
+                    writeln!(
+                        f,
+                        r#"  {}                = {:#x}"#,
+                        reg.name(),
+                        raw.iregs[*reg as usize]
+                    )?;
+                }
             }
         }
         Ok(())
