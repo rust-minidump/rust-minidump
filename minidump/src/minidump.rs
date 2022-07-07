@@ -1626,18 +1626,20 @@ impl<'a> MinidumpMemory<'a> {
     /// Write a human-readable description of this `MinidumpMemory` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         write!(
             f,
             "MINIDUMP_MEMORY_DESCRIPTOR
   start_of_memory_range = {:#x}
   memory.data_size      = {:#x}
   memory.rva            = {:#x}
-Memory
 ",
             self.desc.start_of_memory_range, self.desc.memory.data_size, self.desc.memory.rva,
         )?;
-        self.print_contents(f)?;
+        if !brief {
+            writeln!(f, "Memory")?;
+            self.print_contents(f)?;
+        }
         writeln!(f)
     }
 }
@@ -1646,17 +1648,19 @@ impl<'a> MinidumpMemory64<'a> {
     /// Write a human-readable description of this `MinidumpMemory64` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         write!(
             f,
             "MINIDUMP_MEMORY_DESCRIPTOR64
   start_of_memory_range = {:#x}
   memory.data_size      = {:#x}
-Memory
 ",
             self.desc.start_of_memory_range, self.desc.data_size,
         )?;
-        self.print_contents(f)?;
+        if !brief {
+            writeln!(f, "Memory")?;
+            self.print_contents(f)?;
+        }
         writeln!(f)
     }
 }
@@ -1779,7 +1783,7 @@ impl<'mdmp> MinidumpMemoryList<'mdmp> {
     /// Write a human-readable description of this `MinidumpMemoryList` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         write!(
             f,
             "MinidumpMemoryList
@@ -1790,7 +1794,7 @@ impl<'mdmp> MinidumpMemoryList<'mdmp> {
         )?;
         for (i, region) in self.regions.iter().enumerate() {
             writeln!(f, "region[{}]", i)?;
-            region.print(f)?;
+            region.print(f, brief)?;
         }
         Ok(())
     }
@@ -1800,7 +1804,7 @@ impl<'mdmp> MinidumpMemory64List<'mdmp> {
     /// Write a human-readable description of this `MinidumpMemory64List` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         write!(
             f,
             "MinidumpMemory64List
@@ -1811,7 +1815,7 @@ impl<'mdmp> MinidumpMemory64List<'mdmp> {
         )?;
         for (i, region) in self.regions.iter().enumerate() {
             writeln!(f, "region[{}]", i)?;
-            region.print(f)?;
+            region.print(f, brief)?;
         }
         Ok(())
     }
@@ -2515,6 +2519,7 @@ impl<'a> MinidumpThread<'a> {
         memory: Option<&MinidumpMemoryList<'a>>,
         system: Option<&MinidumpSystemInfo>,
         misc: Option<&MinidumpMiscInfo>,
+        brief: bool,
     ) -> io::Result<()> {
         write!(
             f,
@@ -2550,6 +2555,11 @@ impl<'a> MinidumpThread<'a> {
             }
         } else {
             write!(f, "  (no context)\n\n")?;
+        }
+
+        if brief {
+            writeln!(f)?;
+            return Ok(());
         }
 
         let pointer_width = system.map_or(PointerWidth::Unknown, |info| info.cpu.pointer_width());
@@ -2668,6 +2678,7 @@ impl<'a> MinidumpThreadList<'a> {
         memory: Option<&MinidumpMemoryList<'a>>,
         system: Option<&MinidumpSystemInfo>,
         misc: Option<&MinidumpMiscInfo>,
+        brief: bool,
     ) -> io::Result<()> {
         write!(
             f,
@@ -2680,7 +2691,7 @@ impl<'a> MinidumpThreadList<'a> {
 
         for (i, thread) in self.threads.iter().enumerate() {
             writeln!(f, "thread[{}]", i)?;
-            thread.print(f, memory, system, misc)?;
+            thread.print(f, memory, system, misc, brief)?;
         }
         Ok(())
     }
