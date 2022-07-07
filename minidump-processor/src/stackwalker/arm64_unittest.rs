@@ -628,7 +628,7 @@ async fn test_frame_pointer_ptr_auth_strip() {
 
     let return_address1 = 0x50000100u64;
     let return_address2 = 0x50000900u64;
-    let authenticated_return_address1 = return_address1 | 0x0013_4300_0000_0000;
+    let authenticated_return_address1 = return_address1 | 0x0013_8000_0000_0000;
     let authenticated_return_address2 = return_address2 | 0x1110_0000_0000_0000;
 
     let frame1_sp = Label::new();
@@ -665,7 +665,7 @@ async fn test_frame_pointer_ptr_auth_strip() {
         .D64(0);
 
     authenticated_frame1_fp.set_const(frame1_fp.value().unwrap() | 0xa310_0000_0000_0000);
-    authenticated_frame2_fp.set_const(frame2_fp.value().unwrap() | 0xf31e_0700_0000_0000);
+    authenticated_frame2_fp.set_const(frame2_fp.value().unwrap() | 0xf31e_8000_0000_0000);
 
     f.raw.set_register("pc", 0x40005510);
     f.raw.set_register("lr", 0x1fe0fe10);
@@ -997,8 +997,8 @@ async fn test_cfi_at_4005_ptr_auth_strip_apple() {
         .D64(0xdd5a48c848c8dd5a) // saved x1 (even though it's not callee-saves)
         .D64(0xff3dfb81fb81ff3d) // no longer saved x19
         .D64(0x34f3ebd1ebd134f3) // no longer saved x20
-        .D64(0xae23_45a2_8112_e110) // saved fp WITH AUTH
-        .D64(0xae1d_f700_4000_5510) // return address WITH AUTH
+        .D64(0xae23_80a2_8112_e110) // saved fp WITH AUTH
+        .D64(0xae1d_0000_4000_5510) // return address WITH AUTH
         .mark(&frame1_sp)
         .append_repeated(0, 120);
 
