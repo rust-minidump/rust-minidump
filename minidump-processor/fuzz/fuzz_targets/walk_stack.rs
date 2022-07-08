@@ -1,11 +1,12 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
+use breakpad_symbols::{string_symbol_supplier, Symbolizer};
 use minidump::system_info::{Cpu, Os};
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
 use minidump_processor::walk_stack;
-use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer, SystemInfo};
+use minidump_processor::{CallStack, SystemInfo};
 use std::collections::HashMap;
 use test_assembler::Section;
 

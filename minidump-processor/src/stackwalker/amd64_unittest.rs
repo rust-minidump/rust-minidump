@@ -1,14 +1,17 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use crate::process_state::*;
-use crate::stackwalker::walk_stack;
-use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
+use std::collections::HashMap;
+
+use breakpad_symbols::string_symbol_supplier;
 use minidump::format::CONTEXT_AMD64;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
-use std::collections::HashMap;
 use test_assembler::*;
+
+use crate::process_state::*;
+use crate::stackwalker::walk_stack;
+use crate::{Symbolizer, SystemInfo};
 
 struct TestFixture {
     pub raw: CONTEXT_AMD64,

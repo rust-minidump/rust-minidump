@@ -8,10 +8,9 @@ use std::panic;
 use std::time::Duration;
 use std::{boxed::Box, path::PathBuf};
 
+use breakpad_symbols::{http_symbol_supplier, simple_symbol_supplier};
 use minidump::*;
-use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
-};
+use minidump_processor::{MultiSymbolProvider, ProcessorOptions, Symbolizer};
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
 use tracing::error;

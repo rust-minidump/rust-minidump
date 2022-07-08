@@ -1118,6 +1118,7 @@ dependencies = [
 name = "minidump-stackwalk"
 version = "0.11.0"
 dependencies = [
+ "breakpad-symbols",
  "clap 3.2.5",
  "insta",
  "minidump",

@@ -9,6 +9,46 @@ use std::time::Duration;
 use tempfile::NamedTempFile;
 use tracing::{debug, trace, warn};
 
+/// Gets a SymbolSupplier that looks up symbols by path or with urls.
+///
+/// * `symbols_paths` is a list of paths to check for symbol files. Paths
+///   are searched in order until one returns a payload. If none do, then
+///   urls are used.
+///
+/// * `symbols_urls` is a list of "base urls" that should all point to Tecken
+///   servers. urls are queried in order until one returns a payload. If none
+///   do, then it's an error.
+///
+/// * `symbols_cache` is a directory where an on-disk cache should be located.
+///   This should be assumed to be a "temp" directory that another process
+///   you don't control is garbage-collecting old files from (to provide an LRU cache).
+///   The cache is queried before paths and urls (otherwise it wouldn't be much of a cache).
+///
+/// * `symbols_tmp` is a directory where symbol files should be downloaded to
+///   before atomically swapping them into the cache. Has the same "temp"
+///   assumptions as symbols_cache.
+///
+/// * `timeout` a maximum time limit for a symbol file download. This
+///   is primarily defined to avoid getting stuck on buggy infinite downloads.
+///   As of this writing, minidump-stackwalk defaults this to 1000 seconds. In
+///   the event of a timeout, the supplier may still try to parse the truncated
+///   download.
+pub fn http_symbol_supplier(
+    symbol_paths: Vec<PathBuf>,
+    symbol_urls: Vec<String>,
+    symbols_cache: PathBuf,
+    symbols_tmp: PathBuf,
+    timeout: std::time::Duration,
+) -> impl SymbolSupplier {
+    HttpSymbolSupplier::new(
+        symbol_urls,
+        symbols_cache,
+        symbols_tmp,
+        symbol_paths,
+        timeout,
+    )
+}
+
 /// A key that uniquely identifies a File associated with a module
 type FileKey = (ModuleKey, FileKind);
 
@@ -406,6 +446,7 @@ async fn dump_syms(
     output: &Path,
 ) -> Result<(), SymbolError> {
     use dump_syms::dumper;
+    use std::fmt::Write as _;
 
     if !inputs.iter().any(|input| input.is_ok()) {
         return Err(SymbolError::NotFound);
@@ -452,7 +493,7 @@ async fn dump_syms(
         let mut temp = std::fs::File::options().append(true).open(output)?;
         let mut cache_metadata = String::new();
         for url in urls {
-            cache_metadata.push_str(&format!("INFO URL {}\n", url));
+            let _ = writeln!(cache_metadata, "INFO URL {}", url);
         }
         temp.write_all(cache_metadata.as_bytes())?;
     }

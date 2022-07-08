@@ -9,6 +9,7 @@ edition = "2018"
 cargo-fuzz = true
 
 [dependencies]
+breakpad-symbols = { path = "../../breakpad-symbols" }
 libfuzzer-sys = "0.4"
 minidump = { path = "../../minidump", features = ["arbitrary_impls"] }
 test-assembler = "0.1.6"

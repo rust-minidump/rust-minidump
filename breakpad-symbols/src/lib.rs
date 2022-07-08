@@ -68,6 +68,19 @@ pub mod fuzzing_private_exports {
     pub use crate::sym_file::{StackInfoWin, WinStackThing};
 }
 
+/// Gets a SymbolSupplier that looks up symbols by path.
+///
+/// Paths are queried in order until one returns a payload.
+pub fn simple_symbol_supplier(symbol_paths: Vec<PathBuf>) -> impl SymbolSupplier {
+    SimpleSymbolSupplier::new(symbol_paths)
+}
+
+/// Gets a mock SymbolSupplier that just maps module names
+/// to a string containing an entire breakpad .sym file, for tests.
+pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSupplier {
+    StringSymbolSupplier::new(modules)
+}
+
 /// Statistics on the symbols of a module.
 #[derive(Default, Debug)]
 pub struct SymbolStats {
