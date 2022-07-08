@@ -13,11 +13,7 @@ edition = "2018"
 travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
-default = ["breakpad-syms"]
-# Use the `breakpad-symbols` crate for symbolizing and cfi evaluation
-breakpad-syms = ["breakpad-symbols"]
-# Use the `symbolic` crate for symbolizing and cfi evaluation (TODO)
-symbolic-syms = []
+default = []
 # Allows retrieval of symbol files via HTTP
 http = ["breakpad-symbols/http"]
 # Allows construction of symbol files from native binaries
@@ -27,7 +23,7 @@ mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
 async-trait = "0.1.51"
-breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols", optional = true }
+breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.5.3"
