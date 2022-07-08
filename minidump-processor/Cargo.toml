@@ -12,18 +12,8 @@ edition = "2018"
 [badges]
 travis-ci = { repository = "rust-minidump/rust-minidump" }
 
-[features]
-default = []
-# Allows retrieval of symbol files via HTTP
-http = ["breakpad-symbols/http"]
-# Allows construction of symbol files from native binaries
-dump_syms = ["breakpad-symbols/dump_syms", "http"]
-# Allows retrieval of CABed symbol files from mozilla servers
-mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
-
 [dependencies]
 async-trait = "0.1.51"
-breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.5.3"
@@ -35,6 +25,7 @@ serde_json = "1.0"
 thiserror = "1.0.30"
 
 [dev-dependencies]
+breakpad-symbols = { path = "../breakpad-symbols" }
 doc-comment = "0.3.3"
 minidump-synth = { path = "../minidump-synth" }
 test-assembler = "0.1.6"

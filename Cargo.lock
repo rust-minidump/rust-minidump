@@ -142,6 +142,7 @@ dependencies = [
  "debugid 0.8.0",
  "dump_syms",
  "minidump-common",
+ "minidump-processor",
  "nom",
  "range-map",
  "reqwest",

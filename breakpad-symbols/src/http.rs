@@ -1,6 +1,7 @@
 //! Contains HTTP symbol retrieval specific functionality
 
 use crate::*;
+use minidump_processor::{FileError, FileKind};
 use reqwest::{Client, Url};
 use std::fs;
 use std::io::{self, Write};

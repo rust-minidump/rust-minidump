@@ -16,18 +16,16 @@ travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
 # Allows construction of symbol files from native binaries
-dump_syms = ["minidump-processor/dump_syms"]
+dump_syms = ["breakpad-symbols/dump_syms"]
 # Allows retrieval of CABed symbol files from mozilla servers
-mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
+mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
-breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols", features = ["http"] }
 clap = { version = "3.1", features = ["cargo", "wrap_help", "derive"] }
 minidump = { version = "0.11.0", path = "../minidump" }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
-minidump-processor = { version = "0.11.0", path = "../minidump-processor", features = [
-    "http",
-] }
+minidump-processor = { version = "0.11.0", path = "../minidump-processor" }
 tokio = { version = "1.12.0", features = ["full"] }
 tracing = { version = "0.1.34", features = ["log"] }
 tracing-subscriber = "0.3.14"

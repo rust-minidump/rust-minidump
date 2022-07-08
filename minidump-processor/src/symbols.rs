@@ -29,10 +29,6 @@
 //!     * Wraps the [SymbolSupplier][] implementation that minidump-processor selects.
 //!     * Queries the [SymbolSupplier] and manages the SymbolFiles however it pleases.
 //! * [SymbolStats][] - debug statistic output.
-//! * [SymbolFile][] - a payload that a [SymbolProvider][] returns to the Symbolizer.
-//!     * Never handled by minidump-processor, public for the trait. (use this for whatever)
-//! * [SymbolError][] - possible errors a [SymbolProvider][] can yield.
-//!     * Never handled by minidump-processor, public for the trait. (use this for whatever)
 //! * [FillSymbolError][] - possible errors for `fill_symbol`.
 //!     * While this *is* handled by minidump-processor, it doesn't actually look at the value. It's
 //!       just there to be An Error Type for the sake of API design.
@@ -83,11 +79,6 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use minidump::Module;
 
-pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError, SymbolFile,
-    SymbolStats, Symbolizer,
-};
-
 #[async_trait]
 pub trait SymbolProvider {
     async fn fill_symbol(
@@ -108,102 +99,81 @@ pub trait SymbolProvider {
     fn stats(&self) -> HashMap<String, SymbolStats>;
 }
 
-#[derive(Default)]
-pub struct MultiSymbolProvider {
-    providers: Vec<Box<dyn SymbolProvider + Send + Sync>>,
+/// An error produced by fill_symbol.
+#[derive(Debug)]
+pub struct FillSymbolError {
+    // We don't want to yield a full SymbolError for fill_symbol
+    // as this would involve cloning bulky Error strings every time
+    // someone requested symbols for a missing module.
+    //
+    // As it turns out there's currently no reason to care about *why*
+    // fill_symbol, so for now this is just a dummy type until we have
+    // something to put here.
+    //
+    // The only reason fill_symbol *can* produce an Err is so that
+    // the caller can distinguish between "we had symbols, but this address
+    // didn't map to a function name" and "we had no symbols for that module"
+    // (this is used as a heuristic for stack scanning).
 }
 
-impl MultiSymbolProvider {
-    pub fn new() -> MultiSymbolProvider {
-        Default::default()
-    }
-
-    pub fn add(&mut self, provider: Box<dyn SymbolProvider + Send + Sync>) {
-        self.providers.push(provider);
-    }
+/// A trait for setting symbol information on something like a stack frame.
+pub trait FrameSymbolizer {
+    /// Get the program counter value for this frame.
+    fn get_instruction(&self) -> u64;
+    /// Set the name, base address, and parameter size of the function in
+    // which this frame is executing.
+    fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
+    /// Set the source file and (1-based) line number this frame represents.
+    fn set_source_file(&mut self, file: &str, line: u32, base: u64);
 }
 
-#[async_trait]
-impl SymbolProvider for MultiSymbolProvider {
-    async fn fill_symbol(
-        &self,
-        module: &(dyn Module + Sync),
-        frame: &mut (dyn FrameSymbolizer + Send),
-    ) -> Result<(), FillSymbolError> {
-        // Return Ok if *any* symbol provider came back with Ok, so that the user can
-        // distinguish between having no symbols at all and just not being able to
-        // symbolize this particular frame.
-        let mut best_result = Err(FillSymbolError {});
-        for p in self.providers.iter() {
-            let new_result = p.fill_symbol(module, frame).await;
-            best_result = best_result.or(new_result);
-        }
-        best_result
-    }
-
-    async fn walk_frame(
-        &self,
-        module: &(dyn Module + Sync),
-        walker: &mut (dyn FrameWalker + Send),
-    ) -> Option<()> {
-        for p in self.providers.iter() {
-            let result = p.walk_frame(module, walker).await;
-            if result.is_some() {
-                return result;
-            }
-        }
-        None
-    }
-
-    async fn get_file_path(
-        &self,
-        module: &(dyn Module + Sync),
-        file_kind: FileKind,
-    ) -> Result<PathBuf, FileError> {
-        // Return Ok if *any* symbol provider came back with Ok
-        let mut best_result = Err(FileError::NotFound);
-        for p in self.providers.iter() {
-            let new_result = p.get_file_path(module, file_kind).await;
-            best_result = best_result.or(new_result);
-        }
-        best_result
-    }
-
-    fn stats(&self) -> HashMap<String, SymbolStats> {
-        let mut result = HashMap::new();
-        for p in self.providers.iter() {
-            // FIXME: do more intelligent merging of the stats
-            // (currently doesn't matter as only one provider reports non-empty stats).
-            result.extend(p.stats());
-        }
-        result
-    }
+pub trait FrameWalker {
+    /// Get the instruction address that we're trying to unwind from.
+    fn get_instruction(&self) -> u64;
+    /// Check whether the callee has a callee of its own.
+    fn has_grand_callee(&self) -> bool;
+    /// Get the number of bytes the callee's callee's parameters take up
+    /// on the stack (or 0 if unknown/invalid). This is needed for
+    /// STACK WIN unwinding.
+    fn get_grand_callee_parameter_size(&self) -> u32;
+    /// Get a register-sized value stored at this address.
+    fn get_register_at_address(&self, address: u64) -> Option<u64>;
+    /// Get the value of a register from the callee's frame.
+    fn get_callee_register(&self, name: &str) -> Option<u64>;
+    /// Set the value of a register for the caller's frame.
+    fn set_caller_register(&mut self, name: &str, val: u64) -> Option<()>;
+    /// Explicitly mark one of the caller's registers as invalid.
+    fn clear_caller_register(&mut self, name: &str);
+    /// Set whatever registers in the caller should be set based on the cfa (e.g. rsp).
+    fn set_cfa(&mut self, val: u64) -> Option<()>;
+    /// Set whatever registers in the caller should be set based on the return address (e.g. rip).
+    fn set_ra(&mut self, val: u64) -> Option<()>;
 }
 
-#[async_trait]
-impl SymbolProvider for Symbolizer {
-    async fn fill_symbol(
-        &self,
-        module: &(dyn Module + Sync),
-        frame: &mut (dyn FrameSymbolizer + Send),
-    ) -> Result<(), FillSymbolError> {
-        self.fill_symbol(module, frame).await
-    }
-    async fn walk_frame(
-        &self,
-        module: &(dyn Module + Sync),
-        walker: &mut (dyn FrameWalker + Send),
-    ) -> Option<()> {
-        self.walk_frame(module, walker).await
-    }
-    async fn get_file_path(
-        &self,
-        module: &(dyn Module + Sync),
-        file_kind: FileKind,
-    ) -> Result<PathBuf, FileError> {
-        self.get_file_path(module, file_kind).await
-    }
-    fn stats(&self) -> HashMap<String, SymbolStats> {
-        self.stats()
-    }
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum FileError {
+    #[error("file not found")]
+    NotFound,
+}
+
+/// A type of file related to a module that you might want downloaded.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FileKind {
+    /// A Breakpad symbol (.sym) file
+    BreakpadSym,
+    /// The native binary of a module ("code file") (.exe/.dll/.so/.dylib...)
+    Binary,
+    /// Extra debuginfo for a module ("debug file") (.pdb/...?)
+    ExtraDebugInfo,
+}
+
+/// Statistics on the symbols of a module.
+#[derive(Default, Debug)]
+pub struct SymbolStats {
+    /// If the module's symbols were downloaded, this is the url used.
+    pub symbol_url: Option<String>,
+    /// If the symbols were found and loaded into memory.
+    pub loaded_symbols: bool,
+    /// If we tried to parse the symbols, but failed.
+    pub corrupt_symbols: bool,
 }

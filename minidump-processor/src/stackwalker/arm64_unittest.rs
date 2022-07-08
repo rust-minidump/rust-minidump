@@ -6,14 +6,14 @@
 
 use std::collections::HashMap;
 
-use breakpad_symbols::string_symbol_supplier;
+use breakpad_symbols::{string_symbol_supplier, Symbolizer};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
 use test_assembler::*;
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use crate::{Symbolizer, SystemInfo};
+use crate::SystemInfo;
 
 type Context = minidump::format::CONTEXT_ARM64;
 

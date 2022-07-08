@@ -3,12 +3,12 @@
 
 use std::path::{Path, PathBuf};
 
-use breakpad_symbols::simple_symbol_supplier;
+use breakpad_symbols::{simple_symbol_supplier, Symbolizer};
 use minidump::system_info::{Cpu, Os};
 use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
-use minidump_processor::{CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer};
+use minidump_processor::{CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState};
 use minidump_synth::*;
 use test_assembler::*;
 

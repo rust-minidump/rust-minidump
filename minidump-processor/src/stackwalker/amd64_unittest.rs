@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use breakpad_symbols::string_symbol_supplier;
+use breakpad_symbols::{string_symbol_supplier, Symbolizer};
 use minidump::format::CONTEXT_AMD64;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
@@ -11,7 +11,7 @@ use test_assembler::*;
 
 use crate::process_state::*;
 use crate::stackwalker::walk_stack;
-use crate::{Symbolizer, SystemInfo};
+use crate::SystemInfo;
 
 struct TestFixture {
     pub raw: CONTEXT_AMD64,
