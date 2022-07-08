@@ -1,12 +1,5 @@
 //! This module defines the interface between minidump-processor and its [Symbolizer][].
 //!
-//! There can only be one [Symbolizer][], and this is configured by minidump-processor's Cargo
-//! feature flags. The currently defined Symbolizers are:
-//!
-//! * breakpad_symbols -- feature: breakpad-syms (currently the default)
-//! * symbolic -- feature: symbolic-syms (not yet implemented, but compiles)
-//!
-//!
 //! minidump-processor and the [Symbolizer][] communicate using a series of traits. The symbolizer
 //! must provide implementations of these traits:
 //!
