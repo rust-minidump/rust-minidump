@@ -4,13 +4,16 @@
 // NOTE: we don't bother testing arm64_old, it should have identical code at
 // all times!
 
-use crate::process_state::*;
-use crate::stackwalker::walk_stack;
-use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
+use std::collections::HashMap;
+
+use breakpad_symbols::string_symbol_supplier;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
-use std::collections::HashMap;
 use test_assembler::*;
+
+use crate::process_state::*;
+use crate::stackwalker::walk_stack;
+use crate::{Symbolizer, SystemInfo};
 
 type Context = minidump::format::CONTEXT_ARM64;
 

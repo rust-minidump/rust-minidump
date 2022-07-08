@@ -17,8 +17,9 @@
 //! (and parses it with serde_json):
 //!  
 //! ```rust
+//! use breakpad_symbols::http_symbol_supplier;
 //! use minidump::Minidump;
-//! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+//! use minidump_processor::{ProcessorOptions, Symbolizer};
 //! use serde_json::Value;
 //!  
 //! #[tokio::main]

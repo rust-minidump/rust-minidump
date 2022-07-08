@@ -16,15 +16,16 @@ For a CLI application that wraps this library, see [minidump-stackwalk](https://
 If you do need to use minidump-processor as a library, we still recommend using the stabilized JSON output. The native APIs work fine and contain all the same information, we just haven't stabilized them yet, so updates are more likely to result in breakage. Here is a minimal example which gets the JSON output (and parses it with serde_json):
 
 ```rust
+use breakpad_symbols::http_symbol_supplier;
 use minidump::Minidump;
-use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+use minidump_processor::{ProcessorOptions, Symbolizer};
 use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), ()> {
     // Read the minidump
     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
- 
+
     // Configure the symbolizer and processor
     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
     let symbols_paths = vec![];
@@ -32,7 +33,7 @@ async fn main() -> Result<(), ()> {
     symbols_cache.push("minidump-cache");
     let symbols_tmp = std::env::temp_dir();
     let timeout = std::time::Duration::from_secs(1000);
- 
+
     // Use ProcessorOptions for detailed configuration
     let options = ProcessorOptions::default();
 
@@ -44,7 +45,7 @@ async fn main() -> Result<(), ()> {
         symbols_tmp,
         timeout,
     ));
- 
+
     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
         .await
         .map_err(|_| ())?;

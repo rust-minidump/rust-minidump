@@ -10,11 +10,6 @@
 //!       SymbolProviders have been removed, but I figured it would be a waste to throw out
 //!       this minimally intrusive machinery.
 //!
-//! * [SymbolSupplier][] - maps a [Module][] to a [SymbolFile][]
-//!     * minidump-processor does not directly use this, it's just there so the Symbolizer can
-//!       generically handle different symbol fetching strategies (which minidump-processor
-//!       selects and configures).
-//!
 //!
 //!
 //! While minidump-processor provides implementations of these traits:
@@ -25,14 +20,6 @@
 //! * [FrameWalker][] - callbacks that cfi eval uses to read callee state and write caller state.
 //!     * Implemented by CfiStackWalker (private)
 //!
-//!
-//!
-//! The symbolizer is responsible for providing the following concrete functions, which
-//! minidump-processor uses to select and configure the symbol fetching strategy:
-//!
-//! * [http_symbol_supplier][] - a [SymbolSupplier][] that can find symbols over HTTP (and cache).
-//! * [simple_symbol_supplier][] - a [SymbolSupplier][] that can find symbols on disk.
-//! * [string_symbol_supplier][] - a mock [SymbolSupplier][] for tests.
 //!
 //!
 //!
@@ -55,8 +42,9 @@
 //! # Example
 //!
 //! ```rust
+//! use breakpad_symbols::http_symbol_supplier;
 //! use minidump::Minidump;
-//! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+//! use minidump_processor::{ProcessorOptions, Symbolizer};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), ()> {
@@ -97,7 +85,7 @@ use minidump::Module;
 
 pub use breakpad_symbols::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError, SymbolFile,
-    SymbolStats, SymbolSupplier, Symbolizer,
+    SymbolStats, Symbolizer,
 };
 
 #[async_trait]
@@ -218,58 +206,4 @@ impl SymbolProvider for Symbolizer {
     fn stats(&self) -> HashMap<String, SymbolStats> {
         self.stats()
     }
-}
-
-/// Gets a SymbolSupplier that looks up symbols by path or with urls.
-///
-/// * `symbols_paths` is a list of paths to check for symbol files. Paths
-///   are searched in order until one returns a payload. If none do, then
-///   urls are used.
-///
-/// * `symbols_urls` is a list of "base urls" that should all point to Tecken
-///   servers. urls are queried in order until one returns a payload. If none
-///   do, then it's an error.
-///
-/// * `symbols_cache` is a directory where an on-disk cache should be located.
-///   This should be assumed to be a "temp" directory that another process
-///   you don't control is garbage-collecting old files from (to provide an LRU cache).
-///   The cache is queried before paths and urls (otherwise it wouldn't be much of a cache).
-///
-/// * `symbols_tmp` is a directory where symbol files should be downloaded to
-///   before atomically swapping them into the cache. Has the same "temp"
-///   assumptions as symbols_cache.
-///
-/// * `timeout` a maximum time limit for a symbol file download. This
-///   is primarily defined to avoid getting stuck on buggy infinite downloads.
-///   As of this writing, minidump-stackwalk defaults this to 1000 seconds. In
-///   the event of a timeout, the supplier may still try to parse the truncated
-///   download.
-#[cfg(feature = "http")]
-pub fn http_symbol_supplier(
-    symbol_paths: Vec<PathBuf>,
-    symbol_urls: Vec<String>,
-    symbols_cache: PathBuf,
-    symbols_tmp: PathBuf,
-    timeout: std::time::Duration,
-) -> impl SymbolSupplier {
-    breakpad_symbols::HttpSymbolSupplier::new(
-        symbol_urls,
-        symbols_cache,
-        symbols_tmp,
-        symbol_paths,
-        timeout,
-    )
-}
-
-/// Gets a SymbolSupplier that looks up symbols by path.
-///
-/// Paths are queried in order until one returns a payload.
-pub fn simple_symbol_supplier(symbol_paths: Vec<PathBuf>) -> impl SymbolSupplier {
-    breakpad_symbols::SimpleSymbolSupplier::new(symbol_paths)
-}
-
-/// Gets a mock SymbolSupplier that just maps module names
-/// to a string containing an entire breakpad .sym file, for tests.
-pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSupplier {
-    breakpad_symbols::StringSymbolSupplier::new(modules)
 }

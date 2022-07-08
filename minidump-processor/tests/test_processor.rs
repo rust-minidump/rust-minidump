@@ -1,15 +1,14 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
+use std::path::{Path, PathBuf};
+
+use breakpad_symbols::simple_symbol_supplier;
 use minidump::system_info::{Cpu, Os};
 use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
-use minidump_processor::{
-    simple_symbol_supplier, CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer,
-};
-use std::path::{Path, PathBuf};
-
+use minidump_processor::{CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer};
 use minidump_synth::*;
 use test_assembler::*;
 
