@@ -21,7 +21,7 @@ dump_syms = ["minidump-processor/dump_syms"]
 mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 
 [dependencies]
-clap = { version = "3.1", features = ["cargo", "wrap_help", "derive"] }
+clap = { version = "3.2", features = ["cargo", "wrap_help", "derive"] }
 minidump = { version = "0.11.0", path = "../minidump" }
 minidump-common = { version = "0.11.0", path = "../minidump-common" }
 minidump-processor = { version = "0.11.0", path = "../minidump-processor", features = [
