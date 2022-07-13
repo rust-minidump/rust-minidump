@@ -1,3 +1,16 @@
+# Version 0.13.0 (not yet released)
+
+## Inlinee info
+
+WIP, not yet landed
+
+We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to report all the inlined functions for a given address in the binary, improving the quality of backtraces. The inlinee info is...
+
+* WIP new library fields
+* WIP new json fields
+* WIP new human output?
+
+
 # Version 0.12.0 (not yet released)
 
 Commit: TBD
@@ -38,16 +51,12 @@ so there's a reasonable chance there's a lot of bugs. symbolic and dump_syms are
 of MIPS CFI as well.
 
 
+## Compatibility with inline-ful breakpad .sym files
 
-## Inlinee info
+breakpad-symbols is now compatible with the new [`INLINE`](https://github.com/google/breakpad/blob/main/docs/symbol_files.md#inline-records) and [`INLINE_ORIGIN`](https://github.com/google/breakpad/blob/main/docs/symbol_files.md#inline_origin-records) record types in the breakpad .sym format. The current implementation preserves existing rust-minidump behaviour and does not emit any inline frames yet. Instead, as before, symbolicated minidumps will only contain one symbolicated stack frame per "real" stack frame, with the name of the "outer function" at the frame's address, along with the file and line information for the outer function.
 
-WIP, not yet landed
+We are planning to make use of the new information in a future release.
 
-We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to report all the inlined functions for a given address in the binary, improving the quality of backtraces. The inlinee info is... 
-
-* WIP new library fields
-* WIP new json fields
-* WIP new human output?
 
 ## Experimental native debuginfo support!
 
