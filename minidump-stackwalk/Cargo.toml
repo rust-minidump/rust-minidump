@@ -1,7 +1,7 @@
 [package]
 name = "minidump-stackwalk"
 description = "Analyzes minidumps and produces a report (either human-readable or JSON)"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 homepage = "https://github.com/rust-minidump/rust-minidump"
