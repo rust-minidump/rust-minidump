@@ -36,7 +36,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "async-trait",
  "circular",
@@ -201,17 +201,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "memmap2"
-version = "0.5.3"
+name = "memchr"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057a3db23999c867821a7a59feb06a578fcb03685e983dff90daf9e7d24ac08f"
+checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
+
+[[package]]
+name = "memmap2"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a79b39c93a7a5a27eeaf9a23b5ff43f1b9e0ad6b1cdd441140ae53c35613fc7"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "minidump"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "arbitrary",
  "debugid",
@@ -229,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "arbitrary",
  "bitflags",
@@ -244,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -261,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor-fuzz"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "async-trait",
  "libfuzzer-sys",
@@ -273,10 +279,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "nom"
-version = "1.2.4"
+name = "minimal-lexical"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5b8c256fd9471521bcb84c3cdba98921497f1a331cbc15b8030fc63b82050ce"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
+name = "nom"
+version = "7.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
+]
 
 [[package]]
 name = "num-traits"
@@ -460,9 +476,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.9"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2702e08a7a860f005826c6815dcac101b19b5eb330c27fe4a5928fec1d20ddd"
+checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
 dependencies = [
  "itoa",
  "libc",

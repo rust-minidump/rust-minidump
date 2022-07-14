@@ -12,6 +12,6 @@ edition = "2021"
 
 [dependencies]
 test-assembler = "0.1.5"
-minidump-common = { version = "0.11.0", path = "../minidump-common" }
+minidump-common = { version = "0.12.0", path = "../minidump-common" }
 encoding = "0.2"
 scroll = "0.11.0"

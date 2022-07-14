@@ -17,7 +17,7 @@ debugid = "0.8.0"
 encoding = "0.2"
 tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.5.5"
-minidump-common = { version = "0.11.0", path = "../minidump-common" }
+minidump-common = { version = "0.12.0", path = "../minidump-common" }
 num-traits = "0.2"
 range-map = "0.1.5"
 scroll = "0.11.0"
