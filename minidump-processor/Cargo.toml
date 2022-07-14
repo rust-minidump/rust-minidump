@@ -1,7 +1,7 @@
 [package]
 name = "minidump-processor"
 description = "A library for producing stack traces and other useful information from minidump files."
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 readme = "README.md"
@@ -23,12 +23,12 @@ mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
 async-trait = "0.1.51"
-breakpad-symbols = { version = "0.11.0", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.12.0", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.5.5"
-minidump = { version = "0.11.0", path = "../minidump" }
-minidump-common = { version = "0.11.0", path = "../minidump-common" }
+minidump = { version = "0.12.0", path = "../minidump" }
+minidump-common = { version = "0.12.0", path = "../minidump-common" }
 scroll = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
