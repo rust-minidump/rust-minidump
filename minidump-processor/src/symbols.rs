@@ -102,21 +102,49 @@ pub use breakpad_symbols::{
 
 #[async_trait]
 pub trait SymbolProvider {
+    /// Fill symbol information in [`FrameSymbolizer`] using the instruction
+    /// address from `frame`, and the module information from [`Module`].
+    ///
+    /// An Error indicates that no symbols could be found for the relevant
+    /// module.
+    ///
+    /// This is used for filling in the resulting source location of the
+    /// frame as a (function, file, line) triple, as well as providing the
+    /// `parameter_size` which is used during CFI evaluation and stack walking.
+    ///
+    /// This function also serves a dual purpose in informing the stack scanning
+    /// heuristic whether a potential instruction address points to a valid
+    /// function or not.
     async fn fill_symbol(
         &self,
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError>;
+
+    /// Tries to use CFI to walk the stack frame of the [`FrameWalker`]
+    /// using the symbols of the given [`Module`].
+    ///
+    /// Output should be written using the [`FrameWalker`]'s `set_caller_*` APIs.
     async fn walk_frame(
         &self,
         module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()>;
+
+    /// Gets the path to the binary code file for a given module (or an Error).
+    ///
+    /// This might be used later on to inspect the assembly instructions of
+    /// a module.
     async fn get_file_path(
         &self,
         module: &(dyn Module + Sync),
         file_kind: FileKind,
     ) -> Result<PathBuf, FileError>;
+
+    /// Collect various statistics on the symbols.
+    ///
+    /// Keys are implementation dependent.
+    /// For example the file name of the module (code_file's file name).
     fn stats(&self) -> HashMap<String, SymbolStats>;
 }
 
