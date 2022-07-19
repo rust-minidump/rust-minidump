@@ -447,8 +447,8 @@ impl SymbolSupplier for StringSymbolSupplier {
 pub trait FrameSymbolizer {
     /// Get the program counter value for this frame.
     fn get_instruction(&self) -> u64;
-    /// Set the name, base address, and paramter size of the function in
-    // which this frame is executing.
+    /// Set the name, base address, and parameter size of the function in
+    /// which this frame is executing.
     fn set_function(&mut self, name: &str, base: u64, parameter_size: u32);
     /// Set the source file and (1-based) line number this frame represents.
     fn set_source_file(&mut self, file: &str, line: u32, base: u64);
