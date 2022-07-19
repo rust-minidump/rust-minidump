@@ -100,6 +100,19 @@ pub use breakpad_symbols::{
     SymbolStats, SymbolSupplier, Symbolizer,
 };
 
+/// The [`SymbolProvider`] is the main extension point for minidump processing.
+///
+/// It is primarily used by the `process_minidump` function to do stack
+/// unwinding via CFI (call frame information) of a [`Module`] using the
+/// `walk_frame` function.
+///
+/// The `fill_symbol` function is responsible for filling in the source location
+/// (function, file, line triple) corresponding to an instruction address, as
+/// well as a dual purpose of informing the stack scanning heuristic whether a
+/// given instruction address might be valid inside of a [`Module`].
+///
+/// All the asynchronous trait methods can be called concurrently and need to
+/// handle synchronization and request coalescing (based on the [`Module`]).
 #[async_trait]
 pub trait SymbolProvider {
     /// Fill symbol information in [`FrameSymbolizer`] using the instruction
