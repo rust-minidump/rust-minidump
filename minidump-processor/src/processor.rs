@@ -375,7 +375,7 @@ where
                 let id = thread.raw.thread_id;
 
                 // If this is the thread that wrote the dump, skip processing it.
-                if dump_thread_id.is_some() && dump_thread_id.unwrap() == id {
+                if dump_thread_id == Some(id) {
                     return CallStack::with_info(id, CallStackInfo::DumpThreadSkipped);
                 }
 
@@ -383,11 +383,7 @@ where
                 // If this thread requested the dump then try to use the exception
                 // context if it exists. (prefer the exception stream's thread id over
                 // the breakpad info stream's thread id.)
-                let context = if crashing_thread_id
-                    .or(requesting_thread_id)
-                    .map(|id| id == thread.raw.thread_id)
-                    .unwrap_or(false)
-                {
+                let context = if crashing_thread_id.or(requesting_thread_id) == Some(id) {
                     *requesting_thread.lock().unwrap() = Some(i);
                     exception_context.as_deref().or(thread_context.as_deref())
                 } else {
