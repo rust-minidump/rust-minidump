@@ -202,7 +202,9 @@ pub struct CallStack {
 }
 
 impl CallStack {
-    #[cfg(test)]
+    /// Construct a CallStack that just has the unsymbolicated context frame.
+    /// 
+    /// This is the desired input for the stack walker.
     pub fn with_context(context: MinidumpContext) -> Self {
         Self {
             frames: vec![StackFrame::from_context(context, FrameTrust::Context)],

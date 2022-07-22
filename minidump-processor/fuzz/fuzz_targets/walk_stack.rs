@@ -56,19 +56,19 @@ impl TestFixture {
         };
 
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let options = ProcessorOptions::default();
+        let mut stack = CallStack::with_context(context);
 
-        Some(
-            walk_stack(
-                0,
-                None,
-                &Some(&context),
-                Some(&stack_memory),
-                &self.modules,
-                &system_info,
-                &symbolizer,
-            )
-            .await,
+        Some(walk_stack(
+            0,
+            &options,
+            &mut stack,
+            Some(&stack_memory),
+            &self.modules,
+            &self.system_info,
+            &symbolizer,
         )
+        .await);
     }
 }
 
