@@ -5,12 +5,16 @@ use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::panic;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{boxed::Box, path::PathBuf};
 
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions,
+    SymbolProvider, Symbolizer,
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
@@ -317,6 +321,10 @@ async fn main() {
     // Now overload the defaults
     options.evil_json = cli.evil_json.as_deref();
     options.recover_function_args = cli.recover_function_args;
+    options.frame_stat_reporter = Some(Default::default());
+    options.thread_stat_reporter = Some(Default::default());
+    let frame_stat_reporter = options.frame_stat_reporter.clone().unwrap();
+    let thread_stat_reporter = options.thread_stat_reporter.clone().unwrap();
 
     let temp_dir = std::env::temp_dir();
 
@@ -397,8 +405,40 @@ async fn main() {
                 ))));
             }
 
-            match minidump_processor::process_minidump_with_options(&dump, &provider, options).await
-            {
+            let interactive_ui = InterativeUi {
+                all: MultiProgress::new(),
+                symbol_progress: ProgressBar::hidden(),
+                thread_progress: ProgressBar::hidden(),
+                frame_progress: ProgressBar::hidden(),
+                total_progress: ProgressBar::hidden(),
+                needed_stats: AtomicBool::new(false),
+                provider: &provider,
+                thread_stats: thread_stat_reporter,
+                frame_stats: frame_stat_reporter,
+            };
+
+            let update_state = || async {
+                // Do an initial sleep to avoid reporting things for fast ops
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                loop {
+                    if !json {
+                        update_status(&interactive_ui, false);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            };
+
+            let result = tokio::select! {
+                result = minidump_processor::process_minidump_with_options(&dump, &provider, options) => result,
+                _ = update_state() => unreachable!(),
+            };
+
+            // Do one final sync stat update
+            if interactive_ui.needed_stats.load(Ordering::Relaxed) {
+                update_status(&interactive_ui, true);
+            }
+
+            match result {
                 Ok(state) => {
                     // Print the human output if requested (always uses the "real" output).
                     if human {
@@ -630,4 +670,76 @@ where
     }
 
     Ok(())
+}
+
+struct InterativeUi<'a> {
+    all: MultiProgress,
+    symbol_progress: ProgressBar,
+    thread_progress: ProgressBar,
+    frame_progress: ProgressBar,
+    total_progress: ProgressBar,
+
+    needed_stats: AtomicBool,
+    provider: &'a MultiSymbolProvider,
+    thread_stats: Arc<Mutex<(u64, u64)>>,
+    frame_stats: Arc<Mutex<u64>>,
+}
+
+fn update_status(ui: &InterativeUi, finished: bool) {
+    let symbol_stats = ui.provider.pending_stats();
+    let (t_done, t_pending) = *ui.thread_stats.lock().unwrap();
+    let frames_walked = *ui.frame_stats.lock().unwrap();
+
+    let progress = if finished {
+        100
+    } else if t_pending == 0 {
+        0
+    } else {
+        let estimated_frames_per_thread = 20;
+        let estimate = 100 * frames_walked / (estimated_frames_per_thread * t_pending);
+        estimate.min(80)
+    };
+
+    ui.symbol_progress
+        .set_length(symbol_stats.symbols_requested);
+    ui.symbol_progress
+        .set_position(symbol_stats.symbols_processed);
+
+    ui.thread_progress.set_length(t_pending);
+    ui.thread_progress.set_position(t_done);
+
+    ui.frame_progress.set_length(frames_walked);
+
+    ui.total_progress.set_position(progress);
+
+    // Make the UI visible for the first time
+    if !ui.needed_stats.load(Ordering::Relaxed) {
+        ui.thread_progress
+            .set_style(ProgressStyle::with_template("{msg:>17} {pos}/{len}").unwrap());
+        ui.symbol_progress
+            .set_style(ProgressStyle::with_template("{msg:>17} {pos}/{len}").unwrap());
+        ui.frame_progress
+            .set_style(ProgressStyle::with_template("{msg:>17} {len}").unwrap());
+        ui.total_progress
+            .set_style(ProgressStyle::with_template("{msg:>17} {pos:>3}% {wide_bar} ").unwrap());
+
+        ui.total_progress.set_length(100);
+        ui.symbol_progress.set_message("symbols fetched");
+        ui.thread_progress.set_message("threads processed");
+        ui.frame_progress.set_message("frames walked");
+        ui.total_progress.set_message("processing...");
+
+        ui.all.add(ui.frame_progress.clone());
+        ui.all.add(ui.symbol_progress.clone());
+        ui.all.add(ui.thread_progress.clone());
+        ui.all.add(ui.total_progress.clone());
+        ui.needed_stats.store(true, Ordering::Relaxed);
+    }
+
+    if finished {
+        ui.symbol_progress.finish();
+        ui.thread_progress.finish();
+        ui.frame_progress.finish();
+        ui.total_progress.finish();
+    }
 }

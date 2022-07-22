@@ -66,7 +66,7 @@ pub struct ProcessorOptions<'a> {
     pub recover_function_args: bool,
 
     /// A reporter for the number of threads that have been processed
-    pub thread_stat_reporter: Option<Arc<Mutex<u64>>>,
+    pub thread_stat_reporter: Option<Arc<Mutex<(u64, u64)>>>,
     /// A reporter for the number of stackframes that have been processed
     pub frame_stat_reporter: Option<Arc<Mutex<u64>>>,
     /// A reporter for streaming frames as they are walked
@@ -255,6 +255,13 @@ where
     let thread_list = dump
         .get_stream::<MinidumpThreadList>()
         .or(Err(ProcessError::MissingThreadList))?;
+
+    let num_threads = thread_list.threads.len() as u64;
+    if let Some(reporter) = &options.thread_stat_reporter {
+        let mut report = reporter.lock().unwrap();
+        *report = (0, num_threads);
+    }
+
     // Try to get thread names, but it's only a nice-to-have.
     let thread_names = dump
         .get_stream::<MinidumpThreadNames>()
@@ -535,7 +542,9 @@ where
                     }
 
                     if let Some(reporter) = &options.thread_stat_reporter {
-                        *reporter.lock().unwrap() += 1;
+                        let mut report = reporter.lock().unwrap();
+                        let (old, _) = *report;
+                        *report = (old + 1, num_threads);
                     }
                     stack
                 }),

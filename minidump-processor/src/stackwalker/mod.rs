@@ -190,7 +190,7 @@ async fn fill_source_line_info<P>(
     }
 }
 
-#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = stack.thread_id, tname = stack.thread_name))]
+#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = stack.thread_id, tname = stack.thread_name.as_deref().unwrap_or("")))]
 pub async fn walk_stack<P>(
     thread_idx: usize,
     options: &ProcessorOptions<'_>,
