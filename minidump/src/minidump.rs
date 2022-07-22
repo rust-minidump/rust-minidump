@@ -72,7 +72,7 @@ where
 }
 
 /// Errors encountered while reading a `Minidump`.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error("File not found")]
     FileNotFound,
@@ -389,7 +389,7 @@ pub type MinidumpMemory<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIP
 pub type MinidumpMemory64<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RawMacCrashInfo {
     V1(
         md::MINIDUMP_MAC_CRASH_INFO_RECORD,
@@ -405,14 +405,14 @@ pub enum RawMacCrashInfo {
     ),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpMacCrashInfo {
     /// The `MINIDUMP_MAC_CRASH_INFO_RECORD` and `MINIDUMP_MAC_CRASH_INFO_RECORD_STRINGS`.
     pub raw: Vec<RawMacCrashInfo>,
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RawMiscInfo {
     MiscInfo(md::MINIDUMP_MISC_INFO),
     MiscInfo2(md::MINIDUMP_MISC_INFO_2),
@@ -422,7 +422,7 @@ pub enum RawMiscInfo {
 }
 
 /// Miscellaneous information about the process that wrote the minidump.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpMiscInfo {
     /// The `MINIDUMP_MISC_INFO` struct direct from the minidump.
     pub raw: RawMiscInfo,
@@ -433,7 +433,7 @@ pub struct MinidumpMiscInfo {
 /// MinidumpBreakpadInfo wraps MINIDUMP_BREAKPAD_INFO, which is an optional stream
 /// in a minidump that provides additional information about the process state
 /// at the time the minidump was generated.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpBreakpadInfo {
     raw: md::MINIDUMP_BREAKPAD_INFO,
     /// The thread that wrote the minidump.
@@ -4739,7 +4739,7 @@ pub struct MinidumpImplementedStream {
 }
 
 /// A stream in the minidump that this implementation has no knowledge of.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpUnknownStream {
     pub stream_type: u32,
     pub location: md::MINIDUMP_LOCATION_DESCRIPTOR,
@@ -4748,7 +4748,7 @@ pub struct MinidumpUnknownStream {
 
 /// A stream in the minidump that this implementation is aware of but doesn't
 /// yet support.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MinidumpUnimplementedStream {
     pub stream_type: MINIDUMP_STREAM_TYPE,
     pub location: md::MINIDUMP_LOCATION_DESCRIPTOR,

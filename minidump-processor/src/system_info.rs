@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use minidump::system_info::{Cpu, Os};
 
 /// Information about the system that produced a `Minidump`.
+#[derive(Debug, Clone)]
 pub struct SystemInfo {
     /// The operating system that produced the minidump
     pub os: Os,

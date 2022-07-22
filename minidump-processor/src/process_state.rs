@@ -37,7 +37,7 @@ pub enum FrameTrust {
     Context,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CallingConvention {
     Cdecl,
     WindowsThisCall,
@@ -45,7 +45,7 @@ pub enum CallingConvention {
 }
 
 /// Arguments for this function
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionArgs {
     /// What we assumed the calling convention was
     pub calling_convention: CallingConvention,
@@ -55,7 +55,7 @@ pub struct FunctionArgs {
 }
 
 /// A function argument
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionArg {
     /// The name of the argument (usually actually just the type)
     pub name: String,
@@ -64,7 +64,7 @@ pub struct FunctionArg {
 }
 
 /// A single stack frame produced from unwinding a thread's stack.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StackFrame {
     /// The program counter location as an absolute virtual address.
     ///
@@ -169,7 +169,7 @@ pub struct StackFrame {
 }
 
 /// Information about the results of unwinding a thread's stack.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallStackInfo {
     /// Everything went great.
     Ok,
@@ -184,6 +184,7 @@ pub enum CallStackInfo {
 }
 
 /// A stack of `StackFrame`s produced as a result of unwinding a thread.
+#[derive(Debug, Clone)]
 pub struct CallStack {
     /// The stack frames.
     /// By convention, the stack frame at index 0 is the innermost callee frame,
@@ -200,7 +201,20 @@ pub struct CallStack {
     pub last_error_value: Option<CrashReason>,
 }
 
-#[derive(Debug, Default)]
+impl CallStack {
+    #[cfg(test)]
+    pub fn with_context(context: MinidumpContext) -> Self {
+        Self {
+            frames: vec![StackFrame::from_context(context, FrameTrust::Context)],
+            info: CallStackInfo::Ok,
+            thread_id: 0,
+            thread_name: None,
+            last_error_value: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct LinuxStandardBase {
     pub id: String,
     pub release: String,
@@ -209,6 +223,7 @@ pub struct LinuxStandardBase {
 }
 
 /// The state of a process as recorded by a `Minidump`.
+#[derive(Debug, Clone)]
 pub struct ProcessState {
     /// The PID of the process.
     pub process_id: Option<u32>,

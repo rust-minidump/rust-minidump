@@ -5,16 +5,17 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
 
-use crate::arg_recovery;
 use crate::evil;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
+use crate::{arg_recovery, FrameTrust, StackFrame};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -63,6 +64,22 @@ pub struct ProcessorOptions<'a> {
     /// Currently this only work for x86, and assumes everything is either cdecl or thiscall
     /// (inferred from whether the symbol name looks like a static function or a method).
     pub recover_function_args: bool,
+
+    /// A reporter for the number of threads that have been processed
+    pub thread_stat_reporter: Option<Arc<Mutex<u64>>>,
+    /// A reporter for the number of stackframes that have been processed
+    pub frame_stat_reporter: Option<Arc<Mutex<u64>>>,
+    /// A reporter for streaming frames as they are walked
+    pub frame_reporter: Option<Arc<Mutex<Vec<WalkedFrame>>>>,
+    /// A reporter that yields the ProcessState before any stack analysis
+    pub partial_state_reporter: Option<Arc<Mutex<Option<ProcessState>>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WalkedFrame {
+    pub thread_idx: usize,
+    pub frame_idx: usize,
+    pub frame: StackFrame,
 }
 
 impl ProcessorOptions<'_> {
@@ -83,6 +100,10 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: false,
+            thread_stat_reporter: None,
+            frame_stat_reporter: None,
+            frame_reporter: None,
+            partial_state_reporter: None,
         }
     }
 
@@ -101,6 +122,10 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: false,
+            thread_stat_reporter: None,
+            frame_stat_reporter: None,
+            frame_reporter: None,
+            partial_state_reporter: None,
         }
     }
 
@@ -116,6 +141,10 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: true,
+            thread_stat_reporter: None,
+            frame_stat_reporter: None,
+            frame_reporter: None,
+            partial_state_reporter: None,
         }
     }
 
@@ -145,7 +174,7 @@ impl Default for ProcessorOptions<'_> {
 }
 
 /// An error encountered during minidump processing.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum ProcessError {
     #[error("Failed to read minidump")]
     MinidumpReadError(#[from] minidump::Error),
@@ -356,103 +385,55 @@ where
         .and_then(evil::handle_evil)
         .unwrap_or_default();
 
-    let requesting_thread = std::sync::Mutex::new(None);
+    let mut requesting_thread = None;
 
-    let threads = {
-        let dump_system_info = &dump_system_info;
-        let misc_info = &misc_info;
-        let exception_context = &exception_context;
-        let memory_list = &memory_list;
-        let thread_names = &thread_names;
-        let evil = &evil;
-        let modules = &modules;
-        let system_info = &system_info;
-        let unloaded_modules = &unloaded_modules;
-        let options = &options;
-        let requesting_thread = &requesting_thread;
-        futures_util::future::join_all(thread_list.threads.iter().enumerate().map(
-            |(i, thread)| async move {
-                let id = thread.raw.thread_id;
+    let threads = thread_list
+        .threads
+        .iter()
+        .enumerate()
+        .map(|(i, thread)| {
+            let id = thread.raw.thread_id;
 
-                // If this is the thread that wrote the dump, skip processing it.
-                if dump_thread_id == Some(id) {
-                    return CallStack::with_info(id, CallStackInfo::DumpThreadSkipped);
-                }
+            // If this is the thread that wrote the dump, skip processing it.
+            if dump_thread_id == Some(id) {
+                return CallStack::with_info(id, CallStackInfo::DumpThreadSkipped);
+            }
 
-                let thread_context = thread.context(dump_system_info, misc_info.as_ref());
-                // If this thread requested the dump then try to use the exception
-                // context if it exists. (prefer the exception stream's thread id over
-                // the breakpad info stream's thread id.)
-                let context = if crashing_thread_id.or(requesting_thread_id) == Some(id) {
-                    *requesting_thread.lock().unwrap() = Some(i);
-                    exception_context.as_deref().or(thread_context.as_deref())
-                } else {
-                    thread_context.as_deref()
-                };
+            let thread_context = thread.context(&dump_system_info, misc_info.as_ref());
+            // If this thread requested the dump then try to use the exception
+            // context if it exists. (prefer the exception stream's thread id over
+            // the breakpad info stream's thread id.)
+            let context = if crashing_thread_id.or(requesting_thread_id) == Some(id) {
+                requesting_thread = Some(i);
+                exception_context.as_deref().or(thread_context.as_deref())
+            } else {
+                thread_context.as_deref()
+            };
 
-                let mut stack_memory = thread.stack_memory(memory_list);
-                // Always chose the memory region that is referenced by the context,
-                // as the `exception_context` may refer to a different memory region than
-                // the `thread_context`, which in turn would fail to stack walk.
-                let stack_ptr = context.as_ref().map(|ctx| ctx.get_stack_pointer());
-                if let Some(stack_ptr) = stack_ptr {
-                    let contains_stack_ptr = stack_memory
-                        .as_ref()
-                        .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
-                        .is_some();
-                    if !contains_stack_ptr {
-                        stack_memory = memory_list
-                            .memory_at_address(stack_ptr)
-                            .map(Cow::Borrowed)
-                            .or(stack_memory);
-                    }
-                }
+            let name = thread_names
+                .get_name(thread.raw.thread_id)
+                .map(|cow| cow.into_owned())
+                .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
 
-                let name = thread_names
-                    .get_name(thread.raw.thread_id)
-                    .map(|cow| cow.into_owned())
-                    .or_else(|| evil.thread_names.get(&thread.raw.thread_id).cloned());
-                let mut stack = stackwalker::walk_stack(
-                    id,
-                    name.as_deref(),
-                    &context,
-                    stack_memory.as_deref(),
-                    modules,
-                    system_info,
-                    symbol_provider,
+            let (info, frames) = if let Some(context) = context {
+                let ctx = context.clone();
+                (
+                    CallStackInfo::Ok,
+                    vec![StackFrame::from_context(ctx, FrameTrust::Context)],
                 )
-                .await;
-                stack.thread_id = id;
-                stack.thread_name = name;
-                for frame in &mut stack.frames {
-                    // If the frame doesn't have a loaded module, try to find an unloaded module
-                    // that overlaps with its address range. The may be multiple, so record all
-                    // of them and the offsets this frame has in them.
-                    if frame.module.is_none() {
-                        let mut offsets = BTreeMap::new();
-                        for unloaded in unloaded_modules.modules_at_address(frame.instruction) {
-                            let offset = frame.instruction - unloaded.raw.base_of_image;
-                            offsets
-                                .entry(unloaded.name.clone())
-                                .or_insert_with(BTreeSet::new)
-                                .insert(offset);
-                        }
+            } else {
+                (CallStackInfo::MissingContext, vec![])
+            };
 
-                        frame.unloaded_modules = offsets;
-                    }
-                }
-
-                stack.last_error_value = thread.last_error(system_info.cpu, memory_list);
-
-                if options.recover_function_args {
-                    arg_recovery::fill_arguments(&mut stack, stack_memory.as_deref());
-                }
-
-                stack
-            },
-        ))
-        .await
-    };
+            CallStack {
+                frames,
+                info,
+                thread_id: id,
+                thread_name: name,
+                last_error_value: thread.last_error(system_info.cpu, &memory_list),
+            }
+        })
+        .collect();
 
     // Collect up info on unimplemented/unknown modules
     let unknown_streams = dump.unknown_streams().collect();
@@ -461,7 +442,7 @@ where
     // Get symbol stats from the symbolizer
     let symbol_stats = symbol_provider.stats();
 
-    Ok(ProcessState {
+    let mut state = ProcessState {
         process_id,
         time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
         process_create_time,
@@ -469,7 +450,7 @@ where
         crash_reason,
         crash_address,
         assertion,
-        requesting_thread: requesting_thread.into_inner().unwrap(),
+        requesting_thread,
         system_info,
         linux_standard_base,
         mac_crash_info,
@@ -479,5 +460,91 @@ where
         unknown_streams,
         unimplemented_streams,
         symbol_stats,
-    })
+    };
+
+    if let Some(reporter) = &options.partial_state_reporter {
+        *reporter.lock().unwrap() = Some(state.clone());
+    }
+
+    {
+        let memory_list = &memory_list;
+        let modules = &state.modules;
+        let system_info = &state.system_info;
+        let unloaded_modules = &state.unloaded_modules;
+        let options = &options;
+
+        futures_util::future::join_all(
+            state
+                .threads
+                .iter_mut()
+                .zip(thread_list.threads.iter())
+                .enumerate()
+                .map(|(i, (stack, thread))| async move {
+                    let mut stack_memory = thread.stack_memory(memory_list);
+                    // Always chose the memory region that is referenced by the context,
+                    // as the `exception_context` may refer to a different memory region than
+                    // the `thread_context`, which in turn would fail to stack walk.
+                    let stack_ptr = stack
+                        .frames
+                        .get(0)
+                        .map(|ctx_frame| ctx_frame.context.get_stack_pointer());
+                    if let Some(stack_ptr) = stack_ptr {
+                        let contains_stack_ptr = stack_memory
+                            .as_ref()
+                            .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
+                            .is_some();
+                        if !contains_stack_ptr {
+                            stack_memory = memory_list
+                                .memory_at_address(stack_ptr)
+                                .map(Cow::Borrowed)
+                                .or(stack_memory);
+                        }
+                    }
+
+                    stackwalker::walk_stack(
+                        i,
+                        options,
+                        stack,
+                        stack_memory.as_deref(),
+                        modules,
+                        system_info,
+                        symbol_provider,
+                    )
+                    .await;
+
+                    for frame in &mut stack.frames {
+                        // If the frame doesn't have a loaded module, try to find an unloaded module
+                        // that overlaps with its address range. The may be multiple, so record all
+                        // of them and the offsets this frame has in them.
+                        if frame.module.is_none() {
+                            let mut offsets = BTreeMap::new();
+                            for unloaded in unloaded_modules.modules_at_address(frame.instruction) {
+                                let offset = frame.instruction - unloaded.raw.base_of_image;
+                                offsets
+                                    .entry(unloaded.name.clone())
+                                    .or_insert_with(BTreeSet::new)
+                                    .insert(offset);
+                            }
+
+                            frame.unloaded_modules = offsets;
+                        }
+                    }
+
+                    if options.recover_function_args {
+                        arg_recovery::fill_arguments(stack, stack_memory.as_deref());
+                    }
+
+                    if let Some(reporter) = &options.thread_stat_reporter {
+                        *reporter.lock().unwrap() += 1;
+                    }
+                    stack
+                }),
+        )
+        .await
+    };
+
+    let symbol_stats = symbol_provider.stats();
+    state.symbol_stats = symbol_stats;
+
+    Ok(state)
 }

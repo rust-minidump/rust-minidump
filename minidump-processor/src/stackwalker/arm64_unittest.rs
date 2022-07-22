@@ -4,8 +4,8 @@
 // NOTE: we don't bother testing arm64_old, it should have identical code at
 // all times!
 
-use crate::process_state::*;
 use crate::stackwalker::walk_stack;
+use crate::{process_state::*, ProcessorOptions};
 use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
@@ -86,16 +86,21 @@ impl TestFixture {
             cpu_count: 1,
         };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let options = ProcessorOptions::default();
+        let mut stack = CallStack::with_context(context);
+
         walk_stack(
             0,
-            None,
-            &Some(&context),
+            &options,
+            &mut stack,
             Some(&stack_memory),
             &self.modules,
             &system_info,
             &symbolizer,
         )
-        .await
+        .await;
+
+        stack
     }
 
     pub fn add_symbols(&mut self, name: String, symbols: String) {
