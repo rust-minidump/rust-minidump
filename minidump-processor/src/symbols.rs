@@ -96,8 +96,8 @@ use async_trait::async_trait;
 use minidump::Module;
 
 pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingStats, SymbolError, SymbolFile,
-    SymbolStats, SymbolSupplier, Symbolizer,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingStats, SymbolError,
+    SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
 };
 
 /// The [`SymbolProvider`] is the main extension point for minidump processing.

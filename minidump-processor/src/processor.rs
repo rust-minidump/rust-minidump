@@ -261,7 +261,7 @@ where
         let mut report = reporter.lock().unwrap();
         *report = (0, num_threads);
     }
-    
+
     // Try to get thread names, but it's only a nice-to-have.
     let thread_names = dump
         .get_stream::<MinidumpThreadNames>()
