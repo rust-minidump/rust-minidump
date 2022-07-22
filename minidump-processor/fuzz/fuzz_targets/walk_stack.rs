@@ -5,7 +5,7 @@ use minidump::system_info::{Cpu, Os};
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
 use minidump_processor::walk_stack;
-use minidump_processor::{string_symbol_supplier, CallStack, Symbolizer, SystemInfo};
+use minidump_processor::{string_symbol_supplier, CallStack, ProcessorOptions,  Symbolizer, SystemInfo};
 use std::collections::HashMap;
 use test_assembler::Section;
 
@@ -56,19 +56,21 @@ impl TestFixture {
         };
 
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let options = ProcessorOptions::default();
+        let mut stack = CallStack::with_context(context);
 
-        Some(
-            walk_stack(
-                0,
-                None,
-                &Some(&context),
-                Some(&stack_memory),
-                &self.modules,
-                &system_info,
-                &symbolizer,
-            )
-            .await,
+        walk_stack(
+            0,
+            &options,
+            &mut stack,
+            Some(&stack_memory),
+            &self.modules,
+            &system_info,
+            &symbolizer,
         )
+        .await;
+
+        Some(stack)
     }
 }
 
