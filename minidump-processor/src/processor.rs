@@ -544,7 +544,7 @@ where
                     if let Some(reporter) = &options.thread_stat_reporter {
                         let mut report = reporter.lock().unwrap();
                         let (old, _) = *report;
-                        *report = (old, num_threads);
+                        *report = (old + 1, num_threads);
                     }
                     stack
                 }),

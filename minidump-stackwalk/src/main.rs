@@ -10,8 +10,8 @@ use std::{boxed::Box, path::PathBuf};
 
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions,
-    SymbolProvider, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, PendingStats,
+    ProcessorOptions, SymbolProvider, Symbolizer,
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
@@ -402,21 +402,35 @@ async fn main() {
                 ))));
             }
 
+            fn update_status(
+                symbol_stats: &PendingStats,
+                t_done: u64,
+                t_pending: u64,
+                frames_walked: u64,
+            ) {
+                // TODO: proper progress bars
+                eprintln!("processing threads: {}/{}", t_done, t_pending);
+                eprintln!(
+                    "fetching symbols: {}/{}",
+                    symbol_stats.symbols_processed, symbol_stats.symbols_requested
+                );
+                eprintln!("frames walked: {}", frames_walked)
+            }
+
+            let needed_stats = std::sync::atomic::AtomicBool::new(false);
             let update_state = || async {
+                // Do an initial sleep to avoid reporting things for fast ops
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 loop {
                     if !json {
-                        let symbol_pending_stats = provider.pending_stats();
+                        needed_stats.store(true, std::sync::atomic::Ordering::Relaxed);
+                        let symbol_stats = provider.pending_stats();
                         let (t_done, t_pending) = *thread_stat_reporter.lock().unwrap();
-                        let _frames_processed = *frame_stat_reporter.lock().unwrap();
+                        let frames_walked = *frame_stat_reporter.lock().unwrap();
                         // TODO: proper progress bars
-                        eprintln!("processing threads: {}/{}", t_done, t_pending);
-                        eprintln!(
-                            "fetching symbols: {}/{}",
-                            symbol_pending_stats.symbols_processed,
-                            symbol_pending_stats.symbols_requested
-                        );
+                        update_status(&symbol_stats, t_done, t_pending, frames_walked);
                     }
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 }
             };
 
@@ -424,6 +438,15 @@ async fn main() {
                 result = minidump_processor::process_minidump_with_options(&dump, &provider, options) => result,
                 _ = update_state() => unreachable!(),
             };
+
+            // Do one final sync stat update
+            if needed_stats.load(std::sync::atomic::Ordering::Relaxed) {
+                let symbol_stats = provider.pending_stats();
+                let (t_done, t_pending) = *thread_stat_reporter.lock().unwrap();
+                let frames_walked = *frame_stat_reporter.lock().unwrap();
+
+                update_status(&symbol_stats, t_done, t_pending, frames_walked);
+            }
 
             match result {
                 Ok(state) => {

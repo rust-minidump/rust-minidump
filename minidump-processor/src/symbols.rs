@@ -93,11 +93,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use breakpad_symbols::PendingStats;
 use minidump::Module;
 
 pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolError, SymbolFile,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingStats, SymbolError, SymbolFile,
     SymbolStats, SymbolSupplier, Symbolizer,
 };
 
