@@ -1,8 +1,8 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use crate::process_state::*;
 use crate::stackwalker::walk_stack;
+use crate::{process_state::*, ProcessorOptions};
 use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
 use minidump::format::CONTEXT_AMD64;
 use minidump::system_info::{Cpu, Os};
@@ -56,16 +56,21 @@ impl TestFixture {
             endian: scroll::LE,
         };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
+        let options = ProcessorOptions::default();
+        let mut stack = CallStack::with_context(context);
+
         walk_stack(
             0,
-            None,
-            &Some(&context),
+            &options,
+            &mut stack,
             Some(&stack_memory),
             &self.modules,
             &self.system_info,
             &symbolizer,
         )
-        .await
+        .await;
+
+        stack
     }
 
     pub fn add_symbols(&mut self, name: String, symbols: String) {

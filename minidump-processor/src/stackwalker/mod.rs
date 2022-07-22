@@ -11,7 +11,7 @@ mod mips;
 mod unwind;
 mod x86;
 
-use crate::process_state::*;
+use crate::{process_state::*, ProcessorOptions, WalkedFrame};
 use crate::{FrameWalker, SymbolProvider, SystemInfo};
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -190,66 +190,76 @@ async fn fill_source_line_info<P>(
     }
 }
 
-#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = thread_id, name = thread_name.unwrap_or("")))]
+#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = stack.thread_id, tname = stack.thread_name))]
 pub async fn walk_stack<P>(
-    thread_id: u32,
-    thread_name: Option<&str>,
-    maybe_context: &Option<&MinidumpContext>,
+    thread_idx: usize,
+    options: &ProcessorOptions<'_>,
+    stack: &mut CallStack,
     stack_memory: Option<&MinidumpMemory<'_>>,
     modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     symbol_provider: &P,
-) -> CallStack
-where
+) where
     P: SymbolProvider + Sync,
 {
-    // Begin with the context frame, and keep getting callers until there are
-    // no more.
-    let mut frames = vec![];
-    let mut info = CallStackInfo::Ok;
-    if let Some(context) = *maybe_context {
-        trace!(
-            "starting stack unwind of thread {} {}",
-            thread_id,
-            thread_name.unwrap_or("")
-        );
-        let ctx = context.clone();
-        let mut maybe_frame = Some(StackFrame::from_context(ctx, FrameTrust::Context));
-        while let Some(mut frame) = maybe_frame {
-            fill_source_line_info(&mut frame, modules, symbol_provider).await;
-            match frame.function_name.as_ref() {
-                Some(name) => trace!("unwinding {}", name),
-                None => trace!("unwinding 0x{:016x}", frame.instruction),
-            }
-            frames.push(frame);
-            let callee_frame = &frames.last().unwrap();
-            let grand_callee_frame = frames.len().checked_sub(2).and_then(|idx| frames.get(idx));
-            maybe_frame = get_caller_frame(
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await;
-        }
-        trace!(
-            "finished stack unwind of thread {} {}\n",
-            thread_id,
-            thread_name.unwrap_or("")
-        );
-    } else {
-        info = CallStackInfo::MissingContext;
-    }
+    trace!(
+        "starting stack unwind of thread {} {}",
+        stack.thread_id,
+        stack.thread_name.as_deref().unwrap_or(""),
+    );
+    // Begin with the context frame, and keep getting callers until there are no more.
+    let mut has_new_frame = !stack.frames.is_empty();
+    while has_new_frame {
+        // Symbolicate the new frame
+        let num_frames = stack.frames.len();
+        let frame = stack.frames.last_mut().unwrap();
 
-    CallStack {
-        frames,
-        info,
-        thread_id: 0,
-        thread_name: None,
-        last_error_value: None,
+        fill_source_line_info(frame, modules, symbol_provider).await;
+
+        if let Some(reporter) = &options.frame_reporter {
+            reporter.lock().unwrap().push(WalkedFrame {
+                thread_idx,
+                frame_idx: num_frames - 1,
+                frame: frame.clone(),
+            });
+        }
+        if let Some(reporter) = &options.frame_stat_reporter {
+            *reporter.lock().unwrap() += 1;
+        }
+
+        // Walk the new frame
+        let callee_frame = &stack.frames.last().unwrap();
+        let grand_callee_frame = stack
+            .frames
+            .len()
+            .checked_sub(2)
+            .and_then(|idx| stack.frames.get(idx));
+        match callee_frame.function_name.as_ref() {
+            Some(name) => trace!("unwinding {}", name),
+            None => trace!("unwinding 0x{:016x}", callee_frame.instruction),
+        }
+        let new_frame = get_caller_frame(
+            callee_frame,
+            grand_callee_frame,
+            stack_memory,
+            modules,
+            system_info,
+            symbol_provider,
+        )
+        .await;
+
+        // Check if we're done
+        if let Some(new_frame) = new_frame {
+            stack.frames.push(new_frame);
+        } else {
+            has_new_frame = false;
+        }
     }
+    trace!(
+        "finished stack unwind of thread {} {}\n",
+        stack.thread_id,
+        stack.thread_name.as_deref().unwrap_or(""),
+    );
 }
 
 /// Checks if we can dismiss the validity of an instruction based on our symbols,

@@ -69,7 +69,7 @@ pub mod fuzzing_private_exports {
 }
 
 /// Statistics on the symbols of a module.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct SymbolStats {
     /// If the module's symbols were downloaded, this is the url used.
     pub symbol_url: Option<String>,
