@@ -79,6 +79,16 @@ pub struct SymbolStats {
     pub corrupt_symbols: bool,
 }
 
+/// Statistics on pending symbols
+#[derive(Default, Debug, Clone)]
+pub struct PendingStats {
+    /// The number of symbols we have finished processing
+    /// (could be either successful or not, either way is fine).
+    pub symbols_processed: u64,
+    /// The number of symbols we have been asked to process.
+    pub symbols_requested: u64,
+}
+
 /// A `Module` implementation that holds arbitrary data.
 ///
 /// This can be useful for getting symbols for a module when you
@@ -584,6 +594,7 @@ pub struct Symbolizer {
     // use this for statistics collection. Splitting out statistics would be
     // way messier but not impossible.
     symbols: Mutex<HashMap<ModuleKey, CachedOperation<SymbolFile, SymbolError>>>,
+    pending_stats: Mutex<PendingStats>,
 }
 
 impl Symbolizer {
@@ -592,6 +603,7 @@ impl Symbolizer {
         Symbolizer {
             supplier: Box::new(supplier),
             symbols: Mutex::new(HashMap::new()),
+            pending_stats: Mutex::default(),
         }
     }
 
@@ -702,6 +714,10 @@ impl Symbolizer {
             .collect()
     }
 
+    pub fn pending_stats(&self) -> PendingStats {
+        self.pending_stats.lock().unwrap().clone()
+    }
+
     /// Tries to use CFI to walk the stack frame of the FrameWalker
     /// using the symbols of the given Module. Output will be written
     /// using the FrameWalker's `set_caller_*` APIs.
@@ -734,7 +750,10 @@ impl Symbolizer {
         symbol_once
             .get_or_init(|| async {
                 trace!("locating symbols for module {}", module.code_file());
-                self.supplier.locate_symbols(module).await
+                self.pending_stats.lock().unwrap().symbols_requested += 1;
+                let result = self.supplier.locate_symbols(module).await;
+                self.pending_stats.lock().unwrap().symbols_processed += 1;
+                result
             })
             .await;
         symbol_once

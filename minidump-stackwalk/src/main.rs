@@ -10,7 +10,8 @@ use std::{boxed::Box, path::PathBuf};
 
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions,
+    SymbolProvider, Symbolizer,
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
@@ -317,6 +318,10 @@ async fn main() {
     // Now overload the defaults
     options.evil_json = cli.evil_json.as_deref();
     options.recover_function_args = cli.recover_function_args;
+    options.frame_stat_reporter = Some(Default::default());
+    options.thread_stat_reporter = Some(Default::default());
+    let frame_stat_reporter = options.frame_stat_reporter.clone().unwrap();
+    let thread_stat_reporter = options.thread_stat_reporter.clone().unwrap();
 
     let temp_dir = std::env::temp_dir();
 
@@ -397,8 +402,30 @@ async fn main() {
                 ))));
             }
 
-            match minidump_processor::process_minidump_with_options(&dump, &provider, options).await
-            {
+            let update_state = || async {
+                loop {
+                    if !json {
+                        let symbol_pending_stats = provider.pending_stats();
+                        let (t_done, t_pending) = *thread_stat_reporter.lock().unwrap();
+                        let _frames_processed = *frame_stat_reporter.lock().unwrap();
+                        // TODO: proper progress bars
+                        eprintln!("processing threads: {}/{}", t_done, t_pending);
+                        eprintln!(
+                            "fetching symbols: {}/{}",
+                            symbol_pending_stats.symbols_processed,
+                            symbol_pending_stats.symbols_requested
+                        );
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            };
+
+            let result = tokio::select! {
+                result = minidump_processor::process_minidump_with_options(&dump, &provider, options) => result,
+                _ = update_state() => unreachable!(),
+            };
+
+            match result {
                 Ok(state) => {
                     // Print the human output if requested (always uses the "real" output).
                     if human {

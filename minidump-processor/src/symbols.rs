@@ -93,6 +93,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use breakpad_symbols::PendingStats;
 use minidump::Module;
 
 pub use breakpad_symbols::{
@@ -159,6 +160,7 @@ pub trait SymbolProvider {
     /// Keys are implementation dependent.
     /// For example the file name of the module (code_file's file name).
     fn stats(&self) -> HashMap<String, SymbolStats>;
+    fn pending_stats(&self) -> PendingStats;
 }
 
 #[derive(Default)]
@@ -231,6 +233,16 @@ impl SymbolProvider for MultiSymbolProvider {
         }
         result
     }
+
+    fn pending_stats(&self) -> PendingStats {
+        let mut result = PendingStats::default();
+        for p in self.providers.iter() {
+            // FIXME: do more intelligent merging of the stats
+            // (currently doesn't matter as only one provider reports non-empty stats).
+            result = p.pending_stats();
+        }
+        result
+    }
 }
 
 #[async_trait]
@@ -258,6 +270,9 @@ impl SymbolProvider for Symbolizer {
     }
     fn stats(&self) -> HashMap<String, SymbolStats> {
         self.stats()
+    }
+    fn pending_stats(&self) -> PendingStats {
+        self.pending_stats()
     }
 }
 
