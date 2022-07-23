@@ -85,7 +85,9 @@ where
     }
 }
 
+#[tracing::instrument(name = "unwind_frame", level = "trace", skip_all, fields(idx = _frame_idx, fname = callee_frame.function_name.as_deref().unwrap_or("")))]
 async fn get_caller_frame<P>(
+    _frame_idx: usize,
     callee_frame: &StackFrame,
     grand_callee_frame: Option<&StackFrame>,
     stack_memory: Option<&MinidumpMemory<'_>>,
@@ -190,7 +192,7 @@ async fn fill_source_line_info<P>(
     }
 }
 
-#[tracing::instrument(name = "unwind", level = "trace", skip_all, fields(tid = stack.thread_id, tname = stack.thread_name.as_deref().unwrap_or("")))]
+#[tracing::instrument(name = "unwind_thread", level = "trace", skip_all, fields(idx = thread_idx, tid = stack.thread_id, tname = stack.thread_name.as_deref().unwrap_or("")))]
 pub async fn walk_stack<P>(
     thread_idx: usize,
     options: &ProcessorOptions<'_>,
@@ -211,14 +213,14 @@ pub async fn walk_stack<P>(
     let mut has_new_frame = !stack.frames.is_empty();
     while has_new_frame {
         // Symbolicate the new frame
-        let num_frames = stack.frames.len();
+        let frame_idx = stack.frames.len() - 1;
         let frame = stack.frames.last_mut().unwrap();
 
         fill_source_line_info(frame, modules, symbol_provider).await;
 
         // Report the frame as walked and symbolicated
         if let Some(reporter) = options.stat_reporter {
-            reporter.add_walked_frame(thread_idx, num_frames - 1, frame);
+            reporter.add_walked_frame(thread_idx, frame_idx, frame);
         }
 
         // Walk the new frame
@@ -233,6 +235,7 @@ pub async fn walk_stack<P>(
             None => trace!("unwinding 0x{:016x}", callee_frame.instruction),
         }
         let new_frame = get_caller_frame(
+            frame_idx,
             callee_frame,
             grand_callee_frame,
             stack_memory,
