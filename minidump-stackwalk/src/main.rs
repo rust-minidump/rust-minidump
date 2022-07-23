@@ -6,15 +6,15 @@ use std::io::Write;
 use std::ops::Deref;
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{boxed::Box, path::PathBuf};
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider, ProcessorOptions,
-    SymbolProvider, Symbolizer,
+    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider,
+    PendingProcessorStatSubscriptions, PendingProcessorStats, ProcessorOptions, SymbolProvider,
+    Symbolizer,
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
@@ -310,22 +310,6 @@ async fn main() {
         return;
     }
 
-    // Pick the default options
-    let mut options = match &*cli.features {
-        "stable-basic" => ProcessorOptions::stable_basic(),
-        "stable-all" => ProcessorOptions::stable_all(),
-        "unstable-all" => ProcessorOptions::unstable_all(),
-        _ => unimplemented!("unknown --features value"),
-    };
-
-    // Now overload the defaults
-    options.evil_json = cli.evil_json.as_deref();
-    options.recover_function_args = cli.recover_function_args;
-    options.frame_stat_reporter = Some(Default::default());
-    options.thread_stat_reporter = Some(Default::default());
-    let frame_stat_reporter = options.frame_stat_reporter.clone().unwrap();
-    let thread_stat_reporter = options.thread_stat_reporter.clone().unwrap();
-
     let temp_dir = std::env::temp_dir();
 
     let mut symbols_paths = cli.symbols_path;
@@ -368,6 +352,29 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Pick the default options
+    let mut options = match &*cli.features {
+        "stable-basic" => ProcessorOptions::stable_basic(),
+        "stable-all" => ProcessorOptions::stable_all(),
+        "unstable-all" => ProcessorOptions::unstable_all(),
+        _ => unimplemented!("unknown --features value"),
+    };
+
+    // Now overload the defaults
+    options.evil_json = cli.evil_json.as_deref();
+    options.recover_function_args = cli.recover_function_args;
+
+    // Register for instractive updates, if we want them
+    let interactive_enabled = !json;
+    let mut processor_stats = None;
+    if interactive_enabled {
+        let mut subscriptions = PendingProcessorStatSubscriptions::default();
+        subscriptions.frame_count = true;
+        subscriptions.thread_count = true;
+        processor_stats = Some(PendingProcessorStats::new(subscriptions));
+        options.stat_reporter = processor_stats.as_ref();
+    }
+
     // Ok now let's do the thing!!!!
 
     match Minidump::read_path(cli.minidump) {
@@ -405,24 +412,25 @@ async fn main() {
                 ))));
             }
 
-            let interactive_ui = InterativeUi {
-                all: MultiProgress::new(),
-                symbol_progress: ProgressBar::hidden(),
-                thread_progress: ProgressBar::hidden(),
-                frame_progress: ProgressBar::hidden(),
-                total_progress: ProgressBar::hidden(),
-                needed_stats: AtomicBool::new(false),
-                provider: &provider,
-                thread_stats: thread_stat_reporter,
-                frame_stats: frame_stat_reporter,
-            };
+            let interactive_ui = processor_stats
+                .as_ref()
+                .map(|processor_stats| InterativeUi {
+                    all: MultiProgress::new(),
+                    symbol_progress: ProgressBar::hidden(),
+                    thread_progress: ProgressBar::hidden(),
+                    frame_progress: ProgressBar::hidden(),
+                    total_progress: ProgressBar::hidden(),
+                    needed_stats: AtomicBool::new(false),
+                    symbol_stats: &provider,
+                    processor_stats,
+                });
 
             let update_state = || async {
                 // Do an initial sleep to avoid reporting things for fast ops
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 loop {
-                    if !json {
-                        update_status(&interactive_ui, false);
+                    if let Some(interactive_ui) = &interactive_ui {
+                        update_status(interactive_ui, false);
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 }
@@ -434,8 +442,8 @@ async fn main() {
             };
 
             // Do one final sync stat update
-            if interactive_ui.needed_stats.load(Ordering::Relaxed) {
-                update_status(&interactive_ui, true);
+            if let Some(interactive_ui) = &interactive_ui {
+                update_status(interactive_ui, true);
             }
 
             match result {
@@ -680,15 +688,19 @@ struct InterativeUi<'a> {
     total_progress: ProgressBar,
 
     needed_stats: AtomicBool,
-    provider: &'a MultiSymbolProvider,
-    thread_stats: Arc<Mutex<(u64, u64)>>,
-    frame_stats: Arc<Mutex<u64>>,
+    symbol_stats: &'a MultiSymbolProvider,
+    processor_stats: &'a PendingProcessorStats,
 }
 
 fn update_status(ui: &InterativeUi, finished: bool) {
-    let symbol_stats = ui.provider.pending_stats();
-    let (t_done, t_pending) = *ui.thread_stats.lock().unwrap();
-    let frames_walked = *ui.frame_stats.lock().unwrap();
+    // Don't do anything if we're finishing up but we never started!
+    if finished && !ui.needed_stats.load(Ordering::Relaxed) {
+        return;
+    }
+
+    let symbol_stats = ui.symbol_stats.pending_stats();
+    let (t_done, t_pending) = ui.processor_stats.get_thread_count();
+    let frames_walked = ui.processor_stats.get_frame_count();
 
     let progress = if finished {
         100

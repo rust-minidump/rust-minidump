@@ -96,8 +96,8 @@ use async_trait::async_trait;
 use minidump::Module;
 
 pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingStats, SymbolError,
-    SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingSymbolStats,
+    SymbolError, SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
 };
 
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
@@ -159,7 +159,7 @@ pub trait SymbolProvider {
     /// Keys are implementation dependent.
     /// For example the file name of the module (code_file's file name).
     fn stats(&self) -> HashMap<String, SymbolStats>;
-    fn pending_stats(&self) -> PendingStats;
+    fn pending_stats(&self) -> PendingSymbolStats;
 }
 
 #[derive(Default)]
@@ -233,8 +233,8 @@ impl SymbolProvider for MultiSymbolProvider {
         result
     }
 
-    fn pending_stats(&self) -> PendingStats {
-        let mut result = PendingStats::default();
+    fn pending_stats(&self) -> PendingSymbolStats {
+        let mut result = PendingSymbolStats::default();
         for p in self.providers.iter() {
             // FIXME: do more intelligent merging of the stats
             // (currently doesn't matter as only one provider reports non-empty stats).
@@ -270,7 +270,7 @@ impl SymbolProvider for Symbolizer {
     fn stats(&self) -> HashMap<String, SymbolStats> {
         self.stats()
     }
-    fn pending_stats(&self) -> PendingStats {
+    fn pending_stats(&self) -> PendingSymbolStats {
         self.pending_stats()
     }
 }

@@ -65,21 +65,211 @@ pub struct ProcessorOptions<'a> {
     /// (inferred from whether the symbol name looks like a static function or a method).
     pub recover_function_args: bool,
 
-    /// A reporter for the number of threads that have been processed
-    pub thread_stat_reporter: Option<Arc<Mutex<(u64, u64)>>>,
-    /// A reporter for the number of stackframes that have been processed
-    pub frame_stat_reporter: Option<Arc<Mutex<u64>>>,
-    /// A reporter for streaming frames as they are walked
-    pub frame_reporter: Option<Arc<Mutex<Vec<WalkedFrame>>>>,
-    /// A reporter that yields the ProcessState before any stack analysis
-    pub partial_state_reporter: Option<Arc<Mutex<Option<ProcessState>>>>,
+    /// Set this value to subscribe to live statistics during the processing.
+    ///
+    /// See [`PendingProcessorStats`] and [`PendingProcessorStatSubscriptions`].
+    pub stat_reporter: Option<&'a PendingProcessorStats>,
 }
 
+/// A subscription to various live updates during minidump processing.
+///
+/// Construct it with [`PendingProcessorStats::new`] and pass it into
+/// [`ProcessorOptions::stat_reporter`]. The type internally handles
+/// concurrency and can be safely sent or shared between threads.
+///
+/// The type can't be cloned just because we don't want to guarantee
+/// how the atomics are implemented. Wrap it in an Arc if you want
+/// shared access for yourself.
+#[derive(Debug)]
+pub struct PendingProcessorStats {
+    /// The stats we will track
+    subscriptions: PendingProcessorStatSubscriptions,
+    /// The actual computed stats
+    stats: Arc<Mutex<PendingProcessorStatsInner>>,
+}
+
+/// An implementation detail of PendingProcessorStats, where all the
+/// actual stats are recorded. Can be changed without anything caring.
+#[derive(Default, Debug, Clone)]
+struct PendingProcessorStatsInner {
+    /// How many threads have been processed
+    num_threads_processed: u64,
+    /// How many threads there are in total (redundant, but convenient)
+    total_threads: u64,
+    /// The number of frames that have been walked
+    num_frames_processed: u64,
+    /// Frames that have been walked
+    new_walked_frames: Vec<WalkedFrame>,
+    /// The partial ProcessState, before stackwalking
+    unwalked_result: Option<ProcessState>,
+}
+
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+/// Live updates you want to subscribe to during the processing.
+///
+/// Pass this into [`PendingProcessorStats::new`] to configure it.
+pub struct PendingProcessorStatSubscriptions {
+    /// Subscribe to stats on how many threads have been processed.
+    ///
+    /// This can be used to give a progress estimate.
+    ///
+    /// The values can be read with [`PendingProcessorStats::get_thread_count`].
+    pub thread_count: bool,
+    /// Subscribe to stats on how many frames have been processed.
+    ///
+    /// This can be used to give a progress estimate.
+    ///
+    /// The value can be read with [`PendingProcessorStats::get_frame_count`].
+    pub frame_count: bool,
+    /// Subscribe to a copy of the ProcessState before stackwalking (or symbolication).
+    ///
+    /// This can be used to provide the quick and easy results while the expensive
+    /// stackwalker has to go off and start doing file or network i/o for symbols.
+    ///
+    /// The values can be read with [`PendingProcessorStats::take_unwalked_result`].
+    pub unwalked_result: bool,
+    /// Subscribe to live StackFrame results.
+    ///
+    /// This can be used to update [`PendingProcessorStatSubscriptions::unwalked_result`]
+    /// as the stackwalker makes progress. How useful/smooth this is depends on the input.
+    /// If the biggest symbol file is the first frame of the stack, the walker may hang at 0%
+    /// progress for a long time and then suddenly jump to 100% instantly, as the
+    /// first dependency gets resolved last.
+    ///
+    /// The values can be read with [`PendingProcessorStats::drain_new_frames`].
+    pub live_frames: bool,
+}
+
+/// A StackFrame that has been walked, with metadata on which thread it's part of,
+/// and which frame of that thread it is.
+///
+/// This is the payload for [`PendingProcessorStatSubscriptions::live_frames`].
 #[derive(Debug, Clone)]
 pub struct WalkedFrame {
+    /// The thread that this was, the index corresponds to [`ProcessState::threads`].
     pub thread_idx: usize,
+    /// The frame that this was, the index corresponds to [`CallStack::frames`].
     pub frame_idx: usize,
+    /// The actual walked and symbolicated StackFrame. Some post-processing analysis
+    /// may be missing, so these results should be discarded once you have the
+    /// final [`ProcessState`].
     pub frame: StackFrame,
+}
+
+impl PendingProcessorStats {
+    /// Subscribe to the given stats.
+    ///
+    /// Pass this into [`ProcessorOptions::stat_reporter`] to use it.
+    pub fn new(subscriptions: PendingProcessorStatSubscriptions) -> Self {
+        Self {
+            subscriptions,
+            stats: Default::default(),
+        }
+    }
+
+    /// Gets (processed_thread_count, total_thread_count).
+    ///
+    /// This will panic if you didn't subscribe to
+    /// [`PendingProcessorStatSubscriptions::thread_count`].
+    pub fn get_thread_count(&self) -> (u64, u64) {
+        assert!(
+            self.subscriptions.thread_count,
+            "tried to get thread count stats, but wasn't subscribed!"
+        );
+        let stats = self.stats.lock().unwrap();
+        (stats.num_threads_processed, stats.total_threads)
+    }
+
+    /// Get count of walked frames.
+    ///
+    /// This will panic if you didn't subscribe to
+    /// [`PendingProcessorStatSubscriptions::frame_count`].
+    pub fn get_frame_count(&self) -> u64 {
+        assert!(
+            self.subscriptions.frame_count,
+            "tried to get frame count stats, but wasn't subscribed!"
+        );
+        let stats = self.stats.lock().unwrap();
+        stats.num_frames_processed
+    }
+
+    /// Get all the new walked frames since this method was last called.
+    ///
+    /// This operates via callback to allow implementation flexibility.
+    ///
+    /// This will panic if you didn't subscribe to
+    /// [`PendingProcessorStatSubscriptions::live_frames`].
+    pub fn drain_new_frames(&self, mut callback: impl FnMut(WalkedFrame)) {
+        assert!(
+            self.subscriptions.live_frames,
+            "tried to get new frames, but wasn't subscribed!"
+        );
+        let mut stats = self.stats.lock().unwrap();
+        for frame in stats.new_walked_frames.drain(..) {
+            callback(frame);
+        }
+    }
+
+    /// Get the unwalked [`ProcessState`], if it has been computed.
+    ///
+    /// This will yield `Some` exactly once.
+    ///
+    /// This will panic if you didn't subscribe to
+    /// [`PendingProcessorStatSubscriptions::unwalked_result`].
+    pub fn take_unwalked_result(&self) -> Option<ProcessState> {
+        assert!(
+            self.subscriptions.unwalked_result,
+            "tried to get unwalked result, but wasn't subscribed!"
+        );
+        let mut stats = self.stats.lock().unwrap();
+        stats.unwalked_result.take()
+    }
+
+    /// Record how many threads there are in total.
+    pub(crate) fn set_total_threads(&self, total_threads: u64) {
+        // Only bother doing this if the user cares
+        if self.subscriptions.thread_count {
+            let mut stats = self.stats.lock().unwrap();
+            stats.total_threads = total_threads;
+        }
+    }
+
+    /// Record that a thread has been processed.
+    pub(crate) fn inc_processed_threads(&self) {
+        // Only bother doing this if the user cares
+        if self.subscriptions.thread_count {
+            let mut stats = self.stats.lock().unwrap();
+            stats.num_threads_processed += 1;
+        }
+    }
+
+    /// Record that this frame has been walked.
+    pub(crate) fn add_walked_frame(&self, thread_idx: usize, frame_idx: usize, frame: &StackFrame) {
+        // Only bother doing this if the user cares
+        if self.subscriptions.live_frames || self.subscriptions.frame_count {
+            let mut stats = self.stats.lock().unwrap();
+            // Once we're in here it's easier to update this then check if they care
+            stats.num_frames_processed += 1;
+            // But this one is worth rechecking
+            if self.subscriptions.live_frames {
+                stats.new_walked_frames.push(WalkedFrame {
+                    thread_idx,
+                    frame_idx,
+                    frame: frame.clone(),
+                });
+            }
+        }
+    }
+
+    /// Record this unwalked [`ProcessState`].
+    pub(crate) fn add_unwalked_result(&self, state: &ProcessState) {
+        // Only bother doing this if the user cares
+        if self.subscriptions.unwalked_result {
+            let mut stats = self.stats.lock().unwrap();
+            stats.unwalked_result = Some(state.clone());
+        }
+    }
 }
 
 impl ProcessorOptions<'_> {
@@ -100,10 +290,7 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: false,
-            thread_stat_reporter: None,
-            frame_stat_reporter: None,
-            frame_reporter: None,
-            partial_state_reporter: None,
+            stat_reporter: None,
         }
     }
 
@@ -122,10 +309,7 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: false,
-            thread_stat_reporter: None,
-            frame_stat_reporter: None,
-            frame_reporter: None,
-            partial_state_reporter: None,
+            stat_reporter: None,
         }
     }
 
@@ -141,10 +325,7 @@ impl ProcessorOptions<'_> {
         ProcessorOptions {
             evil_json: None,
             recover_function_args: true,
-            thread_stat_reporter: None,
-            frame_stat_reporter: None,
-            frame_reporter: None,
-            partial_state_reporter: None,
+            stat_reporter: None,
         }
     }
 
@@ -257,9 +438,8 @@ where
         .or(Err(ProcessError::MissingThreadList))?;
 
     let num_threads = thread_list.threads.len() as u64;
-    if let Some(reporter) = &options.thread_stat_reporter {
-        let mut report = reporter.lock().unwrap();
-        *report = (0, num_threads);
+    if let Some(reporter) = options.stat_reporter {
+        reporter.set_total_threads(num_threads);
     }
 
     // Try to get thread names, but it's only a nice-to-have.
@@ -469,8 +649,9 @@ where
         symbol_stats,
     };
 
-    if let Some(reporter) = &options.partial_state_reporter {
-        *reporter.lock().unwrap() = Some(state.clone());
+    // Report the unwalked result
+    if let Some(reporter) = options.stat_reporter {
+        reporter.add_unwalked_result(&state);
     }
 
     {
@@ -541,11 +722,11 @@ where
                         arg_recovery::fill_arguments(stack, stack_memory.as_deref());
                     }
 
-                    if let Some(reporter) = &options.thread_stat_reporter {
-                        let mut report = reporter.lock().unwrap();
-                        let (old, _) = *report;
-                        *report = (old + 1, num_threads);
+                    // Report the unwalked result
+                    if let Some(reporter) = options.stat_reporter {
+                        reporter.inc_processed_threads();
                     }
+
                     stack
                 }),
         )

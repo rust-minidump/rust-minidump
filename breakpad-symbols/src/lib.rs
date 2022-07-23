@@ -79,9 +79,11 @@ pub struct SymbolStats {
     pub corrupt_symbols: bool,
 }
 
-/// Statistics on pending symbols
+/// Statistics on pending symbols.
+///
+/// Fetched with [`Symbolizer::pending_stats`].
 #[derive(Default, Debug, Clone)]
-pub struct PendingStats {
+pub struct PendingSymbolStats {
     /// The number of symbols we have finished processing
     /// (could be either successful or not, either way is fine).
     pub symbols_processed: u64,
@@ -594,7 +596,7 @@ pub struct Symbolizer {
     // use this for statistics collection. Splitting out statistics would be
     // way messier but not impossible.
     symbols: Mutex<HashMap<ModuleKey, CachedOperation<SymbolFile, SymbolError>>>,
-    pending_stats: Mutex<PendingStats>,
+    pending_stats: Mutex<PendingSymbolStats>,
 }
 
 impl Symbolizer {
@@ -714,7 +716,8 @@ impl Symbolizer {
             .collect()
     }
 
-    pub fn pending_stats(&self) -> PendingStats {
+    /// Get live symbol stats for interactive updates.
+    pub fn pending_stats(&self) -> PendingSymbolStats {
         self.pending_stats.lock().unwrap().clone()
     }
 

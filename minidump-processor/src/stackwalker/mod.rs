@@ -11,7 +11,7 @@ mod mips;
 mod unwind;
 mod x86;
 
-use crate::{process_state::*, ProcessorOptions, WalkedFrame};
+use crate::{process_state::*, ProcessorOptions};
 use crate::{FrameWalker, SymbolProvider, SystemInfo};
 use minidump::*;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -216,15 +216,9 @@ pub async fn walk_stack<P>(
 
         fill_source_line_info(frame, modules, symbol_provider).await;
 
-        if let Some(reporter) = &options.frame_reporter {
-            reporter.lock().unwrap().push(WalkedFrame {
-                thread_idx,
-                frame_idx: num_frames - 1,
-                frame: frame.clone(),
-            });
-        }
-        if let Some(reporter) = &options.frame_stat_reporter {
-            *reporter.lock().unwrap() += 1;
+        // Report the frame as walked and symbolicated
+        if let Some(reporter) = options.stat_reporter {
+            reporter.add_walked_frame(thread_idx, num_frames - 1, frame);
         }
 
         // Walk the new frame
