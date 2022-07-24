@@ -303,7 +303,7 @@ pub struct MinidumpModuleList {
 /// A mapping of thread ids to their names.
 #[derive(Debug, Clone, Default)]
 pub struct MinidumpThreadNames {
-    names: HashMap<u32, String>,
+    names: BTreeMap<u32, String>,
 }
 
 /// An executable or shared library that was once loaded into the process, but was unloaded
@@ -1344,7 +1344,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
         let raw_names: Vec<md::MINIDUMP_THREAD_NAME> =
             read_stream_list(&mut offset, bytes, endian)?;
         // read out the actual names
-        let mut names = HashMap::with_capacity(raw_names.len());
+        let mut names = BTreeMap::new();
         for raw_name in raw_names {
             let mut offset = raw_name.thread_name_rva as usize;
             // Better to just drop unreadable names individually than the whole stream.
