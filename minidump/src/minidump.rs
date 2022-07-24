@@ -3334,6 +3334,46 @@ impl<'a> MinidumpStream<'a> for MinidumpMacCrashInfo {
     }
 }
 
+impl MinidumpMacCrashInfo {
+    /// Write a human-readable description of this `MinidumpMacCrashInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        macro_rules! write_simple_field {
+            ($stream:ident, $field:ident, $idx:ident, $format:literal) => {
+                write!(f, "    {:29}= ", stringify!($field))?;
+                match self.raw[$idx].$field() {
+                    Some($field) => {
+                        writeln!(f, $format, $field)?;
+                    }
+                    None => writeln!(f, "(invalid)")?,
+                }
+            };
+            ($stream:ident, $field:ident, $idx:ident) => {
+                write_simple_field!($stream, $field, $idx, "{}");
+            };
+        }
+        writeln!(f, "MINIDUMP_MAC_CRASH_INFO")?;
+        writeln!(f, "  num_records = {}", self.raw.len())?;
+
+        for i in 0..self.raw.len() {
+            writeln!(f, "  [{}] = ", i)?;
+            write_simple_field!(f, version, i);
+            write_simple_field!(f, thread, i);
+            write_simple_field!(f, dialog_mode, i, "{:x}");
+            write_simple_field!(f, module_path, i);
+            write_simple_field!(f, message, i);
+            write_simple_field!(f, signature_string, i);
+            write_simple_field!(f, backtrace, i);
+            write_simple_field!(f, message2, i);
+            write_simple_field!(f, abort_cause, i, "{:x}");
+        }
+
+        writeln!(f)?;
+        Ok(())
+    }
+}
+
 impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32;
 
