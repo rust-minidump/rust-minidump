@@ -636,16 +636,19 @@ where
     if let Some(misc_info) = misc_info {
         misc_info.print(output)?;
     }
-    if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {
-        breakpad_info.print(output)?;
-    }
     if let Ok(thread_names) = dump.get_stream::<MinidumpThreadNames>() {
         thread_names.print(output)?;
+    }
+    if let Ok(breakpad_info) = dump.get_stream::<MinidumpBreakpadInfo>() {
+        breakpad_info.print(output)?;
     }
     match dump.get_stream::<MinidumpCrashpadInfo>() {
         Ok(crashpad_info) => crashpad_info.print(output)?,
         Err(Error::StreamNotFound) => (),
         Err(_) => write!(output, "MinidumpCrashpadInfo cannot print invalid data")?,
+    }
+    if let Ok(mac_info) = dump.get_stream::<MinidumpMacCrashInfo>() {
+        mac_info.print(output)?;
     }
 
     // Handle Linux streams that are just a dump of some system "file".
