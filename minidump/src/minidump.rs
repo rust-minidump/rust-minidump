@@ -3341,12 +3341,12 @@ impl MinidumpMacCrashInfo {
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         macro_rules! write_simple_field {
             ($stream:ident, $field:ident, $idx:ident, $format:literal) => {
-                write!(f, "    {:29}= ", stringify!($field))?;
+                write!(f, "    {:18}= ", stringify!($field))?;
                 match self.raw[$idx].$field() {
                     Some($field) => {
                         writeln!(f, $format, $field)?;
                     }
-                    None => writeln!(f, "(invalid)")?,
+                    None => writeln!(f)?,
                 }
             };
             ($stream:ident, $field:ident, $idx:ident) => {
@@ -3357,7 +3357,8 @@ impl MinidumpMacCrashInfo {
         writeln!(f, "  num_records = {}", self.raw.len())?;
 
         for i in 0..self.raw.len() {
-            writeln!(f, "  [{}] = ", i)?;
+            writeln!(f)?;
+            writeln!(f, "  RECORD[{}] ", i)?;
             write_simple_field!(f, version, i);
             write_simple_field!(f, thread, i);
             write_simple_field!(f, dialog_mode, i, "{:x}");
