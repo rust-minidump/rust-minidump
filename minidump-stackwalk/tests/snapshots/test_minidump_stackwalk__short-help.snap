@@ -48,6 +48,9 @@ OPTIONS:
         --brief
             Provide a briefer --human or --dump report
 
+        --no-interactive
+            Disable all interactive progress feedback
+
         --evil-json <EVIL_JSON>
             **UNSTABLE** An input JSON file with the extra information
 

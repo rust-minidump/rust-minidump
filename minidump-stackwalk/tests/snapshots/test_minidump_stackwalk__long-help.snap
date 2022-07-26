@@ -116,6 +116,12 @@ OPTIONS:
             
             For dump: Omits all memory hexdumps.
 
+        --no-interactive
+            Disable all interactive progress feedback
+            
+            We'll generally try to auto-detect when this should be disabled, but this is here in
+            case we mess up and you need it to go away.
+
         --evil-json <EVIL_JSON>
             **UNSTABLE** An input JSON file with the extra information.
             

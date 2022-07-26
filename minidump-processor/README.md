@@ -13,6 +13,8 @@ If you want lower-level access to the minidump's contents, use the [minidump](ht
 
 For a CLI application that wraps this library, see [minidump-stackwalk](https://crates.io/crates/minidump-stackwalk). **This is the primary and stable interface for minidump-processor, which we recommend for most production users.**
 
+For a GUI application that wraps this library, see [minidump-debugger](https://github.com/Gankra/minidump-debugger). **This is an experimental external project.**
+
 If you do need to use minidump-processor as a library, we still recommend using the stabilized JSON output. The native APIs work fine and contain all the same information, we just haven't stabilized them yet, so updates are more likely to result in breakage. Here is a minimal example which gets the JSON output (and parses it with serde_json):
 
 ```rust
