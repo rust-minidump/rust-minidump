@@ -1,4 +1,4 @@
-# Version 0.13.0 (not yet released)
+# Version XXX (not yet released)
 
 ## Inlinee info
 
@@ -10,10 +10,16 @@ We now can read the new "inlinee" info that dump_syms can add to .sym files. Thi
 * WIP new json fields
 * WIP new human output?
 
+# Version 0.13.0 (not yet released)
 
-# Version 0.12.0 (not yet released)
+Commit: TODO
 
-Commit: TBD
+* Fixed `code_identifier` on iOS.
+* Stackwalk threads concurrently. Consequently, `SymbolProvider` now needs to perform request coalescing and take care of internal synchronization.
+
+# Version 0.12.0 (2022-07-14)
+
+Commit: [b5fe86a8f3c1ab8a55f9a6c6e1be72d531af80ee](https://github.com/rust-minidump/rust-minidump/commit/b5fe86a8f3c1ab8a55f9a6c6e1be72d531af80ee)
 
 Lots of fixes and experiments. This change is largely backcompat but we changed a lot of
 dependencies and have significantly changed ARM/ARM64 stackwalking results (mostly for the better,
