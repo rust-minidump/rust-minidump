@@ -5,6 +5,8 @@
 
 A CLI frontend for [minidump-processor](https://crates.io/crates/minidump-processor), providing both machine-readable and human-readable digests of a minidump, with backtraces and symbolication.
 
+(If you would like a GUI frontend, see [minidump-debugger](https://github.com/Gankra/minidump-debugger). **This is an experimental external project.**)
+
 This is specifically designed to provide a compatible interface to [mozilla's minidump-stackwalk](https://github.com/mozilla-services/minidump-stackwalk) which is itself similar to [google-breakpad's minidump-stackwalk](https://github.com/google/breakpad/blob/main/src/processor/minidump_stackwalk.cc).
 
 (If you need to distinguish them, call this one "rust-minidump-stackwalk")
@@ -193,11 +195,15 @@ The human-readable report does not have a specified format, and may not have as 
 details as the JSON format. It is intended for quickly inspecting a crash or debugging
 rust-minidump itself.
 
+Can be simplified with --brief
+
 #### `--json`
 Emit a machine-readable JSON report
 
 The schema for this output is officially documented here:
-https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md
+#### `<https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>`
+
+Can be pretty-printed with --pretty
 
 #### `--cyborg <CYBORG>`
 Combine --human and --json
@@ -213,6 +219,8 @@ This is an implementation of the functionality of the old minidump_dump tool. It
 minimally parses and interprets the minidump in an attempt to produce a fairly 'raw'
 dump of the minidump's contents. This is most useful for debugging minidump-stackwalk
 itself, or a misbehaving minidump generator.
+
+Can be simplified with --brief
 
 #### `--features <FEATURES>`
 Specify at a high-level how much analysis to perform
@@ -261,23 +269,37 @@ Where to write the output to (if unspecified, stdout is used)
 #### `--log-file <LOG_FILE>`
 Where to write logs to (if unspecified, stderr is used)
 
+#### `--no-color`
+Prevent the output/logging from using ANSI coloring
+
+Output written to a file via --log-file, --output-file, or --cyborg is always
+#### `--no-color, so this just forces stdout/stderr printing.`
+
 #### `--pretty`
 Pretty-print --json output
 
 #### `--brief`
-Provide a briefer --human report
+Provide a briefer --human or --dump report
 
-Only provides the top-level summary and a backtrace of the crashing thread.
+For human: Only provides the top-level summary and a backtrace of the crashing thread.
+
+For dump: Omits all memory hexdumps.
+
+#### `--no-interactive`
+Disable all interactive progress feedback
+
+We'll generally try to auto-detect when this should be disabled, but this is here in
+case we mess up and you need it to go away.
 
 #### `--evil-json <EVIL_JSON>`
-**[UNSTABLE]** An input JSON file with the extra information.
+**UNSTABLE** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will
 hopefully be phased out and deprecated in favour of just using custom streams in the
 minidump itself.
 
 #### `--recover-function-args`
-**[UNSTABLE]** Heuristically recover function arguments
+**UNSTABLE** Heuristically recover function arguments
 
 This is an experimental feature, which currently only shows up in --human output.
 
@@ -290,11 +312,11 @@ one resolves.
 The server the base URL points to is expected to conform to the Tecken
 symbol server protocol. For more details, see the Tecken docs:
 
-https://tecken.readthedocs.io/en/latest/
+#### `<https://tecken.readthedocs.io/en/latest/>`
 
 Example symbols-url values:
-* microsoft's symbol-server: https://msdl.microsoft.com/download/symbols/
-* mozilla's symbols-server: https://symbols.mozilla.org/
+* microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
+* mozilla's symbols-server: <https://symbols.mozilla.org/>
 
 #### `--symbols-cache <SYMBOLS_CACHE>`
 A directory in which downloaded symbols can be stored

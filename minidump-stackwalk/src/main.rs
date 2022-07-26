@@ -171,6 +171,13 @@ struct Cli {
     #[clap(long)]
     brief: bool,
 
+    /// Disable all interactive progress feedback
+    ///
+    /// We'll generally try to auto-detect when this should be disabled, but this is here in
+    /// case we mess up and you need it to go away.
+    #[clap(long)]
+    no_interactive: bool,
+
     /// **UNSTABLE** An input JSON file with the extra information.
     ///
     /// This is a gross hack for some legacy side-channel information that mozilla uses.
@@ -365,7 +372,7 @@ async fn main() {
     options.recover_function_args = cli.recover_function_args;
 
     // Register for instractive updates, if we want them
-    let interactive_enabled = !json;
+    let interactive_enabled = !json && !cli.no_interactive && cli.output_file.is_none();
     let mut processor_stats = None;
     if interactive_enabled {
         let mut subscriptions = PendingProcessorStatSubscriptions::default();
