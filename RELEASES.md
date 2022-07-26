@@ -16,6 +16,7 @@ Commit: TODO
 
 * Fixed `code_identifier` on iOS.
 * Stackwalk threads concurrently. Consequently, `SymbolProvider` now needs to perform request coalescing and take care of internal synchronization.
+* minidump-processor's ProcessorOptions now allows you to enable interactive statistics gathering for user interfaces that want immediate feedback 
 
 # Version 0.12.0 (2022-07-14)
 
