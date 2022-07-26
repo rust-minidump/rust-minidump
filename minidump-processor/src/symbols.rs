@@ -158,8 +158,30 @@ pub trait SymbolProvider {
     ///
     /// Keys are implementation dependent.
     /// For example the file name of the module (code_file's file name).
-    fn stats(&self) -> HashMap<String, SymbolStats>;
-    fn pending_stats(&self) -> PendingSymbolStats;
+    ///
+    /// This is only really intended to be queried after processing an
+    /// entire minidump, and may have non-trivial overhead to compute.
+    /// It's als possible we'd want it to also be able to contain stats
+    /// that don't really make sense in intermediate states.
+    ///
+    /// In a world where you might want to have one SymbolSupplier shared
+    /// by multiple instances of `process` running in parallel, it's unclear
+    /// if this is the right abstraction. Perhaps we should have some kind
+    /// of "session" abstraction so you can get stats about each individual
+    /// processing task? Of course all pooling/caching between the tasks
+    /// muddies things too.
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        HashMap::new()
+    }
+
+    /// Collect various pending statistics on the symbols.
+    ///
+    /// This is intended to be queried during processing to give some
+    /// interactive feedback to the user, and so is fine to poll as
+    /// much as you want, whenever you want.
+    fn pending_stats(&self) -> PendingSymbolStats {
+        PendingSymbolStats::default()
+    }
 }
 
 #[derive(Default)]
