@@ -98,7 +98,7 @@ struct PendingProcessorStatsInner {
     total_threads: u64,
     /// The number of frames that have been walked
     num_frames_processed: u64,
-    /// Frames that have been walked
+    /// Frames that have been walked since you last queried this stat
     new_walked_frames: Vec<WalkedFrame>,
     /// The partial ProcessState, before stackwalking
     unwalked_result: Option<ProcessState>,
