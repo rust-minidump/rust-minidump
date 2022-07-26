@@ -36,7 +36,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "circular",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "arbitrary",
  "debugid",
@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "arbitrary",
  "bitflags",
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor-fuzz"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "libfuzzer-sys",

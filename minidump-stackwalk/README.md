@@ -168,27 +168,33 @@ Here is an example stackwalking trace:
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown`
 
-Version: `minidump-stackwalk 0.12.0`
+Version: `minidump-stackwalk 0.13.0`
 
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
 ### USAGE
+
 ```
 minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
 ```
 
 ### ARGS
+
 #### `<MINIDUMP>`
+
 Path to the minidump file to analyze
 
 #### `<SYMBOLS_PATH_LEGACY>...`
+
 Path to a symbol file. (Passed positionally)
 
 If multiple symbols-path-legacy values are provided, all symbol files will be merged
 into minidump-stackwalk's symbol database.
 
 ### OPTIONS
+
 #### `--human`
+
 Emit a human-readable report (the default)
 
 The human-readable report does not have a specified format, and may not have as many
@@ -198,14 +204,17 @@ rust-minidump itself.
 Can be simplified with --brief
 
 #### `--json`
+
 Emit a machine-readable JSON report
 
 The schema for this output is officially documented here:
+
 #### `<https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>`
 
 Can be pretty-printed with --pretty
 
 #### `--cyborg <CYBORG>`
+
 Combine --human and --json
 
 Because this creates two output streams, you must specify a path to write the --json
@@ -213,6 +222,7 @@ output to. The --human output will be the 'primary' output and default to stdout
 can be configured with --output-file as normal.
 
 #### `--dump`
+
 Dump the 'raw' contents of the minidump
 
 This is an implementation of the functionality of the old minidump_dump tool. It
@@ -223,15 +233,16 @@ itself, or a misbehaving minidump generator.
 Can be simplified with --brief
 
 #### `--features <FEATURES>`
+
 Specify at a high-level how much analysis to perform
 
 This flag provides a way to more blindly opt into Extra Analysis without having
 to know about the specific features of minidump-stackwalk. This is equivalent to
 ProcessorOptions in minidump-processor. The current supported values are:
 
-* stable-basic (default): give me solid detailed analysis that most people would want
-* stable-all: turn on extra detailed analysis.
-* unstable-all: turn on the weird and experimental stuff.
+- stable-basic (default): give me solid detailed analysis that most people would want
+- stable-all: turn on extra detailed analysis.
+- unstable-all: turn on the weird and experimental stuff.
 
 stable-all enables: nothing (currently identical to stable-basic)
 
@@ -242,7 +253,7 @@ to introduce new features which may be experimental or expensive. To balance the
 concerns, new features will usually be disabled by default and given a specific flag,
 but still more easily 'discovered' by anyone who uses this flag.
 
-Anyone using minidump-stackwalk who is *really* worried about the output being stable
+Anyone using minidump-stackwalk who is _really_ worried about the output being stable
 should probably not use this flag in production, but its use is recommended for casual
 human usage or for checking "what's new".
 
@@ -251,9 +262,10 @@ additional input (such as `--evil-json`) cannot be affected by this, and must st
 manually 'discovered'.
 
 \[default: stable-basic]  
-\[possible values: stable-basic, stable-all, unstable-all]  
+\[possible values: stable-basic, stable-all, unstable-all]
 
 #### `--verbose <VERBOSE>`
+
 How verbose logging should be (log level)
 
 The unwinder has been heavily instrumented with `trace` logging, so if you want to debug
@@ -261,24 +273,30 @@ why an unwind happened the way it did, --verbose=trace is very useful (all unwin
 logging will be prefixed with `unwind:`).
 
 \[default: error]  
-\[possible values: off, error, warn, info, debug, trace]  
+\[possible values: off, error, warn, info, debug, trace]
 
 #### `--output-file <OUTPUT_FILE>`
+
 Where to write the output to (if unspecified, stdout is used)
 
 #### `--log-file <LOG_FILE>`
+
 Where to write logs to (if unspecified, stderr is used)
 
 #### `--no-color`
+
 Prevent the output/logging from using ANSI coloring
 
 Output written to a file via --log-file, --output-file, or --cyborg is always
+
 #### `--no-color, so this just forces stdout/stderr printing.`
 
 #### `--pretty`
+
 Pretty-print --json output
 
 #### `--brief`
+
 Provide a briefer --human or --dump report
 
 For human: Only provides the top-level summary and a backtrace of the crashing thread.
@@ -286,12 +304,14 @@ For human: Only provides the top-level summary and a backtrace of the crashing t
 For dump: Omits all memory hexdumps.
 
 #### `--no-interactive`
+
 Disable all interactive progress feedback
 
 We'll generally try to auto-detect when this should be disabled, but this is here in
 case we mess up and you need it to go away.
 
 #### `--evil-json <EVIL_JSON>`
+
 **UNSTABLE** An input JSON file with the extra information.
 
 This is a gross hack for some legacy side-channel information that mozilla uses. It will
@@ -299,11 +319,13 @@ hopefully be phased out and deprecated in favour of just using custom streams in
 minidump itself.
 
 #### `--recover-function-args`
+
 **UNSTABLE** Heuristically recover function arguments
 
 This is an experimental feature, which currently only shows up in --human output.
 
 #### `--symbols-url <SYMBOLS_URL>`
+
 base URL from which URLs to symbol files can be constructed
 
 If multiple symbols-url values are provided, they will each be tried in order until
@@ -315,10 +337,12 @@ symbol server protocol. For more details, see the Tecken docs:
 #### `<https://tecken.readthedocs.io/en/latest/>`
 
 Example symbols-url values:
-* microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
-* mozilla's symbols-server: <https://symbols.mozilla.org/>
+
+- microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
+- mozilla's symbols-server: <https://symbols.mozilla.org/>
 
 #### `--symbols-cache <SYMBOLS_CACHE>`
+
 A directory in which downloaded symbols can be stored
 
 Symbol files can be very large, so we recommend placing cached files in your system's
@@ -331,6 +355,7 @@ anything to you, don't worry about it, you're probably not doing something that 
 afoul of it).
 
 #### `--symbols-tmp <SYMBOLS_TMP>`
+
 A directory to use as temp space for downloading symbols.
 
 A temp dir is necessary to allow for multiple rust-minidump instances to share a cache
@@ -346,21 +371,24 @@ anything to you, don't worry about it, you're probably not doing something that 
 afoul of it).
 
 #### `--symbols-download-timeout-secs <SYMBOLS_DOWNLOAD_TIMEOUT_SECS>`
+
 The maximum amount of time (in seconds) a symbol file download is allowed to take
 
 This is necessary to enforce forward progress on misbehaving http responses.
 
-\[default: 1000]  
+\[default: 1000]
 
 #### `--symbols-path <SYMBOLS_PATH>`
+
 Path to a symbol file.
 
 If multiple symbols-path values are provided, all symbol files will be merged into
 minidump-stackwalk's symbol database.
 
 #### `-h, --help`
+
 Print help information
 
 #### `-V, --version`
-Print version information
 
+Print version information

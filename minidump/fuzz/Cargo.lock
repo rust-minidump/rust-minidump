@@ -159,7 +159,7 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "debugid",
  "encoding",
@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bitflags",
  "debugid",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "minidump-fuzz"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "libfuzzer-sys",
  "minidump",
