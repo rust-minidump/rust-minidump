@@ -1028,7 +1028,7 @@ impl Module for MinidumpModule {
 
     fn code_identifier(&self) -> Option<CodeId> {
         match self.codeview_info {
-            Some(CodeView::Pdb70(ref raw)) if self.os == Os::MacOs => {
+            Some(CodeView::Pdb70(ref raw)) if matches!(self.os, Os::MacOs | Os::Ios) => {
                 // MacOs uses PDB70 instead of its own dedicated format.
                 // See the following issue for a potential MacOs-specific format:
                 // https://github.com/rust-minidump/rust-minidump/issues/455
