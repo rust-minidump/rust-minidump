@@ -39,4 +39,4 @@ tracing = { version = "0.1.34", features = ["log"] }
 doc-comment = "0.3.3"
 minidump-synth = { path = "../minidump-synth" }
 test-assembler = "0.1.6"
-tokio = { version = "1.12.0", features = ["full"] }
+tokio = { version = "1.20.1", features = ["full"] }
