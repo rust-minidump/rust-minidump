@@ -2,7 +2,7 @@
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
 expression: stdout
 ---
-minidump-stackwalk 0.12.0
+minidump-stackwalk 0.13.0
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
 USAGE:
