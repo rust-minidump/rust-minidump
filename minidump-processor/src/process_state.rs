@@ -442,6 +442,15 @@ impl CallStack {
         }
         let mut frame_count = 0;
         for (_, frame) in self.frames.iter().enumerate() {
+            // First print out inlines
+            for inline in frame.inlines.iter().rev() {
+                let frame_idx = frame_count;
+                frame_count += 1;
+                write!(f, "{:2}  ", frame_idx)?;
+                writeln!(f, "{}", inline.function_name)?;
+                writeln!(f, "    Found by inlining")?;
+            }
+
             let frame_idx = frame_count;
             frame_count += 1;
             let addr = frame.instruction;
@@ -531,12 +540,6 @@ impl CallStack {
                 // Add an extra new-line between frames when there's function arguments to make
                 // it more readable.
                 writeln!(f)?;
-            }
-            for inline in frame.inlines.iter().rev() {
-                let frame_idx = frame_count;
-                frame_count += 1;
-                write!(f, "{:2}  ", frame_idx)?;
-                writeln!(f, "{}", inline.function_name)?;
             }
         }
         Ok(())
