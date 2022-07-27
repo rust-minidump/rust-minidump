@@ -88,7 +88,7 @@ impl Function {
     /// Returns `(file_id, line, address, inline_origin)` of the line or inline record that
     /// covers the given address at the outermost level (i.e. not inside any
     /// inlined calls).
-    pub fn get_outermost_source_location(&self, addr: u64) -> Option<(u32, u32, u64, Option<u32>)> {
+    pub fn get_outermost_sourceloc(&self, addr: u64) -> Option<(u32, u32, u64, Option<u32>)> {
         if let Some((call_file, call_line, address, origin)) = self.get_inlinee_at_depth(0, addr) {
             return Some((call_file, call_line, address, Some(origin)));
         }

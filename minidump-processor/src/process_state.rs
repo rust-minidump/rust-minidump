@@ -64,7 +64,7 @@ pub struct FunctionArg {
 }
 
 /// A stack frame in an inlined function.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InlineFrame {
     /// The name of the function
     pub function_name: String,
@@ -440,9 +440,12 @@ impl CallStack {
         if self.frames.is_empty() {
             writeln!(f, "<no frames>")?;
         }
-        for (i, frame) in self.frames.iter().enumerate() {
+        let mut frame_count = 0;
+        for (_, frame) in self.frames.iter().enumerate() {
+            let frame_idx = frame_count;
+            frame_count += 1;
             let addr = frame.instruction;
-            write!(f, "{:2}  ", i)?;
+            write!(f, "{:2}  ", frame_idx)?;
             if let Some(ref module) = frame.module {
                 write!(f, "{}", basename(&module.code_file()))?;
                 if let (&Some(ref function), &Some(ref function_base)) =
@@ -528,6 +531,12 @@ impl CallStack {
                 // Add an extra new-line between frames when there's function arguments to make
                 // it more readable.
                 writeln!(f)?;
+            }
+            for inline in frame.inlines.iter().rev() {
+                let frame_idx = frame_count;
+                frame_count += 1;
+                write!(f, "{:2}  ", frame_idx)?;
+                writeln!(f, "{}", inline.function_name)?;
             }
         }
         Ok(())

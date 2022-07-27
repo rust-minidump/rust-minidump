@@ -998,12 +998,12 @@ INLINE 1 17 4 1 1010 10
     // code in file 15, so all source locations at this level should be
     // in that file.
     assert_eq!(f.get_outermost_sourceloc(0x0fff), None);
-    assert_eq!(f.get_outermost_sourceloc(0x1000), Some((15, 60, 0x1000)));
-    assert_eq!(f.get_outermost_sourceloc(0x100f), Some((15, 60, 0x1000)));
-    assert_eq!(f.get_outermost_sourceloc(0x1010), Some((15, 60, 0x1000)));
-    assert_eq!(f.get_outermost_sourceloc(0x101f), Some((15, 60, 0x1000)));
-    assert_eq!(f.get_outermost_sourceloc(0x1020), Some((15, 62, 0x1020)));
-    assert_eq!(f.get_outermost_sourceloc(0x102f), Some((15, 62, 0x1020)));
+    assert_eq!(f.get_outermost_sourceloc(0x1000), Some((15, 60, 0x1000, Some(2))));
+    assert_eq!(f.get_outermost_sourceloc(0x100f), Some((15, 60, 0x1000,  Some(2))));
+    assert_eq!(f.get_outermost_sourceloc(0x1010), Some((15, 60, 0x1000,  Some(2))));
+    assert_eq!(f.get_outermost_sourceloc(0x101f), Some((15, 60, 0x1000,  Some(2))));
+    assert_eq!(f.get_outermost_sourceloc(0x1020), Some((15, 62, 0x1020, None)));
+    assert_eq!(f.get_outermost_sourceloc(0x102f), Some((15, 62, 0x1020,  None)));
     assert_eq!(f.get_outermost_sourceloc(0x1030), None);
 
     // Check the first level of inlining. There is only one inlined call
