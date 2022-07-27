@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 776
 expression: json_out
 ---
 {
@@ -35,6 +34,7 @@ expression: json_out
           "frame": 0,
           "function": null,
           "function_offset": null,
+          "inlines": null,
           "line": null,
           "missing_symbols": true,
           "module": null,
