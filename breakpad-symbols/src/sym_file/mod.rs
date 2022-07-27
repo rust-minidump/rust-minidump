@@ -392,7 +392,7 @@ impl SymbolFile {
             //       ]
             //   )
             if let Some((file_id, line, address, next_inline_origin)) =
-                func.get_outermost_source_location(addr)
+                func.get_outermost_sourceloc(addr)
             {
                 if let Some(file) = self.files.get(&file_id) {
                     frame.set_source_file(file, line, address + module.base_address());
@@ -419,7 +419,7 @@ impl SymbolFile {
                         }
                     }
                     // We've run out of inline calls but we still have to output the final frame.
-                    let (file, line) = match func.get_innermost_source_location(addr) {
+                    let (file, line) = match func.get_innermost_sourceloc(addr) {
                         Some((file_id, line, _)) => (
                             self.files.get(&file_id).map(Deref::deref),
                             if line != 0 { Some(line) } else { None },
