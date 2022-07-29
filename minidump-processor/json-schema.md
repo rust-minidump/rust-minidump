@@ -219,6 +219,21 @@ anyway.
             | "frame_pointer"  // Used frame pointers to unwind (often reliable)
             | "scan",          // Searched the callee's stack memory (SKETCHY!)
 
+          // The values the general purpose registers contained.
+          //
+          // In the default configuration, this field will only show up in
+          // frame 0 of the crashing_thread copy of this backtrace. In the
+          // future, this may be more configurable and appear in different
+          // frames.
+          //
+          // The contents of this <object> are platform-specific,
+          // but it's always a mapping from register names to <hexstring>s.
+          //
+          // e.g. "rip": "0x000000010bbc852e"
+          "registers": {
+            "some_register_name": <hexstring>,
+          }
+
           // The address (instruction) this frame is executing.
           //
           // For the top first frame (0), this is precise (e.g. it's the value of $rip),
@@ -321,17 +336,6 @@ anyway.
     // Index into the `threads` array that this thread has.
     "threads_index": <u32>,
 
-    // The values the general purpose registers contained.
-    //
-    // The contents of this <object> are platform-specific,
-    // but it's always a mapping from register names to <hexstring>s.
-    //
-    // e.g. "rip": "0x000000010bbc852e"
-    "registers": {
-      "some_register_name": <hexstring>,
-    }
-
-
     // The rest of the fields are the same as they are in `threads` (redundant).
 
     "thread_name": <string>,
@@ -341,6 +345,9 @@ anyway.
       {
         "frame": <u32>,
         "trust": "context" | "cfi" | "frame_pointer" | "scan",
+        "registers": {
+          "some_register_name": <hexstring>,
+        },
         "offset": <hexstring>
         "module": <string>,
         "module_offset": <hexstring>,
