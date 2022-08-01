@@ -292,6 +292,38 @@ anyway.
 
           // The following fields all require symbol files to populate:
 
+          // Pseudo-frames for functions that were inlined into this one.
+          // 
+          // We prefer emitting these as "subframes" because these frames
+          // don't exist at runtime in the stack, and are only known because
+          // compilers shove this information in debuginfo. As a result,
+          // most of the info for these frames is identical to the parent
+          // "real" frame or don't make sense at all. For instance they
+          // have the same "registers", "offset", "module", and "module_offset".
+          // 
+          // Inlined frames are in the same ordering that normal frames are,
+          // and logically come "before" the real frame in the backtrace.
+          // So if displaying the frames you should do roughly:
+          // 
+          // ```
+          // for frame in thread.frames {
+          //     for inline in frame.inlines {
+          //         print_inline(frame, inline)
+          //     }
+          //     print_frame(frame)
+          // }
+          // ```
+          // 
+          // (But remember the golden rule: all fields are optional, check for null!)
+          "inlines": [
+            {
+                // All of these have the same meaning/format as the ones in "real" frames
+                "function": <string>,
+                "file": <string>,
+                "line": <u32>,
+            }
+          ]
+
 
           // The name of the function being executed.
           //
@@ -613,3 +645,8 @@ is fairly limited, so we can't validate them against certificates or use
 them for symbolication. All we can tell you is that a module with the given
 name was at a particular location. Whether it was a fake DLL from a hacker,
 who could say?
+
+# 0.14.0 (not yet released)
+
+* Fixed some typos in the `registers` schema, the actual implementation is unchanged
+* `threads.N.frames.N.inlines` added for inlined frames!
