@@ -63,7 +63,9 @@ pub struct FunctionArg {
     pub value: Option<u64>,
 }
 
-/// A stack frame in an inlined function.
+/// A stack frame for an inlined function.
+///
+/// See [`StackFrame::inlines`][] for more details.
 #[derive(Debug, Clone)]
 pub struct InlineFrame {
     /// The name of the function
@@ -169,6 +171,27 @@ pub struct StackFrame {
     pub source_line_base: Option<u64>,
 
     /// Any inline frames that cover the frame address, ordered from outside to inside.
+    /// The frames are "fake" in that they don't actually exist at runtime, and are only
+    /// known because the compiler added debuginfo saying they exist.
+    ///
+    /// As a result, many properties of these frames either don't exist or are
+    /// in some sense "inherited" from the parent real frame. For instance they
+    /// have the same instruction/module by definiton.
+    ///
+    /// If you were to print frames you would want to do something like:
+    ///
+    /// ```ignore
+    /// let mut frame_num = 0;
+    /// for frame in &thread.frames {
+    ///     // !!! Inlines come first, and need to be reversed
+    ///     for inline in frame.inlines.iter().rev() {
+    ///         print_inline(frame_num, frame, inline);
+    ///         frame_num += 1;
+    ///     }
+    ///     print_frame(frame_num, frame);
+    ///     frame_num += 1;
+    /// }
+    /// ```
     pub inlines: Vec<InlineFrame>,
 
     /// Amount of trust the stack walker has in the instruction pointer

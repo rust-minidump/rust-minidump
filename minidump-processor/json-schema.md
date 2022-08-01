@@ -306,11 +306,14 @@ anyway.
           // So if displaying the frames you should do roughly:
           // 
           // ```
-          // for frame in thread.frames {
-          //     for inline in frame.inlines {
-          //         print_inline(frame, inline)
+          // let mut frame_num = 0;
+          // for frame in &thread.frames {
+          //     for inline in &frame.inlines {
+          //         print_inline(frame_num, frame, inline);
+          //         frame_num += 1;
           //     }
-          //     print_frame(frame)
+          //     print_frame(frame_num, frame);
+          //     frame_num += 1;
           // }
           // ```
           // 
