@@ -1,0 +1,2666 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: stdout
+---
+{
+  "crash_info": {
+    "address": "0xffffffff80000042",
+    "assertion": null,
+    "crashing_thread": 0,
+    "type": "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS"
+  },
+  "crashing_thread": {
+    "frame_count": 8,
+    "frames": [
+      {
+        "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/sadness-generator/src/lib.rs",
+        "frame": 0,
+        "function": "sadness_generator::raise_segfault",
+        "function_offset": "0x0000000000000004",
+        "inlines": [
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ptr/mod.rs",
+            "function": "core::ptr::write_volatile::<u8>",
+            "line": 1574
+          }
+        ],
+        "line": 133,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x0000000000014cd4",
+        "offset": "0x0000000102a68cd4",
+        "registers": {
+          "r10": "0x0000700008e8b000",
+          "r11": "0x0000000000000246",
+          "r12": "0x0000000000000003",
+          "r13": "0x00000000000000ff",
+          "r14": "0x0000000000001303",
+          "r15": "0x0000000200000000",
+          "r8": "0x00000000090008ff",
+          "r9": "0x0000000000000003",
+          "rax": "0x0000000102a58239",
+          "rbp": "0x00007ffeed1aa9b0",
+          "rbx": "0x0000000000000004",
+          "rcx": "0x0000000102a583cc",
+          "rdi": "0x00007fa21bd042c0",
+          "rdx": "0x0000700008e8b000",
+          "rip": "0x0000000102a68cd4",
+          "rsi": "0x00007fa21bd04d60",
+          "rsp": "0x00007ffeed1aa9b0"
+        },
+        "trust": "context",
+        "unloaded_modules": null
+      },
+      {
+        "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+        "frame": 1,
+        "function": "crash_client::main",
+        "function_offset": "0x0000000000000e3d",
+        "inlines": [
+          {
+            "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+            "function": "crash_client::real_main::{closure#1}",
+            "line": 88
+          },
+          {
+            "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+            "function": "crash_client::real_main",
+            "line": 132
+          }
+        ],
+        "line": 142,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x000000000000423d",
+        "offset": "0x0000000102a5823d",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+        "frame": 2,
+        "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<fn(), ()>",
+        "function_offset": "0x0000000000000005",
+        "inlines": [
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+            "function": "<fn() as core::ops::function::FnOnce<()>>::call_once",
+            "line": 248
+          }
+        ],
+        "line": 122,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x0000000000006045",
+        "offset": "0x0000000102a5a045",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+        "frame": 3,
+        "function": "std::rt::lang_start::<()>::{closure#0}",
+        "function_offset": "0x000000000000000b",
+        "inlines": null,
+        "line": 145,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x0000000000005c0b",
+        "offset": "0x0000000102a59c0b",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+        "frame": 4,
+        "function": "std::rt::lang_start_internal",
+        "function_offset": "0x00000000000003cd",
+        "inlines": [
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+            "function": "core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once",
+            "line": 280
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+            "function": "std::panicking::try::do_call",
+            "line": 492
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+            "function": "std::panicking::try",
+            "line": 456
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+            "function": "std::panic::catch_unwind",
+            "line": 137
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+            "function": "std::rt::lang_start_internal::{{closure}}",
+            "line": 128
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+            "function": "std::panicking::try::do_call",
+            "line": 492
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+            "function": "std::panicking::try",
+            "line": 456
+          },
+          {
+            "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+            "function": "std::panic::catch_unwind",
+            "line": 137
+          }
+        ],
+        "line": 128,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x00000000000833ed",
+        "offset": "0x0000000102ad73ed",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": null,
+        "frame": 5,
+        "function": "main",
+        "function_offset": "0x0000000000000028",
+        "inlines": null,
+        "line": null,
+        "missing_symbols": false,
+        "module": "crash-client",
+        "module_offset": "0x0000000000004418",
+        "offset": "0x0000000102a58418",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": null,
+        "frame": 6,
+        "function": null,
+        "function_offset": null,
+        "inlines": null,
+        "line": null,
+        "missing_symbols": true,
+        "module": "libdyld.dylib",
+        "module_offset": "0x0000000000015f3c",
+        "offset": "0x00007fff20329f3c",
+        "trust": "cfi",
+        "unloaded_modules": null
+      },
+      {
+        "file": null,
+        "frame": 7,
+        "function": null,
+        "function_offset": null,
+        "inlines": null,
+        "line": null,
+        "missing_symbols": true,
+        "module": "libdyld.dylib",
+        "module_offset": "0x0000000000015f3c",
+        "offset": "0x00007fff20329f3c",
+        "trust": "scan",
+        "unloaded_modules": null
+      }
+    ],
+    "last_error_value": null,
+    "thread_name": "main",
+    "threads_index": 0
+  },
+  "lsb_release": null,
+  "mac_crash_info": null,
+  "main_module": 0,
+  "modules": [
+    {
+      "base_addr": "0x0000000102a54000",
+      "cert_subject": null,
+      "code_id": "509c0610949836f7b70bd88bcf03e540",
+      "corrupt_symbols": false,
+      "debug_file": "crash-client",
+      "debug_id": "509C0610949836F7B70BD88BCF03E5400",
+      "end_addr": "0x0000000102b18000",
+      "filename": "crash-client",
+      "loaded_symbols": true,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": null
+    },
+    {
+      "base_addr": "0x00007fff20046000",
+      "cert_subject": null,
+      "code_id": "4df6d8f5d9c23a968de45e99d6b73dc8",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_blocks.dylib",
+      "debug_id": "4DF6D8F5D9C23A968DE45E99D6B73DC80",
+      "end_addr": "0x00007fff20048000",
+      "filename": "libsystem_blocks.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.79.0.0"
+    },
+    {
+      "base_addr": "0x00007fff20048000",
+      "cert_subject": null,
+      "code_id": "0397fc9fbd1131fc882e9edaa1e5ca65",
+      "corrupt_symbols": false,
+      "debug_file": "libxpc.dylib",
+      "debug_id": "0397FC9FBD1131FC882E9EDAA1E5CA650",
+      "end_addr": "0x00007fff2007e000",
+      "filename": "libxpc.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.2038.120.1"
+    },
+    {
+      "base_addr": "0x00007fff2007e000",
+      "cert_subject": null,
+      "code_id": "0a24eb90539636b0a7e6e9288702856d",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_trace.dylib",
+      "debug_id": "0A24EB90539636B0A7E6E9288702856D0",
+      "end_addr": "0x00007fff20096000",
+      "filename": "libsystem_trace.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1277.120.1"
+    },
+    {
+      "base_addr": "0x00007fff20096000",
+      "cert_subject": null,
+      "code_id": "57e7471e39603398891820df446ea99b",
+      "corrupt_symbols": false,
+      "debug_file": "libcorecrypto.dylib",
+      "debug_id": "57E7471E39603398891820DF446EA99B0",
+      "end_addr": "0x00007fff20134000",
+      "filename": "libcorecrypto.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1000.140.4"
+    },
+    {
+      "base_addr": "0x00007fff20134000",
+      "cert_subject": null,
+      "code_id": "10c22fd0fc7b3325852efec4e88d2bc5",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_malloc.dylib",
+      "debug_id": "10C22FD0FC7B3325852EFEC4E88D2BC50",
+      "end_addr": "0x00007fff20161000",
+      "filename": "libsystem_malloc.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.317.140.5"
+    },
+    {
+      "base_addr": "0x00007fff20161000",
+      "cert_subject": null,
+      "code_id": "ba7ad614f2c23e89904343dd548ae5b1",
+      "corrupt_symbols": false,
+      "debug_file": "libdispatch.dylib",
+      "debug_id": "BA7AD614F2C23E89904343DD548AE5B10",
+      "end_addr": "0x00007fff201a6000",
+      "filename": "libdispatch.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1271.120.2"
+    },
+    {
+      "base_addr": "0x00007fff201a6000",
+      "cert_subject": null,
+      "code_id": "a598da89ff7137bfb95426277541d859",
+      "corrupt_symbols": false,
+      "debug_file": "libobjc.A.dylib",
+      "debug_id": "A598DA89FF7137BFB95426277541D8590",
+      "end_addr": "0x00007fff201e0000",
+      "filename": "libobjc.A.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.228.0.0"
+    },
+    {
+      "base_addr": "0x00007fff201e0000",
+      "cert_subject": null,
+      "code_id": "6eb339268e223000b2f1c6182b8cbd8f",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_featureflags.dylib",
+      "debug_id": "6EB339268E223000B2F1C6182B8CBD8F0",
+      "end_addr": "0x00007fff201e3000",
+      "filename": "libsystem_featureflags.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.28.60.1"
+    },
+    {
+      "base_addr": "0x00007fff201e3000",
+      "cert_subject": null,
+      "code_id": "8447a4b807513ef1aa9b042e40efa07d",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_c.dylib",
+      "debug_id": "8447A4B807513EF1AA9B042E40EFA07D0",
+      "end_addr": "0x00007fff2026c000",
+      "filename": "libsystem_c.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1439.141.1"
+    },
+    {
+      "base_addr": "0x00007fff2026c000",
+      "cert_subject": null,
+      "code_id": "81674adb670f3b19af5df3f66cb93d44",
+      "corrupt_symbols": false,
+      "debug_file": "libc++.1.dylib",
+      "debug_id": "81674ADB670F3B19AF5DF3F66CB93D440",
+      "end_addr": "0x00007fff202c2000",
+      "filename": "libc++.1.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.905.6.0"
+    },
+    {
+      "base_addr": "0x00007fff202c2000",
+      "cert_subject": null,
+      "code_id": "78ce7863e2243d0b98f1e5e3e382322d",
+      "corrupt_symbols": false,
+      "debug_file": "libc++abi.dylib",
+      "debug_id": "78CE7863E2243D0B98F1E5E3E382322D0",
+      "end_addr": "0x00007fff202d8000",
+      "filename": "libc++abi.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.905.6.0"
+    },
+    {
+      "base_addr": "0x00007fff202d8000",
+      "cert_subject": null,
+      "code_id": "115fb50655403f7090102ee4de8aa1d8",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_kernel.dylib",
+      "debug_id": "115FB50655403F7090102EE4DE8AA1D80",
+      "end_addr": "0x00007fff20308000",
+      "filename": "libsystem_kernel.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": true,
+      "symbol_url": null,
+      "version": "0.7195.141.29"
+    },
+    {
+      "base_addr": "0x00007fff20308000",
+      "cert_subject": null,
+      "code_id": "49670aec4d5d3383906c23f568351fcb",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_pthread.dylib",
+      "debug_id": "49670AEC4D5D3383906C23F568351FCB0",
+      "end_addr": "0x00007fff20314000",
+      "filename": "libsystem_pthread.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": true,
+      "symbol_url": null,
+      "version": "0.454.120.2"
+    },
+    {
+      "base_addr": "0x00007fff20314000",
+      "cert_subject": null,
+      "code_id": "5fbd0e1aacce36dbb11c622f26c85132",
+      "corrupt_symbols": false,
+      "debug_file": "libdyld.dylib",
+      "debug_id": "5FBD0E1AACCE36DBB11C622F26C851320",
+      "end_addr": "0x00007fff20350000",
+      "filename": "libdyld.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": true,
+      "symbol_url": null,
+      "version": "0.852.2.0"
+    },
+    {
+      "base_addr": "0x00007fff20350000",
+      "cert_subject": null,
+      "code_id": "a85d12b6621334ee84d88e993c19e330",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_platform.dylib",
+      "debug_id": "A85D12B6621334EE84D88E993C19E3300",
+      "end_addr": "0x00007fff2035a000",
+      "filename": "libsystem_platform.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.254.80.2"
+    },
+    {
+      "base_addr": "0x00007fff2035a000",
+      "cert_subject": null,
+      "code_id": "e757523e58823ceda3efe5a574fbd1c2",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_info.dylib",
+      "debug_id": "E757523E58823CEDA3EFE5A574FBD1C20",
+      "end_addr": "0x00007fff20386000",
+      "filename": "libsystem_info.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff22756000",
+      "cert_subject": null,
+      "code_id": "29f82abee1a03bc2b91eadc010cf23fa",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_darwin.dylib",
+      "debug_id": "29F82ABEE1A03BC2B91EADC010CF23FA0",
+      "end_addr": "0x00007fff22760000",
+      "filename": "libsystem_darwin.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff22b75000",
+      "cert_subject": null,
+      "code_id": "608b5a07d31a3bec86bfc2e498c085af",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_notify.dylib",
+      "debug_id": "608B5A07D31A3BEC86BFC2E498C085AF0",
+      "end_addr": "0x00007fff22b81000",
+      "filename": "libsystem_notify.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.279.40.4"
+    },
+    {
+      "base_addr": "0x00007fff24b0d000",
+      "cert_subject": null,
+      "code_id": "022be26cc0583cc78e0b348b3d3b639c",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_networkextension.dylib",
+      "debug_id": "022BE26CC0583CC78E0B348B3D3B639C0",
+      "end_addr": "0x00007fff24b1c000",
+      "filename": "libsystem_networkextension.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff24b7a000",
+      "cert_subject": null,
+      "code_id": "a514701734883b18a11bc19697c110fc",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_asl.dylib",
+      "debug_id": "A514701734883B18A11BC19697C110FC0",
+      "end_addr": "0x00007fff24b91000",
+      "filename": "libsystem_asl.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.385.0.2"
+    },
+    {
+      "base_addr": "0x00007fff26258000",
+      "cert_subject": null,
+      "code_id": "ea6435e78f85315b8aedc20a07de7f96",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_symptoms.dylib",
+      "debug_id": "EA6435E78F85315B8AEDC20A07DE7F960",
+      "end_addr": "0x00007fff26260000",
+      "filename": "libsystem_symptoms.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff28267000",
+      "cert_subject": null,
+      "code_id": "e0a895716d3e31849f39c6094c87b92b",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_containermanager.dylib",
+      "debug_id": "E0A895716D3E31849F39C6094C87B92B0",
+      "end_addr": "0x00007fff28278000",
+      "filename": "libsystem_containermanager.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff28f7b000",
+      "cert_subject": null,
+      "code_id": "89e70992616f3dd3943067025f759a1b",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_configuration.dylib",
+      "debug_id": "89E70992616F3DD3943067025F759A1B0",
+      "end_addr": "0x00007fff28f7f000",
+      "filename": "libsystem_configuration.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1109.140.1"
+    },
+    {
+      "base_addr": "0x00007fff28f7f000",
+      "cert_subject": null,
+      "code_id": "6c99b070e74f30658da0d7214da85e23",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_sandbox.dylib",
+      "debug_id": "6C99B070E74F30658DA0D7214DA85E230",
+      "end_addr": "0x00007fff28f84000",
+      "filename": "libsystem_sandbox.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1441.141.7"
+    },
+    {
+      "base_addr": "0x00007fff29c75000",
+      "cert_subject": null,
+      "code_id": "1263ffea972239faa097d28b4f7fde04",
+      "corrupt_symbols": false,
+      "debug_file": "libquarantine.dylib",
+      "debug_id": "1263FFEA972239FAA097D28B4F7FDE040",
+      "end_addr": "0x00007fff29c78000",
+      "filename": "libquarantine.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.119.40.4"
+    },
+    {
+      "base_addr": "0x00007fff2a220000",
+      "cert_subject": null,
+      "code_id": "7ae405fc6a4434a086ad6bd80b0050bb",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_coreservices.dylib",
+      "debug_id": "7AE405FC6A4434A086AD6BD80B0050BB0",
+      "end_addr": "0x00007fff2a225000",
+      "filename": "libsystem_coreservices.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.127.1.0"
+    },
+    {
+      "base_addr": "0x00007fff2a434000",
+      "cert_subject": null,
+      "code_id": "ea0354a386183d76a760e550ac60ce95",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_m.dylib",
+      "debug_id": "EA0354A386183D76A760E550AC60CE950",
+      "end_addr": "0x00007fff2a47c000",
+      "filename": "libsystem_m.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.3186.100.3"
+    },
+    {
+      "base_addr": "0x00007fff2a47c000",
+      "cert_subject": null,
+      "code_id": "e389024b7cac32a5bf12df20c8a3b050",
+      "corrupt_symbols": false,
+      "debug_file": "libcharset.1.dylib",
+      "debug_id": "E389024B7CAC32A5BF12DF20C8A3B0500",
+      "end_addr": "0x00007fff2a47d000",
+      "filename": "libcharset.1.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.2.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a47d000",
+      "cert_subject": null,
+      "code_id": "1fce2be34f6f3eaa9bc5a9892a45cf0d",
+      "corrupt_symbols": false,
+      "debug_file": "libmacho.dylib",
+      "debug_id": "1FCE2BE34F6F3EAA9BC5A9892A45CF0D0",
+      "end_addr": "0x00007fff2a483000",
+      "filename": "libmacho.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.980.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a49f000",
+      "cert_subject": null,
+      "code_id": "7e242f291cb630ef8c9ac768a90fdba0",
+      "corrupt_symbols": false,
+      "debug_file": "libcommonCrypto.dylib",
+      "debug_id": "7E242F291CB630EF8C9AC768A90FDBA00",
+      "end_addr": "0x00007fff2a4ab000",
+      "filename": "libcommonCrypto.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.60178.120.3"
+    },
+    {
+      "base_addr": "0x00007fff2a4ab000",
+      "cert_subject": null,
+      "code_id": "a5b040a8847f36eeb13d5dd1f5cd5bed",
+      "corrupt_symbols": false,
+      "debug_file": "libunwind.dylib",
+      "debug_id": "A5B040A8847F36EEB13D5DD1F5CD5BED0",
+      "end_addr": "0x00007fff2a4b6000",
+      "filename": "libunwind.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.201.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4b6000",
+      "cert_subject": null,
+      "code_id": "26d0862269f532db80d29b4651a9f0cc",
+      "corrupt_symbols": false,
+      "debug_file": "liboah.dylib",
+      "debug_id": "26D0862269F532DB80D29B4651A9F0CC0",
+      "end_addr": "0x00007fff2a4be000",
+      "filename": "liboah.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4be000",
+      "cert_subject": null,
+      "code_id": "8c7837850f5f3dc5b815b29ceba75737",
+      "corrupt_symbols": false,
+      "debug_file": "libcopyfile.dylib",
+      "debug_id": "8C7837850F5F3DC5B815B29CEBA757370",
+      "end_addr": "0x00007fff2a4c9000",
+      "filename": "libcopyfile.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4c9000",
+      "cert_subject": null,
+      "code_id": "1fdc92d18a1730af8e724f0517aea157",
+      "corrupt_symbols": false,
+      "debug_file": "libcompiler_rt.dylib",
+      "debug_id": "1FDC92D18A1730AF8E724F0517AEA1570",
+      "end_addr": "0x00007fff2a4d1000",
+      "filename": "libcompiler_rt.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.102.2.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4d1000",
+      "cert_subject": null,
+      "code_id": "11d5775aad4c35edbc05616ab67acbbe",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_collections.dylib",
+      "debug_id": "11D5775AAD4C35EDBC05616AB67ACBBE0",
+      "end_addr": "0x00007fff2a4d4000",
+      "filename": "libsystem_collections.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1439.141.1"
+    },
+    {
+      "base_addr": "0x00007fff2a4d4000",
+      "cert_subject": null,
+      "code_id": "27982311637e33089f554871762736f4",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_secinit.dylib",
+      "debug_id": "27982311637E33089F554871762736F40",
+      "end_addr": "0x00007fff2a4d7000",
+      "filename": "libsystem_secinit.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.87.60.1"
+    },
+    {
+      "base_addr": "0x00007fff2a4d7000",
+      "cert_subject": null,
+      "code_id": "5973ced7797b32889589c1856752f91a",
+      "corrupt_symbols": false,
+      "debug_file": "libremovefile.dylib",
+      "debug_id": "5973CED7797B32889589C1856752F91A0",
+      "end_addr": "0x00007fff2a4da000",
+      "filename": "libremovefile.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.49.120.1"
+    },
+    {
+      "base_addr": "0x00007fff2a4da000",
+      "cert_subject": null,
+      "code_id": "aaa929a045e531868abd37eb25b2c939",
+      "corrupt_symbols": false,
+      "debug_file": "libkeymgr.dylib",
+      "debug_id": "AAA929A045E531868ABD37EB25B2C9390",
+      "end_addr": "0x00007fff2a4db000",
+      "filename": "libkeymgr.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.31.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4db000",
+      "cert_subject": null,
+      "code_id": "4a85f13be3ad3c44b327091f56d35cc1",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_dnssd.dylib",
+      "debug_id": "4A85F13BE3AD3C44B327091F56D35CC10",
+      "end_addr": "0x00007fff2a4e3000",
+      "filename": "libsystem_dnssd.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1310.140.1"
+    },
+    {
+      "base_addr": "0x00007fff2a4e3000",
+      "cert_subject": null,
+      "code_id": "435668cb666b3379ad65f604a72099f4",
+      "corrupt_symbols": false,
+      "debug_file": "libcache.dylib",
+      "debug_id": "435668CB666B3379AD65F604A72099F40",
+      "end_addr": "0x00007fff2a4e9000",
+      "filename": "libcache.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.83.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2a4e9000",
+      "cert_subject": null,
+      "code_id": "d08ea49a58fc39589aeb852cc4cfddc3",
+      "corrupt_symbols": false,
+      "debug_file": "libSystem.B.dylib",
+      "debug_id": "D08EA49A58FC39589AEB852CC4CFDDC30",
+      "end_addr": "0x00007fff2a4eb000",
+      "filename": "libSystem.B.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1292.120.1"
+    },
+    {
+      "base_addr": "0x00007fff2a528000",
+      "cert_subject": null,
+      "code_id": "1f132286cea437a493f73c0a60c3645b",
+      "corrupt_symbols": false,
+      "debug_file": "libiconv.2.dylib",
+      "debug_id": "1F132286CEA437A493F73C0A60C3645B0",
+      "end_addr": "0x00007fff2a619000",
+      "filename": "libiconv.2.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.7.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2cd82000",
+      "cert_subject": null,
+      "code_id": "5927d8fae3703d328c63d3fbd92f18a9",
+      "corrupt_symbols": false,
+      "debug_file": "libresolv.9.dylib",
+      "debug_id": "5927D8FAE3703D328C63D3FBD92F18A90",
+      "end_addr": "0x00007fff2cd9b000",
+      "filename": "libresolv.9.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.1.0.0"
+    },
+    {
+      "base_addr": "0x00007fff2d8ee000",
+      "cert_subject": null,
+      "code_id": "a3f46cc6bd8939db8732c885b881a635",
+      "corrupt_symbols": false,
+      "debug_file": "liblaunch.dylib",
+      "debug_id": "A3F46CC6BD8939DB8732C885B881A6350",
+      "end_addr": "0x00007fff2d8ef000",
+      "filename": "liblaunch.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.2038.120.1"
+    },
+    {
+      "base_addr": "0x00007fff2fd85000",
+      "cert_subject": null,
+      "code_id": "6ca8dea45bd4375f9aa73338135306c5",
+      "corrupt_symbols": false,
+      "debug_file": "libsystem_product_info_filter.dylib",
+      "debug_id": "6CA8DEA45BD4375F9AA73338135306C50",
+      "end_addr": "0x00007fff2fd86000",
+      "filename": "libsystem_product_info_filter.dylib",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": "0.8.40.1"
+    },
+    {
+      "base_addr": "0x000000010ebd2000",
+      "cert_subject": null,
+      "code_id": "2e400646c53e329b83012478447c89f8",
+      "corrupt_symbols": false,
+      "debug_file": "dyld",
+      "debug_id": "2E400646C53E329B83012478447C89F80",
+      "end_addr": "0x000000010ec6e000",
+      "filename": "dyld",
+      "loaded_symbols": false,
+      "missing_symbols": false,
+      "symbol_url": null,
+      "version": null
+    }
+  ],
+  "modules_contains_cert_info": false,
+  "pid": 80556,
+  "status": "OK",
+  "system_info": {
+    "cpu_arch": "amd64",
+    "cpu_count": 8,
+    "cpu_info": "family 6 model 70 stepping 1",
+    "cpu_microcode_version": null,
+    "os": "Mac OS X",
+    "os_ver": "11.6.7 20G630"
+  },
+  "thread_count": 11,
+  "threads": [
+    {
+      "frame_count": 8,
+      "frames": [
+        {
+          "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/sadness-generator/src/lib.rs",
+          "frame": 0,
+          "function": "sadness_generator::raise_segfault",
+          "function_offset": "0x0000000000000004",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ptr/mod.rs",
+              "function": "core::ptr::write_volatile::<u8>",
+              "line": 1574
+            }
+          ],
+          "line": 133,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000014cd4",
+          "offset": "0x0000000102a68cd4",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+          "frame": 1,
+          "function": "crash_client::main",
+          "function_offset": "0x0000000000000e3d",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#1}",
+              "line": 88
+            },
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main",
+              "line": 132
+            }
+          ],
+          "line": 142,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000000423d",
+          "offset": "0x0000000102a5823d",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<fn(), ()>",
+          "function_offset": "0x0000000000000005",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+              "function": "<fn() as core::ops::function::FnOnce<()>>::call_once",
+              "line": 248
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006045",
+          "offset": "0x0000000102a5a045",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+          "frame": 3,
+          "function": "std::rt::lang_start::<()>::{closure#0}",
+          "function_offset": "0x000000000000000b",
+          "inlines": null,
+          "line": 145,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000005c0b",
+          "offset": "0x0000000102a59c0b",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+          "frame": 4,
+          "function": "std::rt::lang_start_internal",
+          "function_offset": "0x00000000000003cd",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+              "function": "core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once",
+              "line": 280
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/rt.rs",
+              "function": "std::rt::lang_start_internal::{{closure}}",
+              "line": 128
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind",
+              "line": 137
+            }
+          ],
+          "line": 128,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x00000000000833ed",
+          "offset": "0x0000000102ad73ed",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": "main",
+          "function_offset": "0x0000000000000028",
+          "inlines": null,
+          "line": null,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000004418",
+          "offset": "0x0000000102a58418",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libdyld.dylib",
+          "module_offset": "0x0000000000015f3c",
+          "offset": "0x00007fff20329f3c",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 7,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libdyld.dylib",
+          "module_offset": "0x0000000000015f3c",
+          "offset": "0x00007fff20329f3c",
+          "trust": "scan",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": "main"
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    },
+    {
+      "frame_count": 7,
+      "frames": [
+        {
+          "file": null,
+          "frame": 0,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_kernel.dylib",
+          "module_offset": "0x0000000000003ba2",
+          "offset": "0x00007fff202dbba2",
+          "trust": "context",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+          "frame": 1,
+          "function": "std::thread::sleep",
+          "function_offset": "0x000000000000004f",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+              "function": "std::sys::unix::thread::Thread::sleep",
+              "line": 224
+            }
+          ],
+          "line": 836,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000083e7f",
+          "offset": "0x0000000102ad7e7f",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys_common/backtrace.rs",
+          "frame": 2,
+          "function": "std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()>",
+          "function_offset": "0x0000000000000014",
+          "inlines": [
+            {
+              "file": "/Users/ABeingessner/.cargo/git/checkouts/crash-handling-42fc4843e3f89d91/4b757db/minidumper-test/crash-client/src/main.rs",
+              "function": "crash_client::real_main::{closure#2}",
+              "line": 123
+            }
+          ],
+          "line": 122,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000006064",
+          "offset": "0x0000000102a5a064",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/ops/function.rs",
+          "frame": 3,
+          "function": "<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+          "function_offset": "0x0000000000000070",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}",
+              "line": 501
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/core/src/panic/unwind_safe.rs",
+              "function": "<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once",
+              "line": 271
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 492
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panicking.rs",
+              "function": "std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>>",
+              "line": 456
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/panic.rs",
+              "function": "std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()>",
+              "line": 137
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/thread/mod.rs",
+              "function": "<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}",
+              "line": 500
+            }
+          ],
+          "line": 248,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x0000000000009ba0",
+          "offset": "0x0000000102a5dba0",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/std/src/sys/unix/thread.rs",
+          "frame": 4,
+          "function": "std::sys::unix::thread::Thread::new::thread_start",
+          "function_offset": "0x0000000000000026",
+          "inlines": [
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            },
+            {
+              "file": "/rustc/fdca237d5194bf8a1c9b437ebd2114d1c2ba6195/library/alloc/src/boxed.rs",
+              "function": "<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once",
+              "line": 1951
+            }
+          ],
+          "line": 108,
+          "missing_symbols": false,
+          "module": "crash-client",
+          "module_offset": "0x000000000008edc6",
+          "offset": "0x0000000102ae2dc6",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 5,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x00000000000068fb",
+          "offset": "0x00007fff2030e8fb",
+          "trust": "cfi",
+          "unloaded_modules": null
+        },
+        {
+          "file": null,
+          "frame": 6,
+          "function": null,
+          "function_offset": null,
+          "inlines": null,
+          "line": null,
+          "missing_symbols": true,
+          "module": "libsystem_pthread.dylib",
+          "module_offset": "0x0000000000002442",
+          "offset": "0x00007fff2030a442",
+          "trust": "frame_pointer",
+          "unloaded_modules": null
+        }
+      ],
+      "last_error_value": null,
+      "thread_name": ""
+    }
+  ],
+  "unloaded_modules": []
+}
