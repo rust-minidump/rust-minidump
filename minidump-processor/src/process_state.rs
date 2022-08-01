@@ -444,53 +444,77 @@ impl CallStack {
         for (_, frame) in self.frames.iter().enumerate() {
             // First print out inlines
             for inline in frame.inlines.iter().rev() {
+                // Frame number
                 let frame_idx = frame_count;
                 frame_count += 1;
                 write!(f, "{:2}  ", frame_idx)?;
-                writeln!(f, "{}", inline.function_name)?;
-                writeln!(f, "    Found by inlining")?;
+
+                // Module name
+                if let Some(ref module) = frame.module {
+                    write!(f, "{}", basename(&module.code_file()))?;
+                }
+
+                // Function name
+                writeln!(f, "!{}", inline.function_name)?;
+
+                // Source file and line
+                if let (&Some(ref source_file), &Some(ref source_line)) =
+                    (&inline.source_file_name, &inline.source_line)
+                {
+                    write!(f, " [{} : {}]", basename(source_file), source_line,)?;
+                }
+
+                // A fake `trust`
+                writeln!(f, "    Found by: inlining")?;
             }
 
+            // Now print out the "real frame"
             let frame_idx = frame_count;
             frame_count += 1;
             let addr = frame.instruction;
+
+            // Frame number
             write!(f, "{:2}  ", frame_idx)?;
-            if let Some(ref module) = frame.module {
+            if let Some(module) = &frame.module {
+                // Module name
                 write!(f, "{}", basename(&module.code_file()))?;
-                if let (&Some(ref function), &Some(ref function_base)) =
+
+                if let (Some(func_name), Some(func_base)) =
                     (&frame.function_name, &frame.function_base)
                 {
-                    write!(f, "!{}", function)?;
-                    if let (
-                        &Some(ref source_file),
-                        &Some(ref source_line),
-                        &Some(ref source_line_base),
-                    ) = (
+                    // Function name
+                    write!(f, "!{}", func_name)?;
+
+                    if let (Some(src_file), Some(src_line), Some(src_base)) = (
                         &frame.source_file_name,
                         &frame.source_line,
                         &frame.source_line_base,
                     ) {
+                        // Source file, line, and offset
                         write!(
                             f,
                             " [{} : {} + {:#x}]",
-                            basename(source_file),
-                            source_line,
-                            addr - source_line_base
+                            basename(src_file),
+                            src_line,
+                            addr - src_base
                         )?;
                     } else {
-                        write!(f, " + {:#x}", addr - function_base)?;
+                        // We didn't have source info, so just give a byte offset from the func
+                        write!(f, " + {:#x}", addr - func_base)?;
                     }
                 } else {
+                    // We didn't have a function name, so just give a byte offset from the module
                     write!(f, " + {:#x}", addr - module.base_address())?;
                 }
             } else {
+                // We didn't even find a module, so just print the raw address
                 write!(f, "{:#x}", addr)?;
 
                 // List off overlapping unloaded modules.
 
                 // First we need to collect them up by name so that we can print
                 // all the overlaps from one module together and dedupe them.
-
+                // (!!! was that code deleted?)
                 for (name, offsets) in &frame.unloaded_modules {
                     write!(f, " (unloaded {}@", name)?;
                     let mut first = true;
@@ -506,10 +530,15 @@ impl CallStack {
                     write!(f, ")")?;
                 }
             }
+
+            // Print the valid registers
             writeln!(f)?;
             print_registers(f, &frame.context)?;
+
+            // And the trust we have of this result
             writeln!(f, "    Found by: {}", frame.trust.description())?;
 
+            // Now print out recovered args
             if let Some(args) = &frame.arguments {
                 use MinidumpRawContext::*;
                 let pointer_width = match &frame.context.raw {
