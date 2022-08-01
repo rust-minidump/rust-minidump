@@ -455,7 +455,7 @@ impl CallStack {
                 }
 
                 // Function name
-                writeln!(f, "!{}", inline.function_name)?;
+                write!(f, "!{}", inline.function_name)?;
 
                 // Source file and line
                 if let (&Some(ref source_file), &Some(ref source_line)) =
@@ -463,7 +463,7 @@ impl CallStack {
                 {
                     write!(f, " [{} : {}]", basename(source_file), source_line,)?;
                 }
-
+                writeln!(f)?;
                 // A fake `trust`
                 writeln!(f, "    Found by: inlining")?;
             }

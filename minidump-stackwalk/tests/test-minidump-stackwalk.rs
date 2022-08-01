@@ -798,3 +798,45 @@ fn test_unloaded() {
     insta::assert_snapshot!("json-pretty-unloaded", json_out);
     assert_eq!(stderr, "");
 }
+
+#[test]
+fn test_macos_inlines_json_pretty() {
+    // For a while this didn't parse right
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("--pretty")
+        .arg("--symbols-path=../testdata/symbols/")
+        .arg("../testdata/pipeline-inlines-macos-segv.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!(stdout);
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_macos_inlines_human() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--human")
+        .arg("--symbols-path=../testdata/symbols/")
+        .arg("../testdata/pipeline-inlines-macos-segv.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    insta::assert_snapshot!(stdout);
+    assert_eq!(stderr, "");
+}

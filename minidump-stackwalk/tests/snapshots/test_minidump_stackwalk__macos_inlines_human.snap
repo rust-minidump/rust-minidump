@@ -1,0 +1,762 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: stdout
+---
+Operating system: Mac OS X
+                  11.6.7 20G630
+CPU: amd64
+     family 6 model 70 stepping 1
+     8 CPUs
+
+Crash reason:  EXC_BAD_ACCESS / KERN_INVALID_ADDRESS
+Crash address: 0xffffffff80000042
+Process uptime: 0 seconds
+
+Thread 0 main (crashed)
+ 0  crash-client!core::ptr::write_volatile::<u8> [mod.rs : 1574]
+    Found by: inlining
+ 1  crash-client!sadness_generator::raise_segfault [lib.rs : 133 + 0x0]
+     rax = 0x0000000102a58239    rdx = 0x0000700008e8b000
+     rcx = 0x0000000102a583cc    rbx = 0x0000000000000004
+     rsi = 0x00007fa21bd04d60    rdi = 0x00007fa21bd042c0
+     rbp = 0x00007ffeed1aa9b0    rsp = 0x00007ffeed1aa9b0
+      r8 = 0x00000000090008ff     r9 = 0x0000000000000003
+     r10 = 0x0000700008e8b000    r11 = 0x0000000000000246
+     r12 = 0x0000000000000003    r13 = 0x00000000000000ff
+     r14 = 0x0000000000001303    r15 = 0x0000000200000000
+     rip = 0x0000000102a68cd4
+    Found by: given as instruction pointer in context
+ 2  crash-client!crash_client::real_main::{closure#1} [main.rs : 88]
+    Found by: inlining
+ 3  crash-client!crash_client::real_main [main.rs : 132]
+    Found by: inlining
+ 4  crash-client!crash_client::main [main.rs : 142 + 0x562]
+     rbx = 0x0000000000000004    rbp = 0x00007ffeed1ab020
+     rsp = 0x00007ffeed1aa9c0    r12 = 0x0000000000000003
+     r13 = 0x00000000000000ff    r14 = 0x0000000000001303
+     r15 = 0x0000000200000000    rip = 0x0000000102a5823e
+    Found by: call frame info
+ 5  crash-client!<fn() as core::ops::function::FnOnce<()>>::call_once [function.rs : 248]
+    Found by: inlining
+ 6  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<fn(), ()> [backtrace.rs : 122 + 0x1]
+     rbx = 0x00007fa21bc05b50    rbp = 0x00007ffeed1ab030
+     rsp = 0x00007ffeed1ab030    r12 = 0x00007ffeec9ad000
+     r13 = 0x00007ffeec9ac000    r14 = 0x0000000000000001
+     r15 = 0x0000000102b181b8    rip = 0x0000000102a5a046
+    Found by: call frame info
+ 7  crash-client!std::rt::lang_start::<()>::{closure#0} [rt.rs : 145 + 0xb]
+     rbx = 0x00007fa21bc05b50    rbp = 0x00007ffeed1ab040
+     rsp = 0x00007ffeed1ab040    r12 = 0x00007ffeec9ad000
+     r13 = 0x00007ffeec9ac000    r14 = 0x0000000000000001
+     r15 = 0x0000000102b181b8    rip = 0x0000000102a59c0c
+    Found by: call frame info
+ 8  crash-client!core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once [function.rs : 280]
+    Found by: inlining
+ 9  crash-client!std::panicking::try::do_call [panicking.rs : 492]
+    Found by: inlining
+10  crash-client!std::panicking::try [panicking.rs : 456]
+    Found by: inlining
+11  crash-client!std::panic::catch_unwind [panic.rs : 137]
+    Found by: inlining
+12  crash-client!std::rt::lang_start_internal::{{closure}} [rt.rs : 128]
+    Found by: inlining
+13  crash-client!std::panicking::try::do_call [panicking.rs : 492]
+    Found by: inlining
+14  crash-client!std::panicking::try [panicking.rs : 456]
+    Found by: inlining
+15  crash-client!std::panic::catch_unwind [panic.rs : 137]
+    Found by: inlining
+16  crash-client!std::rt::lang_start_internal [rt.rs : 128 + 0x3]
+     rbx = 0x00007fa21bc05b50    rbp = 0x00007ffeed1ab150
+     rsp = 0x00007ffeed1ab050    r12 = 0x00007ffeec9ad000
+     r13 = 0x00007ffeec9ac000    r14 = 0x0000000000000001
+     r15 = 0x0000000102b181b8    rip = 0x0000000102ad73ee
+    Found by: call frame info
+17  crash-client!main + 0x28
+     rbx = 0x0000000000000000    rbp = 0x00007ffeed1ab170
+     rsp = 0x00007ffeed1ab160    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x0000000102a58419
+    Found by: call frame info
+18  libdyld.dylib + 0x15f3c
+     rbx = 0x0000000000000000    rbp = 0x00007ffeed1ab188
+     rsp = 0x00007ffeed1ab180    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff20329f3d
+    Found by: call frame info
+19  libdyld.dylib + 0x15f3c
+     rsp = 0x00007ffeed1ab188    rip = 0x00007fff20329f3d
+    Found by: stack scanning
+
+Thread 1 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700007c6fe58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700007c6fe90    rsp = 0x0000700007c6fe58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd04290    r13 = 0x00007fa21bd04290
+     r14 = 0x0000700007c6fed0    r15 = 0x0000700007c6fed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700007c6ff00    rsp = 0x0000700007c6fea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007c6ff10
+     rsp = 0x0000700007c6ff10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd042b0    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007c6ff60
+     rsp = 0x0000700007c6ff20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd042b0    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007c6ffb0
+     rsp = 0x0000700007c6ff70    r12 = 0x00007fa21bd04290
+     r13 = 0x0000000000000000    r14 = 0x0000000102c4c000
+     r15 = 0x00007fa21bd042b0    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700007c70000    rbp = 0x0000700007c6ffd0
+     rsp = 0x0000700007c6ffc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700007c6fff0    rsp = 0x0000700007c6ffe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 2 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700007e72e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700007e72e90    rsp = 0x0000700007e72e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd043f0    r13 = 0x00007fa21bd043f0
+     r14 = 0x0000700007e72ed0    r15 = 0x0000700007e72ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700007e72f00    rsp = 0x0000700007e72ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007e72f10
+     rsp = 0x0000700007e72f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04410    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007e72f60
+     rsp = 0x0000700007e72f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04410    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700007e72fb0
+     rsp = 0x0000700007e72f70    r12 = 0x00007fa21bd043f0
+     r13 = 0x0000000000000000    r14 = 0x0000000102c6d000
+     r15 = 0x00007fa21bd04410    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700007e73000    rbp = 0x0000700007e72fd0
+     rsp = 0x0000700007e72fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700007e72ff0    rsp = 0x0000700007e72fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 3 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008075e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008075e90    rsp = 0x0000700008075e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd044f0    r13 = 0x00007fa21bd044f0
+     r14 = 0x0000700008075ed0    r15 = 0x0000700008075ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008075f00    rsp = 0x0000700008075ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008075f10
+     rsp = 0x0000700008075f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04510    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008075f60
+     rsp = 0x0000700008075f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04510    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008075fb0
+     rsp = 0x0000700008075f70    r12 = 0x00007fa21bd044f0
+     r13 = 0x0000000000000000    r14 = 0x0000000102c8e000
+     r15 = 0x00007fa21bd04510    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008076000    rbp = 0x0000700008075fd0
+     rsp = 0x0000700008075fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008075ff0    rsp = 0x0000700008075fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 4 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008278e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008278e90    rsp = 0x0000700008278e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd045f0    r13 = 0x00007fa21bd045f0
+     r14 = 0x0000700008278ed0    r15 = 0x0000700008278ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008278f00    rsp = 0x0000700008278ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008278f10
+     rsp = 0x0000700008278f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04610    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008278f60
+     rsp = 0x0000700008278f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04610    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008278fb0
+     rsp = 0x0000700008278f70    r12 = 0x00007fa21bd045f0
+     r13 = 0x0000000000000000    r14 = 0x0000000102caf000
+     r15 = 0x00007fa21bd04610    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008279000    rbp = 0x0000700008278fd0
+     rsp = 0x0000700008278fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008278ff0    rsp = 0x0000700008278fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 5 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x000070000847be58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x000070000847be90    rsp = 0x000070000847be58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd046f0    r13 = 0x00007fa21bd046f0
+     r14 = 0x000070000847bed0    r15 = 0x000070000847bed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x000070000847bf00    rsp = 0x000070000847bea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x000070000847bf10
+     rsp = 0x000070000847bf10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04710    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x000070000847bf60
+     rsp = 0x000070000847bf20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04710    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x000070000847bfb0
+     rsp = 0x000070000847bf70    r12 = 0x00007fa21bd046f0
+     r13 = 0x0000000000000000    r14 = 0x0000000102cd0000
+     r15 = 0x00007fa21bd04710    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x000070000847c000    rbp = 0x000070000847bfd0
+     rsp = 0x000070000847bfc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x000070000847bff0    rsp = 0x000070000847bfe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 6 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x000070000867ee58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x000070000867ee90    rsp = 0x000070000867ee58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd048b0    r13 = 0x00007fa21bd048b0
+     r14 = 0x000070000867eed0    r15 = 0x000070000867eed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x000070000867ef00    rsp = 0x000070000867eea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x000070000867ef10
+     rsp = 0x000070000867ef10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd048d0    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x000070000867ef60
+     rsp = 0x000070000867ef20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd048d0    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x000070000867efb0
+     rsp = 0x000070000867ef70    r12 = 0x00007fa21bd048b0
+     r13 = 0x0000000000000000    r14 = 0x0000000102cf1000
+     r15 = 0x00007fa21bd048d0    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x000070000867f000    rbp = 0x000070000867efd0
+     rsp = 0x000070000867efc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x000070000867eff0    rsp = 0x000070000867efe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 7 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008881e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008881e90    rsp = 0x0000700008881e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd049b0    r13 = 0x00007fa21bd049b0
+     r14 = 0x0000700008881ed0    r15 = 0x0000700008881ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008881f00    rsp = 0x0000700008881ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008881f10
+     rsp = 0x0000700008881f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd049d0    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008881f60
+     rsp = 0x0000700008881f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd049d0    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008881fb0
+     rsp = 0x0000700008881f70    r12 = 0x00007fa21bd049b0
+     r13 = 0x0000000000000000    r14 = 0x0000000102d12000
+     r15 = 0x00007fa21bd049d0    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008882000    rbp = 0x0000700008881fd0
+     rsp = 0x0000700008881fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008881ff0    rsp = 0x0000700008881fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 8 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008a84e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008a84e90    rsp = 0x0000700008a84e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd04ab0    r13 = 0x00007fa21bd04ab0
+     r14 = 0x0000700008a84ed0    r15 = 0x0000700008a84ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008a84f00    rsp = 0x0000700008a84ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008a84f10
+     rsp = 0x0000700008a84f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04ad0    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008a84f60
+     rsp = 0x0000700008a84f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04ad0    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008a84fb0
+     rsp = 0x0000700008a84f70    r12 = 0x00007fa21bd04ab0
+     r13 = 0x0000000000000000    r14 = 0x0000000102d33000
+     r15 = 0x00007fa21bd04ad0    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008a85000    rbp = 0x0000700008a84fd0
+     rsp = 0x0000700008a84fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008a84ff0    rsp = 0x0000700008a84fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 9 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008c87e58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008c87e90    rsp = 0x0000700008c87e58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd04bb0    r13 = 0x00007fa21bd04bb0
+     r14 = 0x0000700008c87ed0    r15 = 0x0000700008c87ed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008c87f00    rsp = 0x0000700008c87ea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008c87f10
+     rsp = 0x0000700008c87f10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04bd0    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008c87f60
+     rsp = 0x0000700008c87f20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04bd0    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008c87fb0
+     rsp = 0x0000700008c87f70    r12 = 0x00007fa21bd04bb0
+     r13 = 0x0000000000000000    r14 = 0x0000000102d54000
+     r15 = 0x00007fa21bd04bd0    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008c88000    rbp = 0x0000700008c87fd0
+     rsp = 0x0000700008c87fc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008c87ff0    rsp = 0x0000700008c87fe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+Thread 10 
+ 0  libsystem_kernel.dylib + 0x3ba2
+     rax = 0x000000000200014e    rdx = 0x0000000000000001
+     rcx = 0x0000700008e8ae58    rbx = 0x0000000000000000
+     rsi = 0x0000000000000000    rdi = 0x0000000000000903
+     rbp = 0x0000700008e8ae90    rsp = 0x0000700008e8ae58
+      r8 = 0x7fffffffffffffff     r9 = 0x000000003b9ac9ff
+     r10 = 0x0000000000000001    r11 = 0x0000000000000246
+     r12 = 0x00007fa21bd042f0    r13 = 0x00007fa21bd042f0
+     r14 = 0x0000700008e8aed0    r15 = 0x0000700008e8aed0
+     rip = 0x00007fff202dbba2
+    Found by: given as instruction pointer in context
+ 1  crash-client!std::sys::unix::thread::Thread::sleep [thread.rs : 224]
+    Found by: inlining
+ 2  crash-client!std::thread::sleep [mod.rs : 836 + 0x3f]
+     rbp = 0x0000700008e8af00    rsp = 0x0000700008e8aea0
+     rip = 0x0000000102ad7e80
+    Found by: previous frame's frame pointer
+ 3  crash-client!crash_client::real_main::{closure#2} [main.rs : 123]
+    Found by: inlining
+ 4  crash-client!std::sys_common::backtrace::__rust_begin_short_backtrace::<crash_client::real_main::{closure#2}, ()> [backtrace.rs : 122 + 0x10]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008e8af10
+     rsp = 0x0000700008e8af10    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04310    rip = 0x0000000102a5a065
+    Found by: call frame info
+ 5  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0} [mod.rs : 501]
+    Found by: inlining
+ 6  crash-client!<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once [unwind_safe.rs : 271]
+    Found by: inlining
+ 7  crash-client!std::panicking::try::do_call::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panicking.rs : 492]
+    Found by: inlining
+ 8  crash-client!std::panicking::try::<(), core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>> [panicking.rs : 456]
+    Found by: inlining
+ 9  crash-client!std::panic::catch_unwind::<core::panic::unwind_safe::AssertUnwindSafe<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1}::{closure#0}>, ()> [panic.rs : 137]
+    Found by: inlining
+10  crash-client!<std::thread::Builder>::spawn_unchecked_::<crash_client::real_main::{closure#2}, ()>::{closure#1} [mod.rs : 500]
+    Found by: inlining
+11  crash-client!<<std::thread::Builder>::spawn_unchecked_<crash_client::real_main::{closure#2}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} [function.rs : 248 + 0x59]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008e8af60
+     rsp = 0x0000700008e8af20    r14 = 0x0000000000000000
+     r15 = 0x00007fa21bd04310    rip = 0x0000000102a5dba1
+    Found by: call frame info
+12  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+13  crash-client!<alloc::boxed::Box<F,A> as core::ops::function::FnOnce<Args>>::call_once [boxed.rs : 1951]
+    Found by: inlining
+14  crash-client!std::sys::unix::thread::Thread::new::thread_start [thread.rs : 108 + 0xc]
+     rbx = 0x0000000102b18290    rbp = 0x0000700008e8afb0
+     rsp = 0x0000700008e8af70    r12 = 0x00007fa21bd042f0
+     r13 = 0x0000000000000000    r14 = 0x0000000102d75000
+     r15 = 0x00007fa21bd04310    rip = 0x0000000102ae2dc7
+    Found by: call frame info
+15  libsystem_pthread.dylib + 0x68fb
+     rbx = 0x0000700008e8b000    rbp = 0x0000700008e8afd0
+     rsp = 0x0000700008e8afc0    r12 = 0x0000000000000000
+     r13 = 0x0000000000000000    r14 = 0x0000000000000000
+     r15 = 0x0000000000000000    rip = 0x00007fff2030e8fc
+    Found by: call frame info
+16  libsystem_pthread.dylib + 0x2442
+     rbp = 0x0000700008e8aff0    rsp = 0x0000700008e8afe0
+     rip = 0x00007fff2030a443
+    Found by: previous frame's frame pointer
+
+Loaded modules:
+0x102a54000 - 0x102b17fff  crash-client  ???  (main)
+0x10ebd2000 - 0x10ec6dfff  dyld  ???
+0x7fff20046000 - 0x7fff20047fff  libsystem_blocks.dylib  0.79.0.0
+0x7fff20048000 - 0x7fff2007dfff  libxpc.dylib  0.2038.120.1
+0x7fff2007e000 - 0x7fff20095fff  libsystem_trace.dylib  0.1277.120.1
+0x7fff20096000 - 0x7fff20133fff  libcorecrypto.dylib  0.1000.140.4
+0x7fff20134000 - 0x7fff20160fff  libsystem_malloc.dylib  0.317.140.5
+0x7fff20161000 - 0x7fff201a5fff  libdispatch.dylib  0.1271.120.2
+0x7fff201a6000 - 0x7fff201dffff  libobjc.A.dylib  0.228.0.0
+0x7fff201e0000 - 0x7fff201e2fff  libsystem_featureflags.dylib  0.28.60.1
+0x7fff201e3000 - 0x7fff2026bfff  libsystem_c.dylib  0.1439.141.1
+0x7fff2026c000 - 0x7fff202c1fff  libc++.1.dylib  0.905.6.0
+0x7fff202c2000 - 0x7fff202d7fff  libc++abi.dylib  0.905.6.0
+0x7fff202d8000 - 0x7fff20307fff  libsystem_kernel.dylib  0.7195.141.29
+0x7fff20308000 - 0x7fff20313fff  libsystem_pthread.dylib  0.454.120.2
+0x7fff20314000 - 0x7fff2034ffff  libdyld.dylib  0.852.2.0
+0x7fff20350000 - 0x7fff20359fff  libsystem_platform.dylib  0.254.80.2
+0x7fff2035a000 - 0x7fff20385fff  libsystem_info.dylib  0.1.0.0
+0x7fff22756000 - 0x7fff2275ffff  libsystem_darwin.dylib  0.1.0.0
+0x7fff22b75000 - 0x7fff22b80fff  libsystem_notify.dylib  0.279.40.4
+0x7fff24b0d000 - 0x7fff24b1bfff  libsystem_networkextension.dylib  0.1.0.0
+0x7fff24b7a000 - 0x7fff24b90fff  libsystem_asl.dylib  0.385.0.2
+0x7fff26258000 - 0x7fff2625ffff  libsystem_symptoms.dylib  0.1.0.0
+0x7fff28267000 - 0x7fff28277fff  libsystem_containermanager.dylib  0.1.0.0
+0x7fff28f7b000 - 0x7fff28f7efff  libsystem_configuration.dylib  0.1109.140.1
+0x7fff28f7f000 - 0x7fff28f83fff  libsystem_sandbox.dylib  0.1441.141.7
+0x7fff29c75000 - 0x7fff29c77fff  libquarantine.dylib  0.119.40.4
+0x7fff2a220000 - 0x7fff2a224fff  libsystem_coreservices.dylib  0.127.1.0
+0x7fff2a434000 - 0x7fff2a47bfff  libsystem_m.dylib  0.3186.100.3
+0x7fff2a47c000 - 0x7fff2a47cfff  libcharset.1.dylib  0.2.0.0
+0x7fff2a47d000 - 0x7fff2a482fff  libmacho.dylib  0.980.0.0
+0x7fff2a49f000 - 0x7fff2a4aafff  libcommonCrypto.dylib  0.60178.120.3
+0x7fff2a4ab000 - 0x7fff2a4b5fff  libunwind.dylib  0.201.0.0
+0x7fff2a4b6000 - 0x7fff2a4bdfff  liboah.dylib  0.1.0.0
+0x7fff2a4be000 - 0x7fff2a4c8fff  libcopyfile.dylib  0.1.0.0
+0x7fff2a4c9000 - 0x7fff2a4d0fff  libcompiler_rt.dylib  0.102.2.0
+0x7fff2a4d1000 - 0x7fff2a4d3fff  libsystem_collections.dylib  0.1439.141.1
+0x7fff2a4d4000 - 0x7fff2a4d6fff  libsystem_secinit.dylib  0.87.60.1
+0x7fff2a4d7000 - 0x7fff2a4d9fff  libremovefile.dylib  0.49.120.1
+0x7fff2a4da000 - 0x7fff2a4dafff  libkeymgr.dylib  0.31.0.0
+0x7fff2a4db000 - 0x7fff2a4e2fff  libsystem_dnssd.dylib  0.1310.140.1
+0x7fff2a4e3000 - 0x7fff2a4e8fff  libcache.dylib  0.83.0.0
+0x7fff2a4e9000 - 0x7fff2a4eafff  libSystem.B.dylib  0.1292.120.1
+0x7fff2a528000 - 0x7fff2a618fff  libiconv.2.dylib  0.7.0.0
+0x7fff2cd82000 - 0x7fff2cd9afff  libresolv.9.dylib  0.1.0.0
+0x7fff2d8ee000 - 0x7fff2d8eefff  liblaunch.dylib  0.2038.120.1
+0x7fff2fd85000 - 0x7fff2fd85fff  libsystem_product_info_filter.dylib  0.8.40.1
+
+Unloaded modules:
+
