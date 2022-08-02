@@ -23,11 +23,12 @@ type FileKey = (ModuleKey, FileKind);
 /// symbol server.
 ///
 /// ```
-/// HttpSymbolSupplierOptions {
-///     urls: vec!["https://symbols.mozilla.org/".to_owned()],
-///     cache: Some(std::env::tempdir().join("minidump-symbols")),
-///     tmp: Some(std::env::tempdir())
-/// }
+/// # use breakpad_symbols::HttpSymbolSupplierOptions;
+/// let mut opts = HttpSymbolSupplierOptions::default();
+///
+/// opts.urls = vec!["https://symbols.mozilla.org/".to_owned()];
+/// opts.cache = Some(std::env::temp_dir().join("minidump-symbols"));
+/// opts.tmp = Some(std::env::temp_dir());
 /// ```
 ///
 ///
@@ -37,13 +38,14 @@ type FileKey = (ModuleKey, FileKind);
 /// Microsoft minidump tooling like windbg.
 ///
 /// ```
-/// HttpSymbolSupplierOptions {
-///     urls: vec!["https://msdl.microsoft.com/download/symbols/".to_owned()],
-///     cache: Some(std::env::tempdir().join("minidump-symbols")),
-///     tmp: Some(std::env::tempdir()),
-///     fetch_syms: false,
-///     fetch_native_binaries: true,
-/// }
+/// # use breakpad_symbols::HttpSymbolSupplierOptions;
+/// let mut opts = HttpSymbolSupplierOptions::default();
+///
+/// opts.urls = vec!["https://msdl.microsoft.com/download/symbols/".to_owned()];
+/// opts.cache = Some(std::env::temp_dir().join("minidump-symbols"));
+/// opts.tmp = Some(std::env::temp_dir());
+/// opts.fetch_syms = false;
+/// opts.fetch_native_binaries = true;
 /// ```
 ///
 ///
@@ -54,11 +56,12 @@ type FileKey = (ModuleKey, FileKind);
 /// program was invoked with `cargo run`.
 ///
 /// ```
-/// HttpSymbolSupplierOptions {
-///     cache: Some(std::env::tempdir().join("minidump-symbols")),
-///     tmp: Some(std::env::tempdir()),
-///     use_minidump_paths: true,
-/// }
+/// # use breakpad_symbols::HttpSymbolSupplierOptions;
+/// let mut opts = HttpSymbolSupplierOptions::default();
+///
+/// opts.cache = Some(std::env::temp_dir().join("minidump-symbols"));
+/// opts.tmp = Some(std::env::temp_dir());
+/// opts.use_minidump_paths = true;
 /// ```
 ///
 #[derive(Debug, Clone)]
@@ -535,6 +538,13 @@ async fn fetch_cab_lookup(
     cache: Option<&Path>,
     tmp: Option<&Path>,
 ) -> Result<(PathBuf, Option<Url>), FileError> {
+    let (cache, tmp) = if let (Some(cache), Some(tmp)) = (cache, tmp) {
+        (cache, tmp)
+    } else {
+        warn!("Fetching native binaries currently requires both cache and tmp!");
+        return Err(FileError::NotFound);
+    };
+
     let cab_lookup = moz_lookup(lookup.clone());
     // First try to GET the file from a server
     let url = base_url
@@ -552,7 +562,7 @@ async fn fetch_cab_lookup(
     let final_cache_path =
         unpack_cabinet_file(&cab_bytes, lookup, cache, tmp).map_err(|_| FileError::NotFound)?;
 
-    trace!("symbols: fetched native binary: {}", lookup.cache_rel);
+    trace!("Fetched native binary: {}", lookup.cache_rel);
 
     Ok((final_cache_path, Some(url)))
 }
@@ -575,13 +585,7 @@ pub fn unpack_cabinet_file(
     cache: &Path,
     tmp: &Path,
 ) -> Result<PathBuf, std::io::Error> {
-    let (cache, tmp) = if let (Some(cache), Some(tmp)) = (cache, tmp) {
-        (cache, tmp)
-    } else {
-        warn!("Fetching native binaries currently requires both cache and tmp!");
-        return Err(SymbolError::NotFound);
-    };
-    trace!("symbols: unpacking CAB file: {}", lookup.cache_rel);
+    trace!("Unpacking CAB file: {}", lookup.cache_rel);
     // try to find a file in a cabinet archive and unpack it to the destination
     use cab::Cabinet;
     use std::io::Cursor;
@@ -644,7 +648,7 @@ async fn dump_syms(
         return Err(SymbolError::NotFound);
     }
 
-    trace!("symbols: found native symbols! running dump_syms...");
+    trace!("Found native symbols!");
 
     let mut source_file = None;
     let mut urls = vec![];
@@ -652,12 +656,17 @@ async fn dump_syms(
         // If we know where we got this from, record it.
         if let Some(url) = input_url {
             urls.push(url.to_string());
+            trace!("  Native binary: {} from {}", input_path.display(), url);
+        } else {
+            trace!("  Native binary: {}", input_path.display());
         }
         // dump_syms only wants one input, and will derive the others
         // from that one input by looking in the directory. If we have
         // multiple sources, we want the last one (caller knows the right priority).
         source_file = Some(input_path);
     }
+
+    trace!("Running dump_syms on {}...", source_file.unwrap().display());
 
     if let Err(e) = dumper::single_file(
         &dumper::Config {
@@ -676,7 +685,7 @@ async fn dump_syms(
         },
         &source_file.unwrap().to_string_lossy()[..],
     ) {
-        debug!("symbols: dump_syms failed: {}", e);
+        debug!("dump_syms failed: {}", e);
         Err(std::io::Error::new(std::io::ErrorKind::Other, e))?;
     }
 
@@ -698,7 +707,7 @@ async fn dump_syms(
     _inputs: &[Result<(PathBuf, Option<Url>), FileError>],
     _output: &Path,
 ) -> Result<(), SymbolError> {
-    Ok(())
+    Err(SymbolError::NotFound)
 }
 
 #[async_trait]
