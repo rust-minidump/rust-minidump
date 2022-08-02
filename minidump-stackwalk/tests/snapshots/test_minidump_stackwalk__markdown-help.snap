@@ -190,6 +190,47 @@ This is necessary to enforce forward progress on misbehaving http responses.
 
 \[default: 1000]  
 
+#### `--fetch-syms <FETCH_SYMS>`
+Whether to query urls for .sym files.
+
+Defaults to `true`.
+
+This mode works with "fake" Microsoft Symbol Servers like Tecken, and is the mode that
+breakpad-symbols was designed for. These files are generally significantly smaller than
+a codefile or debugfile, where symbols natively reside.
+
+\[possible values: true, false]  
+
+#### `--fetch-native-binaries <FETCH_NATIVE_BINARIES>`
+Whether to query urls for native codefiles and debugfiles.
+
+Currently defaults to `cfg!(feature = dump_syms)` (experimental).
+
+Setting this to `true` will do nothing if the `dump_syms` feature isn't also enabled.
+
+This mode works with "real" Microsoft Symbol Servers, and is experimental.
+
+\[possible values: true, false]  
+
+#### `--use-minidump-paths <USE_MINIDUMP_PATHS>`
+Whether to try to get symbols from the *actual* codefile and debugfile paths on the
+current system.
+
+Currently defaults to `false` (experimental).
+
+Setting this to `true` will do nothing if the `dump_syms` feature isn't also enabled.
+
+The actual codefile and debugfile entries in a minidump are actually complete paths from
+either the machine where the program was running, or the machine where the build was
+performed. Either way, this means processing a minidump on the same machine that the
+crash occured on can yield some symbols at those paths. This works especially well for
+local development where "build machine" and "run machine" are the same, and the
+executable is still in the build dir with ALL the debuginfo the compiler emitted!
+
+If `cache` is set, we *may* place a `sym` in it to optimize subsequent runs.
+
+\[possible values: true, false]  
+
 #### `--symbols-path <SYMBOLS_PATH>`
 Path to a symbol file.
 

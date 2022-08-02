@@ -12,9 +12,9 @@ use std::{boxed::Box, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider,
-    PendingProcessorStatSubscriptions, PendingProcessorStats, ProcessorOptions, SymbolProvider,
-    Symbolizer,
+    http_symbol_supplier_opt, simple_symbol_supplier, HttpSymbolSupplierOptions,
+    MultiSymbolProvider, PendingProcessorStatSubscriptions, PendingProcessorStats,
+    ProcessorOptions, SymbolProvider, Symbolizer,
 };
 
 use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
@@ -244,6 +244,45 @@ struct Cli {
     #[clap(long, default_value_t = 1000)]
     symbols_download_timeout_secs: u64,
 
+    /// Whether to query urls for .sym files.
+    ///
+    /// Defaults to `true`.
+    ///
+    /// This mode works with "fake" Microsoft Symbol Servers like Tecken,
+    /// and is the mode that breakpad-symbols was designed for. These files
+    /// are generally significantly smaller than a codefile or debugfile,
+    /// where symbols natively reside.
+    #[clap(action, long)]
+    fetch_syms: Option<bool>,
+
+    /// Whether to query urls for native codefiles and debugfiles.
+    ///
+    /// Currently defaults to `cfg!(feature = dump_syms)` (experimental).
+    ///
+    /// Setting this to `true` will do nothing if the `dump_syms` feature isn't also enabled.
+    ///
+    /// This mode works with "real" Microsoft Symbol Servers, and is experimental.
+    #[clap(action, long)]
+    fetch_native_binaries: Option<bool>,
+
+    /// Whether to try to get symbols from the *actual* codefile and debugfile paths
+    /// on the current system.
+    ///
+    /// Currently defaults to `false` (experimental).
+    ///
+    /// Setting this to `true` will do nothing if the `dump_syms` feature isn't also enabled.
+    ///
+    /// The actual codefile and debugfile entries in a minidump are actually complete paths
+    /// from either the machine where the program was running, or the machine where the build
+    /// was performed. Either way, this means processing a minidump on the same machine
+    /// that the crash occured on can yield some symbols at those paths. This works especially
+    /// well for local development where "build machine" and "run machine" are the same, and
+    /// the executable is still in the build dir with ALL the debuginfo the compiler emitted!
+    ///
+    /// If `cache` is set, we *may* place a `sym` in it to optimize subsequent runs.
+    #[clap(action, long)]
+    use_minidump_paths: Option<bool>,
+
     /// Path to the minidump file to analyze
     minidump: PathBuf,
 
@@ -406,12 +445,19 @@ async fn main() {
             let mut provider = MultiSymbolProvider::new();
 
             if !cli.symbols_url.is_empty() {
-                provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
-                    symbols_paths,
-                    cli.symbols_url,
-                    symbols_cache,
-                    symbols_tmp,
-                    timeout,
+                let mut http_options = HttpSymbolSupplierOptions::default();
+                http_options.local_paths = symbols_paths;
+                http_options.urls = cli.symbols_url;
+                http_options.cache = Some(symbols_cache);
+                http_options.timeout = timeout;
+                http_options.tmp = Some(symbols_tmp);
+                http_options.fetch_native_binaries = cli
+                    .fetch_native_binaries
+                    .unwrap_or(cfg!(feature = "dump_syms"));
+                http_options.fetch_syms = cli.fetch_syms.unwrap_or(true);
+                http_options.use_minidump_paths = cli.use_minidump_paths.unwrap_or(false);
+                provider.add(Box::new(Symbolizer::new(http_symbol_supplier_opt(
+                    http_options,
                 ))));
             } else if !symbols_paths.is_empty() {
                 provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(

@@ -70,6 +70,16 @@ OPTIONS:
             The maximum amount of time (in seconds) a symbol file download is allowed to take
             [default: 1000]
 
+        --fetch-syms <FETCH_SYMS>
+            Whether to query urls for .sym files [possible values: true, false]
+
+        --fetch-native-binaries <FETCH_NATIVE_BINARIES>
+            Whether to query urls for native codefiles and debugfiles [possible values: true, false]
+
+        --use-minidump-paths <USE_MINIDUMP_PATHS>
+            Whether to try to get symbols from the *actual* codefile and debugfile paths on the
+            current system [possible values: true, false]
+
         --symbols-path <SYMBOLS_PATH>
             Path to a symbol file
 
