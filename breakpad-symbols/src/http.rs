@@ -775,8 +775,35 @@ impl SymbolSupplier for HttpSymbolSupplier {
 
         // Fourth: try minidump paths
         if cfg!(feature = "dump_syms") && self.use_minidump_paths {
-            if let (Some(_cache), Some(_tmp)) = (self.cache.as_ref(), self.tmp.as_ref()) {
-                warn!("use_minidump_paths feature isn't yet implemented!")
+            if let (Some(cache), Some(_tmp)) = (self.cache.as_ref(), self.tmp.as_ref()) {
+                let mut native_artifacts = vec![];
+                {
+                    let path = PathBuf::from(&*module.code_file());
+                    if path.exists() {
+                        native_artifacts.push(Ok((path, None)));
+                    }
+                }
+                if let Some(path) = module.debug_file() {
+                    let path = PathBuf::from(&*path);
+                    if path.exists() {
+                        native_artifacts.push(Ok((path, None)));
+                    }
+                }
+                // Now try to run dump_syms to produce a .sym
+                let sym_lookup =
+                    breakpad_sym_lookup(module).ok_or(SymbolError::MissingDebugFileOrId)?;
+                let output = cache.join(sym_lookup.cache_rel);
+                if dump_syms(&native_artifacts, &output).await.is_ok() {
+                    trace!("symbols: dump_syms successful! using local result");
+                    // We want dump_syms to leave us in a state "as if" we had downloaded
+                    // the symbol file, so as a guard against that diverging, we now use
+                    // the proper cache-lookup path to read the file dump_syms just wrote.
+                    if let Ok(local_result) = self.local.locate_symbols(module).await {
+                        return Ok(local_result);
+                    } else {
+                        warn!("dump_syms succeeded, but there was no symbol file in the cache?");
+                    }
+                }
             } else {
                 panic!("Unfortunately the current dump_syms impl requires both a cache and tmp!")
             };

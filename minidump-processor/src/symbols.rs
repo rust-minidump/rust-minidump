@@ -339,7 +339,7 @@ pub fn http_symbol_supplier(
 }
 
 /// Gets a SymbolSupplier that looks up symbols by path or with urls.
-/// 
+///
 /// See [`HttpSymbolSupplierOptions`][] for details.
 #[cfg(feature = "http")]
 pub fn http_symbol_supplier_opt(options: HttpSymbolSupplierOptions) -> impl SymbolSupplier {
