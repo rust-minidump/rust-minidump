@@ -189,6 +189,12 @@ async fn fill_source_line_info<P>(
 
         // This is best effort, so ignore any errors.
         let _ = symbol_provider.fill_symbol(module, frame).await;
+
+        // If we got any inlines, reverse them! The symbol format makes it simplest to
+        // emit inlines from the shallowest callee to the deepest one ("inner to outer"),
+        // but we want inlines to be in the same order as the stackwalk itself, which means
+        // we want the deepest frame first (the callee-est frame).
+        frame.inlines.reverse();
     }
 }
 
