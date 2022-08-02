@@ -667,6 +667,7 @@ async fn dump_syms(
     }
 
     trace!("Running dump_syms on {}...", source_file.unwrap().display());
+    std::fs::create_dir_all(output.parent().unwrap())?;
 
     if let Err(e) = dumper::single_file(
         &dumper::Config {
