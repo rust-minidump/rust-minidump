@@ -2,13 +2,25 @@
 
 ## Inlinee info
 
-WIP, not yet landed
+We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to
+report all the inlined functions for a given address in the binary, improving the quality of
+backtraces. For machine-readable outputs we prefer to emit these as "fake" frames nested under
+the pre-existing "real" frames. This means you will need to update your infra to make use of
+the new info (unless using human output), but better reflects the reality that these frames
+don't really exist at runtime, only in debuginfo.
 
-We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to report all the inlined functions for a given address in the binary, improving the quality of backtraces. The inlinee info is...
+* `minidump_processor::StackFrame` now has a new `inlines` field containing this info
+* The JSON schema now has `threads.N.frames.N.inlines` (see the schema document for details)
+* The human output will now include these frames as if they were real, but with "Found by: inlined"
+  and no recovered registers/args
 
-* WIP new library fields
-* WIP new json fields
-* WIP new human output?
+For anyone using breakpad-symbols directly: note that it emits inlines in the reverse order
+from minidump-processor because the debuginfo is kind of inherently structured that way. minidump-processor immediately reverses them to put them in the same order as the "real" frames.
+
+(Note that this functionality in dump_syms itself is experimental, and needs to be enabled with
+--inlines, and may not work on all platforms. At this precise moment Windows notably does not have
+inline info. As such the builtin support for running dump_syms inside breakpad_symbols does not
+currently attempt to enable it.)
 
 # Version 0.13.0 (2022-07-26)
 
