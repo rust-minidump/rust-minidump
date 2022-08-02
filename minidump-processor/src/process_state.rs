@@ -170,8 +170,11 @@ pub struct StackFrame {
     /// are not available.
     pub source_line_base: Option<u64>,
 
-    /// Any inline frames that cover the frame address, ordered from outside to inside.
-    /// The frames are "fake" in that they don't actually exist at runtime, and are only
+    /// Any inline frames that cover the frame address, ordered "inside to outside",
+    /// or "deepest callee to shallowest callee". This is the same order that StackFrames
+    /// appear in.
+    ///
+    /// These frames are "fake" in that they don't actually exist at runtime, and are only
     /// known because the compiler added debuginfo saying they exist.
     ///
     /// As a result, many properties of these frames either don't exist or are
@@ -183,8 +186,8 @@ pub struct StackFrame {
     /// ```ignore
     /// let mut frame_num = 0;
     /// for frame in &thread.frames {
-    ///     // !!! Inlines come first, and need to be reversed
-    ///     for inline in frame.inlines.iter().rev() {
+    ///     // Inlines come first
+    ///     for inline in &frame.inlines {
     ///         print_inline(frame_num, frame, inline);
     ///         frame_num += 1;
     ///     }
@@ -458,15 +461,14 @@ impl CallStack {
     ///
     /// This is very verbose, it implements the output format used by
     /// minidump_stackwalk.
-    /// This currently does not output inline frames.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         if self.frames.is_empty() {
             writeln!(f, "<no frames>")?;
         }
         let mut frame_count = 0;
-        for (_, frame) in self.frames.iter().enumerate() {
+        for frame in &self.frames {
             // First print out inlines
-            for inline in frame.inlines.iter().rev() {
+            for inline in &frame.inlines {
                 // Frame number
                 let frame_idx = frame_count;
                 frame_count += 1;
@@ -949,10 +951,7 @@ Unknown streams encountered:
                     "offset": json_hex(frame.instruction),
                     // optional
                     "inlines": if !frame.inlines.is_empty() {
-                        // In the JSON, inline frames are ordered from inside to outside.
-                        // In frame.inlines, they are ordered from outside to inside.
-                        // So we need to reverse the order here.
-                        Some(frame.inlines.iter().rev().map(|frame| {
+                        Some(frame.inlines.iter().map(|frame| {
                             json!({
                                 "function": frame.function_name,
                                 "file": frame.source_file_name,
