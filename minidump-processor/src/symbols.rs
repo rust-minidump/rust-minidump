@@ -96,9 +96,12 @@ use async_trait::async_trait;
 use minidump::Module;
 
 pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, HttpSymbolSupplierOptions,
-    PendingSymbolStats, SymbolError, SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingSymbolStats,
+    SymbolError, SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
 };
+
+#[cfg(feature = "http")]
+pub use breakpad_symbols::HttpSymbolSupplierOptions;
 
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
 ///

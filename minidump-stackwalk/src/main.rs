@@ -421,6 +421,13 @@ async fn main() {
         options.stat_reporter = processor_stats.as_ref();
     }
 
+    // Some extra settings for the http symbolicator
+    let use_minidump_paths = cli.use_minidump_paths.unwrap_or(false);
+    let fetch_syms = cli.fetch_syms.unwrap_or(true);
+    let fetch_native_binaries = cli
+        .fetch_native_binaries
+        .unwrap_or(cfg!(feature = "dump_syms"));
+
     // Ok now let's do the thing!!!!
 
     match Minidump::read_path(cli.minidump) {
@@ -444,18 +451,17 @@ async fn main() {
 
             let mut provider = MultiSymbolProvider::new();
 
-            if !cli.symbols_url.is_empty() {
+            let use_fancy_symbolicator = !cli.symbols_url.is_empty() || use_minidump_paths;
+            if use_fancy_symbolicator {
                 let mut http_options = HttpSymbolSupplierOptions::default();
                 http_options.local_paths = symbols_paths;
                 http_options.urls = cli.symbols_url;
                 http_options.cache = Some(symbols_cache);
                 http_options.timeout = timeout;
                 http_options.tmp = Some(symbols_tmp);
-                http_options.fetch_native_binaries = cli
-                    .fetch_native_binaries
-                    .unwrap_or(cfg!(feature = "dump_syms"));
-                http_options.fetch_syms = cli.fetch_syms.unwrap_or(true);
-                http_options.use_minidump_paths = cli.use_minidump_paths.unwrap_or(false);
+                http_options.fetch_native_binaries = fetch_native_binaries;
+                http_options.fetch_syms = fetch_syms;
+                http_options.use_minidump_paths = use_minidump_paths;
                 provider.add(Box::new(Symbolizer::new(http_symbol_supplier_opt(
                     http_options,
                 ))));
