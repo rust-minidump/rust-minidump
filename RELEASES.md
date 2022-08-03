@@ -4,7 +4,7 @@ Nothing to see here yet!
 
 # Version 0.14.0 (2022-08-03)
 
-Commit: TBD, this one? (post-release fixup needed)
+Commit: [f9933c36c5f48bf806a428b06399242e1b170020](https://github.com/rust-minidump/rust-minidump/commit/f9933c36c5f48bf806a428b06399242e1b170020)
 
 * fixed an error in the json schema for the `registers` field
 * we now emit frames based on inlinee info!!! (see below)
