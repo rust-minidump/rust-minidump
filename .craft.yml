@@ -1,0 +1,9 @@
+minVersion: 0.32.0
+changelog: RELEASES.md
+preReleaseCommand: echo
+#changelogPolicy: auto
+artifactProvider:
+  name: none
+targets:
+  - name: crates
+  - name: github

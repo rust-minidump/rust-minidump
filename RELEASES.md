@@ -1,5 +1,14 @@
 # Version XXX (not yet released)
 
+Nothing to see here yet!
+
+# Version 0.14.0 (2022-08-03)
+
+Commit: TBD, this one? (post-release fixup needed)
+
+* fixed an error in the json schema for the `registers` field
+* we now emit frames based on inlinee info!!! (see below)
+
 ## Inlinee info
 
 We now can read the new "inlinee" info that dump_syms can add to .sym files. This allows us to

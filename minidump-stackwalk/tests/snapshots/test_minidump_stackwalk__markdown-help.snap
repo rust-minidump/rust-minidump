@@ -6,7 +6,7 @@ expression: stdout
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown`
 
-Version: `minidump-stackwalk 0.13.0`
+Version: `minidump-stackwalk 0.14.0`
 
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
