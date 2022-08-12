@@ -291,8 +291,6 @@ mod amd64 {
             e => OpAnalysisError::DecodeFailed(e.into()),
         })?;
 
-        dbg!(decoded_instruction);
-
         let mut memory_accesses = Vec::new();
 
         // Shortcut -- If the instruction doesn't access memory, just return an empty list
