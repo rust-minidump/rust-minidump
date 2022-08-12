@@ -9,6 +9,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
+use crate::op_analysis::MemoryAccess;
 use crate::system_info::SystemInfo;
 use crate::{FrameSymbolizer, SymbolStats};
 use minidump::system_info::Cpu;
@@ -275,6 +276,10 @@ pub struct ExceptionInfo {
     /// that caused the fault. For code errors, this will be the address of the
     /// instruction that caused the fault.
     pub address: u64,
+    /// A string representing the crashing instruction (if available)
+    pub instruction_str: Option<String>,
+    /// A list of memory accesses performed by crashing instruction (if available)
+    pub memory_accesses: Option<Vec<MemoryAccess>>,
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -288,7 +293,7 @@ pub struct ProcessState {
     pub process_create_time: Option<SystemTime>,
     /// Known code signing certificates (module name => cert name)
     pub cert_info: HashMap<String, String>,
-    /// Info about the exception that caused the dump (if one did)
+    /// Info about the exception that triggered the dump (if one did)
     pub exception_info: Option<ExceptionInfo>,
     /// A string describing an assertion that was hit, if present.
     pub assertion: Option<String>,
@@ -668,9 +673,30 @@ Crash address: {:#x}
 ",
                 crash_info.reason, crash_info.address
             )?;
+
+            if let Some(ref crashing_instruction_str) = crash_info.instruction_str {
+                writeln!(f, "Crashing instruction: `{}`", crashing_instruction_str)?;
+            }
+
+            if let Some(ref memory_accesses) = crash_info.memory_accesses {
+                if memory_accesses.len() > 0 {
+                    writeln!(f, "Memory accessed by instruction:")?;
+                    for (idx, access) in memory_accesses.iter().enumerate() {
+                        writeln!(f, "  {}. Address: 0x{:016x}", idx, access.address)?;
+                        if let Some(size) = access.size {
+                            writeln!(f, "     Size: {}", size)?;
+                        } else {
+                            writeln!(f, "     Size: Unknown")?;
+                        }
+                    }
+                } else {
+                    writeln!(f, "No memory accessed by instruction")?;
+                }
+            }
         } else {
             writeln!(f, "No crash")?;
         }
+
         if let Some(ref assertion) = self.assertion {
             writeln!(f, "Assertion: {}", assertion)?;
         }
