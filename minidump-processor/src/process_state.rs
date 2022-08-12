@@ -679,7 +679,7 @@ Crash address: {:#x}
             }
 
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
-                if memory_accesses.len() > 0 {
+                if !memory_accesses.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
                     for (idx, access) in memory_accesses.iter().enumerate() {
                         writeln!(f, "  {}. Address: 0x{:016x}", idx, access.address)?;

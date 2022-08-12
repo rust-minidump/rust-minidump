@@ -131,7 +131,7 @@ pub fn get_thread_instruction_bytes(
 
     memory
         .seek(SeekFrom::Start(instruction_pointer))
-        .map_err(|e| OpAnalysisError::ReadThreadInstructionFailed(e))?;
+        .map_err(OpAnalysisError::ReadThreadInstructionFailed)?;
 
     // We use MAX_INSTRUCTION_LENGTH here as an optimization to avoid allocating and copying
     // more bytes than needed to produce an instruction
@@ -141,7 +141,7 @@ pub fn get_thread_instruction_bytes(
     memory
         .take(MAX_INSTRUCTION_LENGTH.into())
         .read_to_end(&mut buffer)
-        .map_err(|e| OpAnalysisError::ReadThreadInstructionFailed(e))?;
+        .map_err(OpAnalysisError::ReadThreadInstructionFailed)?;
 
     Ok(buffer)
 }
