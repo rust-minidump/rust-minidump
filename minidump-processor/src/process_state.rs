@@ -264,6 +264,19 @@ pub struct LinuxStandardBase {
     pub description: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct ExceptionInfo {
+    /// a `CrashReason` describing the crash reason.
+    pub reason: CrashReason,
+    /// The memory address implicated in the crash.
+    ///
+    /// If the crash reason implicates memory, this is the memory address that
+    /// caused the crash. For data access errors this will be the data address
+    /// that caused the fault. For code errors, this will be the address of the
+    /// instruction that caused the fault.
+    pub address: u64,
+}
+
 /// The state of a process as recorded by a `Minidump`.
 #[derive(Debug, Clone)]
 pub struct ProcessState {
@@ -275,16 +288,8 @@ pub struct ProcessState {
     pub process_create_time: Option<SystemTime>,
     /// Known code signing certificates (module name => cert name)
     pub cert_info: HashMap<String, String>,
-    /// If the process crashed, a `CrashReason` describing the crash reason.
-    pub crash_reason: Option<CrashReason>,
-    /// The memory address implicated in the crash.
-    ///
-    /// If the process crashed, and if the crash reason implicates memory,
-    /// this is the memory address that caused the crash. For data access
-    /// errors this will be the data address that caused the fault. For code
-    /// errors, this will be the address of the instruction that caused the
-    /// fault.
-    pub crash_address: Option<u64>,
+    /// Info about the exception that caused the dump (if one did)
+    pub exception_info: Option<ExceptionInfo>,
     /// A string describing an assertion that was hit, if present.
     pub assertion: Option<String>,
     /// The index of the thread that requested a dump be written.
@@ -610,7 +615,7 @@ fn eq_some<T: PartialEq>(opt: Option<T>, val: T) -> bool {
 impl ProcessState {
     /// `true` if the minidump was written in response to a process crash.
     pub fn crashed(&self) -> bool {
-        self.crash_reason.is_some() && self.crash_address.is_some()
+        self.exception_info.is_some()
     }
     /// Write a human-readable description of the process state to `f`.
     ///
@@ -655,13 +660,13 @@ impl ProcessState {
         }
         writeln!(f)?;
 
-        if let (&Some(ref reason), &Some(ref address)) = (&self.crash_reason, &self.crash_address) {
+        if let Some(ref crash_info) = self.exception_info {
             write!(
                 f,
                 "Crash reason:  {}
 Crash address: {:#x}
 ",
-                reason, address
+                crash_info.reason, crash_info.address
             )?;
         } else {
             writeln!(f, "No crash")?;
@@ -858,8 +863,8 @@ Unknown streams encountered:
                 "cpu_microcode_version": sys.cpu_microcode_version,
             },
             "crash_info": {
-                "type": self.crash_reason.map(|reason| reason.to_string()),
-                "address": self.crash_address.map(json_hex),
+                "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),
+                "address": self.exception_info.as_ref().map(|info| info.address).map(json_hex),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
                 "assertion": self.assertion,

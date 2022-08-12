@@ -536,20 +536,6 @@ where
     } else {
         (None, None)
     };
-    // Get exception info if it exists.
-    let exception_stream = dump.get_stream::<MinidumpException>().ok();
-    let exception_ref = exception_stream.as_ref();
-    let (crash_reason, crash_address, crashing_thread_id) = if let Some(exception) = exception_ref {
-        (
-            Some(exception.get_crash_reason(system_info.os, system_info.cpu)),
-            Some(exception.get_crash_address(system_info.os, system_info.cpu)),
-            Some(exception.get_crashing_thread_id()),
-        )
-    } else {
-        (None, None, None)
-    };
-    let exception_context =
-        exception_ref.and_then(|e| e.context(&dump_system_info, misc_info.as_ref()));
     // Get assertion
     let assertion = None;
     let modules = match dump.get_stream::<MinidumpModuleList>() {
@@ -566,6 +552,22 @@ where
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+
+    // Get exception info if it exists.
+    let exception_stream = dump.get_stream::<MinidumpException>().ok();
+    let exception_ref = exception_stream.as_ref();
+
+    let exception_info = exception_ref.map(|exception| {
+        let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
+        let address = exception.get_crash_address(system_info.os, system_info.cpu);
+
+        crate::ExceptionInfo { reason, address }
+    });
+
+    let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
+
+    let exception_context =
+        exception_ref.and_then(|e| e.context(&dump_system_info, misc_info.as_ref()));
 
     // Get the evil JSON file (thread names and module certificates)
     let evil = options
@@ -635,8 +637,7 @@ where
         time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
         process_create_time,
         cert_info: evil.certs,
-        crash_reason,
-        crash_address,
+        exception_info,
         assertion,
         requesting_thread,
         system_info,
