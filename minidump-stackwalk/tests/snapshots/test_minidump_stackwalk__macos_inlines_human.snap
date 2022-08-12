@@ -1,5 +1,6 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+assertion_line: 840
 expression: stdout
 ---
 Operating system: Mac OS X
@@ -10,6 +11,10 @@ CPU: amd64
 
 Crash reason:  EXC_BAD_ACCESS / KERN_INVALID_ADDRESS
 Crash address: 0xffffffff80000042
+Crashing instruction: `mov byte [0x80000042], 0x1`
+Memory accessed by instruction:
+  0. Address: 0x0000000080000042
+     Size: 1
 Process uptime: 0 seconds
 
 Thread 0 main (crashed)
