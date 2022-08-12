@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::TryFrom;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -738,3 +739,77 @@ where
 
     Ok(state)
 }
+
+/// A cursor that allows a memory list to be used like a byte stream
+///
+/// The cursor can be moved around using `seek()` to any 64-bit address without concern
+/// for whether or not the underlying memory list actually has any data at that location
+/// (`SeekFrom::Current` has wrapping behavior, `SeekFrom::End` considers address `0` to be the
+/// end, so it allows negative indexing to be used like a "distance from the end of 64-bit space")
+///
+/// When a `read()` is performed, the cursor may attempt to read bytes until it reaches an empty
+/// space in the memory list, at which point it will return `Ok(0)` forever until it is
+/// repositioned using `seek()` to a new address that does contain memory
+///
+/// **IMPORTANT** Do not assume that an entire continuous memory range can be read with a single
+/// call to `read()`, and do not assume that `read()` returning fewer bytes than requested
+/// means that the end of stream has been reached; only `Ok(0)` signals that
+///
+/// Specifically, memory lists store memory sections in chunks that each have their own underlying
+/// byte slices. If a request spans across chunks, `read()` will only read to the end of the
+/// current chunk, and then the next `read()` call will start at the beginning of the next chunk
+///
+/// Both `read()` and `seek()` will never return an error
+///
+#[derive(Debug)]
+struct MemoryListCursor<'a, Descriptor> {
+    /// The memory list this cursor wraps
+    memory_list: &'a MinidumpMemoryListBase<'a, Descriptor>,
+    /// The current position of the cursor within the 64-bit memory space
+    pos: u64,
+}
+
+impl<'a, Descriptor> MemoryListCursor<'a, Descriptor> {
+    /// Create a new cursor that wraps the given memory list and starts at position `0`
+    pub fn new(
+        memory_list: &'a MinidumpMemoryListBase<'a, Descriptor>,
+    ) -> MemoryListCursor<'a, Descriptor> {
+        MemoryListCursor {
+            memory_list,
+            pos: 0,
+        }
+    }
+}
+
+impl<'a, Descriptor> std::io::Seek for MemoryListCursor<'a, Descriptor> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.pos = match pos {
+            std::io::SeekFrom::Start(start) => start,
+            std::io::SeekFrom::Current(offset) => self.pos.wrapping_add(offset as u64),
+            std::io::SeekFrom::End(offset) => offset as u64,
+        };
+        Ok(self.pos)
+    }
+}
+
+impl<'a, Descriptor> std::io::Read for MemoryListCursor<'a, Descriptor> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let src_bytes: &[u8] = self
+            .memory_list
+            .memory_at_address(self.pos)
+            .map(|memory| {
+                let offset = (self.pos - memory.base_address) as usize;
+                &memory.bytes[offset..]
+            })
+            .unwrap_or(&[]);
+
+        let read_len = std::cmp::min(src_bytes.len(), buf.len());
+
+        buf[0..read_len].copy_from_slice(&src_bytes[0..read_len]);
+        self.pos += u64::try_from(read_len).unwrap();
+
+        Ok(read_len)
+    }
+}
+
+impl<'a, Descriptor> crate::op_analysis::SparseMemoryStream for MemoryListCursor<'a, Descriptor> {}
