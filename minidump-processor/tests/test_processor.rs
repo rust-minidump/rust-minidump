@@ -60,7 +60,7 @@ async fn test_processor() {
     // TODO:
     // assert_eq!(state.system_info.cpu_info.unwrap(),
     // "GenuineIntel family 6 model 13 stepping 8");
-    assert_eq!(state.crash_address.unwrap(), 0x45);
+    assert_eq!(state.exception_info.unwrap().address, 0x45);
     assert_eq!(state.threads.len(), 2);
     assert_eq!(state.requesting_thread.unwrap(), 0);
 
