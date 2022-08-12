@@ -561,7 +561,35 @@ where
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
-        crate::ExceptionInfo { reason, address }
+        let (instruction_str, memory_accesses) = exception
+            .context(&dump_system_info, misc_info.as_ref())
+            .map(|context| {
+                let mut memory_list_cursor = MemoryListCursor::new(&memory_list);
+
+                let instruction_str = crate::op_analysis::pretty_print_thread_instruction(
+                    &context,
+                    &mut memory_list_cursor,
+                )
+                .map_err(|e| tracing::warn!("failed to pretty print instruction: {}", e))
+                .ok();
+
+                let memory_accesses =
+                    crate::op_analysis::get_thread_memory_access(&context, &mut memory_list_cursor)
+                        .map_err(|e| {
+                            tracing::warn!("failed to get instruction memory access: {}", e)
+                        })
+                        .ok();
+
+                (instruction_str, memory_accesses)
+            })
+            .unwrap_or((None, None));
+
+        crate::ExceptionInfo {
+            reason,
+            address,
+            instruction_str,
+            memory_accesses,
+        }
     });
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
