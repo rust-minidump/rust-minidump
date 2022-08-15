@@ -1,0 +1,270 @@
+[1mdiff --git a/minidump-processor/src/op_analysis.rs b/minidump-processor/src/op_analysis.rs[m
+[1mindex 56d9b96..988c878 100644[m
+[1m--- a/minidump-processor/src/op_analysis.rs[m
+[1m+++ b/minidump-processor/src/op_analysis.rs[m
+[36m@@ -1,10 +1,10 @@[m
+ //! Module for analyzing CPU instructions[m
+ //![m
+ //! When analyzing a minidump, it is often useful to know information about what instructions[m
+[31m-//! were being run by various CPU threads (especially the crashing thread during a crash)[m
+[32m+[m[32m//! were being run by various CPU threads (especially the crashing thread during a crash).[m
+ //![m
+ //! This module attempts to provide a toolbox of instruction analysis tools that can be used to[m
+[31m-//! provide such information[m
+[32m+[m[32m//! provide such information.[m
+ //![m
+ //! Support for different architectures can be enabled through features on the crate. Below is[m
+ //! a list of currently available architectures and enabling features:[m
+[36m@@ -12,9 +12,7 @@[m
+ //! - `disasm_amd64`: enable analysis of Amd64 instructions (on by default)[m
+ //![m
+ //! The functions in this module will generally return `OpAnalysisError::UnsupportedCpuArch` if[m
+[31m-//! support for the target CPU is not available[m
+[31m-//![m
+[31m-//![m
+[32m+[m[32m//! support for the target CPU is not available.[m
+ [m
+ #![deny(missing_docs)][m
+ [m
+[36m@@ -25,19 +23,19 @@[m [muse std::io::{Read, Seek, SeekFrom};[m
+ ///[m
+ /// For architectures that have variable-length instructions (such as x86 family), filling a[m
+ /// buffer with this many bytes guarantees that decode will never fail due to instruction[m
+[31m-/// truncation[m
+[32m+[m[32m/// truncation.[m
+ ///[m
+ /// Note that the opposite is explicitly not true -- filling a buffer with fewer[m
+ /// bytes than this does not guarantee that decoding will fail. In some cases, only a single[m
+[31m-/// byte may be needed to represent an instruction[m
+[32m+[m[32m/// byte may be needed to represent an instruction.[m
+ ///[m
+ /// Specifying too low of a value for this may cause long instructions to fail to decode. Too[m
+[31m-/// high of a value won't affect functionality, but may result in unnecessary memory usage[m
+[32m+[m[32m/// high of a value won't affect functionality, but may result in unnecessary memory usage.[m
+ pub const MAX_INSTRUCTION_LENGTH: u8 = MAX_AMD64_INSTRUCTION_LENGTH;[m
+ [m
+ /// The maximum size of an instruction on Amd64 architecture[m
+ ///[m
+[31m-/// Amd64 instructions can be between 1 and 15 bytes in length[m
+[32m+[m[32m/// Amd64 instructions can be between 1 and 15 bytes in length.[m
+ pub const MAX_AMD64_INSTRUCTION_LENGTH: u8 = 15;[m
+ [m
+ /// Error type for the functions in this module[m
+[36m@@ -64,7 +62,7 @@[m [mpub enum OpAnalysisError {[m
+ ///[m
+ /// There are several functions in this module that require the ability to read the memory of[m
+ /// a dumped process, which can be thought of as a giant 64-bit address space that contains[m
+[31m-/// mostly empty space with relatively-small chunks of occupied memory ranges[m
+[32m+[m[32m/// mostly empty space with relatively-small chunks of occupied memory ranges.[m
+ ///[m
+ /// This trait is a marker for a type that implements both `std::io::Read` and `std::io:Seek`[m
+ /// but also has the following behavior:[m
+[36m@@ -72,55 +70,53 @@[m [mpub enum OpAnalysisError {[m
+ /// 1.  The stream's position must be interpreted as the memory address within the[m
+ ///     target process's memory space. That means that a successful `seek(SeekFrom::Start(pos))`[m
+ ///     where `pos == 0x12345678` means that the next `read()` should attempt to return the memory[m
+[31m-///     at target address `0x12345678` (if exists)[m
+[32m+[m[32m///     at target address `0x12345678` (if exists).[m
+ ///[m
+ /// 2.  Calling `read()` one-or-more times with the stream position at an occupied address should[m
+ ///     continue to produce bytes until the end of the occupied memory range is reached, at which[m
+ ///     point `Ok(0)` should be returned at-least once to signal end-of-file. Specifically, it is[m
+ ///     never okay to "jump" across a gap to the next occupied range of memory, as that would have[m
+[31m-///     the effect of concatenating disjoint areas of memory[m
+[32m+[m[32m///     the effect of concatenating disjoint areas of memory.[m
+ ///[m
+ /// 3.  Using `seek()` to reposition the stream back to a occupied memory address should allow[m
+[31m-///     usage of `read()` to resume as normal[m
+[32m+[m[32m///     usage of `read()` to resume as normal.[m
+ ///[m
+[31m-/// 4.  Both `seek()` and `read()` should return any I/O errors encountered[m
+[32m+[m[32m/// 4.  Both `seek()` and `read()` should return any I/O errors encountered.[m
+ ///[m
+ /// As long as those requirements are met, many other things are permitted. Specifically, all the[m
+ /// following things are allowed but not required:[m
+ ///[m
+ /// 1.  The stream may choose to fail if `seek(SeekFrom::Start(pos))` is not called before[m
+[31m-///     `read()`, as this module will always do that[m
+[32m+[m[32m///     `read()`, as this module will always do that.[m
+ ///[m
+ /// 2.  The stream may support `SeekFrom::Current` or `SeekFrom::End`, but this module doesn't[m
+[31m-///     use either[m
+[32m+[m[32m///     use either.[m
+ ///[m
+ /// 3.  After `read()` returns `Ok(0)` to indicate the end-of-file, the stream may return an error[m
+[31m-///     if `read()` is called again or may choose to return `Ok(0)`[m
+[32m+[m[32m///     if `read()` is called again or may choose to return `Ok(0)`.[m
+ ///[m
+ /// 4.  A `seek()` to an unoccupied address may return an error, or may update the pointer and[m
+[31m-///     return success[m
+[32m+[m[32m///     return success.[m
+ ///[m
+ /// 5.  Likewise, a `read()` of an unoccupied address may return an error, or may return `Ok(0)`[m
+[31m-///     to indicate that end-of-file is immediately hit[m
+[32m+[m[32m///     to indicate that end-of-file is immediately hit.[m
+ ///[m
+ /// Implementing this marker trait for a type that doesn't meet these requirements has safe but[m
+[31m-/// unspecified behavior[m
+[32m+[m[32m/// unspecified behavior.[m
+ ///[m
+ /// As these requirements are fairly lenient, this means that any `File` or `&[u8]` that contains[m
+[31m-/// a flat memory dump of process memory may implement this trait[m
+[31m-///[m
+[32m+[m[32m/// a flat memory dump of process memory may implement this trait.[m
+ pub trait SparseMemoryStream: Read + Seek {}[m
+ [m
+ /// Read the instruction bytes that were being run by the given thread[m
+ ///[m
+ /// Use the given `context` to attempt to read `1 <= n <= MAX_INSTRUCTION_LENGTH`[m
+ /// bytes at the instruction pointer from the byte stream passed in `memory`, which is any type[m
+[31m-/// that implements `SparseMemoryStream`[m
+[32m+[m[32m/// that implements `SparseMemoryStream`.[m
+ ///[m
+ /// # Errors[m
+ ///[m
+[31m-/// This may fail if the underlying byte stream fails to `seek()` or `read()`[m
+[31m-///[m
+[32m+[m[32m/// This may fail if the underlying byte stream fails to `seek()` or `read()`.[m
+ pub fn get_thread_instruction_bytes([m
+     context: &MinidumpContext,[m
+     memory: &mut impl SparseMemoryStream,[m
+[36m@@ -132,7 +128,7 @@[m [mpub fn get_thread_instruction_bytes([m
+         .map_err(OpAnalysisError::ReadThreadInstructionFailed)?;[m
+ [m
+     // We use MAX_INSTRUCTION_LENGTH here as an optimization to avoid allocating and copying[m
+[31m-    // more bytes than needed to produce an instruction[m
+[32m+[m[32m    // more bytes than needed to produce an instruction.[m
+ [m
+     let mut buffer = Vec::with_capacity(MAX_INSTRUCTION_LENGTH.into());[m
+ [m
+[36m@@ -152,7 +148,7 @@[m [mpub struct MemoryAccess {[m
+     /// The size of the memory access[m
+     ///[m
+     /// Note that this is optional, as there are weird instructions that do not know the size[m
+[31m-    /// of their memory accesses without more complex context[m
+[32m+[m[32m    /// of their memory accesses without more complex context.[m
+     pub size: Option<u8>,[m
+ }[m
+ [m
+[36m@@ -160,23 +156,22 @@[m [mpub struct MemoryAccess {[m
+ ///[m
+ /// Architectures like x86 allow for complex arithmetic involving multiple registers to be[m
+ /// used to determine a target memory address, and allow for single operations involving[m
+[31m-/// multiple memory locations (bit blitting, vector ops)[m
+[32m+[m[32m/// multiple memory locations (bit blitting, vector ops).[m
+ ///[m
+ /// If the given `instruction_bytes` contain a valid instruction, and the given `context` contains[m
+ /// valid values for all the registers used for address calculation, this function will return a[m
+[31m-/// (possibly-empty) list of all the memory accesses for the instruction[m
+[32m+[m[32m/// (possibly-empty) list of all the memory accesses for the instruction.[m
+ ///[m
+ /// ⚠ NOTE ⚠ - Certain instructions like "PUSH reg" are not considered to access memory, even[m
+ /// though they do technically write to the stack (the "PUSH [mem]" instruction will still[m
+ /// report the memory access for the operand, but not the implicit stack write). Generally this[m
+[31m-/// shouldn't be of much concern, but there may be some situations where this detail matters[m
+[32m+[m[32m/// shouldn't be of much concern, but there may be some situations where this detail matters.[m
+ ///[m
+ /// # Errors[m
+ ///[m
+ /// May fail if the given bytes are too short to form an instruction, don't represent a valid[m
+ /// instruction encoding, registers needed to calculate the address are invalid, or if the[m
+[31m-/// given CPU architecture is not supported or enabled by the current feature set[m
+[31m-///[m
+[32m+[m[32m/// given CPU architecture is not supported or enabled by the current feature set.[m
+ pub fn get_instruction_memory_access([m
+     context: &MinidumpContext,[m
+     instruction_bytes: &[u8],[m
+[36m@@ -193,14 +188,13 @@[m [mpub fn get_instruction_memory_access([m
+ /// Pretty print the given instruction bytes[m
+ ///[m
+ /// Interpret the given `instruction_bytes` as instructions for the CPU architecture given by[m
+[31m-/// `context`, and pretty-print the instruction as a string[m
+[32m+[m[32m/// `context`, and pretty-print the instruction as a string.[m
+ ///[m
+ /// # Errors[m
+ ///[m
+ /// May fail if the given bytes are too short to form an instruction, don't represent a valid[m
+ /// instruction encoding, or if the given CPU architecture is not supported or enabled by the[m
+[31m-/// current feature set[m
+[31m-///[m
+[32m+[m[32m/// current feature set.[m
+ pub fn pretty_print_instruction_bytes([m
+     context: &MinidumpContext,[m
+     instruction_bytes: &[u8],[m
+[36m@@ -218,8 +212,7 @@[m [mpub fn pretty_print_instruction_bytes([m
+ ///[m
+ /// This function is just a convenience wrapper around `get_thread_instruction_bytes` and[m
+ /// `get_instruction_memory_access`. Read the respective documentation for those to understand[m
+[31m-/// this function[m
+[31m-///[m
+[32m+[m[32m/// this function.[m
+ pub fn get_thread_memory_access([m
+     context: &MinidumpContext,[m
+     memory: &mut impl SparseMemoryStream,[m
+[36m@@ -232,8 +225,7 @@[m [mpub fn get_thread_memory_access([m
+ ///[m
+ /// This function is just a convenience wrapper around `get_thread_instruction_bytes` and[m
+ /// `pretty_print_instruction_bytes`. Read the respective documentation for those to understand[m
+[31m-/// this function[m
+[31m-///[m
+[32m+[m[32m/// this function.[m
+ pub fn pretty_print_thread_instruction([m
+     context: &MinidumpContext,[m
+     memory: &mut impl SparseMemoryStream,[m
+[36m@@ -373,8 +365,7 @@[m [mmod tests {[m
+     ///[m
+     /// Returns a slice of instruction bytes for testing purposes. Expects a single call[m
+     /// to seek() at the instruction pointer followed by a read() to return a valid[m
+[31m-    /// instruction[m
+[31m-    ///[m
+[32m+[m[32m    /// instruction.[m
+     struct TestMemoryReader<'a> {[m
+         expected_address: Option<u64>,[m
+         bytes: &'a [u8],[m
+[1mdiff --git a/minidump-processor/src/process_state.rs b/minidump-processor/src/process_state.rs[m
+[1mindex acdece7..8e5966a 100644[m
+[1m--- a/minidump-processor/src/process_state.rs[m
+[1m+++ b/minidump-processor/src/process_state.rs[m
+[36m@@ -265,6 +265,10 @@[m [mpub struct LinuxStandardBase {[m
+     pub description: String,[m
+ }[m
+ [m
+[32m+[m[32m/// Info about an exception that may have occurred[m
+[32m+[m[32m///[m
+[32m+[m[32m/// May not be available if the minidump wasn't triggered by an exception, or if required[m
+[32m+[m[32m/// info about the exception is missing[m
+ #[derive(Debug, Clone)][m
+ pub struct ExceptionInfo {[m
+     /// a `CrashReason` describing the crash reason.[m
+[1mdiff --git a/minidump-processor/src/processor.rs b/minidump-processor/src/processor.rs[m
+[1mindex 2e836eb..56e0cd1 100644[m
+[1m--- a/minidump-processor/src/processor.rs[m
+[1m+++ b/minidump-processor/src/processor.rs[m
+[36m@@ -774,22 +774,21 @@[m [mwhere[m
+ /// The cursor can be moved around using `seek()` to any 64-bit address without concern[m
+ /// for whether or not the underlying memory list actually has any data at that location[m
+ /// (`SeekFrom::Current` has wrapping behavior, `SeekFrom::End` considers address `0` to be the[m
+[31m-/// end, so it allows negative indexing to be used like a "distance from the end of 64-bit space")[m
+[32m+[m[32m/// end, so it allows negative indexing to be used like a "distance from the end of 64-bit space").[m
+ ///[m
+ /// When a `read()` is performed, the cursor may attempt to read bytes until it reaches an empty[m
+ /// space in the memory list, at which point it will return `Ok(0)` forever until it is[m
+[31m-/// repositioned using `seek()` to a new address that does contain memory[m
+[32m+[m[32m/// repositioned using `seek()` to a new address that does contain memory.[m
+ ///[m
+ /// **IMPORTANT** Do not assume that an entire continuous memory range can be read with a single[m
+ /// call to `read()`, and do not assume that `read()` returning fewer bytes than requested[m
+[31m-/// means that the end of stream has been reached; only `Ok(0)` signals that[m
+[32m+[m[32m/// means that the end of stream has been reached; only `Ok(0)` signals that.[m
+ ///[m
+ /// Specifically, memory lists store memory sections in chunks that each have their own underlying[m
+ /// byte slices. If a request spans across chunks, `read()` will only read to the end of the[m
+[31m-/// current chunk, and then the next `read()` call will start at the beginning of the next chunk[m
+[31m-///[m
+[31m-/// Both `read()` and `seek()` will never return an error[m
+[32m+[m[32m/// current chunk, and then the next `read()` call will start at the beginning of the next chunk.[m
+ ///[m
+[32m+[m[32m/// Both `read()` and `seek()` will never return an error.[m
+ #[derive(Debug)][m
+ struct MemoryListCursor<'a, Descriptor> {[m
+     /// The memory list this cursor wraps[m

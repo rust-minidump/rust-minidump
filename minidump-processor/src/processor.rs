@@ -774,22 +774,21 @@ where
 /// The cursor can be moved around using `seek()` to any 64-bit address without concern
 /// for whether or not the underlying memory list actually has any data at that location
 /// (`SeekFrom::Current` has wrapping behavior, `SeekFrom::End` considers address `0` to be the
-/// end, so it allows negative indexing to be used like a "distance from the end of 64-bit space")
+/// end, so it allows negative indexing to be used like a "distance from the end of 64-bit space").
 ///
 /// When a `read()` is performed, the cursor may attempt to read bytes until it reaches an empty
 /// space in the memory list, at which point it will return `Ok(0)` forever until it is
-/// repositioned using `seek()` to a new address that does contain memory
+/// repositioned using `seek()` to a new address that does contain memory.
 ///
 /// **IMPORTANT** Do not assume that an entire continuous memory range can be read with a single
 /// call to `read()`, and do not assume that `read()` returning fewer bytes than requested
-/// means that the end of stream has been reached; only `Ok(0)` signals that
+/// means that the end of stream has been reached; only `Ok(0)` signals that.
 ///
 /// Specifically, memory lists store memory sections in chunks that each have their own underlying
 /// byte slices. If a request spans across chunks, `read()` will only read to the end of the
-/// current chunk, and then the next `read()` call will start at the beginning of the next chunk
+/// current chunk, and then the next `read()` call will start at the beginning of the next chunk.
 ///
-/// Both `read()` and `seek()` will never return an error
-///
+/// Both `read()` and `seek()` will never return an error.
 #[derive(Debug)]
 struct MemoryListCursor<'a, Descriptor> {
     /// The memory list this cursor wraps

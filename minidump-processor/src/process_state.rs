@@ -265,6 +265,10 @@ pub struct LinuxStandardBase {
     pub description: String,
 }
 
+/// Info about an exception that may have occurred
+///
+/// May not be available if the minidump wasn't triggered by an exception, or if required
+/// info about the exception is missing
 #[derive(Debug, Clone)]
 pub struct ExceptionInfo {
     /// a `CrashReason` describing the crash reason.
