@@ -410,7 +410,7 @@ impl SymbolFile {
                                 // We found another inline frame.
                                 let call_file = self.files.get(&call_file_id).map(Deref::deref);
                                 if let Some(name) = self.inline_origins.get(&inline_origin) {
-                                    frame.add_inline_frame(&*name, call_file, Some(call_line));
+                                    frame.add_inline_frame(name, call_file, Some(call_line));
                                 }
 
                                 inline_origin = next_inline_origin;
@@ -427,7 +427,7 @@ impl SymbolFile {
                         None => (None, None),
                     };
                     if let Some(name) = self.inline_origins.get(&inline_origin) {
-                        frame.add_inline_frame(&*name, file, line);
+                        frame.add_inline_frame(name, file, line);
                     }
                 }
             }
