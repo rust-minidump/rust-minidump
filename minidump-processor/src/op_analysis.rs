@@ -17,26 +17,6 @@
 #![deny(missing_docs)]
 
 use minidump::{MinidumpContext, MinidumpRawContext};
-use std::io::{Read, Seek, SeekFrom};
-
-/// The maximum size of an instruction on any supported architecture (currently Amd64)
-///
-/// For architectures that have variable-length instructions (such as x86 family), filling a
-/// buffer with this many bytes guarantees that decode will never fail due to instruction
-/// truncation.
-///
-/// Note that the opposite is explicitly not true -- filling a buffer with fewer
-/// bytes than this does not guarantee that decoding will fail. In some cases, only a single
-/// byte may be needed to represent an instruction.
-///
-/// Specifying too low of a value for this may cause long instructions to fail to decode. Too
-/// high of a value won't affect functionality, but may result in unnecessary memory usage.
-pub const MAX_INSTRUCTION_LENGTH: u8 = MAX_AMD64_INSTRUCTION_LENGTH;
-
-/// The maximum size of an instruction on Amd64 architecture
-///
-/// Amd64 instructions can be between 1 and 15 bytes in length.
-pub const MAX_AMD64_INSTRUCTION_LENGTH: u8 = 15;
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
@@ -46,7 +26,7 @@ pub enum OpAnalysisError {
     UnsupportedCpuArch,
     /// Failed to read the memory at the instruction pointer
     #[error("failed to read memory at instruction pointer")]
-    ReadThreadInstructionFailed(#[source] std::io::Error),
+    ReadThreadInstructionFailed,
     /// A byte slice was too short and therefore contained a truncated instruction
     #[error("byte slice contained truncated instruction")]
     InstructionTruncated,
@@ -56,88 +36,6 @@ pub enum OpAnalysisError {
     /// An instruction accesses memory using a register with invalid contents
     #[error("a register used by the instruction had an invalid value")]
     RegisterInvalid,
-}
-
-/// A trait representing a target process's sparsely-populated memory
-///
-/// There are several functions in this module that require the ability to read the memory of
-/// a dumped process, which can be thought of as a giant 64-bit address space that contains
-/// mostly empty space with relatively-small chunks of occupied memory ranges.
-///
-/// This trait is a marker for a type that implements both `std::io::Read` and `std::io:Seek`
-/// but also has the following behavior:
-///
-/// 1.  The stream's position must be interpreted as the memory address within the
-///     target process's memory space. That means that a successful `seek(SeekFrom::Start(pos))`
-///     where `pos == 0x12345678` means that the next `read()` should attempt to return the memory
-///     at target address `0x12345678` (if exists).
-///
-/// 2.  Calling `read()` one-or-more times with the stream position at an occupied address should
-///     continue to produce bytes until the end of the occupied memory range is reached, at which
-///     point `Ok(0)` should be returned at-least once to signal end-of-file. Specifically, it is
-///     never okay to "jump" across a gap to the next occupied range of memory, as that would have
-///     the effect of concatenating disjoint areas of memory.
-///
-/// 3.  Using `seek()` to reposition the stream back to a occupied memory address should allow
-///     usage of `read()` to resume as normal.
-///
-/// 4.  Both `seek()` and `read()` should return any I/O errors encountered.
-///
-/// As long as those requirements are met, many other things are permitted. Specifically, all the
-/// following things are allowed but not required:
-///
-/// 1.  The stream may choose to fail if `seek(SeekFrom::Start(pos))` is not called before
-///     `read()`, as this module will always do that.
-///
-/// 2.  The stream may support `SeekFrom::Current` or `SeekFrom::End`, but this module doesn't
-///     use either.
-///
-/// 3.  After `read()` returns `Ok(0)` to indicate the end-of-file, the stream may return an error
-///     if `read()` is called again or may choose to return `Ok(0)`.
-///
-/// 4.  A `seek()` to an unoccupied address may return an error, or may update the pointer and
-///     return success.
-///
-/// 5.  Likewise, a `read()` of an unoccupied address may return an error, or may return `Ok(0)`
-///     to indicate that end-of-file is immediately hit.
-///
-/// Implementing this marker trait for a type that doesn't meet these requirements has safe but
-/// unspecified behavior.
-///
-/// As these requirements are fairly lenient, this means that any `File` or `&[u8]` that contains
-/// a flat memory dump of process memory may implement this trait.
-pub trait SparseMemoryStream: Read + Seek {}
-
-/// Read the instruction bytes that were being run by the given thread
-///
-/// Use the given `context` to attempt to read `1 <= n <= MAX_INSTRUCTION_LENGTH`
-/// bytes at the instruction pointer from the byte stream passed in `memory`, which is any type
-/// that implements `SparseMemoryStream`.
-///
-/// # Errors
-///
-/// This may fail if the underlying byte stream fails to `seek()` or `read()`.
-pub fn get_thread_instruction_bytes(
-    context: &MinidumpContext,
-    memory: &mut impl SparseMemoryStream,
-) -> Result<Vec<u8>, OpAnalysisError> {
-    let instruction_pointer = context.get_instruction_pointer();
-
-    memory
-        .seek(SeekFrom::Start(instruction_pointer))
-        .map_err(OpAnalysisError::ReadThreadInstructionFailed)?;
-
-    // We use MAX_INSTRUCTION_LENGTH here as an optimization to avoid allocating and copying
-    // more bytes than needed to produce an instruction.
-
-    let mut buffer = Vec::with_capacity(MAX_INSTRUCTION_LENGTH.into());
-
-    memory
-        .take(MAX_INSTRUCTION_LENGTH.into())
-        .read_to_end(&mut buffer)
-        .map_err(OpAnalysisError::ReadThreadInstructionFailed)?;
-
-    Ok(buffer)
 }
 
 /// Details about a memory access performed by an instruction
@@ -213,12 +111,12 @@ pub fn pretty_print_instruction_bytes(
 /// This function is just a convenience wrapper around `get_thread_instruction_bytes` and
 /// `get_instruction_memory_access`. Read the respective documentation for those to understand
 /// this function.
-pub fn get_thread_memory_access(
+pub fn get_thread_memory_access<'a, Descriptor>(
     context: &MinidumpContext,
-    memory: &mut impl SparseMemoryStream,
+    memory_list: &minidump::MinidumpMemoryListBase<'a, Descriptor>,
 ) -> Result<Vec<MemoryAccess>, OpAnalysisError> {
-    let instruction_bytes = get_thread_instruction_bytes(context, memory)?;
-    get_instruction_memory_access(context, &instruction_bytes)
+    let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
+    get_instruction_memory_access(context, instruction_bytes)
 }
 
 /// Pretty-print the instruction that the given thread was running
@@ -226,12 +124,36 @@ pub fn get_thread_memory_access(
 /// This function is just a convenience wrapper around `get_thread_instruction_bytes` and
 /// `pretty_print_instruction_bytes`. Read the respective documentation for those to understand
 /// this function.
-pub fn pretty_print_thread_instruction(
+pub fn pretty_print_thread_instruction<'a, Descriptor>(
     context: &MinidumpContext,
-    memory: &mut impl SparseMemoryStream,
+    memory_list: &minidump::MinidumpMemoryListBase<'a, Descriptor>,
 ) -> Result<String, OpAnalysisError> {
-    let instruction_bytes = get_thread_instruction_bytes(context, memory)?;
-    pretty_print_instruction_bytes(context, &instruction_bytes)
+    let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
+    pretty_print_instruction_bytes(context, instruction_bytes)
+}
+
+/// Helper to read the instruction bytes that were being run by the given thread
+///
+/// Use the given `context` to attempt to read `1 <= n <= MAX_INSTRUCTION_LENGTH`
+/// bytes at the instruction pointer from the byte stream passed in `memory`, which is any type
+/// that implements `SparseMemoryStream`.
+///
+/// # Errors
+///
+/// This may fail if the underlying byte stream fails to `seek()` or `read()`.
+fn get_thread_instruction_bytes<'a, Descriptor>(
+    context: &MinidumpContext,
+    memory_list: &'a minidump::MinidumpMemoryListBase<'a, Descriptor>,
+) -> Result<&'a [u8], OpAnalysisError> {
+    let instruction_pointer = context.get_instruction_pointer();
+
+    memory_list
+        .memory_at_address(instruction_pointer)
+        .map(|memory| {
+            let offset = (instruction_pointer - memory.base_address) as usize;
+            &memory.bytes[offset..]
+        })
+        .ok_or(OpAnalysisError::ReadThreadInstructionFailed)
 }
 
 /// Analysis tools for the Amd64 architecture
@@ -361,56 +283,11 @@ mod tests {
 
     use minidump::MinidumpRawContext;
 
-    /// Testing implementation of SparseMemoryStream
-    ///
-    /// Returns a slice of instruction bytes for testing purposes. Expects a single call
-    /// to seek() at the instruction pointer followed by a read() to return a valid
-    /// instruction.
-    struct TestMemoryReader<'a> {
-        expected_address: Option<u64>,
-        bytes: &'a [u8],
-    }
-
-    impl<'a> TestMemoryReader<'a> {
-        fn new(expected_address: u64, bytes: &'a [u8]) -> TestMemoryReader<'a> {
-            TestMemoryReader {
-                expected_address: Some(expected_address),
-                bytes,
-            }
-        }
-    }
-
-    impl<'a> Seek for TestMemoryReader<'a> {
-        fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-            let address = match pos {
-                SeekFrom::Start(address) => address,
-                _ => panic!("unexpected use of seek"),
-            };
-            let expected_address = self.expected_address.take().unwrap();
-            assert_eq!(address, expected_address);
-            Ok(address)
-        }
-    }
-
-    impl<'a> Read for TestMemoryReader<'a> {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            assert!(self.expected_address.is_none());
-            let len = std::cmp::min(self.bytes.len(), buf.len());
-            buf[0..len].copy_from_slice(&self.bytes[0..len]);
-            self.bytes = &self.bytes[len..];
-            Ok(len)
-        }
-    }
-
-    impl<'a> SparseMemoryStream for TestMemoryReader<'a> {}
-
     #[cfg(feature = "disasm_amd64")]
     mod amd64 {
         use super::*;
 
         use minidump::{format::CONTEXT_AMD64, CpuContext};
-
-        const TEST_RIP: u64 = 0x1234567887654321;
 
         struct AccessTestData<'a> {
             bytes: &'a [u8],
@@ -420,8 +297,6 @@ mod tests {
         }
 
         fn access_test(data: &AccessTestData) {
-            let mut test_reader = TestMemoryReader::new(TEST_RIP, data.bytes);
-
             let mut context_raw = CONTEXT_AMD64::default();
 
             for &(name, value) in data.regs.iter() {
@@ -429,10 +304,8 @@ mod tests {
                 context_raw.set_register(name, value).unwrap();
             }
 
-            context_raw.set_register("rip", TEST_RIP);
-
             let context = MinidumpContext::from_raw(MinidumpRawContext::Amd64(context_raw));
-            let memory_accesses = get_thread_memory_access(&context, &mut test_reader).unwrap();
+            let memory_accesses = get_instruction_memory_access(&context, data.bytes).unwrap();
 
             let mut expected_set: std::collections::HashSet<u64> =
                 data.expected_addresses.iter().cloned().collect();
