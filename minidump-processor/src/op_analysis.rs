@@ -108,9 +108,13 @@ pub fn pretty_print_instruction_bytes(
 
 /// Determine the memory accesses that the given thread was performing
 ///
-/// This function is just a convenience wrapper around `get_thread_instruction_bytes` and
-/// `get_instruction_memory_access`. Read the respective documentation for those to understand
-/// this function.
+/// This function is just a convenience wrapper that reads the instruction bytes from the
+/// given memory list and analyzes them with `get_instruction_memory_access`
+///
+/// # Errors
+///
+/// This may fail if there are no bytes at the instruction pointer, or if
+/// `get_instruction_memory_access` fails
 pub fn get_thread_memory_access<'a, Descriptor>(
     context: &MinidumpContext,
     memory_list: &minidump::MinidumpMemoryListBase<'a, Descriptor>,
@@ -121,9 +125,13 @@ pub fn get_thread_memory_access<'a, Descriptor>(
 
 /// Pretty-print the instruction that the given thread was running
 ///
-/// This function is just a convenience wrapper around `get_thread_instruction_bytes` and
-/// `pretty_print_instruction_bytes`. Read the respective documentation for those to understand
-/// this function.
+/// This function is just a convenience wrapper that reads the instruction bytes from the
+/// given memory list and pretty-prints them with `pretty_print_instruction_bytes`
+///
+/// # Errors
+///
+/// This may fail if there are no bytes at the instruction pointer, or if
+/// `pretty_print_instruction_bytes` fails
 pub fn pretty_print_thread_instruction<'a, Descriptor>(
     context: &MinidumpContext,
     memory_list: &minidump::MinidumpMemoryListBase<'a, Descriptor>,
@@ -135,12 +143,11 @@ pub fn pretty_print_thread_instruction<'a, Descriptor>(
 /// Helper to read the instruction bytes that were being run by the given thread
 ///
 /// Use the given `context` to attempt to read `1 <= n <= MAX_INSTRUCTION_LENGTH`
-/// bytes at the instruction pointer from the byte stream passed in `memory`, which is any type
-/// that implements `SparseMemoryStream`.
+/// bytes at the instruction pointer from the given memory list
 ///
 /// # Errors
 ///
-/// This may fail if the underlying byte stream fails to `seek()` or `read()`.
+/// This may fail if there are no bytes at the instruction pointer
 fn get_thread_instruction_bytes<'a, Descriptor>(
     context: &MinidumpContext,
     memory_list: &'a minidump::MinidumpMemoryListBase<'a, Descriptor>,
