@@ -357,7 +357,7 @@ pub struct MINIDUMP_MODULE {
     ///
     /// See [Matching Debug Information][dbg] for more information.
     ///
-    /// [dbg]: http://www.debuginfo.com/articles/debuginfomatch.html
+    /// [dbg]: http://web.archive.org/web/20210227224734/https://www.debuginfo.com/articles/debuginfomatch.html
     /// [pdb70]: struct.CV_INFO_PDB70.html
     /// [pdb20]: struct.CV_INFO_PDB20.html
     /// [elf]: struct.CV_INFO_ELF.html
