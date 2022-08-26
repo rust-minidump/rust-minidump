@@ -895,6 +895,17 @@ Unknown streams encountered:
             "crash_info": {
                 "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),
                 "address": self.exception_info.as_ref().map(|info| info.address).map(json_hex),
+                "instruction": self.exception_info.as_ref().map(|info| info.instruction_str.as_ref()),
+                "memory_accesses": self.exception_info.as_ref().and_then(|info| {
+                    info.memory_accesses.as_ref().map(|accesses| {
+                        accesses.iter().map(|access| {
+                            json!({
+                                "address": json_hex(access.address),
+                                "size": access.size,
+                            })
+                        }).collect::<Vec<_>>()
+                    })
+                }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
                 "assertion": self.assertion,
