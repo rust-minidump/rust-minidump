@@ -7,6 +7,8 @@ expression: json_out
     "address": null,
     "assertion": null,
     "crashing_thread": null,
+    "instruction": null,
+    "memory_accesses": null,
     "type": null
   },
   "lsb_release": null,

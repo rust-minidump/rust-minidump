@@ -777,11 +777,9 @@ where
 /// General Protection Fault instead of the usual Page Fault, which unfortunately means that the
 /// OS has no idea what memory address actually caused the issue
 ///
-/// If `exception_info` contains the markers of a non-canonical exception **, and it also contains
+/// If `exception_info` contains the markers of a non-canonical exception, and it also contains
 /// memory access info from analyzing the CPU instruction with `op_analysis`, this module will
 /// attempt to determine what address the CPU was instructed to access when the GPF occurred
-///
-///     ** Note that the markers of a non-canonical exception are slightly different for each OS
 ///
 /// Nothing will be changed if the crash was not caused by a non-canonical access
 fn fix_non_canonical_crash_address(
