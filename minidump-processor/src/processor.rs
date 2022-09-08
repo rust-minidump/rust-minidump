@@ -789,6 +789,9 @@ fn fix_non_canonical_crash_address(
     use minidump_common::errors as minidump_errors;
     use system_info::{Cpu, Os};
 
+    // This is needed because match arms don't allow casting
+    const SI_KERNEL_U32: u32 = minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32;
+
     // The range of non-canonical addresses in the current 48-bit implementation
     // See: https://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details
     const NON_CANONICAL_RANGE: RangeInclusive<u64> = 0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
@@ -799,56 +802,49 @@ fn fix_non_canonical_crash_address(
     }
 
     // Different OSes have unique ways of reporting this error
-    match system_info.os {
+    let is_non_canonical_access = match (
+        system_info.os,
+        exception_info.reason,
+        exception_info.address,
+    ) {
         // Windows reports it as EXCEPTION_ACCESS_VIOLATION_READ, address 0xffffffffffffffff
-        Os::Windows => {
-            if exception_info.reason
-                != CrashReason::WindowsAccessViolation(
-                    minidump_errors::ExceptionCodeWindowsAccessType::READ,
-                )
-            {
-                return;
-            }
-            if exception_info.address != u64::MAX {
-                return;
-            }
-        }
+        (
+            Os::Windows,
+            CrashReason::WindowsAccessViolation(
+                minidump_errors::ExceptionCodeWindowsAccessType::READ,
+            ),
+            u64::MAX,
+        ) => true,
+        (Os::Windows, _, _) => false,
         // macOS reports it as EXC_BAD_ACCESS / EXC_I386_GPFLT, address 0x0000000000000000
-        Os::MacOs => {
-            if exception_info.reason
-                != CrashReason::MacBadAccessX86(
-                    minidump_errors::ExceptionCodeMacBadAccessX86Type::EXC_I386_GPFLT,
-                )
-            {
-                return;
-            }
-            if exception_info.address != 0 {
-                return;
-            }
-        }
+        (
+            Os::MacOs,
+            CrashReason::MacBadAccessX86(
+                minidump_errors::ExceptionCodeMacBadAccessX86Type::EXC_I386_GPFLT,
+            ),
+            0,
+        ) => true,
+        (Os::MacOs, _, _) => false,
         // Linux reports it as either "SIGBUS / SI_KERNEL" or "SIGSEGV / SI_KERNEL", address 0x0000000000000000
-        Os::Linux => {
-            if exception_info.reason
-                != CrashReason::LinuxGeneral(
-                    minidump_errors::ExceptionCodeLinux::SIGSEGV,
-                    minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32,
-                )
-                && exception_info.reason
-                    != CrashReason::LinuxGeneral(
-                        minidump_errors::ExceptionCodeLinux::SIGBUS,
-                        minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32,
-                    )
-            {
-                return;
-            }
-            if exception_info.address != 0 {
-                return;
-            }
-        }
-        _ => {
+        (
+            Os::Linux,
+            CrashReason::LinuxGeneral(minidump_errors::ExceptionCodeLinux::SIGSEGV, SI_KERNEL_U32),
+            0,
+        ) => true,
+        (
+            Os::Linux,
+            CrashReason::LinuxGeneral(minidump_errors::ExceptionCodeLinux::SIGBUS, SI_KERNEL_U32),
+            0,
+        ) => true,
+        (Os::Linux, _, _) => false,
+        (_, _, _) => {
             tracing::warn!("we don't currently support non-canonical analysis for your OS");
             return;
         }
+    };
+
+    if !is_non_canonical_access {
+        return;
     }
 
     // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
