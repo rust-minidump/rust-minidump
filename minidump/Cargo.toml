@@ -21,7 +21,7 @@ minidump-common = { version = "0.14.0", path = "../minidump-common" }
 num-traits = "0.2"
 range-map = "0.1.5"
 scroll = "0.11.0"
-thiserror = "1.0.30"
+thiserror = "1.0.35"
 time = { version = "0.3.11", features = ["formatting"] }
 uuid = "1.0.0"
 
