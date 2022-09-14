@@ -786,11 +786,7 @@ fn fix_non_canonical_crash_address(
     system_info: &SystemInfo,
     exception_info: &mut crate::ExceptionInfo,
 ) {
-    use minidump_common::errors as minidump_errors;
-    use system_info::{Cpu, Os};
-
-    // This is needed because match arms don't allow casting
-    const SI_KERNEL_U32: u32 = minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32;
+    use system_info::Cpu;
 
     // The range of non-canonical addresses in the current 48-bit implementation
     // See: https://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details
@@ -801,12 +797,41 @@ fn fix_non_canonical_crash_address(
         return;
     }
 
-    // Different OSes have unique ways of reporting this error
-    let is_non_canonical_access = match (
-        system_info.os,
-        exception_info.reason,
-        exception_info.address,
-    ) {
+    if !is_non_canonical_exception(system_info.os, exception_info) {
+        return;
+    }
+
+    // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
+    let access_iter = match exception_info.memory_accesses {
+        Some(ref v) => v.iter(),
+        None => {
+            tracing::warn!(
+                "lack of instruction analysis prevented determination of non-canonical address"
+            );
+            return;
+        }
+    };
+
+    // If any of the instructions operands were within the non-canonical range, we have our culprit
+    for access in access_iter {
+        if NON_CANONICAL_RANGE.contains(&access.address) {
+            exception_info.address = access.address;
+            tracing::info!("replaced crash address with detected non-canonical address");
+            return;
+        }
+    }
+
+    tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
+}
+
+fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::ExceptionInfo) -> bool {
+    use minidump_common::errors as minidump_errors;
+    use system_info::Os;
+
+    // This is needed because match arms don't allow casting
+    const SI_KERNEL_U32: u32 = minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32;
+
+    match (os, exception_info.reason, exception_info.address) {
         // Windows reports it as EXCEPTION_ACCESS_VIOLATION_READ, address 0xffffffffffffffff
         (
             Os::Windows,
@@ -839,33 +864,7 @@ fn fix_non_canonical_crash_address(
         (Os::Linux, _, _) => false,
         (_, _, _) => {
             tracing::warn!("we don't currently support non-canonical analysis for your OS");
-            return;
-        }
-    };
-
-    if !is_non_canonical_access {
-        return;
-    }
-
-    // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
-    let access_iter = match exception_info.memory_accesses {
-        Some(ref v) => v.iter(),
-        None => {
-            tracing::warn!(
-                "lack of instruction analysis prevented determination of non-canonical address"
-            );
-            return;
-        }
-    };
-
-    // If any of the instructions operands were within the non-canonical range, we have our culprit
-    for access in access_iter {
-        if NON_CANONICAL_RANGE.contains(&access.address) {
-            exception_info.address = access.address;
-            tracing::info!("replaced crash address with detected non-canonical address");
-            return;
+            false
         }
     }
-
-    tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
 }
