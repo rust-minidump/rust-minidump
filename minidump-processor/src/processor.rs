@@ -824,6 +824,11 @@ fn fix_non_canonical_crash_address(
     tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
 }
 
+/// Report whether the given exception represents a non-canonical access on the given OS
+///
+/// Different operating systems have different ways of reporting non-canonical address accesses
+/// This function will return whether the given `exception_info` object represents such an access
+/// on the given OS
 fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::ExceptionInfo) -> bool {
     use minidump_common::errors as minidump_errors;
     use system_info::Os;
