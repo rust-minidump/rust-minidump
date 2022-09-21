@@ -4026,6 +4026,7 @@ impl fmt::Display for CrashReason {
             write!(f, "EXC_RESOURCE / {:?} / ", ex)?;
             match ex {
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_CPU => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L71-L99
                     if let Some(cpu_flavor) =
                         err::ExceptionCodeMacResourceCpuFlavor::from_u64(flavor)
                     {
@@ -4042,6 +4043,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_WAKEUPS => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L105-L134
                     if let Some(wakeups_flavor) =
                         err::ExceptionCodeMacResourceWakeupsFlavor::from_u64(flavor)
                     {
@@ -4058,6 +4060,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_MEMORY => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L139-L162
                     if let Some(memory_flavor) =
                         err::ExceptionCodeMacResourceMemoryFlavor::from_u64(flavor)
                     {
@@ -4072,6 +4075,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_IO => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L168-L196
                     if let Some(io_flavor) = err::ExceptionCodeMacResourceIOFlavor::from_u64(flavor)
                     {
                         let interval = (code >> 15) & 0x1ffff;
@@ -4087,6 +4091,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_THREADS => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L199-L207
                     if let Some(threads_flavor) =
                         err::ExceptionCodeMacResourceThreadsFlavor::from_u64(flavor)
                     {
@@ -4116,6 +4121,7 @@ impl fmt::Display for CrashReason {
                     write!(f, "")
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_MACH_PORT => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L69-L81
                     if let Some(mach_port_flavor) =
                         err::ExceptionCodeMacGuardMachPortFlavor::from_u64(flavor)
                     {
@@ -4130,6 +4136,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_FD => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L85-L97
                     if let Some(fd_flavor) = err::ExceptionCodeMacGuardFDFlavor::from_u64(flavor) {
                         let fd = code & 0xfffffff;
                         write!(
@@ -4142,6 +4149,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L101-L113
                     let namespace = code & 0xffffffff;
                     write!(
                         f,
@@ -4150,6 +4158,7 @@ impl fmt::Display for CrashReason {
                     )
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_VN => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L117-L129
                     if let Some(vn_flavor) = err::ExceptionCodeMacGuardVNFlavor::from_u64(flavor) {
                         let pid = code & 0xfffffff;
                         write!(
@@ -4162,6 +4171,7 @@ impl fmt::Display for CrashReason {
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_VIRT_MEMORY => {
+                    // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L133-L145
                     if let Some(virt_memory_flavor) =
                         err::ExceptionCodeMacGuardVirtMemoryFlavor::from_u64(flavor)
                     {
