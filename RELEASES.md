@@ -1,6 +1,7 @@
-# Version XXX (not yet released)
+<!-- next-header -->
+# Next Version
 
-Nothing to see here yet!
+TODO
 
 # Version 0.14.0 (2022-08-03)
 
