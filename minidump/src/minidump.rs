@@ -478,6 +478,7 @@ pub enum CrashReason {
     MacBadInstructionArm(err::ExceptionCodeMacBadInstructionArmType),
     MacBadInstructionPpc(err::ExceptionCodeMacBadInstructionPpcType),
     MacBadInstructionX86(err::ExceptionCodeMacBadInstructionX86Type),
+    MacArithmeticArm(err::ExceptionCodeMacArithmeticArmType),
     MacArithmeticPpc(err::ExceptionCodeMacArithmeticPpcType),
     MacArithmeticX86(err::ExceptionCodeMacArithmeticX86Type),
     MacSoftware(err::ExceptionCodeMacSoftwareType),
@@ -3868,6 +3869,13 @@ impl CrashReason {
                 }
             },
             ExceptionCodeMac::EXC_ARITHMETIC => match cpu {
+                Cpu::Arm64 => {
+                    if let Some(ty) =
+                        err::ExceptionCodeMacArithmeticArmType::from_u32(exception_flags)
+                    {
+                        reason = CrashReason::MacArithmeticArm(ty);
+                    }
+                }
                 Cpu::Ppc => {
                     if let Some(ty) =
                         err::ExceptionCodeMacArithmeticPpcType::from_u32(exception_flags)
@@ -4217,6 +4225,7 @@ impl fmt::Display for CrashReason {
             MacBadInstructionArm(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
             MacBadInstructionPpc(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
             MacBadInstructionX86(ex) => write!(f, "EXC_BAD_INSTRUCTION / {:?}", ex),
+            MacArithmeticArm(ex) => write!(f, "EXC_ARITHMETIC / {:?}", ex),
             MacArithmeticPpc(ex) => write!(f, "EXC_ARITHMETIC / {:?}", ex),
             MacArithmeticX86(ex) => write!(f, "EXC_ARITHMETIC / {:?}", ex),
             MacSoftware(ex) => write!(f, "EXC_SOFTWARE / {:?}", ex),

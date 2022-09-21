@@ -151,6 +151,21 @@ pub enum ExceptionCodeMacBadInstructionX86Type {
     // EXC_I386_ENDPERR   = 33: should not occur
 }
 
+/// Mac/iOS ARM Arithmetic Exceptions
+///
+/// See the [osfmk/mach/arm/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L54-L64
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+pub enum ExceptionCodeMacArithmeticArmType {
+    EXC_ARM_FP_IO = 1,
+    EXC_ARM_FP_DZ = 2,
+    EXC_ARM_FP_OF = 3,
+    EXC_ARM_FP_UF = 4,
+    EXC_ARM_FP_IX = 5,
+    EXC_ARM_FP_ID = 6,
+}
+
 /// Mac/iOS PowerPC Arithmetic Exceptions
 ///
 /// See the [osfmk/mach/ppc/exception.h][header] header in Apple's kernel sources
