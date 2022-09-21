@@ -60,6 +60,9 @@ pub enum ExceptionCodeMacBadAccessKernType {
 pub enum ExceptionCodeMacBadAccessArmType {
     EXC_ARM_DA_ALIGN = 0x0101,
     EXC_ARM_DA_DEBUG = 0x0102,
+    EXC_ARM_SP_ALIGN = 0x0103,
+    EXC_ARM_SWP = 0x0104,
+    EXC_ARM_PAC_FAIL = 0x0105,
 }
 
 /// Mac/iOS PowerPC Userland Bad Access Exceptions
@@ -219,8 +222,6 @@ pub enum ExceptionCodeMacSoftwareType {
 /// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L77-L81
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBreakpointArmType {
-    EXC_ARM_DA_ALIGN = 0x0101,
-    EXC_ARM_DA_DEBUG = 0x0102,
     EXC_ARM_BREAKPOINT = 1,
 }
 
