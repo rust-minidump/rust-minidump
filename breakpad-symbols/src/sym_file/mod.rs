@@ -523,13 +523,7 @@ impl SymbolFile {
 
     /// Find the nearest `PublicSymbol` whose address is less than or equal to `addr`.
     pub fn find_nearest_public(&self, addr: u64) -> Option<&PublicSymbol> {
-        for p in self.publics.iter().rev() {
-            if p.address <= addr {
-                return Some(p);
-            }
-        }
-
-        None
+        self.publics.iter().rev().find(|&p| p.address <= addr)
     }
 }
 
