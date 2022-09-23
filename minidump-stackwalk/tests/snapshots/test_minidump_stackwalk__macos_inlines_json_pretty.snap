@@ -7,6 +7,13 @@ expression: stdout
     "address": "0xffffffff80000042",
     "assertion": null,
     "crashing_thread": 0,
+    "instruction": "mov byte [0x80000042], 0x1",
+    "memory_accesses": [
+      {
+        "address": "0x0000000080000042",
+        "size": 1
+      }
+    ],
     "type": "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS"
   },
   "crashing_thread": {

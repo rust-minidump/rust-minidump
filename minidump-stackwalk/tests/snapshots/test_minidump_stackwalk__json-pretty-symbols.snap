@@ -7,6 +7,8 @@ expression: stdout
     "address": "0x00000045",
     "assertion": null,
     "crashing_thread": 0,
+    "instruction": null,
+    "memory_accesses": null,
     "type": "EXCEPTION_ACCESS_VIOLATION_WRITE"
   },
   "crashing_thread": {

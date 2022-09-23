@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::ops::Deref;
+use std::ops::{Deref, RangeInclusive};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -579,12 +579,18 @@ where
             })
             .unwrap_or((None, None));
 
-        crate::ExceptionInfo {
+        let mut exception_info = crate::ExceptionInfo {
             reason,
             address,
             instruction_str,
             memory_accesses,
-        }
+        };
+
+        // If we detect that the crash was caused by a non-canonical memory access, overwrite the bogus exception address
+        // with the one we've detected from disassembling the current instruction
+        fix_non_canonical_crash_address(&system_info, &mut exception_info);
+
+        exception_info
     });
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
@@ -762,4 +768,108 @@ where
     state.symbol_stats = symbol_stats;
 
     Ok(state)
+}
+
+/// Fix the crash address if a non-canonical access caused a crash
+///
+/// Amd64 has the concept of a "canonical addressing", which requires that the upper 16 bits of
+/// an address contain the same binary digit as bit 48. A violation of this rule triggers a
+/// General Protection Fault instead of the usual Page Fault, which unfortunately means that the
+/// OS has no idea what memory address actually caused the issue
+///
+/// If `exception_info` contains the markers of a non-canonical exception, and it also contains
+/// memory access info from analyzing the CPU instruction with `op_analysis`, this module will
+/// attempt to determine what address the CPU was instructed to access when the GPF occurred
+///
+/// Nothing will be changed if the crash was not caused by a non-canonical access
+fn fix_non_canonical_crash_address(
+    system_info: &SystemInfo,
+    exception_info: &mut crate::ExceptionInfo,
+) {
+    use system_info::Cpu;
+
+    // The range of non-canonical addresses in the current 48-bit implementation
+    // See: https://en.wikipedia.org/wiki/X86-64#Virtual_address_space_details
+    const NON_CANONICAL_RANGE: RangeInclusive<u64> = 0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
+
+    // Only Amd64 has non-canonical addresses
+    if system_info.cpu != Cpu::X86_64 {
+        return;
+    }
+
+    if !is_non_canonical_exception(system_info.os, exception_info) {
+        return;
+    }
+
+    // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
+    let access_iter = match exception_info.memory_accesses {
+        Some(ref v) => v.iter(),
+        None => {
+            tracing::warn!(
+                "lack of instruction analysis prevented determination of non-canonical address"
+            );
+            return;
+        }
+    };
+
+    // If any of the instructions operands were within the non-canonical range, we have our culprit
+    for access in access_iter {
+        if NON_CANONICAL_RANGE.contains(&access.address) {
+            exception_info.address = access.address;
+            tracing::info!("replaced crash address with detected non-canonical address");
+            return;
+        }
+    }
+
+    tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
+}
+
+/// Report whether the given exception represents a non-canonical access on the given OS
+///
+/// Different operating systems have different ways of reporting non-canonical address accesses
+/// This function will return whether the given `exception_info` object represents such an access
+/// on the given OS
+fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::ExceptionInfo) -> bool {
+    use minidump_common::errors as minidump_errors;
+    use system_info::Os;
+
+    // This is needed because match arms don't allow casting
+    const SI_KERNEL_U32: u32 = minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32;
+
+    match (os, exception_info.reason, exception_info.address) {
+        // Windows reports it as EXCEPTION_ACCESS_VIOLATION_READ, address 0xffffffffffffffff
+        (
+            Os::Windows,
+            CrashReason::WindowsAccessViolation(
+                minidump_errors::ExceptionCodeWindowsAccessType::READ,
+            ),
+            u64::MAX,
+        ) => true,
+        (Os::Windows, _, _) => false,
+        // macOS reports it as EXC_BAD_ACCESS / EXC_I386_GPFLT, address 0x0000000000000000
+        (
+            Os::MacOs,
+            CrashReason::MacBadAccessX86(
+                minidump_errors::ExceptionCodeMacBadAccessX86Type::EXC_I386_GPFLT,
+            ),
+            0,
+        ) => true,
+        (Os::MacOs, _, _) => false,
+        // Linux reports it as either "SIGBUS / SI_KERNEL" or "SIGSEGV / SI_KERNEL", address 0x0000000000000000
+        (
+            Os::Linux,
+            CrashReason::LinuxGeneral(minidump_errors::ExceptionCodeLinux::SIGSEGV, SI_KERNEL_U32),
+            0,
+        ) => true,
+        (
+            Os::Linux,
+            CrashReason::LinuxGeneral(minidump_errors::ExceptionCodeLinux::SIGBUS, SI_KERNEL_U32),
+            0,
+        ) => true,
+        (Os::Linux, _, _) => false,
+        (_, _, _) => {
+            tracing::warn!("we don't currently support non-canonical analysis for your OS");
+            false
+        }
+    }
 }

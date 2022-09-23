@@ -119,6 +119,17 @@ anyway.
     // fault.
     "address": <hexstring>,
 
+    /// A string representing the crashing instruction (if available)
+    "instruction": <string>,
+
+    /// A list of memory accesses performed by crashing instruction (if available)
+    "memory_accesses": [
+      {
+        "address": <hexstring>,
+        "size": <u32>
+      }
+    ],
+
     // The thread id of the thread that caused the crash (or requested the minidump).
     "crashing_thread": <u32>,
 
