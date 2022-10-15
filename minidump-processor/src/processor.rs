@@ -16,6 +16,7 @@ use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
 use crate::{arg_recovery, FrameTrust, StackFrame};
+use crate::ExceptionInfo;
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -560,35 +561,33 @@ where
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
-        let (instruction_str, memory_accesses) = exception
+        let mut exception_info = exception
             .context(&dump_system_info, misc_info.as_ref())
-            .map(|context| {
-                let instruction_str =
-                    crate::op_analysis::pretty_print_thread_instruction(&context, &memory_list)
-                        .map_err(|e| tracing::warn!("failed to pretty print instruction: {}", e))
-                        .ok();
-
-                let memory_accesses =
-                    crate::op_analysis::get_thread_memory_access(&context, &memory_list)
-                        .map_err(|e| {
-                            tracing::warn!("failed to get instruction memory access: {}", e)
-                        })
-                        .ok();
-
-                (instruction_str, memory_accesses)
+            .and_then(|context| {
+                crate::op_analysis::analyze_thread_context(&context, &memory_list)
+                    .map_err(|e| tracing::warn!("failed to analyze the thread context: {}", e))
+                    .ok()
             })
-            .unwrap_or((None, None));
-
-        let mut exception_info = crate::ExceptionInfo {
-            reason,
-            address,
-            instruction_str,
-            memory_accesses,
-        };
+            .map(|op_analysis| crate::ExceptionInfo {
+                reason,
+                address,
+                instruction_str: Some(op_analysis.instruction_str),
+                memory_accesses: op_analysis.memory_accesses,
+            })
+            .unwrap_or(crate::ExceptionInfo {
+                reason,
+                address,
+                instruction_str: None,
+                memory_accesses: None,
+            });
 
         // If we detect that the crash was caused by a non-canonical memory access, overwrite the bogus exception address
         // with the one we've detected from disassembling the current instruction
         fix_non_canonical_crash_address(&system_info, &mut exception_info);
+
+        // If we detect that the crashing address was actually a "null pointer in disguise", fix up the address to say
+        // that the address was actually zero
+        fix_null_pointer_in_disguise(&mut exception_info);
 
         exception_info
     });
@@ -870,6 +869,21 @@ fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::Excep
         (_, _, _) => {
             tracing::warn!("we don't currently support non-canonical analysis for your OS");
             false
+        }
+    }
+}
+
+/// Report `address == 0` if an exception happened accessing a "null pointer in disguise"
+///
+/// This function will search though all the memory accessses for the instruction and see if any
+/// of them were flagged by `op_analysis` as being a disguised nullptr. If so, we fix up the
+/// crash address to indicate `0` as the crash address instead of whatever offset
+fn fix_null_pointer_in_disguise(exception_info: &mut ExceptionInfo) {
+    if let Some(memory_accesses) = &mut exception_info.memory_accesses {
+        for access in memory_accesses.iter_mut() {
+            if access.is_likely_null_pointer_dereference {
+                access.address = 0;
+            }
         }
     }
 }
