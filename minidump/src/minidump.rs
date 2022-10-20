@@ -500,6 +500,8 @@ pub enum CrashReason {
     WindowsGeneral(err::ExceptionCodeWindows),
     /// A Windows error from winerror.h.
     WindowsWinError(err::WinErrorWindows),
+    /// A Windows error for a specific facility from winerror.h.
+    WindowsWinErrorWithFacility(err::WinErrorFacilityWindows, err::WinErrorWindows),
     /// A Windows error from ntstatus.h
     WindowsNtStatus(err::NtStatusWindows),
     /// ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION but with details on the kind of access.
@@ -3725,9 +3727,30 @@ impl CrashReason {
             Self::WindowsWinError(err)
         } else if let Some(err) = err::NtStatusWindows::from_u32(error_code) {
             Self::WindowsNtStatus(err)
+        } else if let Some(err) = Self::from_windows_error_with_facility(error_code) {
+            err
         } else {
             Self::WindowsUnknown(error_code)
         }
+    }
+
+    pub fn from_windows_error_with_facility(error_code: u32) -> Option<CrashReason> {
+        static SEVERITY_MASK: u32 = 0xf0000000;
+        static FACILITY_MASK: u32 = 0x0fff0000;
+        static ERROR_MASK: u32 = 0x0000ffff;
+
+        if (error_code & SEVERITY_MASK) != 0 {
+            // This could be an NTSTATUS or HRESULT code of a specific facility
+            if let Some(facility) =
+                err::WinErrorFacilityWindows::from_u32((error_code & FACILITY_MASK) >> 16)
+            {
+                if let Some(error) = err::WinErrorWindows::from_u32(error_code & ERROR_MASK) {
+                    return Some(Self::WindowsWinErrorWithFacility(facility, error));
+                }
+            }
+        }
+
+        None
     }
 
     pub fn from_windows_exception(
@@ -3778,6 +3801,9 @@ impl CrashReason {
                 }
             }
             CrashReason::WindowsNtStatus(err::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN) => {
+                // STATUS_STACK_BUFFER_OVERRUN are caused by __fastfail()
+                // invocations and the fast-fail code is stored in
+                // exception_information[0].
                 if record.number_parameters >= 1 {
                     let fast_fail = info[0];
                     reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
@@ -4240,6 +4266,9 @@ impl fmt::Display for CrashReason {
             // These codes just repeat their names
             WindowsGeneral(ex) => write!(f, "{:?}", ex),
             WindowsWinError(winerror) => write!(f, "{:?}", winerror),
+            WindowsWinErrorWithFacility(facility, winerror) => {
+                write!(f, "{:?} / {:?}", facility, winerror)
+            }
             WindowsNtStatus(nt_status) => write_nt_status(f, nt_status as _),
             WindowsAccessViolation(ex) => write!(f, "EXCEPTION_ACCESS_VIOLATION_{:?}", ex),
             WindowsInPageError(ex, nt_status) => {
