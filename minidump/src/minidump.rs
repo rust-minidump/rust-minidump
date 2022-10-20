@@ -2577,7 +2577,7 @@ impl<'a> MinidumpThread<'a> {
             let chunk_size: usize = pointer_width.size_in_bytes().unwrap_or(8).into();
             let mut offset = 0;
             for chunk in stack.bytes.chunks_exact(chunk_size) {
-                write!(f, "    0x{:08x}: 0x", offset)?;
+                write!(f, "    {:#010x}: ", offset)?;
 
                 match pointer_width {
                     PointerWidth::Bits32 => {
@@ -2585,14 +2585,14 @@ impl<'a> MinidumpThread<'a> {
                             scroll::Endian::Little => u32::from_le_bytes(chunk.try_into().unwrap()),
                             scroll::Endian::Big => u32::from_be_bytes(chunk.try_into().unwrap()),
                         };
-                        write!(f, "{:08x}", value)?;
+                        write!(f, "{:#010x}", value)?;
                     }
                     PointerWidth::Unknown | PointerWidth::Bits64 => {
                         let value = match self.endian {
                             scroll::Endian::Little => u64::from_le_bytes(chunk.try_into().unwrap()),
                             scroll::Endian::Big => u64::from_be_bytes(chunk.try_into().unwrap()),
                         };
-                        write!(f, "{:016x}", value)?;
+                        write!(f, "{:#018x}", value)?;
                     }
                 }
 
@@ -2825,13 +2825,13 @@ impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
                     if let Some(&(_, vendor)) = vendors.iter().find(|&&(id, _)| id == vendor_id) {
                         write!(&mut cpu_info, " {}", vendor).unwrap();
                     } else {
-                        write!(&mut cpu_info, " vendor(0x{:x})", vendor_id).unwrap();
+                        write!(&mut cpu_info, " vendor({:#x})", vendor_id).unwrap();
                     }
 
                     if let Some(&(_, part)) = parts.iter().find(|&&(id, _)| id == part_id) {
                         write!(&mut cpu_info, " {}", part).unwrap();
                     } else {
-                        write!(&mut cpu_info, " part(0x{:x})", part_id).unwrap();
+                        write!(&mut cpu_info, " part({:#x})", part_id).unwrap();
                     }
                 }
 
@@ -4029,7 +4029,7 @@ impl fmt::Display for CrashReason {
             if let Some(nt_status) = nt_status {
                 write!(f, "{:?}", nt_status)
             } else {
-                write!(f, "0x{:08}", raw_nt_status)
+                write!(f, "{:#010x}", raw_nt_status)
             }
         }
 
@@ -4038,7 +4038,7 @@ impl fmt::Display for CrashReason {
             if let Some(fast_fail) = fast_fail {
                 write!(f, "{:?}", fast_fail)
             } else {
-                write!(f, "0x{:08}", raw_fast_fail)
+                write!(f, "{:#010x}", raw_fast_fail)
             }
         }
 
@@ -4064,7 +4064,7 @@ impl fmt::Display for CrashReason {
                             cpu_flavor, interval, cpu_limit, cpu_consumed
                         )
                     } else {
-                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, "{:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_WAKEUPS => {
@@ -4080,7 +4080,7 @@ impl fmt::Display for CrashReason {
                             wakeups_flavor, interval, wakeups_permitted, wakeups_observed
                         )
                     } else {
-                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, "{:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_MEMORY => {
@@ -4094,7 +4094,7 @@ impl fmt::Display for CrashReason {
                             memory_flavor, hwm_limit
                         )
                     } else {
-                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, "{:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_IO => {
@@ -4109,7 +4109,7 @@ impl fmt::Display for CrashReason {
                             io_flavor, interval, io_limit, io_observed
                         )
                     } else {
-                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, "{:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacResourceType::RESOURCE_TYPE_THREADS => {
@@ -4123,7 +4123,7 @@ impl fmt::Display for CrashReason {
                             threads_flavor, hwm_limit
                         )
                     } else {
-                        write!(f, "0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, "{:#018x} / {:#018x}", code, subcode)
                     }
                 }
             }
@@ -4152,7 +4152,7 @@ impl fmt::Display for CrashReason {
                             mach_port_flavor, port_name, subcode,
                         )
                     } else {
-                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, " / {:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_FD => {
@@ -4164,7 +4164,7 @@ impl fmt::Display for CrashReason {
                             fd_flavor, fd, subcode,
                         )
                     } else {
-                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, " / {:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
@@ -4184,7 +4184,7 @@ impl fmt::Display for CrashReason {
                             vn_flavor, pid, subcode,
                         )
                     } else {
-                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, " / {:#018x} / {:#018x}", code, subcode)
                     }
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_VIRT_MEMORY => {
@@ -4193,7 +4193,7 @@ impl fmt::Display for CrashReason {
                     {
                         write!(f, " / {:?} offset: {}", virt_memory_flavor, subcode)
                     } else {
-                        write!(f, " / 0x{:016} / 0x{:016}", code, subcode)
+                        write!(f, " / {:#018x} / {:#018x}", code, subcode)
                     }
                 }
             }
@@ -4211,7 +4211,7 @@ impl fmt::Display for CrashReason {
                     write!(f, "{:?} / {:?}", ex, si_code)
                 }
             } else {
-                write!(f, "{:?} / 0x{:08x}", ex, flags)
+                write!(f, "{:?} / {:#010x}", ex, flags)
             }
         }
 
@@ -4225,7 +4225,7 @@ impl fmt::Display for CrashReason {
             MacGeneral(err::ExceptionCodeMac::SIMULATED, _) => write!(f, "Simulated Exception"),
 
             // Thse codes just repeat their names
-            MacGeneral(ex, flags) => write!(f, "{:?} / 0x{:08x}", ex, flags),
+            MacGeneral(ex, flags) => write!(f, "{:?} / {:#010x}", ex, flags),
             MacBadAccessKern(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
             MacBadAccessArm(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
             MacBadAccessPpc(ex) => write!(f, "EXC_BAD_ACCESS / {:?}", ex),
@@ -4279,9 +4279,9 @@ impl fmt::Display for CrashReason {
                 write!(f, "EXCEPTION_STACK_BUFFER_OVERRUN / ")?;
                 write_fast_fail(f, fast_fail)
             }
-            WindowsUnknown(code) => write!(f, "unknown 0x{:08}", code),
+            WindowsUnknown(code) => write!(f, "unknown {:#010x}", code),
 
-            Unknown(code, flags) => write!(f, "unknown 0x{:08} / 0x{:08}", code, flags),
+            Unknown(code, flags) => write!(f, "unknown {:#010x} / {:#010x}", code, flags),
         }
     }
 }
