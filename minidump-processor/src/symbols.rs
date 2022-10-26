@@ -100,6 +100,9 @@ pub use breakpad_symbols::{
     SymbolError, SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
 };
 
+#[cfg(feature = "http")]
+pub use breakpad_symbols::HttpSymbolSupplierOptions;
+
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
 ///
 /// It is primarily used by the `process_minidump` function to do stack
@@ -323,19 +326,27 @@ impl SymbolProvider for Symbolizer {
 ///   download.
 #[cfg(feature = "http")]
 pub fn http_symbol_supplier(
-    symbol_paths: Vec<PathBuf>,
-    symbol_urls: Vec<String>,
+    symbols_paths: Vec<PathBuf>,
+    symbols_urls: Vec<String>,
     symbols_cache: PathBuf,
     symbols_tmp: PathBuf,
     timeout: std::time::Duration,
 ) -> impl SymbolSupplier {
-    breakpad_symbols::HttpSymbolSupplier::new(
-        symbol_urls,
-        symbols_cache,
-        symbols_tmp,
-        symbol_paths,
-        timeout,
-    )
+    let mut opts = HttpSymbolSupplierOptions::default();
+    opts.urls = symbols_urls;
+    opts.cache = Some(symbols_cache);
+    opts.tmp = Some(symbols_tmp);
+    opts.local_paths = symbols_paths;
+    opts.timeout = timeout;
+    breakpad_symbols::HttpSymbolSupplier::new(opts)
+}
+
+/// Gets a SymbolSupplier that looks up symbols by path or with urls.
+///
+/// See [`HttpSymbolSupplierOptions`][] for details.
+#[cfg(feature = "http")]
+pub fn http_symbol_supplier_opt(options: HttpSymbolSupplierOptions) -> impl SymbolSupplier {
+    breakpad_symbols::HttpSymbolSupplier::new(options)
 }
 
 /// Gets a SymbolSupplier that looks up symbols by path.
