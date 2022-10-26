@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::panic;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use std::{boxed::Box, path::PathBuf};
@@ -17,7 +18,10 @@ use minidump_processor::{
     Symbolizer,
 };
 
-use clap::{AppSettings, ArgGroup, CommandFactory, Parser};
+use clap::{
+    builder::{PossibleValuesParser, TypedValueParser},
+    ArgGroup, CommandFactory, Parser,
+};
 use tracing::error;
 use tracing::level_filters::LevelFilter;
 
@@ -55,10 +59,9 @@ use tracing::level_filters::LevelFilter;
     "human",
     "cyborg",
     "dump",
-    "help-markdown",
+    "help_markdown",
 ])))]
 #[clap(override_usage("minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]..."))]
-#[clap(setting(AppSettings::DeriveDisplayOrder))]
 #[clap(verbatim_doc_comment)]
 struct Cli {
     /// Emit a human-readable report (the default)
@@ -68,7 +71,7 @@ struct Cli {
     /// a crash or debugging rust-minidump itself.
     ///
     /// Can be simplified with --brief
-    #[clap(long)]
+    #[arg(long)]
     human: bool,
 
     /// Emit a machine-readable JSON report
@@ -77,7 +80,7 @@ struct Cli {
     /// <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
     ///
     /// Can be pretty-printed with --pretty
-    #[clap(long)]
+    #[arg(long)]
     json: bool,
 
     /// Combine --human and --json
@@ -85,7 +88,7 @@ struct Cli {
     /// Because this creates two output streams, you must specify a path to write the --json
     /// output to. The --human output will be the 'primary' output and default to stdout, which
     /// can be configured with --output-file as normal.
-    #[clap(long)]
+    #[arg(long)]
     cyborg: Option<PathBuf>,
 
     /// Dump the 'raw' contents of the minidump
@@ -96,11 +99,11 @@ struct Cli {
     /// minidump-stackwalk itself, or a misbehaving minidump generator.
     ///
     /// Can be simplified with --brief
-    #[clap(long)]
+    #[arg(long)]
     dump: bool,
 
     /// Print --help but formatted as markdown (used for generating docs)
-    #[clap(long, hide = true)]
+    #[arg(long, hide = true)]
     help_markdown: bool,
 
     /// Specify at a high-level how much analysis to perform
@@ -129,9 +132,9 @@ struct Cli {
     /// Features under unstable-all may be deprecated and become noops. Features which require
     /// additional input (such as `--evil-json`) cannot be affected by this, and must still be
     /// manually 'discovered'.
-    #[clap(long, default_value = "stable-basic")]
-    #[clap(possible_values = ["stable-basic", "stable-all", "unstable-all"])]
-    #[clap(verbatim_doc_comment)]
+    #[arg(long, default_value = "stable-basic")]
+    #[arg(value_parser = ["stable-basic", "stable-all", "unstable-all"])]
+    #[arg(verbatim_doc_comment)]
     features: String,
 
     /// How verbose logging should be (log level)
@@ -139,28 +142,28 @@ struct Cli {
     /// The unwinder has been heavily instrumented with `trace` logging, so if you want to
     /// debug why an unwind happened the way it did, --verbose=trace is very useful
     /// (all unwinder logging will be prefixed with `unwind:`).
-    #[clap(long)]
-    #[clap(default_value = "error")]
-    #[clap(possible_values = ["off", "error", "warn", "info", "debug", "trace"])]
+    #[arg(long)]
+    #[arg(default_value = "error")]
+    #[arg(value_parser = PossibleValuesParser::new(["off", "error", "warn", "info", "debug", "trace"]).map(|v| LevelFilter::from_str(&v).unwrap()))]
     verbose: LevelFilter,
 
     /// Where to write the output to (if unspecified, stdout is used)
-    #[clap(long)]
+    #[arg(long)]
     output_file: Option<PathBuf>,
 
     /// Where to write logs to (if unspecified, stderr is used)
-    #[clap(long)]
+    #[arg(long)]
     log_file: Option<PathBuf>,
 
     /// Prevent the output/logging from using ANSI coloring
     ///
     /// Output written to a file via --log-file, --output-file, or --cyborg
     /// is always --no-color, so this just forces stdout/stderr printing.
-    #[clap(long)]
+    #[arg(long)]
     no_color: bool,
 
     /// Pretty-print --json output
-    #[clap(long)]
+    #[arg(long)]
     pretty: bool,
 
     /// Provide a briefer --human or --dump report
@@ -168,14 +171,14 @@ struct Cli {
     /// For human: Only provides the top-level summary and a backtrace of the crashing thread.
     ///
     /// For dump: Omits all memory hexdumps.
-    #[clap(long)]
+    #[arg(long)]
     brief: bool,
 
     /// Disable all interactive progress feedback
     ///
     /// We'll generally try to auto-detect when this should be disabled, but this is here in
     /// case we mess up and you need it to go away.
-    #[clap(long)]
+    #[arg(long)]
     no_interactive: bool,
 
     /// **UNSTABLE** An input JSON file with the extra information.
@@ -183,13 +186,13 @@ struct Cli {
     /// This is a gross hack for some legacy side-channel information that mozilla uses.
     /// It will hopefully be phased out and deprecated in favour of just using custom
     /// streams in the minidump itself.
-    #[clap(long)]
+    #[arg(long)]
     evil_json: Option<PathBuf>,
 
     /// **UNSTABLE** Heuristically recover function arguments
     ///
     /// This is an experimental feature, which currently only shows up in --human output.
-    #[clap(long)]
+    #[arg(long)]
     recover_function_args: bool,
 
     /// base URL from which URLs to symbol files can be constructed
@@ -205,8 +208,8 @@ struct Cli {
     /// Example symbols-url values:
     /// * microsoft's symbol-server: <https://msdl.microsoft.com/download/symbols/>
     /// * mozilla's symbols-server: <https://symbols.mozilla.org/>
-    #[clap(long)]
-    #[clap(verbatim_doc_comment)]
+    #[arg(long)]
+    #[arg(verbatim_doc_comment)]
     symbols_url: Vec<String>,
 
     /// A directory in which downloaded symbols can be stored
@@ -219,7 +222,7 @@ struct Cli {
     /// symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't
     /// mean anything to you, don't worry about it, you're probably not doing something
     /// that will run afoul of it).
-    #[clap(long)]
+    #[arg(long)]
     symbols_cache: Option<PathBuf>,
 
     /// A directory to use as temp space for downloading symbols.
@@ -235,13 +238,13 @@ struct Cli {
     /// symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't
     /// mean anything to you, don't worry about it, you're probably not doing something
     /// that will run afoul of it).
-    #[clap(long)]
+    #[arg(long)]
     symbols_tmp: Option<PathBuf>,
 
     /// The maximum amount of time (in seconds) a symbol file download is allowed to take
     ///
     /// This is necessary to enforce forward progress on misbehaving http responses.
-    #[clap(long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 1000)]
     symbols_download_timeout_secs: u64,
 
     /// Path to the minidump file to analyze
@@ -251,7 +254,7 @@ struct Cli {
     ///
     /// If multiple symbols-path values are provided, all symbol files will be merged
     /// into minidump-stackwalk's symbol database.
-    #[clap(long)]
+    #[arg(long)]
     symbols_path: Vec<PathBuf>,
 
     /// Path to a symbol file. (Passed positionally)
@@ -499,7 +502,7 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
     )?;
     writeln!(out)?;
 
-    let mut cli = Cli::command();
+    let mut cli = Cli::command().term_width(0);
     let full_command = &mut cli;
     full_command.build();
     let mut todo = vec![full_command];
@@ -511,63 +514,75 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
         let help = String::from_utf8(help_buf).unwrap();
 
         // First line is --version
-        let mut lines = help.lines();
-        let version_line = lines.next().unwrap();
+        let lines = help.lines();
+        // let version_line = lines.next().unwrap();
         let subcommand_name = command.get_name();
-        let pretty_subcommand_name;
 
         if is_full_command {
-            pretty_subcommand_name = String::new();
-            writeln!(out, "Version: `{version_line}`")?;
-            writeln!(out)?;
+            // writeln!(out, "Version: `{version_line}`")?;
+            // writeln!(out)?;
         } else {
-            pretty_subcommand_name = format!("{pretty_app_name} {subcommand_name} ");
             // Give subcommands some breathing room
             writeln!(out, "<br><br><br>")?;
-            writeln!(out, "## {pretty_subcommand_name}")?;
+            writeln!(out, "## {pretty_app_name} {subcommand_name}")?;
         }
 
         let mut in_subcommands_listing = false;
-        let mut in_usage = false;
+        let mut in_global_options = false;
         for line in lines {
+            if let Some(usage) = line.strip_prefix("Usage: ") {
+                writeln!(out, "### Usage:")?;
+                writeln!(out)?;
+                writeln!(out, "```")?;
+                writeln!(out, "{usage}")?;
+                writeln!(out, "```")?;
+                continue;
+            }
+
             // Use a trailing colon to indicate a heading
             if let Some(heading) = line.strip_suffix(':') {
                 if !line.starts_with(' ') {
-                    // SCREAMING headers are Main headings
-                    if heading.to_ascii_uppercase() == heading {
-                        in_subcommands_listing = heading == "SUBCOMMANDS";
-                        in_usage = heading == "USAGE";
+                    in_subcommands_listing = heading == "Subcommands";
 
-                        writeln!(out, "### {pretty_subcommand_name}{heading}")?;
-                    } else {
-                        writeln!(out, "### {heading}")?;
+                    in_global_options = heading == "GLOBAL OPTIONS";
+
+                    writeln!(out, "### {heading}")?;
+
+                    if in_global_options && !is_full_command {
+                        writeln!(
+                            out,
+                            "This subcommand accepts all the [global options](#global-options)"
+                        )?;
                     }
                     continue;
                 }
             }
 
+            if in_global_options && !is_full_command {
+                // Skip global options for non-primary commands
+                continue;
+            }
+
             if in_subcommands_listing && !line.starts_with("     ") {
                 // subcommand names are list items
                 let own_subcommand_name = line.trim();
-                write!(
-                    out,
-                    "* [{own_subcommand_name}](#{app_name}-{own_subcommand_name}): "
-                )?;
-                continue;
+                if !own_subcommand_name.is_empty() {
+                    write!(
+                        out,
+                        "* [{own_subcommand_name}](#{app_name}-{own_subcommand_name}): "
+                    )?;
+                    continue;
+                }
             }
             // The rest is indented, get rid of that
             let line = line.trim();
 
-            // Usage strings get wrapped in full code blocks
-            if in_usage && line.starts_with(pretty_app_name) {
-                writeln!(out, "```")?;
-                writeln!(out, "{line}")?;
-                writeln!(out, "```")?;
-                continue;
-            }
-
             // argument names are subheadings
             if line.starts_with('-') || line.starts_with('<') {
+                writeln!(out, "#### `{line}`")?;
+                continue;
+            }
+            if line == "[SYMBOLS_PATH_LEGACY]..." {
                 writeln!(out, "#### `{line}`")?;
                 continue;
             }
@@ -583,7 +598,17 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
         }
         writeln!(out)?;
 
-        todo.extend(command.get_subcommands_mut());
+        // The todo list is a stack, and processed in reverse-order, append
+        // these commands to the end in reverse-order so the first command is
+        // processed first (i.e. at the end of the list).
+        todo.extend(
+            command
+                .get_subcommands_mut()
+                .filter(|cmd| !cmd.is_hide_set())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev(),
+        );
         is_full_command = false;
     }
 

@@ -6,57 +6,47 @@ expression: stdout
 
 > This manual can be regenerated with `minidump-stackwalk --help-markdown`
 
-Version: `minidump-stackwalk 0.14.0`
-
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
-### USAGE
+### Usage:
+
 ```
 minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
 ```
 
-### ARGS
+### Arguments
 #### `<MINIDUMP>`
 Path to the minidump file to analyze
 
-#### `<SYMBOLS_PATH_LEGACY>...`
+#### `[SYMBOLS_PATH_LEGACY]...`
 Path to a symbol file. (Passed positionally)
 
-If multiple symbols-path-legacy values are provided, all symbol files will be merged
-into minidump-stackwalk's symbol database.
+If multiple symbols-path-legacy values are provided, all symbol files will be merged into minidump-stackwalk's symbol database.
 
-### OPTIONS
+### Options
 #### `--human`
 Emit a human-readable report (the default)
 
-The human-readable report does not have a specified format, and may not have as many
-details as the JSON format. It is intended for quickly inspecting a crash or debugging
-rust-minidump itself.
+The human-readable report does not have a specified format, and may not have as many details as the JSON format. It is intended for quickly inspecting a crash or debugging rust-minidump itself.
 
 Can be simplified with --brief
 
 #### `--json`
 Emit a machine-readable JSON report
 
-The schema for this output is officially documented here:
-#### `<https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>`
+The schema for this output is officially documented here: <https://github.com/rust-minidump/rust-minidump/blob/master/minidump-processor/json-schema.md>
 
 Can be pretty-printed with --pretty
 
 #### `--cyborg <CYBORG>`
 Combine --human and --json
 
-Because this creates two output streams, you must specify a path to write the --json
-output to. The --human output will be the 'primary' output and default to stdout, which
-can be configured with --output-file as normal.
+Because this creates two output streams, you must specify a path to write the --json output to. The --human output will be the 'primary' output and default to stdout, which can be configured with --output-file as normal.
 
 #### `--dump`
 Dump the 'raw' contents of the minidump
 
-This is an implementation of the functionality of the old minidump_dump tool. It
-minimally parses and interprets the minidump in an attempt to produce a fairly 'raw'
-dump of the minidump's contents. This is most useful for debugging minidump-stackwalk
-itself, or a misbehaving minidump generator.
+This is an implementation of the functionality of the old minidump_dump tool. It minimally parses and interprets the minidump in an attempt to produce a fairly 'raw' dump of the minidump's contents. This is most useful for debugging minidump-stackwalk itself, or a misbehaving minidump generator.
 
 Can be simplified with --brief
 
@@ -94,9 +84,7 @@ manually 'discovered'.
 #### `--verbose <VERBOSE>`
 How verbose logging should be (log level)
 
-The unwinder has been heavily instrumented with `trace` logging, so if you want to debug
-why an unwind happened the way it did, --verbose=trace is very useful (all unwinder
-logging will be prefixed with `unwind:`).
+The unwinder has been heavily instrumented with `trace` logging, so if you want to debug why an unwind happened the way it did, --verbose=trace is very useful (all unwinder logging will be prefixed with `unwind:`).
 
 \[default: error]  
 \[possible values: off, error, warn, info, debug, trace]  
@@ -110,8 +98,7 @@ Where to write logs to (if unspecified, stderr is used)
 #### `--no-color`
 Prevent the output/logging from using ANSI coloring
 
-Output written to a file via --log-file, --output-file, or --cyborg is always
-#### `--no-color, so this just forces stdout/stderr printing.`
+Output written to a file via --log-file, --output-file, or --cyborg is always --no-color, so this just forces stdout/stderr printing.
 
 #### `--pretty`
 Pretty-print --json output
@@ -126,15 +113,12 @@ For dump: Omits all memory hexdumps.
 #### `--no-interactive`
 Disable all interactive progress feedback
 
-We'll generally try to auto-detect when this should be disabled, but this is here in
-case we mess up and you need it to go away.
+We'll generally try to auto-detect when this should be disabled, but this is here in case we mess up and you need it to go away.
 
 #### `--evil-json <EVIL_JSON>`
 **UNSTABLE** An input JSON file with the extra information.
 
-This is a gross hack for some legacy side-channel information that mozilla uses. It will
-hopefully be phased out and deprecated in favour of just using custom streams in the
-minidump itself.
+This is a gross hack for some legacy side-channel information that mozilla uses. It will hopefully be phased out and deprecated in favour of just using custom streams in the minidump itself.
 
 #### `--recover-function-args`
 **UNSTABLE** Heuristically recover function arguments
@@ -159,29 +143,18 @@ Example symbols-url values:
 #### `--symbols-cache <SYMBOLS_CACHE>`
 A directory in which downloaded symbols can be stored
 
-Symbol files can be very large, so we recommend placing cached files in your system's
-temp directory so that it can garbage collect unused ones for you. To this end, the
-default value for this flag is a `rust-minidump-cache` subdirectory of
-`std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
+Symbol files can be very large, so we recommend placing cached files in your system's temp directory so that it can garbage collect unused ones for you. To this end, the default value for this flag is a `rust-minidump-cache` subdirectory of `std::env::temp_dir()` (usually /tmp/rust-minidump-cache on linux).
 
-symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean
-anything to you, don't worry about it, you're probably not doing something that will run
-afoul of it).
+symbols-cache must be on the same filesystem as symbols-tmp (if that doesn't mean anything to you, don't worry about it, you're probably not doing something that will run afoul of it).
 
 #### `--symbols-tmp <SYMBOLS_TMP>`
 A directory to use as temp space for downloading symbols.
 
-A temp dir is necessary to allow for multiple rust-minidump instances to share a cache
-without race conditions. Files to be added to the cache will be constructed in this
-location before being atomically moved to the cache.
+A temp dir is necessary to allow for multiple rust-minidump instances to share a cache without race conditions. Files to be added to the cache will be constructed in this location before being atomically moved to the cache.
 
-If no path is specified, `std::env::temp_dir()` will be used to improve portability. See
-the rust documentation for how to set that value if you wish to use something other than
-your system's default temp directory.
+If no path is specified, `std::env::temp_dir()` will be used to improve portability. See the rust documentation for how to set that value if you wish to use something other than your system's default temp directory.
 
-symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean
-anything to you, don't worry about it, you're probably not doing something that will run
-afoul of it).
+symbols-tmp must be on the same filesystem as symbols-cache (if that doesn't mean anything to you, don't worry about it, you're probably not doing something that will run afoul of it).
 
 #### `--symbols-download-timeout-secs <SYMBOLS_DOWNLOAD_TIMEOUT_SECS>`
 The maximum amount of time (in seconds) a symbol file download is allowed to take
@@ -193,11 +166,10 @@ This is necessary to enforce forward progress on misbehaving http responses.
 #### `--symbols-path <SYMBOLS_PATH>`
 Path to a symbol file.
 
-If multiple symbols-path values are provided, all symbol files will be merged into
-minidump-stackwalk's symbol database.
+If multiple symbols-path values are provided, all symbol files will be merged into minidump-stackwalk's symbol database.
 
 #### `-h, --help`
-Print help information
+Print help information (use `-h` for a summary)
 
 #### `-V, --version`
 Print version information
