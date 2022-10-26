@@ -433,13 +433,13 @@ async fn dump_syms(
             debug_id: None,
             code_id: None,
             arch: "unknown",
-            file_type: dump_syms::common::FileType::Pdb,
             num_jobs: 2, // default this
             check_cfi: false,
             mapping_var: None,
             mapping_src: None,
             mapping_dest: None,
             mapping_file: None,
+            emit_inlines: true,
         },
         &source_file.unwrap().to_string_lossy()[..],
     ) {
