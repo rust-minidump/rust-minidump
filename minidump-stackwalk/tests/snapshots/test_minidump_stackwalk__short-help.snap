@@ -2,80 +2,58 @@
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
 expression: stdout
 ---
-minidump-stackwalk 0.14.0
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
-USAGE:
-    minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
+Usage: minidump-stackwalk [FLAGS] [OPTIONS] <minidump> [--] [symbols-path]...
 
-ARGS:
-    <MINIDUMP>                  Path to the minidump file to analyze
-    <SYMBOLS_PATH_LEGACY>...    Path to a symbol file. (Passed positionally)
+Arguments:
+  <MINIDUMP>                Path to the minidump file to analyze
+  [SYMBOLS_PATH_LEGACY]...  Path to a symbol file. (Passed positionally)
 
-OPTIONS:
-        --human
-            Emit a human-readable report (the default)
-
-        --json
-            Emit a machine-readable JSON report
-
-        --cyborg <CYBORG>
-            Combine --human and --json
-
-        --dump
-            Dump the 'raw' contents of the minidump
-
-        --features <FEATURES>
-            Specify at a high-level how much analysis to perform [default: stable-basic] [possible
-            values: stable-basic, stable-all, unstable-all]
-
-        --verbose <VERBOSE>
-            How verbose logging should be (log level) [default: error] [possible values: off, error,
-            warn, info, debug, trace]
-
-        --output-file <OUTPUT_FILE>
-            Where to write the output to (if unspecified, stdout is used)
-
-        --log-file <LOG_FILE>
-            Where to write logs to (if unspecified, stderr is used)
-
-        --no-color
-            Prevent the output/logging from using ANSI coloring
-
-        --pretty
-            Pretty-print --json output
-
-        --brief
-            Provide a briefer --human or --dump report
-
-        --no-interactive
-            Disable all interactive progress feedback
-
-        --evil-json <EVIL_JSON>
-            **UNSTABLE** An input JSON file with the extra information
-
-        --recover-function-args
-            **UNSTABLE** Heuristically recover function arguments
-
-        --symbols-url <SYMBOLS_URL>
-            base URL from which URLs to symbol files can be constructed
-
-        --symbols-cache <SYMBOLS_CACHE>
-            A directory in which downloaded symbols can be stored
-
-        --symbols-tmp <SYMBOLS_TMP>
-            A directory to use as temp space for downloading symbols
-
-        --symbols-download-timeout-secs <SYMBOLS_DOWNLOAD_TIMEOUT_SECS>
-            The maximum amount of time (in seconds) a symbol file download is allowed to take
-            [default: 1000]
-
-        --symbols-path <SYMBOLS_PATH>
-            Path to a symbol file
-
-    -h, --help
-            Print help information
-
-    -V, --version
-            Print version information
+Options:
+      --human
+          Emit a human-readable report (the default)
+      --json
+          Emit a machine-readable JSON report
+      --cyborg <CYBORG>
+          Combine --human and --json
+      --dump
+          Dump the 'raw' contents of the minidump
+      --features <FEATURES>
+          Specify at a high-level how much analysis to perform [default: stable-basic] [possible
+          values: stable-basic, stable-all, unstable-all]
+      --verbose <VERBOSE>
+          How verbose logging should be (log level) [default: error] [possible values: off, error,
+          warn, info, debug, trace]
+      --output-file <OUTPUT_FILE>
+          Where to write the output to (if unspecified, stdout is used)
+      --log-file <LOG_FILE>
+          Where to write logs to (if unspecified, stderr is used)
+      --no-color
+          Prevent the output/logging from using ANSI coloring
+      --pretty
+          Pretty-print --json output
+      --brief
+          Provide a briefer --human or --dump report
+      --no-interactive
+          Disable all interactive progress feedback
+      --evil-json <EVIL_JSON>
+          **UNSTABLE** An input JSON file with the extra information
+      --recover-function-args
+          **UNSTABLE** Heuristically recover function arguments
+      --symbols-url <SYMBOLS_URL>
+          base URL from which URLs to symbol files can be constructed
+      --symbols-cache <SYMBOLS_CACHE>
+          A directory in which downloaded symbols can be stored
+      --symbols-tmp <SYMBOLS_TMP>
+          A directory to use as temp space for downloading symbols
+      --symbols-download-timeout-secs <SYMBOLS_DOWNLOAD_TIMEOUT_SECS>
+          The maximum amount of time (in seconds) a symbol file download is allowed to take [default:
+          1000]
+      --symbols-path <SYMBOLS_PATH>
+          Path to a symbol file
+  -h, --help
+          Print help information (use `--help` for more detail)
+  -V, --version
+          Print version information
 
