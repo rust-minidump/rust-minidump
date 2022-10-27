@@ -8,8 +8,10 @@ use enum_primitive_derive::Primitive;
 /// [`MINIDUMP_EXCEPTION::exception_code`](crate::format::MINIDUMP_EXCEPTION::exception_code)
 /// for crashes on macOS.
 ///
-/// Based on Darwin/macOS' mach/exception_types.h. This is what macOS calls an "exception",
+/// Based on Darwin/macOS' [osfmk/mach/exception_types.h][header]. This is what macOS calls an "exception",
 /// not a "code".
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/exception_types.h#L64-L105
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMac {
@@ -33,14 +35,13 @@ pub enum ExceptionCodeMac {
     SIMULATED = 0x43507378,
 }
 
-// These error codes are based on
-// * mach/ppc/exception.h
-// * mach/i386/exception.h
-
 /// Mac/iOS Kernel Bad Access Exceptions
+///
+/// These are the relevant kern_return_t values from [osfmk/mach/kern_return.h][header]
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/kern_return.h#L70-L340
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadAccessKernType {
-    // These are relevant kern_return_t values from mach/kern_return.h
     KERN_INVALID_ADDRESS = 1,
     KERN_PROTECTION_FAILURE = 2,
     KERN_FAILURE = 5,
@@ -50,14 +51,25 @@ pub enum ExceptionCodeMacBadAccessKernType {
     KERN_CODESIGN_ERROR = 50,
 }
 
-/// Mac/iOS Arm Userland Bad Accesses Exceptions
+/// Mac/iOS ARM Userland Bad Accesses Exceptions
+///
+/// See the [osfmk/mach/arm/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L66-L75
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadAccessArmType {
     EXC_ARM_DA_ALIGN = 0x0101,
     EXC_ARM_DA_DEBUG = 0x0102,
+    EXC_ARM_SP_ALIGN = 0x0103,
+    EXC_ARM_SWP = 0x0104,
+    EXC_ARM_PAC_FAIL = 0x0105,
 }
 
-/// Mac/iOS Ppc Userland Bad Access Exceptions
+/// Mac/iOS PowerPC Userland Bad Access Exceptions
+///
+/// See the [osfmk/mach/ppc/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/b472f0612b8556cd1c6eb1c285ec1953de759e35/osfmk/mach/ppc/exception.h#L71-L78
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadAccessPpcType {
     EXC_PPC_VM_PROT_READ = 0x0101,
@@ -66,18 +78,30 @@ pub enum ExceptionCodeMacBadAccessPpcType {
 }
 
 /// Mac/iOS x86 Userland Bad Access Exceptions
+///
+/// See the [osfmk/mach/i386/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/i386/exception.h#L122
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadAccessX86Type {
     EXC_I386_GPFLT = 13,
 }
 
-/// Mac/iOS Arm Bad Instruction Exceptions
+/// Mac/iOS ARM Bad Instruction Exceptions
+///
+/// See the [osfmk/mach/arm/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L48-L52
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadInstructionArmType {
     EXC_ARM_UNDEFINED = 1,
 }
 
-/// Mac/iOS Ppc Bad Instruction Exceptions
+/// Mac/iOS PowerPC Bad Instruction Exceptions
+///
+/// See the [osfmk/mach/ppc/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/b472f0612b8556cd1c6eb1c285ec1953de759e35/osfmk/mach/ppc/exception.h#L60-L69
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadInstructionPpcType {
     EXC_PPC_INVALID_SYSCALL = 1,
@@ -89,6 +113,10 @@ pub enum ExceptionCodeMacBadInstructionPpcType {
 }
 
 /// Mac/iOS x86 Bad Instruction Exceptions
+///
+/// See the [osfmk/mach/i386/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/i386/exception.h#L74-L78
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBadInstructionX86Type {
     /// Invalid Operation
@@ -123,7 +151,26 @@ pub enum ExceptionCodeMacBadInstructionX86Type {
     // EXC_I386_ENDPERR   = 33: should not occur
 }
 
-/// Mac/iOS Ppc Arithmetic Exceptions
+/// Mac/iOS ARM Arithmetic Exceptions
+///
+/// See the [osfmk/mach/arm/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L54-L64
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
+pub enum ExceptionCodeMacArithmeticArmType {
+    EXC_ARM_FP_IO = 1,
+    EXC_ARM_FP_DZ = 2,
+    EXC_ARM_FP_OF = 3,
+    EXC_ARM_FP_UF = 4,
+    EXC_ARM_FP_IX = 5,
+    EXC_ARM_FP_ID = 6,
+}
+
+/// Mac/iOS PowerPC Arithmetic Exceptions
+///
+/// See the [osfmk/mach/ppc/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/b472f0612b8556cd1c6eb1c285ec1953de759e35/osfmk/mach/ppc/exception.h#L80-L90
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacArithmeticPpcType {
     /// Integer ovrflow
@@ -148,6 +195,10 @@ pub enum ExceptionCodeMacArithmeticPpcType {
 }
 
 /// Mac/iOS x86 Arithmetic Exceptions
+///
+/// See the [osfmk/mach/i386/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/i386/exception.h#L80-L91
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacArithmeticX86Type {
     EXC_I386_DIV = 1,
@@ -161,6 +212,12 @@ pub enum ExceptionCodeMacArithmeticX86Type {
 }
 
 /// Mac/iOS "Software" Exceptions
+///
+/// See the [bsd/sys/ux_exception.h][header1] and [osfmk/mach/ppc/exception.h][header2]
+/// headers in Apple's kernel sources
+///
+/// [header1]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/bsd/sys/ux_exception.h#L48-L52
+/// [header2]: https://github.com/apple/darwin-xnu/blob/b472f0612b8556cd1c6eb1c285ec1953de759e35/osfmk/mach/ppc/exception.h#L100-L105
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacSoftwareType {
@@ -173,21 +230,31 @@ pub enum ExceptionCodeMacSoftwareType {
     // SIGPIPE = 0x00010001,
 }
 
-/// Mac/iOS Arm Breakpoint Exceptions
+/// Mac/iOS ARM Breakpoint Exceptions
+///
+/// See the [osfmk/mach/arm/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/arm/exception.h#L77-L81
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBreakpointArmType {
-    EXC_ARM_DA_ALIGN = 0x0101,
-    EXC_ARM_DA_DEBUG = 0x0102,
     EXC_ARM_BREAKPOINT = 1,
 }
 
-/// Mac/iOS Ppc Breakpoint Exceptions
+/// Mac/iOS PowerPC Breakpoint Exceptions
+///
+/// See the [osfmk/mach/ppc/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/b472f0612b8556cd1c6eb1c285ec1953de759e35/osfmk/mach/ppc/exception.h#L108-L112
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBreakpointPpcType {
     EXC_PPC_BREAKPOINT = 1,
 }
 
 /// Mac/iOS x86 Breakpoint Exceptions
+///
+/// See the [osfmk/mach/i386/exception.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/mach/i386/exception.h#L102-L107
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacBreakpointX86Type {
     EXC_I386_SGL = 1,
@@ -195,6 +262,10 @@ pub enum ExceptionCodeMacBreakpointX86Type {
 }
 
 /// Mac/iOS Resource exception types
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L60-L65
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceType {
     RESOURCE_TYPE_CPU = 1,
@@ -205,6 +276,10 @@ pub enum ExceptionCodeMacResourceType {
 }
 
 /// Mac/iOS CPU resource exception flavors
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L67-L69
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceCpuFlavor {
     FLAVOR_CPU_MONITOR = 1,
@@ -212,18 +287,30 @@ pub enum ExceptionCodeMacResourceCpuFlavor {
 }
 
 /// Mac/iOS wakeups resource exception flavors
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L67-L69
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceWakeupsFlavor {
     FLAVOR_WAKEUPS_MONITOR = 1,
 }
 
 /// Mac/iOS memory resource exception flavors
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L102-L103
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceMemoryFlavor {
     FLAVOR_HIGH_WATERMARK = 1,
 }
 
 /// Mac/iOS I/O resource exception flavors
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L164-L166
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceIOFlavor {
     FLAVOR_IO_PHYSICAL_WRITES = 1,
@@ -231,6 +318,10 @@ pub enum ExceptionCodeMacResourceIOFlavor {
 }
 
 /// Mac/iOS threads resource exception flavors
+///
+/// See the [osfmk/kern/exc_resource.h][header] header in Apple's kernel sources
+///
+/// [header]: https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_resource.h#L136-L137
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Primitive)]
 pub enum ExceptionCodeMacResourceThreadsFlavor {
     FLAVOR_THREADS_HIGH_WATERMARK = 1,
