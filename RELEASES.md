@@ -1,7 +1,21 @@
 <!-- next-header -->
 # Next Version
 
-TODO
+* More Windows errors are now handled correctly
+* Small improvements when handling macOS exceptions
+* Hexadecimal values are now printed with consistent width and prefixes
+* Several crates were updated
+* Fixed some links in the documentation
+
+## Support for instruction disassembly
+
+The stackwalker is now capable of disassembling the crashing instruction,
+printing it out as well as its memory operands. This functionality is used to
+improve crash analysis: we implemented the ability to extract the real crashing
+address for global protection fault exceptions on x86-64. These were usually
+the result of an access to a non-canonical memory location and were reported as
+either 0x0000000000000000 or 0xffffffffffffffff depending on the platform,
+irrespective of the actual address.
 
 # Version 0.14.0 (2022-08-03)
 
