@@ -14,5 +14,4 @@ exclude = [
 [workspace.metadata.release]
 shared-version = true
 consolidate-commits = true
-consolidate-pushes = true
 tag-name = "v{{version}}"
