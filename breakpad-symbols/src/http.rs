@@ -77,7 +77,7 @@ impl HttpSymbolSupplier {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&*module.code_file())))]
+    #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&module.code_file())))]
     pub async fn locate_file_internal(
         &self,
         module: &(dyn Module + Sync),
@@ -159,7 +159,7 @@ fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTemp
             format!("Bad cache path: {:?}", final_path),
         )
     })?;
-    fs::create_dir_all(&base)?;
+    fs::create_dir_all(base)?;
 
     NamedTempFile::new_in(tmp_path)
 }
@@ -470,7 +470,7 @@ async fn dump_syms(
 
 #[async_trait]
 impl SymbolSupplier for HttpSymbolSupplier {
-    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&*module.code_file())))]
+    #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&module.code_file())))]
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
