@@ -1226,6 +1226,7 @@ STACK CFI INIT badf00d abc init rules
 STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
 STACK CFI INIT f00f f0 more init rules
+
 "[..];
     let sym = parse_symbol_bytes(bytes).unwrap();
     assert_eq!(sym.files.len(), 2);
