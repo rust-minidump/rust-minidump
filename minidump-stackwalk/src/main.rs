@@ -498,7 +498,7 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
     writeln!(out)?;
     writeln!(
         out,
-        "> This manual can be regenerated with `{pretty_app_name} --help-markdown`"
+        "> This manual can be regenerated with `{pretty_app_name} --help-markdown please`"
     )?;
     writeln!(out)?;
 
