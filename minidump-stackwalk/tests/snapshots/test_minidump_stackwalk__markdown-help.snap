@@ -4,7 +4,7 @@ expression: stdout
 ---
 # minidump-stackwalk CLI manual
 
-> This manual can be regenerated with `minidump-stackwalk --help-markdown`
+> This manual can be regenerated with `minidump-stackwalk --help-markdown please`
 
 Analyzes minidumps and produces a report (either human-readable or JSON)
 
