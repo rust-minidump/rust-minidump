@@ -41,7 +41,4 @@ test-assembler = "0.1.6"
 pre-release-replacements = [
   {file="../RELEASES.md", search="Next Version", replace="Version {{version}} ({{date}})", min=1},
   {file="../RELEASES.md", search="<!-- next-header -->", replace="<!-- next-header -->\n# Next Version\n", exactly=1},
-  {file="tests/snapshots/test_minidump_stackwalk__markdown-help.snap",  search="minidump-stackwalk 0.*`", replace="minidump-stackwalk {{version}}`", exactly=1},
-  {file="tests/snapshots/test_minidump_stackwalk__long-help.snap",  search="minidump-stackwalk 0.*", replace="minidump-stackwalk {{version}}", exactly=1},
-  {file="tests/snapshots/test_minidump_stackwalk__short-help.snap", search="minidump-stackwalk 0.*", replace="minidump-stackwalk {{version}}", exactly=1}
 ]
