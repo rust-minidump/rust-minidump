@@ -3,7 +3,7 @@
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::{hex_digit1, space1};
+use nom::character::complete::{hex_digit1, multispace0, space1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
@@ -384,17 +384,20 @@ fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
 
 // Parse any of the line data that can occur in the body of a symbol file.
 fn line(input: &[u8]) -> IResult<&[u8], Line> {
-    alt((
-        map(info_url, Line::Info),
-        map(info_line, |_| Line::Info(Info::Unknown)),
-        map(file_line, |(i, f)| Line::File(i, f)),
-        map(inline_origin_line, |(i, f)| Line::InlineOrigin(i, f)),
-        map(public_line, Line::Public),
-        map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
-        map(stack_win_line, Line::StackWin),
-        map(stack_cfi_init, Line::StackCfi),
-        map(module_line, |_| Line::Module),
-    ))(input)
+    terminated(
+        alt((
+            map(info_url, Line::Info),
+            map(info_line, |_| Line::Info(Info::Unknown)),
+            map(file_line, |(i, f)| Line::File(i, f)),
+            map(inline_origin_line, |(i, f)| Line::InlineOrigin(i, f)),
+            map(public_line, Line::Public),
+            map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
+            map(stack_win_line, Line::StackWin),
+            map(stack_cfi_init, Line::StackCfi),
+            map(module_line, |_| Line::Module),
+        )),
+        multispace0,
+    )(input)
 }
 
 /// A parser for SymbolFiles.
@@ -1223,6 +1226,7 @@ STACK CFI INIT badf00d abc init rules
 STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
 STACK CFI INIT f00f f0 more init rules
+
 "[..];
     let sym = parse_symbol_bytes(bytes).unwrap();
     assert_eq!(sym.files.len(), 2);
