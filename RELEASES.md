@@ -1,6 +1,8 @@
 <!-- next-header -->
 # Next Version
 
+# Version 0.15.0 (2022-11-30)
+
 * More Windows errors are now handled correctly
 * Small improvements when handling macOS exceptions
 * Hexadecimal values are now printed with consistent width and prefixes
