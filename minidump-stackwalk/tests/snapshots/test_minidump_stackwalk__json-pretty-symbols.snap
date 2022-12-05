@@ -5,6 +5,7 @@ expression: stdout
 {
   "crash_info": {
     "address": "0x00000045",
+    "adjusted_address": null,
     "assertion": null,
     "crashing_thread": 0,
     "instruction": null,
