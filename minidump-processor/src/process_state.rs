@@ -927,11 +927,11 @@ Unknown streams encountered:
                     info.adjusted_address.as_ref().map(|adjusted| match adjusted {
                         AdjustedAddress::NonCanonical(address) => json!({
                             "kind": "non-canonical",
-                            "address": address,
+                            "address": json_hex(*address),
                         }),
                         AdjustedAddress::NullPointerWithOffset(offset) => json!({
                             "kind": "null-pointer",
-                            "offset": offset,
+                            "offset": json_hex(*offset),
                         }),
                     })
                 }),
