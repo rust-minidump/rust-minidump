@@ -280,10 +280,30 @@ pub struct ExceptionInfo {
     /// that caused the fault. For code errors, this will be the address of the
     /// instruction that caused the fault.
     pub address: u64,
+    /// In certain circumstances, the previous `address` member may report a sub-optimal value
+    /// for debugging purposes. If instruction analysis is able to successfully determine a
+    /// more helpful value, it will be reported here.
+    pub adjusted_address: Option<AdjustedAddress>,
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
+}
+
+/// Info about a memory address that was adjusted from its reported value
+///
+/// There will be situations where the memory address reported by the OS is sub-optimal for
+/// debugging purposes, such as when an array is accidently indexed into with a null pointer base,
+/// at which point the address might read something like `0x00001000` when the more-useful address
+/// would just be zero.
+///
+/// If such a correction was made, this will be included in `ExceptionInfo`.
+#[derive(Debug, Clone)]
+pub enum AdjustedAddress {
+    /// The original access was an Amd64 "non-canonical" address; actual address is provided here.
+    NonCanonical(u64),
+    /// The base pointer was null; offset from base is provided here.
+    NullPointerWithOffset(u64),
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -670,13 +690,21 @@ impl ProcessState {
         writeln!(f)?;
 
         if let Some(ref crash_info) = self.exception_info {
-            write!(
-                f,
-                "Crash reason:  {}
-Crash address: {:#x}
-",
-                crash_info.reason, crash_info.address
-            )?;
+            writeln!(f, "Crash reason:  {}", crash_info.reason)?;
+
+            if let Some(adjusted_address) = &crash_info.adjusted_address {
+                writeln!(f, "Crash address: {:#x} **", crash_info.address)?;
+                match adjusted_address {
+                    AdjustedAddress::NonCanonical(address) => {
+                        writeln!(f, "    ** Non-canonical address detected: {:#x}", address)?
+                    }
+                    AdjustedAddress::NullPointerWithOffset(offset) => {
+                        writeln!(f, "    ** Null pointer detected with offset: {:#x}", offset)?
+                    }
+                }
+            } else {
+                writeln!(f, "Crash address: {:#x}", crash_info.address)?;
+            }
 
             if let Some(ref crashing_instruction_str) = crash_info.instruction_str {
                 writeln!(f, "Crashing instruction: `{}`", crashing_instruction_str)?;
@@ -895,6 +923,18 @@ Unknown streams encountered:
             "crash_info": {
                 "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),
                 "address": self.exception_info.as_ref().map(|info| info.address).map(json_hex),
+                "adjusted_address": self.exception_info.as_ref().map(|info| {
+                    info.adjusted_address.as_ref().map(|adjusted| match adjusted {
+                        AdjustedAddress::NonCanonical(address) => json!({
+                            "kind": "non-canonical",
+                            "address": address,
+                        }),
+                        AdjustedAddress::NullPointerWithOffset(offset) => json!({
+                            "kind": "null-pointer",
+                            "offset": offset,
+                        }),
+                    })
+                }),
                 "instruction": self.exception_info.as_ref().map(|info| info.instruction_str.as_ref()),
                 "memory_accesses": self.exception_info.as_ref().and_then(|info| {
                     info.memory_accesses.as_ref().map(|accesses| {
