@@ -1171,7 +1171,6 @@ dependencies = [
  "range-map",
  "scroll",
  "smart-default",
- "tracing",
 ]
 
 [[package]]
@@ -1193,7 +1192,6 @@ dependencies = [
  "test-assembler",
  "thiserror",
  "tokio",
- "tracing",
  "yaxpeax-x86",
 ]
 
