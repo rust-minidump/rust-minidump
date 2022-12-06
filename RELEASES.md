@@ -1,6 +1,9 @@
 <!-- next-header -->
 # Next Version
 
+* Updated yaxpeax for improved performance when disassembling instructions
+* Removed the tracing crate from the dependencies of the minidump-common crate
+
 # Version 0.15.0 (2022-11-30)
 
 * More Windows errors are now handled correctly
