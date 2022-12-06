@@ -1192,6 +1192,7 @@ dependencies = [
  "test-assembler",
  "thiserror",
  "tokio",
+ "tracing",
  "yaxpeax-x86",
 ]
 
@@ -2623,10 +2624,11 @@ dependencies = [
 
 [[package]]
 name = "yaxpeax-x86"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2b4a94ef8ef93418f07a7e2a43f5c9f23a9b8e18859c8cec19a3fc53fc04081"
+checksum = "934a0186cc9f96af563264382d03946c95d8393e8e03f18cbbadd2efa8830b53"
 dependencies = [
+ "cfg-if",
  "num-traits 0.2.15",
  "serde",
  "serde_derive",
