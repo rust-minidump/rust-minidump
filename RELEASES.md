@@ -1,6 +1,8 @@
 <!-- next-header -->
 # Next Version
 
+# Version 0.15.2 (2022-12-07)
+
 * Updated the num-range crate, further reducing the number of dependencies
   required when vendoring this crate
 
