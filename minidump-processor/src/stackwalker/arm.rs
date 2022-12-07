@@ -273,7 +273,6 @@ where
 /// If we applied this more rigorous validation to cfi/fp methods, we
 /// would just discard the correct register values from the known frame
 /// and immediately start doing unreliable scans.
-#[allow(clippy::match_like_matches_macro)]
 async fn instruction_seems_valid<P>(
     instruction: Pointer,
     modules: &MinidumpModuleList,

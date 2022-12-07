@@ -1,6 +1,5 @@
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-#![allow(clippy::upper_case_acronyms)]
 
 use enum_primitive_derive::Primitive;
 

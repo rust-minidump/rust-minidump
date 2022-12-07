@@ -388,7 +388,6 @@ pub type MinidumpMemory<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIP
 /// A large region of memory from the process that wrote the minidump (usually a full dump).
 pub type MinidumpMemory64<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum RawMacCrashInfo {
     V1(
@@ -3394,7 +3393,6 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxEnviron as u32;
 
-    #[allow(clippy::single_match)]
     fn read(
         bytes: &'a [u8],
         _all: &'a [u8],
@@ -3408,7 +3406,6 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxEnviron<'a> {
 impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxProcStatus as u32;
 
-    #[allow(clippy::single_match)]
     fn read(
         bytes: &'a [u8],
         _all: &'a [u8],
