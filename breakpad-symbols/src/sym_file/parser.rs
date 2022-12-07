@@ -722,7 +722,7 @@ fn into_rangemap_safe<V: Clone + Eq + Debug>(mut input: Vec<(Range<u64>, V)>) ->
         }
         vec.push((range, val));
     }
-    RangeMap::from_sorted_vec(vec)
+    RangeMap::try_from_iter(vec).unwrap()
 }
 
 #[cfg(test)]
