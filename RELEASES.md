@@ -1,6 +1,9 @@
 <!-- next-header -->
 # Next Version
 
+* Updated the num-range crate, further reducing the number of dependencies
+  required when vendoring this crate
+
 # Version 0.15.1 (2022-12-06)
 
 * Updated yaxpeax for improved performance when disassembling instructions
