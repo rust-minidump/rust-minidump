@@ -107,7 +107,7 @@ where
 
             vec.push((range, val));
         }
-        RangeMap::from_sorted_vec(vec)
+        RangeMap::try_from_iter(vec).unwrap()
     }
 }
 
