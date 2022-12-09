@@ -119,6 +119,19 @@ anyway.
     // fault.
     "address": <hexstring>,
 
+    // In certain circumstances, the previous `address` member may report a sub-optimal value
+    // for debugging purposes. If instruction analysis is able to successfully determine a
+    // more helpful value, it will be reported here.
+    "adjusted_address": {
+      "kind": <string>,
+      // The original access was an Amd64 "non-canonical" address; actual address is provided here.
+      // (Present when kind == "non-canonical")
+      "address": <hexstring>,
+      // The base pointer was null; offset from base is provided here.
+      // (Present when kind == "null-pointer")
+      "offset": <hexstring>
+    },
+
     /// A string representing the crashing instruction (if available)
     "instruction": <string>,
 

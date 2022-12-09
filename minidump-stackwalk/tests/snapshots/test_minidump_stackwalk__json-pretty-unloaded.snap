@@ -5,6 +5,7 @@ expression: json_out
 {
   "crash_info": {
     "address": null,
+    "adjusted_address": null,
     "assertion": null,
     "crashing_thread": null,
     "instruction": null,

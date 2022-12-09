@@ -10,12 +10,13 @@ use std::time::{Duration, SystemTime};
 
 use minidump::{self, *};
 
-use crate::evil;
+use crate::op_analysis::MemoryAccess;
 use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
 use crate::stackwalker;
 use crate::symbols::*;
 use crate::system_info::SystemInfo;
 use crate::{arg_recovery, FrameTrust, StackFrame};
+use crate::{evil, AdjustedAddress};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -560,37 +561,44 @@ where
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
-        let (instruction_str, memory_accesses) = exception
+        exception
             .context(&dump_system_info, misc_info.as_ref())
-            .map(|context| {
-                let instruction_str =
-                    crate::op_analysis::pretty_print_thread_instruction(&context, &memory_list)
-                        .map_err(|e| tracing::warn!("failed to pretty print instruction: {}", e))
-                        .ok();
+            // If we have a context, we can attempt to analyze the crashing thread's instructions
+            .and_then(|context| {
+                crate::op_analysis::analyze_thread_context(&context, &memory_list)
+                    .map(|op_analysis| {
+                        let memory_accesses = op_analysis.memory_accesses.as_deref();
 
-                let memory_accesses =
-                    crate::op_analysis::get_thread_memory_access(&context, &memory_list)
-                        .map_err(|e| {
-                            tracing::warn!("failed to get instruction memory access: {}", e)
-                        })
-                        .ok();
+                        let adjusted_address = try_detect_null_pointer_in_disguise(memory_accesses)
+                            .map(AdjustedAddress::NullPointerWithOffset)
+                            .or_else(|| {
+                                try_get_non_canonical_crash_address(
+                                    &system_info,
+                                    memory_accesses,
+                                    reason,
+                                    address,
+                                )
+                                .map(AdjustedAddress::NonCanonical)
+                            });
 
-                (instruction_str, memory_accesses)
+                        crate::ExceptionInfo {
+                            reason,
+                            address,
+                            adjusted_address,
+                            instruction_str: Some(op_analysis.instruction_str),
+                            memory_accesses: op_analysis.memory_accesses,
+                        }
+                    })
+                    .map_err(|e| tracing::warn!("failed to analyze the thread context: {}", e))
+                    .ok()
             })
-            .unwrap_or((None, None));
-
-        let mut exception_info = crate::ExceptionInfo {
-            reason,
-            address,
-            instruction_str,
-            memory_accesses,
-        };
-
-        // If we detect that the crash was caused by a non-canonical memory access, overwrite the bogus exception address
-        // with the one we've detected from disassembling the current instruction
-        fix_non_canonical_crash_address(&system_info, &mut exception_info);
-
-        exception_info
+            .unwrap_or(crate::ExceptionInfo {
+                reason,
+                address,
+                adjusted_address: None,
+                instruction_str: None,
+                memory_accesses: None,
+            })
     });
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
@@ -770,10 +778,10 @@ where
     Ok(state)
 }
 
-/// Fix the crash address if a non-canonical access caused a crash
+/// If a non-canonical access caused a crash, return the real address
 ///
 /// Amd64 has the concept of a "canonical addressing", which requires that the upper 16 bits of
-/// an address contain the same binary digit as bit 48. A violation of this rule triggers a
+/// an address contain the same binary digit as bit 47. A violation of this rule triggers a
 /// General Protection Fault instead of the usual Page Fault, which unfortunately means that the
 /// OS has no idea what memory address actually caused the issue
 ///
@@ -781,11 +789,16 @@ where
 /// memory access info from analyzing the CPU instruction with `op_analysis`, this module will
 /// attempt to determine what address the CPU was instructed to access when the GPF occurred
 ///
-/// Nothing will be changed if the crash was not caused by a non-canonical access
-fn fix_non_canonical_crash_address(
+/// # Return
+///
+/// `Some(address)` if the crash was caused by a non-canonical access and the real address was
+/// determined, `None` otherwise
+fn try_get_non_canonical_crash_address(
     system_info: &SystemInfo,
-    exception_info: &mut crate::ExceptionInfo,
-) {
+    memory_accesses: Option<&[MemoryAccess]>,
+    reason: CrashReason,
+    address: u64,
+) -> Option<u64> {
     use system_info::Cpu;
 
     // The range of non-canonical addresses in the current 48-bit implementation
@@ -794,34 +807,31 @@ fn fix_non_canonical_crash_address(
 
     // Only Amd64 has non-canonical addresses
     if system_info.cpu != Cpu::X86_64 {
-        return;
+        return None;
     }
 
-    if !is_non_canonical_exception(system_info.os, exception_info) {
-        return;
+    if !is_non_canonical_exception(system_info.os, reason, address) {
+        return None;
     }
 
     // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
-    let access_iter = match exception_info.memory_accesses {
-        Some(ref v) => v.iter(),
-        None => {
-            tracing::warn!(
-                "lack of instruction analysis prevented determination of non-canonical address"
-            );
-            return;
-        }
-    };
+    if memory_accesses.is_none() {
+        tracing::warn!(
+            "lack of instruction analysis prevented determination of non-canonical address"
+        );
+        return None;
+    }
 
     // If any of the instructions operands were within the non-canonical range, we have our culprit
-    for access in access_iter {
+    for access in memory_accesses.unwrap().iter() {
         if NON_CANONICAL_RANGE.contains(&access.address) {
-            exception_info.address = access.address;
-            tracing::info!("replaced crash address with detected non-canonical address");
-            return;
+            return Some(access.address);
         }
     }
 
     tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
+
+    None
 }
 
 /// Report whether the given exception represents a non-canonical access on the given OS
@@ -829,14 +839,14 @@ fn fix_non_canonical_crash_address(
 /// Different operating systems have different ways of reporting non-canonical address accesses
 /// This function will return whether the given `exception_info` object represents such an access
 /// on the given OS
-fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::ExceptionInfo) -> bool {
+fn is_non_canonical_exception(os: system_info::Os, reason: CrashReason, address: u64) -> bool {
     use minidump_common::errors as minidump_errors;
     use system_info::Os;
 
     // This is needed because match arms don't allow casting
     const SI_KERNEL_U32: u32 = minidump_errors::ExceptionCodeLinuxSicode::SI_KERNEL as u32;
 
-    match (os, exception_info.reason, exception_info.address) {
+    match (os, reason, address) {
         // Windows reports it as EXCEPTION_ACCESS_VIOLATION_READ, address 0xffffffffffffffff
         (
             Os::Windows,
@@ -872,4 +882,20 @@ fn is_non_canonical_exception(os: system_info::Os, exception_info: &crate::Excep
             false
         }
     }
+}
+
+/// Try to detect a "null pointer in disguise"
+///
+/// This function will search though all the memory accessses for the instruction and see if any
+/// of them were flagged by `op_analysis` as being a disguised nullptr. If so, we return that
+/// address as an "offset" from the null pointer value
+fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>) -> Option<u64> {
+    if let Some(memory_accesses) = memory_accesses {
+        for access in memory_accesses.iter() {
+            if access.is_likely_null_pointer_dereference {
+                return Some(access.address);
+            }
+        }
+    }
+    None
 }
