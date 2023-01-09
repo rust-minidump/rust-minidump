@@ -312,10 +312,7 @@ where
                         && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
                     {
                         // Final sanity check that resulting bp is still inside stack memory.
-                        if stack_memory
-                            .get_memory_at_address::<Pointer>(bp)
-                            .is_some()
-                        {
+                        if stack_memory.get_memory_at_address::<Pointer>(bp).is_some() {
                             caller_bp = Some(bp);
                         }
                     } else if last_bp >= caller_sp {
