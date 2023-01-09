@@ -112,7 +112,7 @@ pub trait CiteLocation {
 impl<T: DumpSection> CiteLocation for T {
     fn cite_location_in(&self, section: Section) -> Section {
         // An MINIDUMP_LOCATION_DESCRIPTOR is just a 32-bit size + 32-bit offset.
-        section.D32(&self.file_size()).D32(&self.file_offset())
+        section.D32(self.file_size()).D32(self.file_offset())
     }
 }
 
@@ -697,7 +697,7 @@ impl Memory64ListStream {
 impl From<Memory64ListStream> for Section {
     fn from(list: Memory64ListStream) -> Self {
         // Finalize the entry count.
-        list.count_label.set_const(list.count as u64);
+        list.count_label.set_const(list.count);
         list.section
     }
 }
@@ -902,8 +902,8 @@ impl_dumpsection!(DumpUtf8String);
 
 /// A fixed set of version info to use for tests.
 pub const STOCK_VERSION_INFO: md::VS_FIXEDFILEINFO = md::VS_FIXEDFILEINFO {
-    signature: md::VS_FFI_SIGNATURE as u32,
-    struct_version: md::VS_FFI_STRUCVERSION as u32,
+    signature: md::VS_FFI_SIGNATURE,
+    struct_version: md::VS_FFI_STRUCVERSION,
     file_version_hi: 0x11111111,
     file_version_lo: 0x22222222,
     product_version_hi: 0x33333333,

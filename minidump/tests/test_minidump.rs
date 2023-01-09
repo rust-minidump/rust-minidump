@@ -27,12 +27,12 @@ fn get_test_minidump_path(filename: &str) -> PathBuf {
 
 fn read_test_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
     let path = get_test_minidump_path("test.dmp");
-    Minidump::read_path(&path)
+    Minidump::read_path(path)
 }
 
 fn read_linux_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
     let path = get_test_minidump_path("linux-mini.dmp");
-    Minidump::read_path(&path)
+    Minidump::read_path(path)
 }
 
 #[test]

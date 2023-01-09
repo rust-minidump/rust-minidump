@@ -140,7 +140,7 @@ where
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    if last_fp as u32 >= u32::MAX - POINTER_WIDTH as u32 * 2 {
+    if last_fp >= u32::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.
@@ -368,7 +368,7 @@ impl Unwind for ArmContext {
         // the value to 2 less than that, so it points to the CALL instruction
         // (arm instructions are all 2 bytes wide). This is important because
         // we use this value to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer() as u64;
+        let ip = frame.context.get_instruction_pointer();
         frame.instruction = ip - 2;
 
         Some(frame)

@@ -663,7 +663,7 @@ async fn test_frame_pointer_overflow() {
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     let stack_start: Pointer = stack_max - stack_size;
-    stack.start().set_const(stack_start as u64);
+    stack.start().set_const(stack_start);
 
     stack = stack
         // frame 0
@@ -696,7 +696,7 @@ async fn test_frame_pointer_barely_no_overflow() {
 
     let stack_start: Pointer = stack_max - stack_size;
     let return_address: Pointer = 0x00007500b0000110;
-    stack.start().set_const(stack_start as u64);
+    stack.start().set_const(stack_start);
 
     let frame0_fp = Label::new();
     let frame1_sp = Label::new();

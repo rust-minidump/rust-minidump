@@ -1062,7 +1062,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_X86 {
                     if ctx.context_flags & md::CONTEXT_HAS_XSTATE != 0 {
                         // FIXME: uses MISC_INFO_5 to parse out extra sections here
@@ -1078,7 +1078,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_AMD64 {
                     if ctx.context_flags & md::CONTEXT_HAS_XSTATE != 0 {
                         // FIXME: uses MISC_INFO_5 to parse out extra sections here
@@ -1094,7 +1094,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_PPC {
                     Ok(MinidumpContext::from_raw(MinidumpRawContext::Ppc(ctx)))
                 } else {
@@ -1118,7 +1118,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_SPARC {
                     Ok(MinidumpContext::from_raw(MinidumpRawContext::Sparc(ctx)))
                 } else {
@@ -1130,7 +1130,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_ARM {
                     Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm(ctx)))
                 } else {
@@ -1142,7 +1142,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_ARM64 {
                     Ok(MinidumpContext::from_raw(MinidumpRawContext::Arm64(ctx)))
                 } else {
@@ -1166,7 +1166,7 @@ impl MinidumpContext {
                     .gread_with(&mut offset, endian)
                     .or(Err(ContextError::ReadFailure))?;
 
-                let flags = ContextFlagsCpu::from_flags(ctx.context_flags as u32);
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
                 if flags == ContextFlagsCpu::CONTEXT_MIPS {
                     Ok(MinidumpContext::from_raw(MinidumpRawContext::Mips(ctx)))
                 } else {

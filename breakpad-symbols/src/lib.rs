@@ -399,7 +399,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
         trace!("SimpleSymbolSupplier search");
         if let Some(lookup) = lookup(module, file_kind) {
             for path in self.paths.iter() {
-                let test_path = path.join(&lookup.cache_rel);
+                let test_path = path.join(lookup.cache_rel.clone());
                 if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
                     trace!("SimpleSymbolSupplier found file {}", test_path.display());
                     return Ok(test_path);

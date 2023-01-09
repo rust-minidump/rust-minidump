@@ -296,7 +296,7 @@ where
         return false;
     }
 
-    if let Some(module) = modules.module_at_address(instruction as u64) {
+    if let Some(module) = modules.module_at_address(instruction) {
         // Create a dummy frame symbolizing implementation to feed into
         // our symbol provider with the address we're interested in. If
         // it tries to set a non-empty function name, then we can reasonably
@@ -320,7 +320,7 @@ where
         }
 
         let mut frame = DummyFrame {
-            instruction: instruction as u64,
+            instruction,
             has_name: false,
         };
 

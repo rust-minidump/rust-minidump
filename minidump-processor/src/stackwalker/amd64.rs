@@ -164,14 +164,14 @@ where
     // %bp_new = *(%bp_old)
     // %sp_new = %bp_old + ptr*2
 
-    if last_bp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+    if last_bp >= u64::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.
         return None;
     }
-    let caller_ip = stack_memory.get_memory_at_address(last_bp as u64 + POINTER_WIDTH as u64)?;
-    let caller_bp = stack_memory.get_memory_at_address(last_bp as u64)?;
+    let caller_ip = stack_memory.get_memory_at_address(last_bp + POINTER_WIDTH)?;
+    let caller_bp = stack_memory.get_memory_at_address(last_bp)?;
     let caller_sp = last_bp + POINTER_WIDTH * 2;
 
     // If the recovered ip is not a canonical address it can't be
@@ -185,7 +185,7 @@ where
     }
     // Since we're assuming coherent frame pointers, check that the resulting
     // frame pointer is still inside stack memory.
-    let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp as u64)?;
+    let _unused: Pointer = stack_memory.get_memory_at_address(caller_bp)?;
     // Don't accept obviously wrong instruction pointers.
     if is_non_canonical(caller_ip) {
         trace!("rejecting frame pointer result for unreasonable instruction pointer");
@@ -267,7 +267,7 @@ where
 
     for i in 0..scan_range {
         let address_of_ip = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_ip = stack_memory.get_memory_at_address(address_of_ip as u64)?;
+        let caller_ip = stack_memory.get_memory_at_address(address_of_ip)?;
         if instruction_seems_valid(caller_ip, modules, symbol_provider).await {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
             let caller_sp = address_of_ip.checked_add(POINTER_WIDTH)?;
@@ -306,14 +306,14 @@ where
                     let address_of_bp = address_of_ip - POINTER_WIDTH;
                     // Can assume this resolves because we already walked over it when
                     // checking address_of_ip values.
-                    let bp = stack_memory.get_memory_at_address(address_of_bp as u64)?;
+                    let bp = stack_memory.get_memory_at_address(address_of_bp)?;
                     if last_bp == address_of_bp
                         && bp > address_of_ip
                         && bp - address_of_bp <= MAX_REASONABLE_GAP_BETWEEN_FRAMES
                     {
                         // Final sanity check that resulting bp is still inside stack memory.
                         if stack_memory
-                            .get_memory_at_address::<Pointer>(bp as u64)
+                            .get_memory_at_address::<Pointer>(bp)
                             .is_some()
                         {
                             caller_bp = Some(bp);
@@ -389,7 +389,7 @@ where
         return false;
     }
 
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
+    super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
 fn stack_seems_valid(
@@ -404,7 +404,7 @@ fn stack_seems_valid(
 
     // The stack pointer should be in the stack
     stack_memory
-        .get_memory_at_address::<Pointer>(caller_sp as u64)
+        .get_memory_at_address::<Pointer>(caller_sp)
         .is_some()
 }
 
@@ -478,7 +478,7 @@ impl Unwind for CONTEXT_AMD64 {
         // the value to one less than that, so it points within the
         // CALL instruction. This is important because we use this value
         // to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer() as u64;
+        let ip = frame.context.get_instruction_pointer();
         frame.instruction = ip - 1;
 
         Some(frame)

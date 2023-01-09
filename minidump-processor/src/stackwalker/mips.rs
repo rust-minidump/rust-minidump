@@ -235,7 +235,7 @@ where
         return false;
     }
 
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
+    super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
 #[async_trait::async_trait]
@@ -297,7 +297,7 @@ impl Unwind for MipsContext {
         // enforce progress and avoid infinite loops.
 
         let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always(STACK_POINTER) as u64;
+        let last_sp = self.get_register_always(STACK_POINTER);
         if sp <= last_sp {
             // Mips leaf functions may not actually touch the stack (thanks
             // to the return address register allowing you to "push" the return address
@@ -314,7 +314,7 @@ impl Unwind for MipsContext {
         // Ok, the frame now seems well and truly valid, do final cleanup.
 
         // The Mips `jal` instruction always sets $ra to PC + 8
-        let ip = frame.context.get_instruction_pointer() as u64;
+        let ip = frame.context.get_instruction_pointer();
         frame.instruction = ip - 8;
 
         Some(frame)

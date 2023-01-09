@@ -158,7 +158,7 @@ where
     // %bp_new = *(%bp_old)
     // %sp_new = %bp_old + ptr*2
 
-    if last_bp as u32 >= u32::MAX - POINTER_WIDTH as u32 * 2 {
+    if last_bp >= u32::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.
@@ -440,7 +440,7 @@ impl Unwind for CONTEXT_X86 {
         // the value to one less than that, so it points within the
         // CALL instruction. This is important because we use this value
         // to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer() as u64;
+        let ip = frame.context.get_instruction_pointer();
         frame.instruction = ip - 1;
 
         Some(frame)

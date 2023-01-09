@@ -205,7 +205,7 @@ where
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    if last_fp as u64 >= u64::MAX - POINTER_WIDTH as u64 * 2 {
+    if last_fp >= u64::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.
@@ -218,8 +218,8 @@ where
         (0, 0, last_sp)
     } else {
         (
-            stack_memory.get_memory_at_address(last_fp as u64)?,
-            stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH as u64)?,
+            stack_memory.get_memory_at_address(last_fp)?,
+            stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH)?,
             last_fp + POINTER_WIDTH * 2,
         )
     };
@@ -349,7 +349,7 @@ where
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
@@ -417,7 +417,7 @@ where
         return false;
     }
 
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
+    super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
 fn is_non_canonical(instruction: Pointer) -> bool {
@@ -490,7 +490,7 @@ impl Unwind for ArmContext {
         // enforce progress and avoid infinite loops.
 
         let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always("sp") as u64;
+        let last_sp = self.get_register_always("sp");
         if sp <= last_sp {
             // Arm leaf functions may not actually touch the stack (thanks
             // to the link register allowing you to "push" the return address
@@ -511,7 +511,7 @@ impl Unwind for ArmContext {
         // the value to 4 less than that, so it points to the CALL instruction
         // (arm64 instructions are all 4 bytes wide). This is important because
         // we use this value to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer() as u64;
+        let ip = frame.context.get_instruction_pointer();
         frame.instruction = ip - 4;
 
         Some(frame)

@@ -1083,7 +1083,7 @@ async fn test_frame_pointer_overflow_nonsense_32bit_stack() {
     let mut f = TestFixture::new();
     let mut stack = Section::new();
     let stack_start: u64 = stack_max - stack_size;
-    stack.start().set_const(stack_start as u64);
+    stack.start().set_const(stack_start);
 
     stack = stack
         // frame 0

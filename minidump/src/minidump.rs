@@ -1323,7 +1323,7 @@ where
     *offset += header_padding;
 
     // read count T raw stream entries
-    let mut raw_entries = Vec::with_capacity(number_of_entries as usize);
+    let mut raw_entries = Vec::with_capacity(number_of_entries);
     for _ in 0..number_of_entries {
         let raw: T = bytes
             .gread_with(offset, endian)
