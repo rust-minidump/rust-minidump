@@ -418,6 +418,22 @@ where
     process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default()).await
 }
 
+/// Get the microcode version from linux cpu info and evil options.
+fn get_microcode_version(linux_cpu_info: &MinidumpLinuxCpuInfo, evil: &evil::Evil) -> Option<u64> {
+    linux_cpu_info
+        .iter()
+        .find_map(|(key, val)| {
+            if key.as_bytes() == b"microcode" {
+                val.to_str().ok()
+            } else {
+                None
+            }
+        })
+        .or(evil.cpu_microcode_version.as_deref())
+        .and_then(|val| val.strip_prefix("0x"))
+        .and_then(|val| u64::from_str_radix(val, 16).ok())
+}
+
 /// Process `dump` with the given options and return a report as a `ProcessState`.
 ///
 /// See [`ProcessorOptions`][] for details on the specific features that can be
@@ -474,18 +490,7 @@ where
     // would care about. So just providing an iterator and letting minidump-processor
     // pull out the things it cares about is simple and effective.
 
-    let cpu_microcode_version = linux_cpu_info
-        .iter()
-        .find_map(|(key, val)| {
-            if key.as_bytes() == b"microcode" {
-                val.to_str().ok()
-            } else {
-                None
-            }
-        })
-        .or(evil.cpu_microcode_version.as_deref())
-        .and_then(|val| val.strip_prefix("0x"))
-        .and_then(|val| u64::from_str_radix(val, 16).ok());
+    let cpu_microcode_version = get_microcode_version(&linux_cpu_info, &evil);
 
     let linux_standard_base = linux_standard_base.map(|linux_standard_base| {
         let mut lsb = LinuxStandardBase::default();
