@@ -483,7 +483,7 @@ where
                 None
             }
         })
-        .or_else(|| evil.cpu_microcode_version.as_ref().map(|s| s.as_str()))
+        .or(evil.cpu_microcode_version.as_deref())
         .and_then(|val| val.strip_prefix("0x"))
         .and_then(|val| u64::from_str_radix(val, 16).ok());
 
