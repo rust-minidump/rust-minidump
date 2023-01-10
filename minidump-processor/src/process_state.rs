@@ -917,8 +917,8 @@ Unknown streams encountered:
                 "cpu_arch": sys.cpu.to_string(),
                 "cpu_info": sys.cpu_info,
                 "cpu_count": sys.cpu_count,
-                // optional
-                "cpu_microcode_version": sys.cpu_microcode_version,
+                // optional, print as hex string
+                "cpu_microcode_version": sys.cpu_microcode_version.map(|num| format!("{:#x}", num)),
             },
             "crash_info": {
                 "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),

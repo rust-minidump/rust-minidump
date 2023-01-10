@@ -418,6 +418,22 @@ where
     process_minidump_with_options(dump, symbol_provider, ProcessorOptions::default()).await
 }
 
+/// Get the microcode version from linux cpu info and evil options.
+fn get_microcode_version(linux_cpu_info: &MinidumpLinuxCpuInfo, evil: &evil::Evil) -> Option<u64> {
+    linux_cpu_info
+        .iter()
+        .find_map(|(key, val)| {
+            if key.as_bytes() == b"microcode" {
+                val.to_str().ok()
+            } else {
+                None
+            }
+        })
+        .or(evil.cpu_microcode_version.as_deref())
+        .and_then(|val| val.strip_prefix("0x"))
+        .and_then(|val| u64::from_str_radix(val, 16).ok())
+}
+
 /// Process `dump` with the given options and return a report as a `ProcessState`.
 ///
 /// See [`ProcessorOptions`][] for details on the specific features that can be
@@ -432,6 +448,12 @@ where
     P: SymbolProvider + Sync,
 {
     options.check_deprecated_and_disabled();
+
+    // Get the evil JSON file (thread names, module certificates, etc)
+    let evil = options
+        .evil_json
+        .and_then(evil::handle_evil)
+        .unwrap_or_default();
 
     // Thread list is required for processing.
     let thread_list = dump
@@ -468,17 +490,7 @@ where
     // would care about. So just providing an iterator and letting minidump-processor
     // pull out the things it cares about is simple and effective.
 
-    let mut cpu_microcode_version = None;
-    for (key, val) in linux_cpu_info.iter() {
-        if key.as_bytes() == b"microcode" {
-            cpu_microcode_version = val
-                .to_str()
-                .ok()
-                .and_then(|val| val.strip_prefix("0x"))
-                .and_then(|val| u64::from_str_radix(val, 16).ok());
-            break;
-        }
-    }
+    let cpu_microcode_version = get_microcode_version(&linux_cpu_info, &evil);
 
     let linux_standard_base = linux_standard_base.map(|linux_standard_base| {
         let mut lsb = LinuxStandardBase::default();
@@ -605,12 +617,6 @@ where
 
     let exception_context =
         exception_ref.and_then(|e| e.context(&dump_system_info, misc_info.as_ref()));
-
-    // Get the evil JSON file (thread names and module certificates)
-    let evil = options
-        .evil_json
-        .and_then(evil::handle_evil)
-        .unwrap_or_default();
 
     let mut requesting_thread = None;
 

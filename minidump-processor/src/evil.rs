@@ -14,6 +14,8 @@ pub(crate) struct Evil {
     pub certs: HashMap<String, String>,
     /// thread id => thread name
     pub thread_names: HashMap<u32, String>,
+    /// The microcode version of the cpu
+    pub cpu_microcode_version: Option<String>,
 }
 
 pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
@@ -96,8 +98,15 @@ pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
         })
         .collect();
 
+    // The CPUMicrocodeVersion field is a hex string starting with "0x"; the string formatting will
+    // be verified later.
+    let cpu_microcode_version = json
+        .remove("CPUMicrocodeVersion")
+        .and_then(|v| Some(v.as_str()?.to_owned()));
+
     Some(Evil {
         certs,
         thread_names,
+        cpu_microcode_version,
     })
 }

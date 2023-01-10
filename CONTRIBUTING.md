@@ -135,7 +135,7 @@ fuzzing tests (see the `cargo fuzz` section):
 
 ## minidump-synth: Synthetic Minidumps for Tests
 
-rust-minidump includes a [synthetic minidump generator](minidump-synth) which lets you come up with a high-level description of the contents of a minidump, and then produces an actual minidump binary that we can feed it into the full parser.
+rust-minidump includes a [synthetic minidump generator](minidump-synth) which lets you come up with a high-level description of the contents of a minidump, and then produces an actual minidump binary that we can feed into the full parser.
 
 This is used throughout the codebase. Being able to use minidump-synth and add things to it is very important! This can in turn involve the test_assembler crate, which we discuss in the next section. Thankfully you don't need to master these systems: there's usually already code/tests for something *similar* which you can copy-paste and tweak. 
 
@@ -192,7 +192,7 @@ fn test_crashpad_info_annotations() {
 
 One of the major pieces of testing infra we rely on is [test_assembler](https://github.com/luser/rust-test-assembler), which allows us to construct artificial binaries with a combination of the builder pattern and *labels* which essentially represent variables which will have their values filled in later. The primary purpose of labels is that they let us refer to offsets in the binary we're writing, *even in the binary itself*, **even when those offsets aren't defined yet**.
 
-The place where you'll see this most is in our stackwalker tests, where we artificially construct the memory a stack we want to walk. Things like frame pointers are *precisely* pointers to later parts of the stack. Here's an [example frame pointery stack in the amd64 tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump-processor/src/stackwalker/amd64_unittest.rs#L82-L116):
+The place where you'll see this most is in our stackwalker tests, where we artificially construct the memory of a stack we want to walk. Things like frame pointers are *precisely* pointers to later parts of the stack. Here's an [example frame pointery stack in the amd64 tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump-processor/src/stackwalker/amd64_unittest.rs#L82-L116):
 
 ```rust ,ignore
 // Functions typically push their %rbp upon entry and set %rbp pointing
@@ -209,7 +209,7 @@ let return_address = 0x00007500b0000110;
 // The `start` constant is the address this section should claim to start at.
 // This affects the addresses that Labels will report when we query offsets
 // in the binary. In this way we can easily test corner cases and get exact
-// addresses when we want to test overflow/underflow/truncaction bugs.
+// addresses when we want to test overflow/underflow/truncation bugs.
 stack.start().set_const(stack_start);
 
 // We will be querying these 3 offsets in the binary.
