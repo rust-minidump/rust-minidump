@@ -190,6 +190,24 @@ async fn fill_source_line_info<P>(
         // This is best effort, so ignore any errors.
         let _ = symbol_provider.fill_symbol(module, frame).await;
 
+        // HACK: If we didn't find a symbol and we're at the top of the stack then try
+        // again by substracting one from the instruction address, we've seen cases
+        // where it would be exactly one byte past the end of a function.
+        // See https://github.com/rust-minidump/rust-minidump/issues/780 for more info.
+        if (frame.instruction == frame.resume_address) && frame.function_name.is_none() {
+            frame.instruction -= 1;
+            frame.resume_address -= 1;
+            let _ = symbol_provider.fill_symbol(module, frame).await;
+
+            // Our fixup didn't work, go back to how things were
+            if frame.function_name.is_none() {
+                frame.instruction += 1;
+                frame.resume_address += 1;
+            } else {
+                trace!("Fixup: adjusted the frame's instruction address which was off-by-one");
+            }
+        }
+
         // If we got any inlines, reverse them! The symbol format makes it simplest to
         // emit inlines from the shallowest callee to the deepest one ("inner to outer"),
         // but we want inlines to be in the same order as the stackwalk itself, which means

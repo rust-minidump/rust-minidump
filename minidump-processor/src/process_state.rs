@@ -105,7 +105,7 @@ pub struct StackFrame {
     /// The instruction address (program counter) that execution of this function
     /// would resume at, if the callee returns.
     ///
-    /// This is exactly **the return address of the of the callee**. We use this
+    /// This is exactly **the return address of the callee**. We use this
     /// nonstandard terminology because just calling this "return address"
     /// would be ambiguous and too easy to mix up.
     ///
