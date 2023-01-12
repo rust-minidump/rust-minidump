@@ -563,7 +563,7 @@ where
     let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
-    let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+    let memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
@@ -616,6 +616,20 @@ where
                 instruction_str: None,
                 memory_accesses: None,
             })
+    });
+
+    // Check for bit-flips of the exception address
+    let exception_info = exception_info.map(|mut info| {
+        // For now, only check for bit flips if we haven't already adjusted the address (though
+        // technically a non-canonical address may have been the result of a bit-flip). In the
+        // future it may be appropriate to provide a set of adjusted addresses to accommodate this.
+        //
+        // A set of adjusted addresses may also allow for multiple valid bit-flips to be reported.
+        if info.adjusted_address.is_none() {
+            info.adjusted_address =
+                try_bit_flips(info.address, &memory_info).map(AdjustedAddress::PossibleBitflip);
+        }
+        info
     });
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
@@ -908,5 +922,25 @@ fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>)
             }
         }
     }
+    None
+}
+
+/// Try to determine whether an address was the result of a flipped bit.
+fn try_bit_flips(address: u64, memory_info: &UnifiedMemoryInfoList) -> Option<u64> {
+    // If the address maps to valid memory, don't do anything else.
+    if memory_info.memory_info_at_address(address).is_some() {
+        return None;
+    }
+
+    for i in 0..u64::BITS {
+        let possible_address = address ^ (1 << i);
+        if memory_info
+            .memory_info_at_address(possible_address)
+            .is_some()
+        {
+            return Some(possible_address);
+        }
+    }
+
     None
 }

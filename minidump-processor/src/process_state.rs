@@ -298,12 +298,14 @@ pub struct ExceptionInfo {
 /// would just be zero.
 ///
 /// If such a correction was made, this will be included in `ExceptionInfo`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdjustedAddress {
     /// The original access was an Amd64 "non-canonical" address; actual address is provided here.
     NonCanonical(u64),
     /// The base pointer was null; offset from base is provided here.
     NullPointerWithOffset(u64),
+    /// The original address was possibly the result of faulty hardware, alpha particles, etc. causing a bit-flip.
+    PossibleBitflip(u64),
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -701,6 +703,9 @@ impl ProcessState {
                     AdjustedAddress::NullPointerWithOffset(offset) => {
                         writeln!(f, "    ** Null pointer detected with offset: {offset:#x}")?
                     }
+                    AdjustedAddress::PossibleBitflip(address) => {
+                        writeln!(f, "    ** Possible bit-flip detected: {:#x}", address)?
+                    }
                 }
             } else {
                 writeln!(f, "Crash address: {:#x}", crash_info.address)?;
@@ -932,6 +937,10 @@ Unknown streams encountered:
                         AdjustedAddress::NullPointerWithOffset(offset) => json!({
                             "kind": "null-pointer",
                             "offset": json_hex(*offset),
+                        }),
+                        AdjustedAddress::PossibleBitflip(address) => json!({
+                            "kind": "possible-bit-flip",
+                            "address": json_hex(*address),
                         }),
                     })
                 }),
