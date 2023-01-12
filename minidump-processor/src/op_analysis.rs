@@ -129,7 +129,7 @@ fn get_thread_instruction_bytes<'a, Descriptor>(
 #[cfg(feature = "disasm_amd64")]
 mod amd64 {
     use super::*;
-    use yaxpeax_x86::amd64::Instruction;
+    use yaxpeax_x86::amd64::{Instruction, Opcode, Operand, RegSpec};
 
     /// Amd64-specific instruction analysis
     ///
@@ -143,7 +143,8 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
-        let memory_accesses = get_instruction_memory_access(context, decoded_instruction)
+        let memory_accesses = GetMemoryAccess::new(context)
+            .get_instruction_memory_access(decoded_instruction)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
@@ -151,6 +152,202 @@ mod amd64 {
             instruction_str,
             memory_accesses,
         })
+    }
+
+    struct GetMemoryAccess<'a> {
+        context: &'a MinidumpContext,
+    }
+
+    #[derive(Default)]
+    struct RegOperandInfo {
+        pub base_reg: Option<RegSpec>,
+        pub index_reg: Option<RegSpec>,
+        pub scale: Option<u8>,
+        pub disp: Option<i32>,
+    }
+
+    impl RegOperandInfo {
+        pub fn try_from_operand(op: Operand) -> Option<Self> {
+            let mut info = RegOperandInfo::default();
+            match op {
+                Operand::RegDeref(base) => {
+                    info.base_reg = Some(base);
+                }
+                Operand::RegDisp(base, disp) => {
+                    info.base_reg = Some(base);
+                    info.disp = Some(disp);
+                }
+                Operand::RegScale(index, scale) => {
+                    info.index_reg = Some(index);
+                    info.scale = Some(scale);
+                }
+                Operand::RegIndexBase(base, index) => {
+                    info.base_reg = Some(base);
+                    info.index_reg = Some(index);
+                }
+                Operand::RegIndexBaseDisp(base, index, disp) => {
+                    info.base_reg = Some(base);
+                    info.index_reg = Some(index);
+                    info.disp = Some(disp);
+                }
+                Operand::RegScaleDisp(index, scale, disp) => {
+                    info.index_reg = Some(index);
+                    info.scale = Some(scale);
+                    info.disp = Some(disp);
+                }
+                Operand::RegIndexBaseScale(base, index, scale) => {
+                    info.base_reg = Some(base);
+                    info.index_reg = Some(index);
+                    info.scale = Some(scale);
+                }
+                Operand::RegIndexBaseScaleDisp(base, index, scale, disp) => {
+                    info.base_reg = Some(base);
+                    info.index_reg = Some(index);
+                    info.scale = Some(scale);
+                    info.disp = Some(disp);
+                }
+                _ => return None,
+            }
+            Some(info)
+        }
+    }
+
+    impl<'a> GetMemoryAccess<'a> {
+        pub fn new(context: &'a MinidumpContext) -> Self {
+            GetMemoryAccess { context }
+        }
+
+        /// Determine the memory accesses implied by the given instruction and context
+        ///
+        /// Uses the instruction provided in `decoded_instruction` and the given registers in
+        /// `context` to determine information about memory accessed by the given instruction.
+        ///
+        /// # Errors
+        ///
+        /// The most likely cause of an error is that a register named by the given instruction
+        /// is invalid, so determining the memory access for the instruction is not possible.
+        pub fn get_instruction_memory_access(
+            self,
+            decoded_instruction: Instruction,
+        ) -> Result<Vec<MemoryAccess>, OpAnalysisError> {
+            let mut memory_accesses = Vec::new();
+            self.direct(&mut memory_accesses, &decoded_instruction)?;
+            self.indirect(&mut memory_accesses, &decoded_instruction)?;
+            Ok(memory_accesses)
+        }
+
+        fn direct(
+            &self,
+            accesses: &mut Vec<MemoryAccess>,
+            decoded_instruction: &Instruction,
+        ) -> Result<(), OpAnalysisError> {
+            // Shortcut -- If the instruction doesn't access memory, just return an empty list
+            let mem_size = match decoded_instruction.mem_size() {
+                Some(access) => access.bytes_size(),
+                None => return Ok(()),
+            };
+
+            for idx in 0..decoded_instruction.operand_count() {
+                let operand = decoded_instruction.operand(idx);
+
+                let maybe_access = match operand {
+                    Operand::DisplacementU32(disp) => Some(MemoryAccess {
+                        address: disp.into(),
+                        is_likely_null_pointer_dereference: false,
+                        size: mem_size,
+                    }),
+                    Operand::DisplacementU64(disp) => Some(MemoryAccess {
+                        address: disp,
+                        is_likely_null_pointer_dereference: false,
+                        size: mem_size,
+                    }),
+                    other_operand => {
+                        if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
+                            Some(self.calculate_address(mem_size, op_info)?)
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                if let Some(access) = maybe_access {
+                    accesses.push(access);
+                }
+            }
+
+            Ok(())
+        }
+
+        /// Indirect memory accesses include instructions which change the instruction pointer.
+        fn indirect(
+            &self,
+            accesses: &mut Vec<MemoryAccess>,
+            decoded_instruction: &Instruction,
+        ) -> Result<(), OpAnalysisError> {
+            match decoded_instruction.opcode() {
+                Opcode::CALL | Opcode::CALLF | Opcode::JMP | Opcode::JMPF | Opcode::JMPE => {
+                    if decoded_instruction.operand_count() != 1 {
+                        tracing::warn!("call/jmp instruction had incorrect operand count");
+                        return Ok(());
+                    }
+                    // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
+                    // JMPF) will be valid, so we don't check immediate operands, only registers.
+                    if let Operand::Register(reg) = decoded_instruction.operand(0) {
+                        let address = self.get_reg(reg)?;
+                        accesses.push(MemoryAccess {
+                            address,
+                            is_likely_null_pointer_dereference: address == 0,
+                            size: Some(1),
+                        });
+                    }
+                }
+                // TODO: if the full minidump information is plumbed down here, we can support
+                // RET/IRET as well (by reading the stack to get the return address)
+                _ => (),
+            }
+
+            Ok(())
+        }
+
+        fn calculate_address(
+            &self,
+            access_size: Option<u8>,
+            register_operand_info: RegOperandInfo,
+        ) -> Result<MemoryAccess, OpAnalysisError> {
+            let mut access = MemoryAccess {
+                address: 0,
+                is_likely_null_pointer_dereference: false,
+                size: access_size,
+            };
+
+            if let Some(reg) = register_operand_info.base_reg {
+                let base = self.get_reg(reg)?;
+                access.address = base;
+                // If the base contains zero, this is very likely a dereference of a null pointer
+                // plus an offset
+                if base == 0 {
+                    access.is_likely_null_pointer_dereference = true;
+                }
+            }
+
+            if let Some(reg) = register_operand_info.index_reg {
+                let index = self.get_reg(reg)?;
+                let scale = register_operand_info.scale.unwrap_or(1);
+                let scaled_index = index.wrapping_mul(scale.into());
+                access.address = access.address.wrapping_add(scaled_index);
+            }
+
+            let disp = i64::from(register_operand_info.disp.unwrap_or(0)) as u64;
+            access.address = access.address.wrapping_add(disp);
+
+            Ok(access)
+        }
+
+        fn get_reg(&self, reg: RegSpec) -> Result<u64, OpAnalysisError> {
+            self.context
+                .get_register(reg.name())
+                .ok_or(OpAnalysisError::RegisterInvalid)
+        }
     }
 
     /// Decode the given Amd64 instruction using yaxpeax-x86
@@ -167,125 +364,6 @@ mod amd64 {
             DecodeError::ExhaustedInput => OpAnalysisError::InstructionTruncated,
             e => OpAnalysisError::DecodeFailed(e.into()),
         })
-    }
-
-    /// Determine the memory accesses implied by the given instruction and context
-    ///
-    /// Uses the instruction provided in `decoded_instruction` and the given registers in
-    /// `context` to determine information about memory accessed by the given instruction.
-    ///
-    /// # Errors
-    ///
-    /// The most likely cause of an error is that a register named by the given instruction
-    /// is invalid, so determining the memory access for the instruction is not possible.
-    fn get_instruction_memory_access(
-        context: &MinidumpContext,
-        decoded_instruction: Instruction,
-    ) -> Result<Vec<MemoryAccess>, OpAnalysisError> {
-        use yaxpeax_x86::amd64::{Operand, RegSpec};
-
-        // Shortcut -- If the instruction doesn't access memory, just return an empty list
-        let mem_size = match decoded_instruction.mem_size() {
-            Some(access) => access.bytes_size(),
-            None => return Ok(Vec::new()),
-        };
-
-        let calculate_address = |base_reg: Option<RegSpec>,
-                                 index_reg: Option<RegSpec>,
-                                 scale: Option<u8>,
-                                 disp: Option<i32>|
-         -> Result<MemoryAccess, OpAnalysisError> {
-            let get_reg = |reg: RegSpec| -> Result<u64, OpAnalysisError> {
-                context
-                    .get_register(reg.name())
-                    .ok_or(OpAnalysisError::RegisterInvalid)
-            };
-
-            let mut access = MemoryAccess {
-                address: 0,
-                is_likely_null_pointer_dereference: false,
-                size: mem_size,
-            };
-
-            if let Some(reg) = base_reg {
-                let base = get_reg(reg)?;
-                access.address = base;
-                // If the base contains zero, this is very likely a dereference of a null pointer
-                // plus an offset
-                if base == 0 {
-                    access.is_likely_null_pointer_dereference = true;
-                }
-            }
-
-            if let Some(reg) = index_reg {
-                let index = get_reg(reg)?;
-                let scale = scale.unwrap_or(1);
-                let scaled_index = index.wrapping_mul(scale.into());
-                access.address = access.address.wrapping_add(scaled_index);
-            }
-
-            let disp = i64::from(disp.unwrap_or(0)) as u64;
-            access.address = access.address.wrapping_add(disp);
-
-            Ok(access)
-        };
-
-        let mut memory_accesses = Vec::new();
-
-        for idx in 0..decoded_instruction.operand_count() {
-            let operand = decoded_instruction.operand(idx);
-
-            let maybe_access = match operand {
-                Operand::DisplacementU32(disp) => Some(MemoryAccess {
-                    address: disp.into(),
-                    is_likely_null_pointer_dereference: false,
-                    size: mem_size,
-                }),
-                Operand::DisplacementU64(disp) => Some(MemoryAccess {
-                    address: disp,
-                    is_likely_null_pointer_dereference: false,
-                    size: mem_size,
-                }),
-                Operand::RegDeref(base) => Some(calculate_address(Some(base), None, None, None)?),
-                Operand::RegDisp(base, disp) => {
-                    Some(calculate_address(Some(base), None, None, Some(disp))?)
-                }
-                Operand::RegScale(index, scale) => {
-                    Some(calculate_address(None, Some(index), Some(scale), None)?)
-                }
-                Operand::RegIndexBase(base, index) => {
-                    Some(calculate_address(Some(base), Some(index), None, None)?)
-                }
-                Operand::RegIndexBaseDisp(base, index, disp) => Some(calculate_address(
-                    Some(base),
-                    Some(index),
-                    None,
-                    Some(disp),
-                )?),
-                Operand::RegScaleDisp(index, scale, disp) => Some(calculate_address(
-                    None,
-                    Some(index),
-                    Some(scale),
-                    Some(disp),
-                )?),
-                Operand::RegIndexBaseScale(base, index, scale) => Some(calculate_address(
-                    Some(base),
-                    Some(index),
-                    Some(scale),
-                    None,
-                )?),
-                Operand::RegIndexBaseScaleDisp(base, index, scale, disp) => Some(
-                    calculate_address(Some(base), Some(index), Some(scale), Some(disp))?,
-                ),
-                _ => None,
-            };
-
-            if let Some(access) = maybe_access {
-                memory_accesses.push(access);
-            }
-        }
-
-        Ok(memory_accesses)
     }
 }
 
