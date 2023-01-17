@@ -626,8 +626,12 @@ where
         //
         // A set of adjusted addresses may also allow for multiple valid bit-flips to be reported.
         if info.adjusted_address.is_none() {
-            info.adjusted_address =
-                try_bit_flips(info.address, &memory_info).map(AdjustedAddress::PossibleBitflip);
+            info.adjusted_address = try_bit_flips(
+                info.address,
+                &memory_info,
+                MemoryOperation::from_crash_reason(&info.reason),
+            )
+            .map(AdjustedAddress::PossibleBitflip);
         }
         info
     });
@@ -925,20 +929,63 @@ fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>)
     None
 }
 
+/// The memory operation occurring when a crash occurred.
+#[derive(Default, PartialEq, Eq)]
+enum MemoryOperation {
+    #[default]
+    Unknown,
+    Read,
+    Write,
+    Execute,
+}
+
+impl MemoryOperation {
+    pub fn from_crash_reason(reason: &CrashReason) -> Self {
+        // TODO: it may be possible to derive the read/write/exec when disassembling the faulting
+        // instruction, though this may be fairly verbose to implement.
+        use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+        match reason {
+            CrashReason::WindowsAccessViolation(WinAccess::READ) => MemoryOperation::Read,
+            CrashReason::WindowsAccessViolation(WinAccess::WRITE) => MemoryOperation::Write,
+            CrashReason::WindowsAccessViolation(WinAccess::EXEC) => MemoryOperation::Execute,
+            _ => Self::default(),
+        }
+    }
+
+    /// Return whether this memory operation is allowed in the given memory region.
+    pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+        match self {
+            Self::Unknown => true,
+            Self::Read => memory_info.is_readable(),
+            Self::Write => memory_info.is_writable(),
+            Self::Execute => memory_info.is_executable(),
+        }
+    }
+}
+
 /// Try to determine whether an address was the result of a flipped bit.
-fn try_bit_flips(address: u64, memory_info: &UnifiedMemoryInfoList) -> Option<u64> {
+///
+/// `memory_operation` represents the memory operation that was occurring at the crashing address
+/// (read/write/exec). If left as `Unknown`, all memory operations are considered allowed.
+/// Otherwise, specify one of the operations that was occurring.
+fn try_bit_flips(
+    address: u64,
+    memory_info: &UnifiedMemoryInfoList,
+    memory_operation: MemoryOperation,
+) -> Option<u64> {
     // If the address maps to valid memory, don't do anything else.
-    if memory_info.memory_info_at_address(address).is_some() {
-        return None;
+    if let Some(mi) = memory_info.memory_info_at_address(address) {
+        if memory_operation.allowed_for(&mi) {
+            return None;
+        }
     }
 
     for i in 0..u64::BITS {
         let possible_address = address ^ (1 << i);
-        if memory_info
-            .memory_info_at_address(possible_address)
-            .is_some()
-        {
-            return Some(possible_address);
+        if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
+            if memory_operation.allowed_for(&mi) {
+                return Some(possible_address);
+            }
         }
     }
 
