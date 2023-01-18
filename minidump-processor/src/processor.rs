@@ -573,11 +573,16 @@ where
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
+        let stack_memory = thread_list
+            .get_thread(exception.get_crashing_thread_id())
+            .and_then(|thread| thread.stack_memory(&memory_list));
+        let stack_memory_ref = stack_memory.as_deref();
+
         exception
             .context(&dump_system_info, misc_info.as_ref())
             // If we have a context, we can attempt to analyze the crashing thread's instructions
             .and_then(|context| {
-                crate::op_analysis::analyze_thread_context(&context, &memory_list)
+                crate::op_analysis::analyze_thread_context(&context, &memory_list, stack_memory_ref)
                     .map(|op_analysis| {
                         let memory_accesses = op_analysis.memory_accesses.as_deref();
 
@@ -714,7 +719,7 @@ where
                 .enumerate()
                 .map(|(i, (stack, thread))| async move {
                     let mut stack_memory = thread.stack_memory(memory_list);
-                    // Always chose the memory region that is referenced by the context,
+                    // Always choose the memory region that is referenced by the context,
                     // as the `exception_context` may refer to a different memory region than
                     // the `thread_context`, which in turn would fail to stack walk.
                     let stack_ptr = stack
