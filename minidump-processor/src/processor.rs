@@ -982,6 +982,11 @@ fn try_bit_flips(
 
     for i in 0..u64::BITS {
         let possible_address = address ^ (1 << i);
+        // If the possible address is NULL, we assume that this was the originally intended address
+        // and some logic error has occurred (e.g. a NULL check went the wrong way).
+        if possible_address == 0 {
+            return Some(possible_address);
+        }
         if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
             if memory_operation.allowed_for(&mi) {
                 return Some(possible_address);
