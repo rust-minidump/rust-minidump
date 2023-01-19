@@ -264,14 +264,25 @@ struct Cli {
     symbols_path_legacy: Vec<PathBuf>,
 }
 
-#[cfg_attr(test, allow(dead_code))]
 #[tokio::main]
 async fn main() {
+    if let Err(e) = main_result().await {
+        // Ignore broken pipe errors, they will only occur from stdio, typically when a user is
+        // piping into another program but that program doesn't read all input.
+        if e.kind() != std::io::ErrorKind::BrokenPipe {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+async fn main_result() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     // Init the logger (and make trace logging less noisy)
     if let Some(log_path) = &cli.log_file {
-        let log_file = File::create(log_path).unwrap();
+        let log_file = File::create(log_path)?;
         tracing_subscriber::fmt::fmt()
             .with_max_level(cli.verbose)
             .with_target(false)
@@ -317,7 +328,7 @@ async fn main() {
     // of our public API.
     if cli.help_markdown {
         print_help_markdown(&mut std::io::stdout()).expect("help-markdown failed");
-        return;
+        return Ok(());
     }
 
     let temp_dir = std::env::temp_dir();
@@ -391,10 +402,10 @@ async fn main() {
         Ok(dump) => {
             let mut stdout;
             let mut output_f;
-            let cyborg_output_f = cli.cyborg.map(|path| File::create(path).unwrap());
+            let cyborg_output_f = cli.cyborg.map(File::create).transpose()?;
 
             let mut output: &mut dyn Write = if let Some(output_path) = cli.output_file {
-                output_f = File::create(output_path).unwrap();
+                output_f = File::create(output_path)?;
                 &mut output_f
             } else {
                 stdout = std::io::stdout();
@@ -403,7 +414,7 @@ async fn main() {
 
             // minidump_dump mode
             if raw_dump {
-                return print_minidump_dump(&dump, &mut output, cli.brief).unwrap();
+                return print_minidump_dump(&dump, &mut output, cli.brief);
             }
 
             let mut provider = MultiSymbolProvider::new();
@@ -461,20 +472,21 @@ async fn main() {
                     // Print the human output if requested (always uses the "real" output).
                     if human {
                         if cli.brief {
-                            state.print_brief(&mut output).unwrap();
+                            state.print_brief(&mut output)?;
                         } else {
-                            state.print(&mut output).unwrap();
+                            state.print(&mut output)?;
                         }
                     }
 
                     // Print the json output if requested (using "cyborg" output if available).
                     if json {
                         if let Some(mut cyborg_output_f) = cyborg_output_f {
-                            state.print_json(&mut cyborg_output_f, cli.pretty).unwrap();
+                            state.print_json(&mut cyborg_output_f, cli.pretty)?;
                         } else {
-                            state.print_json(&mut output, cli.pretty).unwrap();
+                            state.print_json(&mut output, cli.pretty)?;
                         }
                     }
+                    Ok(())
                 }
                 Err(err) => {
                     error!("{} - Error processing dump: {}", err.name(), err);
@@ -489,7 +501,7 @@ async fn main() {
     }
 }
 
-fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+fn print_help_markdown(out: &mut dyn Write) -> std::io::Result<()> {
     let app_name = "minidump-stackwalk";
     let pretty_app_name = "minidump-stackwalk";
     // Make a new App to get the help message this time.
@@ -510,7 +522,7 @@ fn print_help_markdown(out: &mut dyn Write) -> Result<(), Box<dyn std::error::Er
 
     while let Some(command) = todo.pop() {
         let mut help_buf = Vec::new();
-        command.write_long_help(&mut help_buf).unwrap();
+        command.write_long_help(&mut help_buf)?;
         let help = String::from_utf8(help_buf).unwrap();
 
         // First line is --version
