@@ -87,17 +87,21 @@ pub struct MemoryAccess {
 ///
 /// Note that even if this function doesn't return an error, individual pieces of information
 /// may still be missing from the returned `OpAnalysis` structure.
-pub fn analyze_thread_context<'a, Descriptor>(
+pub fn analyze_thread_context<Descriptor>(
     context: &MinidumpContext,
-    memory_list: &'a minidump::MinidumpMemoryListBase<'a, Descriptor>,
+    memory_list: &minidump::MinidumpMemoryListBase<Descriptor>,
+    stack_memory: Option<&minidump::MinidumpMemory>,
 ) -> Result<OpAnalysis, OpAnalysisError> {
     let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
 
     match context.raw {
         #[cfg(feature = "disasm_amd64")]
-        MinidumpRawContext::Amd64(_) => {
-            self::amd64::analyze_instruction(context, instruction_bytes)
-        }
+        MinidumpRawContext::Amd64(_) => self::amd64::analyze_instruction(
+            context,
+            instruction_bytes,
+            Some(memory_list),
+            stack_memory,
+        ),
         _ => Err(OpAnalysisError::UnsupportedCpuArch),
     }
 }
@@ -135,15 +139,17 @@ mod amd64 {
     ///
     /// Uses yaxpeax-x86 to disassemble the given `instruction_bytes`, and then uses the registers
     /// contained in `context` to determine useful information about the given instruction.
-    pub fn analyze_instruction(
+    pub fn analyze_instruction<Descriptor>(
         context: &MinidumpContext,
         instruction_bytes: &[u8],
+        memory_list: Option<&minidump::MinidumpMemoryListBase<Descriptor>>,
+        stack_memory: Option<&minidump::MinidumpMemory>,
     ) -> Result<OpAnalysis, OpAnalysisError> {
         let decoded_instruction = decode_instruction(instruction_bytes)?;
 
         let instruction_str = decoded_instruction.to_string();
 
-        let memory_accesses = GetMemoryAccess::new(context)
+        let memory_accesses = GetMemoryAccess::new(context, memory_list, stack_memory)
             .get_instruction_memory_access(decoded_instruction)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
@@ -154,8 +160,10 @@ mod amd64 {
         })
     }
 
-    struct GetMemoryAccess<'a> {
+    struct GetMemoryAccess<'a, Descriptor> {
         context: &'a MinidumpContext,
+        memory_list: Option<&'a minidump::MinidumpMemoryListBase<'a, Descriptor>>,
+        stack_memory: Option<&'a minidump::MinidumpMemory<'a>>,
     }
 
     #[derive(Default)]
@@ -212,9 +220,17 @@ mod amd64 {
         }
     }
 
-    impl<'a> GetMemoryAccess<'a> {
-        pub fn new(context: &'a MinidumpContext) -> Self {
-            GetMemoryAccess { context }
+    impl<'a, Descriptor> GetMemoryAccess<'a, Descriptor> {
+        pub fn new(
+            context: &'a MinidumpContext,
+            memory_list: Option<&'a minidump::MinidumpMemoryListBase<'a, Descriptor>>,
+            stack_memory: Option<&'a minidump::MinidumpMemory<'a>>,
+        ) -> Self {
+            GetMemoryAccess {
+                context,
+                memory_list,
+                stack_memory,
+            }
         }
 
         /// Determine the memory accesses implied by the given instruction and context
@@ -284,6 +300,14 @@ mod amd64 {
             accesses: &mut Vec<MemoryAccess>,
             decoded_instruction: &Instruction,
         ) -> Result<(), OpAnalysisError> {
+            let mut push_indirect_access = |address| {
+                accesses.push(MemoryAccess {
+                    address,
+                    is_likely_null_pointer_dereference: address == 0,
+                    size: Some(1),
+                });
+            };
+
             match decoded_instruction.opcode() {
                 Opcode::CALL | Opcode::CALLF | Opcode::JMP | Opcode::JMPF | Opcode::JMPE => {
                     if decoded_instruction.operand_count() != 1 {
@@ -292,17 +316,36 @@ mod amd64 {
                     }
                     // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
                     // JMPF) will be valid, so we don't check immediate operands, only registers.
-                    if let Operand::Register(reg) = decoded_instruction.operand(0) {
-                        let address = self.get_reg(reg)?;
-                        accesses.push(MemoryAccess {
-                            address,
-                            is_likely_null_pointer_dereference: address == 0,
-                            size: Some(1),
-                        });
+                    match decoded_instruction.operand(0) {
+                        Operand::Register(reg) => push_indirect_access(self.get_reg(reg)?),
+                        other_operand => {
+                            // If the operand was some sort of register dereference, try to get the
+                            // _actual_ address from the memory list.
+                            if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
+                                let memory_address = self.calculate_address(None, op_info)?.address;
+                                if let Some(address) = self
+                                    .memory_list
+                                    .and_then(|ml| ml.memory_at_address(memory_address))
+                                    .and_then(|mem| {
+                                        mem.get_memory_at_address::<u64>(memory_address)
+                                    })
+                                {
+                                    push_indirect_access(address);
+                                }
+                            }
+                        }
                     }
                 }
-                // TODO: if the full minidump information is plumbed down here, we can support
-                // RET/IRET as well (by reading the stack to get the return address)
+                Opcode::RETURN | Opcode::RETF | Opcode::IRET | Opcode::IRETD | Opcode::IRETQ => {
+                    // Use the return address (from the stack)
+                    if let (Ok(rsp), Some(stack)) =
+                        (self.get_reg(RegSpec::rsp()), &self.stack_memory)
+                    {
+                        if let Some(address) = stack.get_memory_at_address::<u64>(rsp) {
+                            push_indirect_access(address);
+                        }
+                    }
+                }
                 _ => (),
             }
 
@@ -390,8 +433,10 @@ mod tests {
 
             let context = MinidumpContext::from_raw(MinidumpRawContext::Amd64(context_raw));
 
-            let op_analysis =
-                crate::op_analysis::amd64::analyze_instruction(&context, data.bytes).unwrap();
+            let op_analysis = crate::op_analysis::amd64::analyze_instruction::<()>(
+                &context, data.bytes, None, None,
+            )
+            .unwrap();
 
             let memory_accesses = op_analysis.memory_accesses.unwrap();
 
