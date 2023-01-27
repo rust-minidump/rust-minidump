@@ -4093,10 +4093,7 @@ impl fmt::Display for CrashReason {
                         err::ExceptionCodeMacResourceMemoryFlavor::from_u64(flavor)
                     {
                         let hwm_limit = code & 0x1fff;
-                        write!(
-                            f,
-                            "{memory_flavor:?} high watermark limit: {hwm_limit}MiB"
-                        )
+                        write!(f, "{memory_flavor:?} high watermark limit: {hwm_limit}MiB")
                     } else {
                         write!(f, "{code:#018x} / {subcode:#018x}")
                     }
@@ -4122,10 +4119,7 @@ impl fmt::Display for CrashReason {
                         err::ExceptionCodeMacResourceThreadsFlavor::from_u64(flavor)
                     {
                         let hwm_limit = code & 0x7fff;
-                        write!(
-                            f,
-                            "{threads_flavor:?} high watermark limit: {hwm_limit}"
-                        )
+                        write!(f, "{threads_flavor:?} high watermark limit: {hwm_limit}")
                     } else {
                         write!(f, "{code:#018x} / {subcode:#018x}")
                     }
@@ -4174,19 +4168,13 @@ impl fmt::Display for CrashReason {
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_USER => {
                     // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L101-L113
                     let namespace = code & 0xffffffff;
-                    write!(
-                        f,
-                        "/ namespace: {namespace} guard identifier: {subcode}",
-                    )
+                    write!(f, "/ namespace: {namespace} guard identifier: {subcode}",)
                 }
                 err::ExceptionCodeMacGuardType::GUARD_TYPE_VN => {
                     // See https://github.com/apple/darwin-xnu/blob/2ff845c2e033bd0ff64b5b6aa6063a1f8f65aa32/osfmk/kern/exc_guard.h#L117-L129
                     if let Some(vn_flavor) = err::ExceptionCodeMacGuardVNFlavor::from_u64(flavor) {
                         let pid = code & 0xfffffff;
-                        write!(
-                            f,
-                            " / {vn_flavor:?} pid: {pid} guard identifier: {subcode}",
-                        )
+                        write!(f, " / {vn_flavor:?} pid: {pid} guard identifier: {subcode}",)
                     } else {
                         write!(f, " / {code:#018x} / {subcode:#018x}")
                     }
@@ -4897,17 +4885,16 @@ where
                 }
             }
         }
-        let system_info =
-            streams
-                .get(&MinidumpSystemInfo::STREAM_TYPE)
-                .and_then(|(_, dir)| {
-                    location_slice(data.deref(), &dir.location)
-                        .ok()
-                        .and_then(|bytes| {
-                            let all_bytes = data.deref();
-                            MinidumpSystemInfo::read(bytes, all_bytes, endian, None).ok()
-                        })
-                });
+        let system_info = streams
+            .get(&MinidumpSystemInfo::STREAM_TYPE)
+            .and_then(|(_, dir)| {
+                location_slice(data.deref(), &dir.location)
+                    .ok()
+                    .and_then(|bytes| {
+                        let all_bytes = data.deref();
+                        MinidumpSystemInfo::read(bytes, all_bytes, endian, None).ok()
+                    })
+            });
 
         Ok(Minidump {
             data,
