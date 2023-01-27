@@ -15,6 +15,7 @@ expression: stdout
         "size": 1
       }
     ],
+    "possible_bit_flips": null,
     "type": "EXC_BAD_ACCESS / KERN_INVALID_ADDRESS"
   },
   "crashing_thread": {

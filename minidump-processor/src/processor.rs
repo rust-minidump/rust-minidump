@@ -569,7 +569,7 @@ where
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
 
-    let exception_info = exception_ref.map(|exception| {
+    let mut exception_info = exception_ref.map(|exception| {
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
@@ -604,6 +604,7 @@ where
                             adjusted_address,
                             instruction_str: Some(op_analysis.instruction_str),
                             memory_accesses: op_analysis.memory_accesses,
+                            possible_bit_flips: Default::default(),
                         }
                     })
                     .map_err(|e| tracing::warn!("failed to analyze the thread context: {}", e))
@@ -615,26 +616,22 @@ where
                 adjusted_address: None,
                 instruction_str: None,
                 memory_accesses: None,
+                possible_bit_flips: Default::default(),
             })
     });
 
     // Check for bit-flips of the exception address
-    let exception_info = exception_info.map(|mut info| {
-        // For now, only check for bit flips if we haven't already adjusted the address (though
-        // technically a non-canonical address may have been the result of a bit-flip). In the
-        // future it may be appropriate to provide a set of adjusted addresses to accommodate this.
-        //
-        // A set of adjusted addresses may also allow for multiple valid bit-flips to be reported.
-        if info.adjusted_address.is_none() {
-            info.adjusted_address = try_bit_flips(
-                info.address,
-                &memory_info,
-                MemoryOperation::from_crash_reason(&info.reason),
-            )
-            .map(AdjustedAddress::PossibleBitflip);
-        }
-        info
-    });
+    if let Some(info) = &mut exception_info {
+        // Use an adjusted address if present, otherwise fall back to the crashing address.
+        info.possible_bit_flips = try_bit_flips(
+            info.adjusted_address
+                .as_ref()
+                .map(AdjustedAddress::address)
+                .unwrap_or(info.address),
+            &memory_info,
+            MemoryOperation::from_crash_reason(&info.reason),
+        );
+    }
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
 
@@ -972,11 +969,12 @@ fn try_bit_flips(
     address: u64,
     memory_info: &UnifiedMemoryInfoList,
     memory_operation: MemoryOperation,
-) -> Option<u64> {
+) -> Vec<u64> {
+    let mut addresses = Vec::new();
     // If the address maps to valid memory, don't do anything else.
     if let Some(mi) = memory_info.memory_info_at_address(address) {
         if memory_operation.allowed_for(&mi) {
-            return None;
+            return addresses;
         }
     }
 
@@ -985,14 +983,14 @@ fn try_bit_flips(
         // If the possible address is NULL, we assume that this was the originally intended address
         // and some logic error has occurred (e.g. a NULL check went the wrong way).
         if possible_address == 0 {
-            return Some(possible_address);
+            addresses.push(possible_address);
         }
         if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
             if memory_operation.allowed_for(&mi) {
-                return Some(possible_address);
+                addresses.push(possible_address);
             }
         }
     }
 
-    None
+    addresses
 }

@@ -10,6 +10,7 @@ expression: stdout
     "crashing_thread": 0,
     "instruction": null,
     "memory_accesses": null,
+    "possible_bit_flips": null,
     "type": "EXCEPTION_ACCESS_VIOLATION_WRITE"
   },
   "crashing_thread": {

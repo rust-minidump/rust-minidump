@@ -288,6 +288,10 @@ pub struct ExceptionInfo {
     pub instruction_str: Option<String>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
+    /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
+    ///
+    /// The original address was possibly the result of faulty hardware, alpha particles, etc.
+    pub possible_bit_flips: Vec<u64>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -304,8 +308,14 @@ pub enum AdjustedAddress {
     NonCanonical(u64),
     /// The base pointer was null; offset from base is provided here.
     NullPointerWithOffset(u64),
-    /// The original address was possibly the result of faulty hardware, alpha particles, etc. causing a bit-flip.
-    PossibleBitflip(u64),
+}
+
+impl AdjustedAddress {
+    pub fn address(&self) -> u64 {
+        match self {
+            Self::NonCanonical(v) | Self::NullPointerWithOffset(v) => *v,
+        }
+    }
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -703,9 +713,6 @@ impl ProcessState {
                     AdjustedAddress::NullPointerWithOffset(offset) => {
                         writeln!(f, "    ** Null pointer detected with offset: {offset:#x}")?
                     }
-                    AdjustedAddress::PossibleBitflip(address) => {
-                        writeln!(f, "    ** Possible bit-flip detected: {:#x}", address)?
-                    }
                 }
             } else {
                 writeln!(f, "Crash address: {:#x}", crash_info.address)?;
@@ -728,6 +735,13 @@ impl ProcessState {
                     }
                 } else {
                     writeln!(f, "No memory accessed by instruction")?;
+                }
+            }
+
+            if !crash_info.possible_bit_flips.is_empty() {
+                writeln!(f, "Crashing address may be the result of a flipped bit:")?;
+                for (idx, addr) in crash_info.possible_bit_flips.iter().enumerate() {
+                    writeln!(f, "  {}. Valid address: 0x{:016x}", idx, addr)?;
                 }
             }
         } else {
@@ -938,10 +952,6 @@ Unknown streams encountered:
                             "kind": "null-pointer",
                             "offset": json_hex(*offset),
                         }),
-                        AdjustedAddress::PossibleBitflip(address) => json!({
-                            "kind": "possible-bit-flip",
-                            "address": json_hex(*address),
-                        }),
                     })
                 }),
                 "instruction": self.exception_info.as_ref().map(|info| info.instruction_str.as_ref()),
@@ -954,6 +964,10 @@ Unknown streams encountered:
                             })
                         }).collect::<Vec<_>>()
                     })
+                }),
+                "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
+                    (!info.possible_bit_flips.is_empty())
+                        .then(|| info.possible_bit_flips.iter().copied().map(json_hex).collect::<Vec<_>>())
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,

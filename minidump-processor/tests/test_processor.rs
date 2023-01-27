@@ -6,8 +6,7 @@ use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
 use minidump_processor::{
-    simple_symbol_supplier, AdjustedAddress, CallStackInfo, FrameTrust, LinuxStandardBase,
-    ProcessState, Symbolizer,
+    simple_symbol_supplier, CallStackInfo, FrameTrust, LinuxStandardBase, ProcessState, Symbolizer,
 };
 use std::path::{Path, PathBuf};
 
@@ -298,8 +297,7 @@ async fn test_bit_flip() {
         state
             .exception_info
             .expect("missing exception info")
-            .adjusted_address
-            .expect("no adjusted address"),
-        AdjustedAddress::PossibleBitflip(0x80000)
+            .possible_bit_flips,
+        vec![0x80000]
     );
 }
