@@ -622,15 +622,21 @@ where
 
     // Check for bit-flips of the exception address
     if let Some(info) = &mut exception_info {
-        // Use an adjusted address if present, otherwise fall back to the crashing address.
-        info.possible_bit_flips = try_bit_flips(
-            info.adjusted_address
-                .as_ref()
-                .map(AdjustedAddress::address)
-                .unwrap_or(info.address),
-            &memory_info,
-            MemoryOperation::from_crash_reason(&info.reason),
-        );
+        let bit_flip_address = match &info.adjusted_address {
+            // Use the non canonical address if present.
+            Some(AdjustedAddress::NonCanonical(v)) => Some(*v),
+            // If we think the address is a null pointer with an offset, don't try bit flips.
+            Some(AdjustedAddress::NullPointerWithOffset(_)) => None,
+            // Try the crashing address if no adjustments have been made.
+            None => Some(info.address),
+        };
+        if let Some(address) = bit_flip_address {
+            info.possible_bit_flips = try_bit_flips(
+                address,
+                &memory_info,
+                MemoryOperation::from_crash_reason(&info.reason),
+            );
+        }
     }
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());

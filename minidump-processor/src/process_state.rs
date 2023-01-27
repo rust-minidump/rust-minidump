@@ -310,14 +310,6 @@ pub enum AdjustedAddress {
     NullPointerWithOffset(u64),
 }
 
-impl AdjustedAddress {
-    pub fn address(&self) -> u64 {
-        match self {
-            Self::NonCanonical(v) | Self::NullPointerWithOffset(v) => *v,
-        }
-    }
-}
-
 /// The state of a process as recorded by a `Minidump`.
 #[derive(Debug, Clone)]
 pub struct ProcessState {
