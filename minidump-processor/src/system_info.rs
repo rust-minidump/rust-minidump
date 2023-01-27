@@ -37,7 +37,7 @@ impl SystemInfo {
     /// Returns the version and the build, if available, otherwise just the version.
     pub fn format_os_version(&self) -> Option<Cow<'_, str>> {
         match (&self.os_version, &self.os_build) {
-            (Some(v), Some(b)) => Some(format!("{} {}", v, b).into()),
+            (Some(v), Some(b)) => Some(format!("{v} {b}").into()),
             (Some(v), None) => Some(Cow::Borrowed(v)),
             (None, Some(b)) => Some(Cow::Borrowed(b)),
             (None, None) => None,

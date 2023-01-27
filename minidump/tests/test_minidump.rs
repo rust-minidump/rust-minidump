@@ -21,7 +21,7 @@ fn get_test_minidump_path(filename: &str) -> PathBuf {
     path.push("../");
     path.push("testdata");
     path.push(filename);
-    println!("{:?}", path);
+    println!("{path:?}");
     path
 }
 

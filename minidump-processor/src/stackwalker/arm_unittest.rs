@@ -819,8 +819,7 @@ async fn check_cfi(
                     assert_eq!(
                         ctx.get_register(reg, valid),
                         expected.get_register(reg, &expected_valid),
-                        "{} registers didn't match!",
-                        reg
+                        "{reg} registers didn't match!"
                     );
                 }
                 return;

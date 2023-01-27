@@ -156,7 +156,7 @@ fn create_cache_file(tmp_path: &Path, final_path: &Path) -> io::Result<NamedTemp
     let base = final_path.parent().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::Other,
-            format!("Bad cache path: {:?}", final_path),
+            format!("Bad cache path: {final_path:?}"),
         )
     })?;
     fs::create_dir_all(base)?;
@@ -171,7 +171,7 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
 
     // INFO URL allows us to properly report the url we retrieved a symbol file
     // from, even when the file is loaded from our on-disk cache.
-    let cache_metadata = format!("INFO URL {}\n", url);
+    let cache_metadata = format!("INFO URL {url}\n");
     temp.write_all(cache_metadata.as_bytes())?;
 
     // TODO: don't do this

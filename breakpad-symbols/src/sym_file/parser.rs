@@ -1111,7 +1111,7 @@ fn test_stack_win_line_program_string() {
                 )
             );
         }
-        Err(e) => panic!("{}", format!("Parse error: {:?}", e)),
+        Err(e) => panic!("{}", format!("Parse error: {e:?}")),
         _ => panic!("Something bad happened"),
     }
 }
@@ -1135,7 +1135,7 @@ fn test_stack_win_line_frame_data() {
                 WinStackThing::AllocatesBasePointer(true)
             );
         }
-        Err(e) => panic!("{}", format!("Parse error: {:?}", e)),
+        Err(e) => panic!("{}", format!("Parse error: {e:?}")),
         _ => panic!("Something bad happened"),
     }
 }
@@ -1249,7 +1249,7 @@ STACK CFI INIT f00f f0 more init rules
     let funcs = sym
         .functions
         .ranges_values()
-        .map(|&(_, ref f)| f)
+        .map(|(_, f)| f)
         .collect::<Vec<_>>();
     {
         let f = &funcs[0];
@@ -1310,7 +1310,7 @@ STACK CFI INIT f00f f0 more init rules
     let ws = sym
         .win_stack_framedata_info
         .ranges_values()
-        .map(|&(_, ref s)| s)
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1331,7 +1331,7 @@ STACK CFI INIT f00f f0 more init rules
     let ws = sym
         .win_stack_fpo_info
         .ranges_values()
-        .map(|&(_, ref s)| s)
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1352,7 +1352,7 @@ STACK CFI INIT f00f f0 more init rules
     let cs = sym
         .cfi_stack_info
         .ranges_values()
-        .map(|&(_, ref s)| s.clone())
+        .map(|(_, s)| s.clone())
         .collect::<Vec<_>>();
     assert_eq!(
         cs[0],
@@ -1424,7 +1424,7 @@ FUNC 1001 10 10 some func overlap contained
     let funcs = sym
         .functions
         .ranges_values()
-        .map(|&(_, ref f)| f)
+        .map(|(_, f)| f)
         .collect::<Vec<_>>();
     {
         let f = &funcs[0];
@@ -1551,7 +1551,7 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
     let ws = sym
         .win_stack_framedata_info
         .ranges_values()
-        .map(|&(_, ref s)| s)
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
@@ -1572,7 +1572,7 @@ STACK WIN 4 8d93e 4 4 0 0 10 0 0 1 prog string
     let ws = sym
         .win_stack_fpo_info
         .ranges_values()
-        .map(|&(_, ref s)| s)
+        .map(|(_, s)| s)
         .collect::<Vec<_>>();
     {
         let stack = &ws[0];
