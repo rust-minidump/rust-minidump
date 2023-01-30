@@ -270,7 +270,7 @@ async fn main() {
         // Ignore broken pipe errors, they will only occur from stdio, typically when a user is
         // piping into another program but that program doesn't read all input.
         if e.kind() != std::io::ErrorKind::BrokenPipe {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             std::process::exit(1);
         }
     }
@@ -702,13 +702,13 @@ where
         };
     }
     fn print_raw_stream<T: Write>(name: &str, contents: &[u8], out: &mut T) -> std::io::Result<()> {
-        writeln!(out, "Stream {}:", name)?;
+        writeln!(out, "Stream {name}:")?;
         let s = contents
             .split(|&v| v == 0)
             .map(String::from_utf8_lossy)
             .collect::<Vec<_>>()
             .join("\\0\n");
-        write!(out, "{}\n\n", s)
+        write!(out, "{s}\n\n")
     }
 
     for &(stream, name) in streams!(

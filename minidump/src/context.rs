@@ -1488,7 +1488,7 @@ impl MinidumpContext {
                     raw.context_flags
                 )?;
                 for (i, reg) in raw.iregs.iter().enumerate() {
-                    writeln!(f, "  iregs[{:2}]            = {:#x}", i, reg)?;
+                    writeln!(f, "  iregs[{i:2}]            = {reg:#x}")?;
                 }
                 write!(
                     f,
@@ -1498,10 +1498,10 @@ impl MinidumpContext {
                     raw.cpsr, raw.float_save.fpscr
                 )?;
                 for (i, reg) in raw.float_save.regs.iter().enumerate() {
-                    writeln!(f, "  float_save.regs[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  float_save.regs[{i:2}] = {reg:#x}")?;
                 }
                 for (i, reg) in raw.float_save.extra.iter().enumerate() {
-                    writeln!(f, "  float_save.extra[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  float_save.extra[{i:2}] = {reg:#x}")?;
                 }
             }
             MinidumpRawContext::Arm64(ref raw) => {
@@ -1513,7 +1513,7 @@ impl MinidumpContext {
                     raw.context_flags
                 )?;
                 for (i, reg) in raw.iregs[..29].iter().enumerate() {
-                    writeln!(f, "  x{:<2}                  = {:#x}", i, reg)?;
+                    writeln!(f, "  x{i:<2}                  = {reg:#x}")?;
                 }
                 writeln!(f, "  x29 (fp)             = {:#x}", raw.iregs[29])?;
                 writeln!(f, "  x30 (lr)             = {:#x}", raw.iregs[30])?;
@@ -1523,19 +1523,19 @@ impl MinidumpContext {
                 writeln!(f, "  fpsr                 = {:#x}", raw.fpsr)?;
                 writeln!(f, "  fpcr                 = {:#x}", raw.fpcr)?;
                 for (i, reg) in raw.float_regs.iter().enumerate() {
-                    writeln!(f, "  d{:<2} = {:#x}", i, reg)?;
+                    writeln!(f, "  d{i:<2} = {reg:#x}")?;
                 }
                 for (i, reg) in raw.bcr.iter().enumerate() {
-                    writeln!(f, "  bcr[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  bcr[{i:2}] = {reg:#x}")?;
                 }
                 for (i, reg) in raw.bvr.iter().enumerate() {
-                    writeln!(f, "  bvr[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  bvr[{i:2}] = {reg:#x}")?;
                 }
                 for (i, reg) in raw.wcr.iter().enumerate() {
-                    writeln!(f, "  wcr[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  wcr[{i:2}] = {reg:#x}")?;
                 }
                 for (i, reg) in raw.wvr.iter().enumerate() {
-                    writeln!(f, "  wvr[{:2}] = {:#x}", i, reg)?;
+                    writeln!(f, "  wvr[{i:2}] = {reg:#x}")?;
                 }
             }
             MinidumpRawContext::OldArm64(ref raw) => {
@@ -1547,7 +1547,7 @@ impl MinidumpContext {
                     raw.context_flags
                 )?;
                 for (i, reg) in raw.iregs[..29].iter().enumerate() {
-                    writeln!(f, "  x{:<2}                  = {:#x}", i, reg)?;
+                    writeln!(f, "  x{i:<2}                  = {reg:#x}")?;
                 }
                 writeln!(f, "  x29 (fp)             = {:#x}", raw.iregs[29])?;
                 writeln!(f, "  x30 (lr)             = {:#x}", raw.iregs[30])?;
@@ -1557,7 +1557,7 @@ impl MinidumpContext {
                 writeln!(f, "  fpsr                 = {:#x}", raw.fpsr)?;
                 writeln!(f, "  fpcr                 = {:#x}", raw.fpcr)?;
                 for (i, reg) in raw.float_regs.iter().enumerate() {
-                    writeln!(f, "  d{:<2} = {:#x}", i, reg)?;
+                    writeln!(f, "  d{i:<2} = {reg:#x}")?;
                 }
             }
             MinidumpRawContext::Mips(ref raw) => {

@@ -55,7 +55,7 @@ impl Os {
             Os::Android => Cow::Borrowed("Android"),
             Os::Ps3 => Cow::Borrowed("PS3"),
             Os::NaCl => Cow::Borrowed("NaCl"),
-            Os::Unknown(val) => Cow::Owned(format!("0x{:#08x}", val)),
+            Os::Unknown(val) => Cow::Owned(format!("0x{val:#08x}")),
         }
     }
 }

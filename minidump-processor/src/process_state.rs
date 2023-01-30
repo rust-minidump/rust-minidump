@@ -444,17 +444,17 @@ fn print_registers<T: Write>(f: &mut T, ctx: &MinidumpContext) -> io::Result<()>
     for reg in ctx.general_purpose_registers() {
         if registers.contains(reg) {
             let reg_val = ctx.format_register(reg);
-            let next = format!(" {: >6} = {}", reg, reg_val);
+            let next = format!(" {reg: >6} = {reg_val}");
             if output.chars().count() + next.chars().count() > 80 {
                 // Flush the buffer.
-                writeln!(f, " {}", output)?;
+                writeln!(f, " {output}")?;
                 output.truncate(0);
             }
             output.push_str(&next);
         }
     }
     if !output.is_empty() {
-        writeln!(f, " {}", output)?;
+        writeln!(f, " {output}")?;
     }
     Ok(())
 }
@@ -506,7 +506,7 @@ impl CallStack {
                 // Frame number
                 let frame_idx = frame_count;
                 frame_count += 1;
-                write!(f, "{:2}  ", frame_idx)?;
+                write!(f, "{frame_idx:2}  ")?;
 
                 // Module name
                 if let Some(ref module) = frame.module {
@@ -517,7 +517,7 @@ impl CallStack {
                 write!(f, "!{}", inline.function_name)?;
 
                 // Source file and line
-                if let (&Some(ref source_file), &Some(ref source_line)) =
+                if let (Some(source_file), Some(source_line)) =
                     (&inline.source_file_name, &inline.source_line)
                 {
                     write!(f, " [{} : {}]", basename(source_file), source_line,)?;
@@ -533,7 +533,7 @@ impl CallStack {
             let addr = frame.instruction;
 
             // Frame number
-            write!(f, "{:2}  ", frame_idx)?;
+            write!(f, "{frame_idx:2}  ")?;
             if let Some(module) = &frame.module {
                 // Module name
                 write!(f, "{}", basename(&module.code_file()))?;
@@ -542,7 +542,7 @@ impl CallStack {
                     (&frame.function_name, &frame.function_base)
                 {
                     // Function name
-                    write!(f, "!{}", func_name)?;
+                    write!(f, "!{func_name}")?;
 
                     if let (Some(src_file), Some(src_line), Some(src_base)) = (
                         &frame.source_file_name,
@@ -567,7 +567,7 @@ impl CallStack {
                 }
             } else {
                 // We didn't even find a module, so just print the raw address
-                write!(f, "{:#x}", addr)?;
+                write!(f, "{addr:#x}")?;
 
                 // List off overlapping unloaded modules.
 
@@ -575,14 +575,14 @@ impl CallStack {
                 // all the overlaps from one module together and dedupe them.
                 // (!!! was that code deleted?)
                 for (name, offsets) in &frame.unloaded_modules {
-                    write!(f, " (unloaded {}@", name)?;
+                    write!(f, " (unloaded {name}@")?;
                     let mut first = true;
                     for offset in offsets {
                         if first {
-                            write!(f, "{:#x}", offset)?;
+                            write!(f, "{offset:#x}")?;
                         } else {
                             // `|` is our separator for multiple entries
-                            write!(f, "|{:#x}", offset)?;
+                            write!(f, "|{offset:#x}")?;
                         }
                         first = false;
                     }
@@ -613,7 +613,7 @@ impl CallStack {
                     }
                 };
 
-                writeln!(f, "    Arguments (assuming {})", cc_summary)?;
+                writeln!(f, "    Arguments (assuming {cc_summary})")?;
                 for (idx, arg) in args.args.iter().enumerate() {
                     if let Some(val) = arg.value {
                         if pointer_width == 4 {
@@ -664,11 +664,11 @@ impl ProcessState {
     fn print_internal<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
         writeln!(f, "Operating system: {}", self.system_info.os.long_name())?;
         if let Some(ref ver) = self.system_info.format_os_version() {
-            writeln!(f, "                  {}", ver)?;
+            writeln!(f, "                  {ver}")?;
         }
         writeln!(f, "CPU: {}", self.system_info.cpu)?;
         if let Some(ref info) = self.system_info.cpu_info {
-            writeln!(f, "     {}", info)?;
+            writeln!(f, "     {info}")?;
         }
         writeln!(
             f,
@@ -696,10 +696,10 @@ impl ProcessState {
                 writeln!(f, "Crash address: {:#x} **", crash_info.address)?;
                 match adjusted_address {
                     AdjustedAddress::NonCanonical(address) => {
-                        writeln!(f, "    ** Non-canonical address detected: {:#x}", address)?
+                        writeln!(f, "    ** Non-canonical address detected: {address:#x}")?
                     }
                     AdjustedAddress::NullPointerWithOffset(offset) => {
-                        writeln!(f, "    ** Null pointer detected with offset: {:#x}", offset)?
+                        writeln!(f, "    ** Null pointer detected with offset: {offset:#x}")?
                     }
                 }
             } else {
@@ -707,7 +707,7 @@ impl ProcessState {
             }
 
             if let Some(ref crashing_instruction_str) = crash_info.instruction_str {
-                writeln!(f, "Crashing instruction: `{}`", crashing_instruction_str)?;
+                writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
@@ -716,7 +716,7 @@ impl ProcessState {
                     for (idx, access) in memory_accesses.iter().enumerate() {
                         writeln!(f, "  {}. Address: 0x{:016x}", idx, access.address)?;
                         if let Some(size) = access.size {
-                            writeln!(f, "     Size: {}", size)?;
+                            writeln!(f, "     Size: {size}")?;
                         } else {
                             writeln!(f, "     Size: Unknown")?;
                         }
@@ -730,36 +730,36 @@ impl ProcessState {
         }
 
         if let Some(ref assertion) = self.assertion {
-            writeln!(f, "Assertion: {}", assertion)?;
+            writeln!(f, "Assertion: {assertion}")?;
         }
         if let Some(ref info) = self.mac_crash_info {
             writeln!(f, "Mac Crash Info:")?;
             for (idx, record) in info.iter().enumerate() {
-                writeln!(f, "  Record {}", idx)?;
+                writeln!(f, "  Record {idx}")?;
                 if let Some(val) = record.thread() {
-                    writeln!(f, "    thread: 0x{}", val)?;
+                    writeln!(f, "    thread: 0x{val}")?;
                 }
                 if let Some(val) = record.dialog_mode() {
-                    writeln!(f, "    dialog mode: 0x{}", val)?;
+                    writeln!(f, "    dialog mode: 0x{val}")?;
                 }
                 if let Some(val) = record.abort_cause() {
-                    writeln!(f, "    abort_cause: 0x{}", val)?;
+                    writeln!(f, "    abort_cause: 0x{val}")?;
                 }
 
                 if let Some(val) = record.module_path() {
-                    writeln!(f, "    module: {}", val)?;
+                    writeln!(f, "    module: {val}")?;
                 }
                 if let Some(val) = record.message() {
-                    writeln!(f, "    message: {}", val)?;
+                    writeln!(f, "    message: {val}")?;
                 }
                 if let Some(val) = record.signature_string() {
-                    writeln!(f, "    signature string: {}", val)?;
+                    writeln!(f, "    signature string: {val}")?;
                 }
                 if let Some(val) = record.backtrace() {
-                    writeln!(f, "    backtrace: {}", val)?;
+                    writeln!(f, "    backtrace: {val}")?;
                 }
                 if let Some(val) = record.message2() {
-                    writeln!(f, "    message2: {}", val)?;
+                    writeln!(f, "    message2: {val}")?;
                 }
             }
             writeln!(f)?;
@@ -833,7 +833,7 @@ Loaded modules:
                 write!(f, "  (main)")?;
             }
             if let Some(cert) = self.cert_info.get(name) {
-                write!(f, " ({})", cert)?;
+                write!(f, " ({cert})")?;
             }
             writeln!(f)?;
         }
@@ -854,7 +854,7 @@ Unloaded modules:
                 basename(&module.code_file()),
             )?;
             if let Some(cert) = self.cert_info.get(name) {
-                write!(f, " ({})", cert)?;
+                write!(f, " ({cert})")?;
             }
             writeln!(f)?;
         }
@@ -918,7 +918,7 @@ Unknown streams encountered:
                 "cpu_info": sys.cpu_info,
                 "cpu_count": sys.cpu_count,
                 // optional, print as hex string
-                "cpu_microcode_version": sys.cpu_microcode_version.map(|num| format!("{:#x}", num)),
+                "cpu_microcode_version": sys.cpu_microcode_version.map(|num| format!("{num:#x}")),
             },
             "crash_info": {
                 "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),
@@ -1128,10 +1128,10 @@ Unknown streams encountered:
     fn json_hex(&self, val: u64) -> String {
         match self.system_info.cpu {
             Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => {
-                format!("0x{:08x}", val)
+                format!("0x{val:08x}")
             }
             _ => {
-                format!("0x{:016x}", val)
+                format!("0x{val:016x}")
             }
         }
     }

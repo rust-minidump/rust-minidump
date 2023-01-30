@@ -954,7 +954,7 @@ mod test {
             assert!(
                 matches!(supplier.locate_symbols(&m).await, Ok(_)),
                 "{}",
-                format!("Located symbols for {}", sym)
+                format!("Located symbols for {sym}")
             );
         }
 
@@ -971,7 +971,7 @@ mod test {
         assert!(
             matches!(res, Err(SymbolError::ParseError(..))),
             "{}",
-            format!("Correctly failed to parse {}, result: {:?}", sym, res)
+            format!("Correctly failed to parse {sym}, result: {res:?}")
         );
     }
 

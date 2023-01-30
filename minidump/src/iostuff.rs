@@ -13,7 +13,7 @@ impl<T: Read + Seek> Readable for T {}
 /// Format `bytes` to `f` as a hex string.
 pub fn write_bytes<T: Write>(f: &mut T, bytes: &[u8]) -> io::Result<()> {
     for b in bytes {
-        write!(f, "{:02x}", b)?;
+        write!(f, "{b:02x}")?;
     }
     Ok(())
 }

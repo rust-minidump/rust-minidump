@@ -34,13 +34,13 @@ fn locate_testdata() -> PathBuf {
 
 fn read_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
     let path = locate_testdata().join("test.dmp");
-    println!("minidump: {:?}", path);
+    println!("minidump: {path:?}");
     Minidump::read_path(&path)
 }
 
 fn testdata_symbol_path() -> PathBuf {
     let path = locate_testdata().join("symbols");
-    println!("symbol path: {:?}", path);
+    println!("symbol path: {path:?}");
     path
 }
 
@@ -119,7 +119,7 @@ async fn test_processor() {
 async fn test_processor_symbols() {
     let dump = read_test_minidump().unwrap();
     let path = testdata_symbol_path();
-    println!("symbol path: {:?}", path);
+    println!("symbol path: {path:?}");
     let state = minidump_processor::process_minidump(
         &dump,
         &Symbolizer::new(simple_symbol_supplier(vec![path])),
