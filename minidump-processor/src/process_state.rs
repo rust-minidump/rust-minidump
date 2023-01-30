@@ -733,7 +733,7 @@ impl ProcessState {
             if !crash_info.possible_bit_flips.is_empty() {
                 writeln!(f, "Crashing address may be the result of a flipped bit:")?;
                 for (idx, addr) in crash_info.possible_bit_flips.iter().enumerate() {
-                    writeln!(f, "  {}. Valid address: 0x{:016x}", idx, addr)?;
+                    writeln!(f, "  {idx}. Valid address: 0x{addr:016x}")?;
                 }
             }
         } else {

@@ -624,15 +624,23 @@ where
     if let Some(info) = &mut exception_info {
         let bit_flip_address = match &info.adjusted_address {
             // Use the non canonical address if present.
-            Some(AdjustedAddress::NonCanonical(v)) => Some(*v),
+            Some(AdjustedAddress::NonCanonical(v)) => Some((*v, BitRange::Amd64NonCanonical)),
             // If we think the address is a null pointer with an offset, don't try bit flips.
             Some(AdjustedAddress::NullPointerWithOffset(_)) => None,
             // Try the crashing address if no adjustments have been made.
-            None => Some(info.address),
+            None => Some((
+                info.address,
+                if system_info.cpu != system_info::Cpu::X86_64 {
+                    BitRange::All
+                } else {
+                    BitRange::Amd64Canononical
+                },
+            )),
         };
-        if let Some(address) = bit_flip_address {
+        if let Some((address, bit_range)) = bit_flip_address {
             info.possible_bit_flips = try_bit_flips(
                 address,
+                bit_range,
                 &memory_info,
                 MemoryOperation::from_crash_reason(&info.reason),
             );
@@ -966,6 +974,23 @@ impl MemoryOperation {
     }
 }
 
+/// The bit range over which to check bit flips.
+enum BitRange {
+    Amd64Canononical,
+    Amd64NonCanonical,
+    All,
+}
+
+impl BitRange {
+    pub fn range(&self) -> std::ops::Range<u32> {
+        match self {
+            Self::All => 0..u64::BITS,
+            Self::Amd64Canononical => 0..48,
+            Self::Amd64NonCanonical => 48..u64::BITS,
+        }
+    }
+}
+
 /// Try to determine whether an address was the result of a flipped bit.
 ///
 /// `memory_operation` represents the memory operation that was occurring at the crashing address
@@ -973,6 +998,7 @@ impl MemoryOperation {
 /// Otherwise, specify one of the operations that was occurring.
 fn try_bit_flips(
     address: u64,
+    bit_range: BitRange,
     memory_info: &UnifiedMemoryInfoList,
     memory_operation: MemoryOperation,
 ) -> Vec<u64> {
@@ -984,7 +1010,7 @@ fn try_bit_flips(
         }
     }
 
-    for i in 0..u64::BITS {
+    for i in bit_range.range() {
         let possible_address = address ^ (1 << i);
         // If the possible address is NULL, we assume that this was the originally intended address
         // and some logic error has occurred (e.g. a NULL check went the wrong way).
