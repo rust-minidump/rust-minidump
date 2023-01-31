@@ -27,7 +27,7 @@ mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 async-trait = "0.1.51"
 breakpad-symbols = { version = "0.15.2", path = "../breakpad-symbols" }
 debugid = "0.8.0"
-futures-util = "0.3.25"
+futures-util = "0.3.26"
 memmap2 = "0.5.7"
 minidump = { version = "0.15.2", path = "../minidump" }
 minidump-common = { version = "0.15.2", path = "../minidump-common" }
