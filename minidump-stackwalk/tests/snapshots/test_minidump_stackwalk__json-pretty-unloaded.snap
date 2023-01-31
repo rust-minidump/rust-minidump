@@ -10,6 +10,7 @@ expression: json_out
     "crashing_thread": null,
     "instruction": null,
     "memory_accesses": null,
+    "possible_bit_flips": null,
     "type": null
   },
   "lsb_release": null,

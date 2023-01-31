@@ -563,13 +563,13 @@ where
     let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
-    let _memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+    let memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
 
     // Get exception info if it exists.
     let exception_stream = dump.get_stream::<MinidumpException>().ok();
     let exception_ref = exception_stream.as_ref();
 
-    let exception_info = exception_ref.map(|exception| {
+    let mut exception_info = exception_ref.map(|exception| {
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
@@ -604,6 +604,7 @@ where
                             adjusted_address,
                             instruction_str: Some(op_analysis.instruction_str),
                             memory_accesses: op_analysis.memory_accesses,
+                            possible_bit_flips: Default::default(),
                         }
                     })
                     .map_err(|e| tracing::warn!("failed to analyze the thread context: {}", e))
@@ -615,8 +616,36 @@ where
                 adjusted_address: None,
                 instruction_str: None,
                 memory_accesses: None,
+                possible_bit_flips: Default::default(),
             })
     });
+
+    // Check for bit-flips of the exception address
+    if let Some(info) = &mut exception_info {
+        let bit_flip_address = match &info.adjusted_address {
+            // Use the non canonical address if present.
+            Some(AdjustedAddress::NonCanonical(v)) => Some((*v, BitRange::Amd64NonCanonical)),
+            // If we think the address is a null pointer with an offset, don't try bit flips.
+            Some(AdjustedAddress::NullPointerWithOffset(_)) => None,
+            // Try the crashing address if no adjustments have been made.
+            None => Some((
+                info.address,
+                if system_info.cpu != system_info::Cpu::X86_64 {
+                    BitRange::All
+                } else {
+                    BitRange::Amd64Canononical
+                },
+            )),
+        };
+        if let Some((address, bit_range)) = bit_flip_address {
+            info.possible_bit_flips = try_bit_flips(
+                address,
+                bit_range,
+                &memory_info,
+                MemoryOperation::from_crash_reason(&info.reason),
+            );
+        }
+    }
 
     let crashing_thread_id = exception_ref.map(|e| e.get_crashing_thread_id());
 
@@ -909,4 +938,91 @@ fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>)
         }
     }
     None
+}
+
+/// The memory operation occurring when a crash occurred.
+#[derive(Default, PartialEq, Eq)]
+enum MemoryOperation {
+    #[default]
+    Unknown,
+    Read,
+    Write,
+    Execute,
+}
+
+impl MemoryOperation {
+    pub fn from_crash_reason(reason: &CrashReason) -> Self {
+        // TODO: it may be possible to derive the read/write/exec when disassembling the faulting
+        // instruction, though this may be fairly verbose to implement.
+        use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+        match reason {
+            CrashReason::WindowsAccessViolation(WinAccess::READ) => MemoryOperation::Read,
+            CrashReason::WindowsAccessViolation(WinAccess::WRITE) => MemoryOperation::Write,
+            CrashReason::WindowsAccessViolation(WinAccess::EXEC) => MemoryOperation::Execute,
+            _ => Self::default(),
+        }
+    }
+
+    /// Return whether this memory operation is allowed in the given memory region.
+    pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+        match self {
+            Self::Unknown => true,
+            Self::Read => memory_info.is_readable(),
+            Self::Write => memory_info.is_writable(),
+            Self::Execute => memory_info.is_executable(),
+        }
+    }
+}
+
+/// The bit range over which to check bit flips.
+enum BitRange {
+    Amd64Canononical,
+    Amd64NonCanonical,
+    All,
+}
+
+impl BitRange {
+    pub fn range(&self) -> std::ops::Range<u32> {
+        match self {
+            Self::All => 0..u64::BITS,
+            Self::Amd64Canononical => 0..48,
+            Self::Amd64NonCanonical => 48..u64::BITS,
+        }
+    }
+}
+
+/// Try to determine whether an address was the result of a flipped bit.
+///
+/// `memory_operation` represents the memory operation that was occurring at the crashing address
+/// (read/write/exec). If left as `Unknown`, all memory operations are considered allowed.
+/// Otherwise, specify one of the operations that was occurring.
+fn try_bit_flips(
+    address: u64,
+    bit_range: BitRange,
+    memory_info: &UnifiedMemoryInfoList,
+    memory_operation: MemoryOperation,
+) -> Vec<u64> {
+    let mut addresses = Vec::new();
+    // If the address maps to valid memory, don't do anything else.
+    if let Some(mi) = memory_info.memory_info_at_address(address) {
+        if memory_operation.allowed_for(&mi) {
+            return addresses;
+        }
+    }
+
+    for i in bit_range.range() {
+        let possible_address = address ^ (1 << i);
+        // If the possible address is NULL, we assume that this was the originally intended address
+        // and some logic error has occurred (e.g. a NULL check went the wrong way).
+        if possible_address == 0 {
+            addresses.push(possible_address);
+        }
+        if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
+            if memory_operation.allowed_for(&mi) {
+                addresses.push(possible_address);
+            }
+        }
+    }
+
+    addresses
 }

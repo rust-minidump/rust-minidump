@@ -268,3 +268,36 @@ async fn test_no_frames() {
 
     state.print_json(&mut std::io::sink(), true).unwrap();
 }
+
+#[tokio::test]
+async fn test_bit_flip() {
+    let context = minidump_synth::x86_context(Endian::Little, 0, 0);
+
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
+    let heap_info = MemoryInfo::new(Endian::Little, 0x80000, 0x80000, 0, 8, 0, 0, 0);
+
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    ex.exception_record.exception_address = 0x80400;
+
+    let dump = SynthMinidump::with_endian(Endian::Little)
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add(context)
+        .add_memory(stack)
+        .add_memory_info(heap_info);
+
+    let state = read_synth_dump(dump).await;
+
+    assert_eq!(
+        state
+            .exception_info
+            .expect("missing exception info")
+            .possible_bit_flips,
+        vec![0x80000]
+    );
+}

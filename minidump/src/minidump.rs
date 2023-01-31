@@ -2052,6 +2052,26 @@ impl<'a> MinidumpMemoryInfo<'a> {
         ))
     }
 
+    /// Whether this memory range was readable.
+    pub fn is_readable(&self) -> bool {
+        self.protection.intersects(
+            md::MemoryProtection::PAGE_READONLY
+                | md::MemoryProtection::PAGE_READWRITE
+                | md::MemoryProtection::PAGE_EXECUTE_READ
+                | md::MemoryProtection::PAGE_EXECUTE_READWRITE,
+        )
+    }
+
+    /// Whether this memory range was writable.
+    pub fn is_writable(&self) -> bool {
+        self.protection.intersects(
+            md::MemoryProtection::PAGE_READWRITE
+                | md::MemoryProtection::PAGE_WRITECOPY
+                | md::MemoryProtection::PAGE_EXECUTE_READWRITE
+                | md::MemoryProtection::PAGE_EXECUTE_WRITECOPY,
+        )
+    }
+
     /// Whether this memory range was executable.
     pub fn is_executable(&self) -> bool {
         self.protection.intersects(
@@ -2351,6 +2371,16 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
         Some(Range::new(self.base_address, self.final_address))
     }
 
+    /// Whether this memory range was readable.
+    pub fn is_readable(&self) -> bool {
+        self.is_read
+    }
+
+    /// Whether this memory range was writable.
+    pub fn is_writable(&self) -> bool {
+        self.is_write
+    }
+
     /// Whether this memory range was executable.
     pub fn is_executable(&self) -> bool {
         self.is_exec
@@ -2459,29 +2489,39 @@ impl<'a> UnifiedMemoryInfoList<'a> {
     }
 }
 
+/// Declares functions which will forward to functions of the same name on the inner
+/// `UnifiedMemoryInfo` members.
+macro_rules! unified_memory_forward {
+    () => {};
+    ( $(#[$attr:meta])* $vis:vis fn $name:ident $(< $($t_param:ident : $t_type:path),* >)? ( &self $(, $param:ident : $type:ty)* ) -> $ret:ty ; $($rest:tt)* ) => {
+        $(#[$attr])*
+        $vis fn $name $(< $($t_param : $t_type),* >)? (&self $(, $param : $type)*) -> $ret {
+            match self {
+                Self::Info(info) => info.$name($($param),*),
+                Self::Map(map) => map.$name($($param),*),
+            }
+        }
+
+        unified_memory_forward!($($rest)*);
+    };
+}
+
 impl<'a> UnifiedMemoryInfo<'a> {
-    /// Write a human-readable description.
-    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        match self {
-            Self::Info(info) => info.print(f),
-            Self::Map(map) => map.print(f),
-        }
-    }
+    unified_memory_forward! {
+        /// Write a human-readable description.
+        pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()>;
 
-    /// The range of memory this info applies to.
-    pub fn memory_range(&self) -> Option<Range<u64>> {
-        match self {
-            Self::Info(info) => info.memory_range(),
-            Self::Map(map) => map.memory_range(),
-        }
-    }
+        /// The range of memory this info applies to.
+        pub fn memory_range(&self) -> Option<Range<u64>>;
 
-    /// Whether this memory range was executable.
-    pub fn is_executable(&self) -> bool {
-        match self {
-            Self::Info(info) => info.is_executable(),
-            Self::Map(map) => map.is_executable(),
-        }
+        /// Whether this memory range was readable.
+        pub fn is_readable(&self) -> bool;
+
+        /// Whether this memory range was writable.
+        pub fn is_writable(&self) -> bool;
+
+        /// Whether this memory range was executable.
+        pub fn is_executable(&self) -> bool;
     }
 }
 

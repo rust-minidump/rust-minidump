@@ -288,6 +288,10 @@ pub struct ExceptionInfo {
     pub instruction_str: Option<String>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
+    /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
+    ///
+    /// The original address was possibly the result of faulty hardware, alpha particles, etc.
+    pub possible_bit_flips: Vec<u64>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -298,7 +302,7 @@ pub struct ExceptionInfo {
 /// would just be zero.
 ///
 /// If such a correction was made, this will be included in `ExceptionInfo`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdjustedAddress {
     /// The original access was an Amd64 "non-canonical" address; actual address is provided here.
     NonCanonical(u64),
@@ -725,6 +729,13 @@ impl ProcessState {
                     writeln!(f, "No memory accessed by instruction")?;
                 }
             }
+
+            if !crash_info.possible_bit_flips.is_empty() {
+                writeln!(f, "Crashing address may be the result of a flipped bit:")?;
+                for (idx, addr) in crash_info.possible_bit_flips.iter().enumerate() {
+                    writeln!(f, "  {idx}. Valid address: 0x{addr:016x}")?;
+                }
+            }
         } else {
             writeln!(f, "No crash")?;
         }
@@ -945,6 +956,10 @@ Unknown streams encountered:
                             })
                         }).collect::<Vec<_>>()
                     })
+                }),
+                "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
+                    (!info.possible_bit_flips.is_empty())
+                        .then(|| info.possible_bit_flips.iter().copied().map(json_hex).collect::<Vec<_>>())
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
