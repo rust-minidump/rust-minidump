@@ -147,12 +147,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "build_const"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ae4235e6dac0694637c763029ecea1a2ec9e4e06ec2729bd21ba4d9c863eb7"
-
-[[package]]
 name = "bumpalo"
 version = "3.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -271,12 +265,18 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "1.8.1"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d663548de7f5cca343f1e0a48d14dcfb0e9eb4e079ec58883b7251539fa10aeb"
+checksum = "86ec7a15cbe22e59248fc7eadb1907dab5ba09372595da4d73dd805ed4417dfe"
 dependencies = [
- "build_const",
+ "crc-catalog",
 ]
+
+[[package]]
+name = "crc-catalog"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cace84e55f07e7301bae1c519df89cdad8cc3cd868413d3fdbdeca9ff3db484"
 
 [[package]]
 name = "crc32fast"
@@ -453,9 +453,9 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dump_syms"
-version = "2.1.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2d5a223c2c4f0c9dd09cc1d5de726dbd21f74db318df639c1e65dad75592f34"
+checksum = "54d354d3bd71d194fcfa2bdb91dd804565ce7d39483423c8bfed2d38e3aff6da"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1078,9 +1078,9 @@ dependencies = [
 
 [[package]]
 name = "lzma-rs"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aba8ecb0450dfabce4ad72085eed0a75dffe8f21f7ada05638564ea9db2d7fb1"
+checksum = "297e814c836ae64db86b36cf2a557ba54368d03f6afcd7d947c266692f71115e"
 dependencies = [
  "byteorder",
  "crc",
@@ -1918,9 +1918,9 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "symbolic"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4e804a19ea4039205b426738671552a7f6bec75015e0437f6318ddb4fb5123c"
+checksum = "6f5219610b220c2114858461fa469f8ead9dd9920556c4fbb41878d669c92278"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -1930,9 +1930,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7996a16aa672dcc3b129eac5a5ea5f148e80d35a8f904efa3eb8adea5922b3"
+checksum = "955422a57183507e8d0cf3ae6256055d7c915d6450993cd71ba511582c8a7695"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -1941,9 +1941,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
+checksum = "a446214493923a25931088b6b0d94a6e8ccc9896f0e992d10ff0000395322cf1"
 dependencies = [
  "debugid",
  "memmap2",
@@ -1953,9 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10f5d898f6c19efe593df62197f91df6176bdfa664426b16ff9f1a434a83df67"
+checksum = "b6fb3d8648a0e2de0c194b7221d34e1009af574b692bd496dac592fe466c0d42"
 dependencies = [
  "bitvec",
  "dmsort",
@@ -1985,9 +1985,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
+checksum = "b99a09fab8bedcc4aeb3a1e8741da36882e7d995b7c21399c8bba35372927793"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -1998,10 +1998,11 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "10.2.1"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "125fcd987182e46cd828416a9f2bdb7752c42081b33fa6d80a94afb1fdd4109b"
+checksum = "1ae4243c9bab0da49a75c2d3aeee737d82e65d6d94b68fec9a7a6e6e977ace00"
 dependencies = [
+ "flate2",
  "indexmap",
  "symbolic-common",
  "thiserror",
