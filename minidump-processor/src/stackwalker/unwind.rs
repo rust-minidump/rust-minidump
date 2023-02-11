@@ -3,7 +3,7 @@
 
 use crate::process_state::StackFrame;
 use crate::{SymbolProvider, SystemInfo};
-use minidump::{MinidumpMemory, MinidumpModuleList};
+use minidump::{MinidumpModuleList, UnifiedMemory};
 
 /// A trait for things that can unwind to a caller.
 #[async_trait::async_trait]
@@ -13,7 +13,7 @@ pub trait Unwind {
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory<'_>>,
+        stack_memory: Option<UnifiedMemory<'_, '_>>,
         modules: &MinidumpModuleList,
         system_info: &SystemInfo,
         symbol_provider: &P,

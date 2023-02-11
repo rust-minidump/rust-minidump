@@ -9,8 +9,8 @@ use crate::stackwalker::unwind::Unwind;
 use crate::stackwalker::CfiStackWalker;
 use crate::{SymbolProvider, SystemInfo};
 use minidump::{
-    CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
-    MinidumpRawContext, Module,
+    CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext,
+    Module, UnifiedMemory,
 };
 use std::collections::HashSet;
 use tracing::trace;
@@ -32,7 +32,7 @@ async fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -132,7 +132,7 @@ fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
     _grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -318,7 +318,7 @@ fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
 async fn get_caller_by_scan<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -431,7 +431,7 @@ fn is_non_canonical(instruction: Pointer) -> bool {
 fn stack_seems_valid(
     caller_sp: Pointer,
     callee_sp: Pointer,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
     if caller_sp < callee_sp {
@@ -451,7 +451,7 @@ impl Unwind for ArmContext {
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory<'_>>,
+        stack_memory: Option<UnifiedMemory<'_, '_>>,
         modules: &MinidumpModuleList,
         _system_info: &SystemInfo,
         syms: &P,
@@ -459,7 +459,7 @@ impl Unwind for ArmContext {
     where
         P: SymbolProvider + Sync,
     {
-        let stack = stack_memory.as_ref()?;
+        let stack = stack_memory?;
 
         // .await doesn't like closures, so don't use Option chaining
         let mut frame = None;

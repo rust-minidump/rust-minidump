@@ -640,14 +640,18 @@ where
 
     // Other streams depend on these, so load them upfront.
     let system_info = dump.get_stream::<MinidumpSystemInfo>().ok();
-    let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().ok();
-    let memory64_list = dump.get_stream::<MinidumpMemory64List<'_>>().ok();
+    let mut memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().ok();
+    let mut memory64_list = dump.get_stream::<MinidumpMemory64List<'_>>().ok();
     let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
 
+    let unified_memory = memory64_list
+        .take()
+        .map(UnifiedMemoryList::Memory64)
+        .or_else(|| memory_list.take().map(UnifiedMemoryList::Memory));
     if let Ok(thread_list) = dump.get_stream::<MinidumpThreadList<'_>>() {
         thread_list.print(
             output,
-            memory_list.as_ref(),
+            unified_memory.as_ref(),
             system_info.as_ref(),
             misc_info.as_ref(),
             brief,
@@ -658,6 +662,9 @@ where
     }
     if let Ok(module_list) = dump.get_stream::<MinidumpUnloadedModuleList>() {
         module_list.print(output)?;
+    }
+    if let Some(memory_list) = unified_memory {
+        memory_list.print(output, brief)?;
     }
     if let Some(memory_list) = memory_list {
         memory_list.print(output, brief)?;

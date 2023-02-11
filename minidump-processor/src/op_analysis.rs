@@ -16,7 +16,7 @@
 
 #![deny(missing_docs)]
 
-use minidump::{MinidumpContext, MinidumpRawContext};
+use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
@@ -87,10 +87,10 @@ pub struct MemoryAccess {
 ///
 /// Note that even if this function doesn't return an error, individual pieces of information
 /// may still be missing from the returned `OpAnalysis` structure.
-pub fn analyze_thread_context<Descriptor>(
+pub fn analyze_thread_context(
     context: &MinidumpContext,
-    memory_list: &minidump::MinidumpMemoryListBase<Descriptor>,
-    stack_memory: Option<&minidump::MinidumpMemory>,
+    memory_list: &minidump::UnifiedMemoryList,
+    stack_memory: Option<UnifiedMemory>,
 ) -> Result<OpAnalysis, OpAnalysisError> {
     let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
 
@@ -114,17 +114,17 @@ pub fn analyze_thread_context<Descriptor>(
 /// # Errors
 ///
 /// This may fail if there are no bytes at the instruction pointer.
-fn get_thread_instruction_bytes<'a, Descriptor>(
+fn get_thread_instruction_bytes<'a>(
     context: &MinidumpContext,
-    memory_list: &'a minidump::MinidumpMemoryListBase<'a, Descriptor>,
+    memory_list: &'a minidump::UnifiedMemoryList<'a>,
 ) -> Result<&'a [u8], OpAnalysisError> {
     let instruction_pointer = context.get_instruction_pointer();
 
     memory_list
         .memory_at_address(instruction_pointer)
         .map(|memory| {
-            let offset = (instruction_pointer - memory.base_address) as usize;
-            &memory.bytes[offset..]
+            let offset = (instruction_pointer - memory.base_address()) as usize;
+            &memory.bytes()[offset..]
         })
         .ok_or(OpAnalysisError::ReadThreadInstructionFailed)
 }
@@ -139,11 +139,11 @@ mod amd64 {
     ///
     /// Uses yaxpeax-x86 to disassemble the given `instruction_bytes`, and then uses the registers
     /// contained in `context` to determine useful information about the given instruction.
-    pub fn analyze_instruction<Descriptor>(
+    pub fn analyze_instruction(
         context: &MinidumpContext,
         instruction_bytes: &[u8],
-        memory_list: Option<&minidump::MinidumpMemoryListBase<Descriptor>>,
-        stack_memory: Option<&minidump::MinidumpMemory>,
+        memory_list: Option<&minidump::UnifiedMemoryList>,
+        stack_memory: Option<minidump::UnifiedMemory>,
     ) -> Result<OpAnalysis, OpAnalysisError> {
         let decoded_instruction = decode_instruction(instruction_bytes)?;
 
@@ -160,10 +160,10 @@ mod amd64 {
         })
     }
 
-    struct GetMemoryAccess<'a, Descriptor> {
+    struct GetMemoryAccess<'a> {
         context: &'a MinidumpContext,
-        memory_list: Option<&'a minidump::MinidumpMemoryListBase<'a, Descriptor>>,
-        stack_memory: Option<&'a minidump::MinidumpMemory<'a>>,
+        memory_list: Option<&'a minidump::UnifiedMemoryList<'a>>,
+        stack_memory: Option<minidump::UnifiedMemory<'a, 'a>>,
     }
 
     #[derive(Default)]
@@ -220,11 +220,11 @@ mod amd64 {
         }
     }
 
-    impl<'a, Descriptor> GetMemoryAccess<'a, Descriptor> {
+    impl<'a> GetMemoryAccess<'a> {
         pub fn new(
             context: &'a MinidumpContext,
-            memory_list: Option<&'a minidump::MinidumpMemoryListBase<'a, Descriptor>>,
-            stack_memory: Option<&'a minidump::MinidumpMemory<'a>>,
+            memory_list: Option<&'a minidump::UnifiedMemoryList<'a>>,
+            stack_memory: Option<minidump::UnifiedMemory<'a, 'a>>,
         ) -> Self {
             GetMemoryAccess {
                 context,
@@ -433,10 +433,9 @@ mod tests {
 
             let context = MinidumpContext::from_raw(MinidumpRawContext::Amd64(context_raw));
 
-            let op_analysis = crate::op_analysis::amd64::analyze_instruction::<()>(
-                &context, data.bytes, None, None,
-            )
-            .unwrap();
+            let op_analysis =
+                crate::op_analysis::amd64::analyze_instruction(&context, data.bytes, None, None)
+                    .unwrap();
 
             let memory_accesses = op_analysis.memory_accesses.unwrap();
 

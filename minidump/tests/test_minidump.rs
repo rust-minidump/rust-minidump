@@ -253,9 +253,10 @@ fn test_thread_list() {
     let thread_list = dump.get_stream::<MinidumpThreadList<'_>>().unwrap();
     let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
     let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
-    let memory_list = dump
-        .get_stream::<MinidumpMemoryList<'_>>()
-        .unwrap_or_default();
+    let memory_list = UnifiedMemoryList::Memory(
+        dump.get_stream::<MinidumpMemoryList<'_>>()
+            .unwrap_or_default(),
+    );
 
     let threads = &thread_list.threads;
     assert_eq!(threads.len(), 2);

@@ -13,8 +13,7 @@ use crate::{SymbolProvider, SystemInfo};
 use minidump::format::CONTEXT_AMD64;
 use minidump::system_info::Os;
 use minidump::{
-    MinidumpContext, MinidumpContextValidity, MinidumpMemory, MinidumpModuleList,
-    MinidumpRawContext,
+    MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext, UnifiedMemory,
 };
 use std::collections::HashSet;
 use tracing::trace;
@@ -31,7 +30,7 @@ async fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_AMD64,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -109,7 +108,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     _modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     _symbol_provider: &P,
@@ -223,7 +222,7 @@ where
 async fn get_caller_by_scan<P>(
     ctx: &CONTEXT_AMD64,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -392,7 +391,7 @@ where
 fn stack_seems_valid(
     caller_sp: Pointer,
     callee_sp: Pointer,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
 ) -> bool {
     // The stack shouldn't *grow* when we unwind
     if caller_sp <= callee_sp {
@@ -427,7 +426,7 @@ impl Unwind for CONTEXT_AMD64 {
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory<'_>>,
+        stack_memory: Option<UnifiedMemory<'_, '_>>,
         modules: &MinidumpModuleList,
         system_info: &SystemInfo,
         syms: &P,
@@ -435,7 +434,7 @@ impl Unwind for CONTEXT_AMD64 {
     where
         P: SymbolProvider + Sync,
     {
-        let stack = stack_memory.as_ref()?;
+        let stack = stack_memory?;
 
         // .await doesn't like closures, so don't use Option chaining
         let mut frame = None;

@@ -3,8 +3,8 @@ use std::convert::TryFrom;
 
 use minidump::format::ContextFlagsCpu;
 use minidump::{
-    CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpMemory,
-    MinidumpModuleList, MinidumpRawContext,
+    CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpModuleList,
+    MinidumpRawContext, UnifiedMemory,
 };
 use scroll::ctx::{SizeWith, TryFromCtx};
 use tracing::trace;
@@ -26,7 +26,7 @@ async fn get_caller_by_cfi<'a, C, P>(
     ctx: &'a C,
     callee: &'a StackFrame,
     grand_callee: Option<&'a StackFrame>,
-    stack_memory: &'a MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'a, '_>,
     modules: &'a MinidumpModuleList,
     symbol_provider: &'a P,
 ) -> Option<StackFrame>
@@ -98,7 +98,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 async fn get_caller_by_scan32<P>(
     ctx: &Mips32Context,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -168,7 +168,7 @@ where
 async fn get_caller_by_scan64<P>(
     ctx: &MipsContext,
     callee: &StackFrame,
-    stack_memory: &MinidumpMemory<'_>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     symbol_provider: &P,
 ) -> Option<StackFrame>
@@ -244,7 +244,7 @@ impl Unwind for MipsContext {
         &self,
         callee: &StackFrame,
         grand_callee: Option<&StackFrame>,
-        stack_memory: Option<&MinidumpMemory<'_>>,
+        stack_memory: Option<UnifiedMemory<'_, '_>>,
         modules: &MinidumpModuleList,
         _system_info: &SystemInfo,
         syms: &P,
@@ -253,7 +253,7 @@ impl Unwind for MipsContext {
         P: SymbolProvider + Sync,
     {
         let ctx = Mips32Context::try_from(self.clone());
-        let stack = stack_memory.as_ref()?;
+        let stack = stack_memory?;
 
         // .await doesn't like closures, so don't use Option chaining
         let mut frame = None;
