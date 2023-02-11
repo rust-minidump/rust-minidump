@@ -48,7 +48,7 @@ impl TestFixture {
         let base = stack.start().value().unwrap();
         let size = stack.size();
         let stack = stack.get_contents().unwrap();
-        let stack_memory = MinidumpMemory {
+        let stack_memory = &MinidumpMemory {
             desc: Default::default(),
             base_address: base,
             size,
@@ -63,7 +63,7 @@ impl TestFixture {
             0,
             &options,
             &mut stack,
-            Some(&stack_memory),
+            Some(UnifiedMemory::Memory(stack_memory)),
             &self.modules,
             &self.system_info,
             &symbolizer,

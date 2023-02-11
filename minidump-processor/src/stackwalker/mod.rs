@@ -32,7 +32,7 @@ struct CfiStackWalker<'a, C: CpuContext> {
     caller_ctx: C,
     caller_validity: HashSet<&'static str>,
 
-    stack_memory: &'a MinidumpMemory<'a>,
+    stack_memory: UnifiedMemory<'a, 'a>,
 }
 
 impl<'a, C> FrameWalker for CfiStackWalker<'a, C>
@@ -90,7 +90,7 @@ async fn get_caller_frame<P>(
     _frame_idx: usize,
     callee_frame: &StackFrame,
     grand_callee_frame: Option<&StackFrame>,
-    stack_memory: Option<&MinidumpMemory<'_>>,
+    stack_memory: Option<UnifiedMemory<'_, '_>>,
     modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     symbol_provider: &P,
@@ -203,7 +203,7 @@ pub async fn walk_stack<P>(
     thread_idx: usize,
     options: &ProcessorOptions<'_>,
     stack: &mut CallStack,
-    stack_memory: Option<&MinidumpMemory<'_>>,
+    stack_memory: Option<UnifiedMemory<'_, '_>>,
     modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     symbol_provider: &P,

@@ -93,7 +93,7 @@ impl TestFixture {
             0,
             &options,
             &mut stack,
-            Some(&stack_memory),
+            Some(UnifiedMemory::Memory(&stack_memory)),
             &self.modules,
             &system_info,
             &symbolizer,

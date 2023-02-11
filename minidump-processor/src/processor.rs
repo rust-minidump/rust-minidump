@@ -1,7 +1,6 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, RangeInclusive};
 use std::path::Path;
@@ -560,7 +559,13 @@ where
         // Just give an empty list, simplifies things.
         Err(_) => MinidumpUnloadedModuleList::new(),
     };
-    let memory_list = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
+    let memory_list = dump
+        .get_stream::<MinidumpMemory64List>()
+        .ok()
+        .map(UnifiedMemoryList::Memory64)
+        .unwrap_or_else(|| {
+            UnifiedMemoryList::Memory(dump.get_stream::<MinidumpMemoryList>().unwrap_or_default())
+        });
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
@@ -573,10 +578,9 @@ where
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
         let address = exception.get_crash_address(system_info.os, system_info.cpu);
 
-        let stack_memory = thread_list
+        let stack_memory_ref = thread_list
             .get_thread(exception.get_crashing_thread_id())
             .and_then(|thread| thread.stack_memory(&memory_list));
-        let stack_memory_ref = stack_memory.as_deref();
 
         exception
             .context(&dump_system_info, misc_info.as_ref())
@@ -761,10 +765,8 @@ where
                             .and_then(|memory| memory.get_memory_at_address::<u64>(stack_ptr))
                             .is_some();
                         if !contains_stack_ptr {
-                            stack_memory = memory_list
-                                .memory_at_address(stack_ptr)
-                                .map(Cow::Borrowed)
-                                .or(stack_memory);
+                            stack_memory =
+                                memory_list.memory_at_address(stack_ptr).or(stack_memory);
                         }
                     }
 
@@ -772,7 +774,7 @@ where
                         i,
                         options,
                         stack,
-                        stack_memory.as_deref(),
+                        stack_memory,
                         modules,
                         system_info,
                         symbol_provider,
@@ -798,7 +800,7 @@ where
                     }
 
                     if options.recover_function_args {
-                        arg_recovery::fill_arguments(stack, stack_memory.as_deref());
+                        arg_recovery::fill_arguments(stack, stack_memory);
                     }
 
                     // Report the unwalked result

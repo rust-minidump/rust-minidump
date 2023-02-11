@@ -1,5 +1,5 @@
 use crate::{CallStack, CallingConvention, FunctionArg, FunctionArgs};
-use minidump::{CpuContext, MinidumpMemory, MinidumpRawContext};
+use minidump::{CpuContext, MinidumpRawContext, UnifiedMemory};
 
 // # Recovering x86 function arguments
 //
@@ -67,7 +67,7 @@ use minidump::{CpuContext, MinidumpMemory, MinidumpRawContext};
 // are worth carving out special cases for, but until then: it's all pointers!
 
 /// Try to recover function arguments
-pub fn fill_arguments(call_stack: &mut CallStack, stack_memory: Option<&MinidumpMemory>) {
+pub fn fill_arguments(call_stack: &mut CallStack, stack_memory: Option<UnifiedMemory>) {
     // Collect up all the results at once to avoid borrowing issues.
     let args = call_stack
         .frames
@@ -91,7 +91,7 @@ pub fn fill_arguments(call_stack: &mut CallStack, stack_memory: Option<&Minidump
                     // is actually the base of the stack. Since we're walking down
                     // the stack, the base of the stack is a good upper-bound
                     // (and default value) for any stack/frame pointer.
-                    let stack_base = mem.base_address.saturating_add(mem.size);
+                    let stack_base = mem.base_address().saturating_add(mem.size());
 
                     let caller_stack_pointer = call_stack
                         .frames

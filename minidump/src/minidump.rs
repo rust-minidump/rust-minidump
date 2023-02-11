@@ -388,6 +388,13 @@ pub type MinidumpMemory<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIP
 /// A large region of memory from the process that wrote the minidump (usually a full dump).
 pub type MinidumpMemory64<'a> = MinidumpMemoryBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
 
+/// Provides a unified interface for MinidumpMemory and MinidumpMemory64
+#[derive(Debug, Clone, Copy)]
+pub enum UnifiedMemory<'a, 'mdmp> {
+    Memory(&'a MinidumpMemory<'mdmp>),
+    Memory64(&'a MinidumpMemory64<'mdmp>),
+}
+
 #[derive(Debug, Clone)]
 pub enum RawMacCrashInfo {
     V1(
@@ -558,6 +565,13 @@ pub type MinidumpMemoryList<'a> = MinidumpMemoryListBase<'a, md::MINIDUMP_MEMORY
 
 /// A list of large memory regions included in a minidump (usually a full dump).
 pub type MinidumpMemory64List<'a> = MinidumpMemoryListBase<'a, md::MINIDUMP_MEMORY_DESCRIPTOR64>;
+
+/// Provides a unified interface for MinidumpMemoryList and MinidumpMemory64List
+#[derive(Debug)]
+pub enum UnifiedMemoryList<'a> {
+    Memory(MinidumpMemoryList<'a>),
+    Memory64(MinidumpMemory64List<'a>),
+}
 
 /// Information about an assertion that caused a crash.
 #[derive(Debug)]
@@ -1724,6 +1738,60 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
     }
 }
 
+impl<'a, 'mdmp> UnifiedMemory<'a, 'mdmp> {
+    pub fn get_memory_at_address<T>(&self, addr: u64) -> Option<T>
+    where
+        T: TryFromCtx<'mdmp, scroll::Endian, [u8], Error = scroll::Error>,
+    {
+        match self {
+            UnifiedMemory::Memory(this) => this.get_memory_at_address(addr),
+            UnifiedMemory::Memory64(this) => this.get_memory_at_address(addr),
+        }
+    }
+
+    pub fn memory_range(&self) -> Option<Range<u64>> {
+        match self {
+            UnifiedMemory::Memory(this) => this.memory_range(),
+            UnifiedMemory::Memory64(this) => this.memory_range(),
+        }
+    }
+
+    pub fn bytes(&self) -> &'a [u8] {
+        match self {
+            UnifiedMemory::Memory(this) => this.bytes,
+            UnifiedMemory::Memory64(this) => this.bytes,
+        }
+    }
+
+    pub fn base_address(&self) -> u64 {
+        match self {
+            UnifiedMemory::Memory(this) => this.base_address,
+            UnifiedMemory::Memory64(this) => this.base_address,
+        }
+    }
+
+    pub fn size(&self) -> u64 {
+        match self {
+            UnifiedMemory::Memory(this) => this.size,
+            UnifiedMemory::Memory64(this) => this.size,
+        }
+    }
+
+    pub fn print_contents<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        match self {
+            UnifiedMemory::Memory(this) => this.print_contents(f),
+            UnifiedMemory::Memory64(this) => this.print_contents(f),
+        }
+    }
+
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
+        match self {
+            UnifiedMemory::Memory(this) => this.print(f, brief),
+            UnifiedMemory::Memory64(this) => this.print(f, brief),
+        }
+    }
+}
+
 impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
     /// Return an empty `MinidumpMemoryListBase`.
     pub fn new() -> MinidumpMemoryListBase<'mdmp, Descriptor> {
@@ -1819,6 +1887,61 @@ impl<'mdmp> MinidumpMemory64List<'mdmp> {
             region.print(f, brief)?;
         }
         Ok(())
+    }
+}
+
+impl<'mdmp> UnifiedMemoryList<'mdmp> {
+    pub fn memory_at_address<'slf>(&'slf self, address: u64) -> Option<UnifiedMemory<'slf, 'mdmp>> {
+        match self {
+            UnifiedMemoryList::Memory(this) => {
+                this.memory_at_address(address).map(UnifiedMemory::Memory)
+            }
+            UnifiedMemoryList::Memory64(this) => {
+                this.memory_at_address(address).map(UnifiedMemory::Memory64)
+            }
+        }
+    }
+
+    pub fn iter<'slf>(&'slf self) -> impl Iterator<Item = UnifiedMemory<'slf, 'mdmp>> {
+        let iter1 = if let UnifiedMemoryList::Memory(this) = self {
+            Some(this.iter().map(UnifiedMemory::Memory))
+        } else {
+            None
+        };
+        let iter2 = if let UnifiedMemoryList::Memory64(this) = self {
+            Some(this.iter().map(UnifiedMemory::Memory64))
+        } else {
+            None
+        };
+        iter1
+            .into_iter()
+            .flatten()
+            .chain(iter2.into_iter().flatten())
+    }
+
+    /// Iterate over the memory regions in order by memory address.
+    pub fn by_addr<'slf>(&'slf self) -> impl Iterator<Item = UnifiedMemory<'slf, 'mdmp>> {
+        let iter1 = if let UnifiedMemoryList::Memory(this) = self {
+            Some(this.by_addr().map(UnifiedMemory::Memory))
+        } else {
+            None
+        };
+        let iter2 = if let UnifiedMemoryList::Memory64(this) = self {
+            Some(this.by_addr().map(UnifiedMemory::Memory64))
+        } else {
+            None
+        };
+        iter1
+            .into_iter()
+            .flatten()
+            .chain(iter2.into_iter().flatten())
+    }
+
+    pub fn print<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
+        match self {
+            UnifiedMemoryList::Memory(this) => this.print(f, brief),
+            UnifiedMemoryList::Memory64(this) => this.print(f, brief),
+        }
     }
 }
 
@@ -2536,18 +2659,18 @@ impl<'a> MinidumpThread<'a> {
             .map(Cow::Owned)
     }
 
-    pub fn stack_memory(
-        &self,
-        memory_list: &MinidumpMemoryList<'a>,
-    ) -> Option<Cow<MinidumpMemory<'a>>> {
-        self.stack.as_ref().map(Cow::Borrowed).or_else(|| {
+    pub fn stack_memory<'mem>(
+        &'mem self,
+        memory_list: &'mem UnifiedMemoryList<'a>,
+    ) -> Option<UnifiedMemory<'mem, 'a>> {
+        self.stack.as_ref().map(UnifiedMemory::Memory).or_else(|| {
             // Sometimes the raw.stack RVA is null/busted, but the start_of_memory_range
             // value is correct. So if the `read` fails, try resolving start_of_memory_range
             // with the MinidumpMemoryList. (This seems to specifically be a problem with
             // Windows minidumps.)
             let stack_addr = self.raw.stack.start_of_memory_range;
             let memory = memory_list.memory_at_address(stack_addr)?;
-            Some(Cow::Owned(memory.clone()))
+            Some(memory)
         })
     }
 
@@ -2557,7 +2680,7 @@ impl<'a> MinidumpThread<'a> {
     pub fn print<T: Write>(
         &self,
         f: &mut T,
-        memory: Option<&MinidumpMemoryList<'a>>,
+        memory: Option<&UnifiedMemoryList<'a>>,
         system: Option<&MinidumpSystemInfo>,
         misc: Option<&MinidumpMiscInfo>,
         brief: bool,
@@ -2607,7 +2730,7 @@ impl<'a> MinidumpThread<'a> {
 
         // We might not need any memory, so try to limp forward with an empty
         // MemoryList if we don't have one.
-        let dummy_memory = MinidumpMemoryList::default();
+        let dummy_memory = UnifiedMemoryList::Memory(MinidumpMemoryList::default());
         let memory = memory.unwrap_or(&dummy_memory);
         if let Some(ref stack) = self.stack_memory(memory) {
             writeln!(f, "Stack")?;
@@ -2615,7 +2738,7 @@ impl<'a> MinidumpThread<'a> {
             // For printing purposes, we'll treat any unknown CPU type as 64-bit
             let chunk_size: usize = pointer_width.size_in_bytes().unwrap_or(8).into();
             let mut offset = 0;
-            for chunk in stack.bytes.chunks_exact(chunk_size) {
+            for chunk in stack.bytes().chunks_exact(chunk_size) {
                 write!(f, "    {offset:#010x}: ")?;
 
                 match pointer_width {
@@ -2651,7 +2774,7 @@ impl<'a> MinidumpThread<'a> {
     /// The value is heuristically converted into a CrashReason because that's our
     /// general error code handling machinery, even though this may not actually be
     /// the reason for the crash!
-    pub fn last_error(&self, cpu: Cpu, memory: &MinidumpMemoryList) -> Option<CrashReason> {
+    pub fn last_error(&self, cpu: Cpu, memory: &UnifiedMemoryList) -> Option<CrashReason> {
         // Early hacky implementation: rather than implementing all the TEB layouts,
         // just use the fact that we know the value we want is a 13-pointers offset
         // from the start of the TEB.
@@ -2716,7 +2839,7 @@ impl<'a> MinidumpThreadList<'a> {
     pub fn print<T: Write>(
         &self,
         f: &mut T,
-        memory: Option<&MinidumpMemoryList<'a>>,
+        memory: Option<&UnifiedMemoryList<'a>>,
         system: Option<&MinidumpSystemInfo>,
         misc: Option<&MinidumpMiscInfo>,
         brief: bool,
@@ -4978,7 +5101,7 @@ where
     ///         // Use `Default` to try to make some progress when a stream is missing.
     ///         // This is especially natural for MinidumpMemoryList because
     ///         // everything needs to handle memory lookups failing anyway.
-    ///         let mem = dump.get_stream::<MinidumpMemoryList>().unwrap_or_default();
+    ///         let mem = UnifiedMemoryList::Memory(dump.get_stream::<MinidumpMemoryList>().unwrap_or_default());
     ///
     ///         for thread in &threads.threads {
     ///            let stack = thread.stack_memory(&mem);
