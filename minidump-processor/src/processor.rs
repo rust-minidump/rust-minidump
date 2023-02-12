@@ -559,13 +559,7 @@ where
         // Just give an empty list, simplifies things.
         Err(_) => MinidumpUnloadedModuleList::new(),
     };
-    let memory_list = dump
-        .get_stream::<MinidumpMemory64List>()
-        .ok()
-        .map(UnifiedMemoryList::Memory64)
-        .unwrap_or_else(|| {
-            UnifiedMemoryList::Memory(dump.get_stream::<MinidumpMemoryList>().unwrap_or_default())
-        });
+    let memory_list = dump.get_memory().unwrap_or_default();
     let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
     let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
     let memory_info = UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();

@@ -2,7 +2,7 @@
 use libfuzzer_sys::fuzz_target;
 
 use minidump::system_info::{Cpu, Os};
-use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory};
+use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, UnifiedMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
 use minidump_processor::walk_stack;
 use minidump_processor::{string_symbol_supplier, CallStack, ProcessorOptions,  Symbolizer, SystemInfo};
@@ -63,7 +63,7 @@ impl TestFixture {
             0,
             &options,
             &mut stack,
-            Some(&stack_memory),
+            Some(UnifiedMemory::Memory(&stack_memory)),
             &self.modules,
             &system_info,
             &symbolizer,
