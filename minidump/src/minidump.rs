@@ -572,6 +572,11 @@ pub enum UnifiedMemoryList<'a> {
     Memory(MinidumpMemoryList<'a>),
     Memory64(MinidumpMemory64List<'a>),
 }
+impl<'a> Default for UnifiedMemoryList<'a> {
+    fn default() -> Self {
+        Self::Memory(Default::default())
+    }
+}
 
 /// Information about an assertion that caused a crash.
 #[derive(Debug)]
@@ -2730,7 +2735,7 @@ impl<'a> MinidumpThread<'a> {
 
         // We might not need any memory, so try to limp forward with an empty
         // MemoryList if we don't have one.
-        let dummy_memory = UnifiedMemoryList::Memory(MinidumpMemoryList::default());
+        let dummy_memory = UnifiedMemoryList::default();
         let memory = memory.unwrap_or(&dummy_memory);
         if let Some(ref stack) = self.stack_memory(memory) {
             writeln!(f, "Stack")?;
@@ -5101,7 +5106,7 @@ where
     ///         // Use `Default` to try to make some progress when a stream is missing.
     ///         // This is especially natural for MinidumpMemoryList because
     ///         // everything needs to handle memory lookups failing anyway.
-    ///         let mem = UnifiedMemoryList::Memory(dump.get_stream::<MinidumpMemoryList>().unwrap_or_default());
+    ///         let mem = dump.get_memory().unwrap_or_default();
     ///
     ///         for thread in &threads.threads {
     ///            let stack = thread.stack_memory(&mem);
@@ -5175,6 +5180,18 @@ where
                 location_slice(bytes, &dir.location)
             }
         }
+    }
+
+    /// Get whichever of the two MemoryLists are available in the minidump,
+    /// preferring [`MinidumpMemory64List`][].
+    pub fn get_memory(&'a self) -> Option<UnifiedMemoryList<'a>> {
+        self.get_stream::<MinidumpMemory64List>()
+            .map(UnifiedMemoryList::Memory64)
+            .or_else(|_| {
+                self.get_stream::<MinidumpMemoryList>()
+                    .map(UnifiedMemoryList::Memory)
+            })
+            .ok()
     }
 
     /// A listing of all the streams in the Minidump that this library is *aware* of,
