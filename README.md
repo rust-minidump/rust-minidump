@@ -33,7 +33,7 @@ fn main() -> Result<(), Error> {
         // Use `Default` to try to make progress when a stream is missing.
         // This is especially natural for MinidumpMemoryList because
         // everything needs to handle memory lookups failing anyway.
-        let mem = UnifiedMemoryList::Memory(dump.get_stream::<MinidumpMemoryList>().unwrap_or_default());
+        let mem = dump.get_memory().unwrap_or_default();
 
         for thread in &threads.threads {
             let stack = thread.stack_memory(&mem);
