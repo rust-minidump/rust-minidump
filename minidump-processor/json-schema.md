@@ -143,6 +143,12 @@ anyway.
       }
     ],
 
+    /// A list of addresses that could have been the actual address the program
+    /// wanted to access, but which were changed by a bit-flip.
+    "possible_bit_flips": [
+      <hexstring>
+    ],
+
     // The thread id of the thread that caused the crash (or requested the minidump).
     "crashing_thread": <u32>,
 
