@@ -21,7 +21,7 @@ dump_syms = ["minidump-processor/dump_syms"]
 mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 
 [dependencies]
-clap = { version = "4.0.18", features = ["cargo", "wrap_help", "derive"] }
+clap = { version = "4.1.6", features = ["cargo", "wrap_help", "derive"] }
 indicatif = "0.17.0"
 minidump = { version = "0.15.2", path = "../minidump" }
 minidump-common = { version = "0.15.2", path = "../minidump-common" }
