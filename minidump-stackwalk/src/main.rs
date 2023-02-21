@@ -34,9 +34,9 @@ use tracing::level_filters::LevelFilter;
 /// Symbols are used for two purposes:
 ///
 ///  1. To fill in more information about each frame of the backtraces. (function names, lines, etc.)
-///  2. To do produce a more *accurate* backtrace. This is primarily accomplished with
-///     call frame information (CFI), but just knowing what parts of a module maps to actual
-///     code is also useful!
+///  2. To produce a more *accurate* backtrace. This is primarily accomplished with call frame
+///     information (CFI), but just knowing what parts of a module maps to actual code is also
+///     useful!
 ///
 /// Supported Symbol Formats:
 ///

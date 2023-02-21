@@ -350,3 +350,251 @@ pub fn simple_symbol_supplier(symbol_paths: Vec<PathBuf>) -> impl SymbolSupplier
 pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSupplier {
     breakpad_symbols::StringSymbolSupplier::new(modules)
 }
+
+pub mod debuginfo {
+    use super::*;
+    use breakpad_symbols::SymbolFile;
+    use cachemap::CacheMap;
+    use futures_util::lock::Mutex;
+    use memmap2::Mmap;
+    use std::collections::HashMap;
+    use std::fs::File;
+    use std::path::Path;
+    use symbolic::{
+        cfi::CfiCache,
+        debuginfo::{self, Object},
+    };
+
+    /// A symbol provider which gets symbol information from the crashing binaries on the local
+    /// system.
+    #[derive(Default)]
+    pub struct DebugInfoSymbolProvider {
+        /// If a file fails to load for any reason, None is stored.
+        loaded: CacheMap<PathBuf, Lazy<Option<DebugInfo>>>,
+    }
+
+    #[derive(Default)]
+    struct Lazy<T>(Mutex<Option<T>>);
+
+    impl<T> Lazy<T> {
+        pub async fn get<F: FnOnce() -> T>(&self, if_missing: F) -> &T {
+            let mut guard = self.0.lock().await;
+            if guard.is_none() {
+                *guard = Some(if_missing());
+            }
+            debug_assert!(guard.is_some());
+            // # Safety
+            // The inner value is guaranteed to be set, and it will never be changed again so we
+            // may return a &T tied to the lifetime of &self.
+            unsafe {
+                (guard.as_ref().unwrap_unchecked() as *const T)
+                    .as_ref()
+                    .unwrap_unchecked()
+            }
+        }
+    }
+
+    struct DebugInfo {
+        functions: Vec<Function>,
+        unwind_symbol_file: Option<SymbolFile>,
+    }
+
+    impl DebugInfo {
+        pub fn new(file: &Path) -> Option<Self> {
+            let file = File::open(file).ok()?;
+            // # Safety
+            // The file is presumably read-only (being some binary or debug info file).
+            let mapped = unsafe { Mmap::map(&file) }.ok()?;
+
+            let object = debuginfo::Object::parse(&mapped).ok()?;
+            Some(Self::from_object(object))
+        }
+
+        pub fn from_object(object: Object) -> Self {
+            let mut functions: Vec<Function> = object
+                .debug_session()
+                .ok()
+                .map(|session| {
+                    session
+                        .functions()
+                        .filter_map(Result::ok)
+                        .map(Into::into)
+                        .collect()
+                })
+                .unwrap_or_default();
+            functions.sort_unstable_by_key(|f| f.address);
+
+            let unwind_symbol_file = CfiCache::from_object(&object)
+                .ok()
+                .and_then(|cache| SymbolFile::from_bytes(cache.as_slice()).ok());
+
+            DebugInfo {
+                functions,
+                unwind_symbol_file,
+            }
+        }
+
+        /// Find the function which contains the given address, if any.
+        pub fn function_by_address(&self, addr: u64) -> Option<&Function> {
+            // Get the index of the first function that starts after our search address.
+            let functions = &self.functions;
+            let index_after_location = functions.partition_point(|f| addr < f.address);
+            if index_after_location == 0 {
+                return None;
+            }
+            // Get the index of the last function which is _before_ our address, and check whether
+            // the address falls within the function.
+            let index = index_after_location - 1;
+            let function = &functions[index];
+            debug_assert!(function.address <= addr);
+            if addr < function.end_address() {
+                Some(function)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub struct LineInfo {
+        pub address: u64,
+        pub size: Option<u64>,
+        pub file: String,
+        pub line: u64,
+    }
+
+    pub struct Function {
+        pub address: u64,
+        pub size: u64,
+        pub name: String,
+        pub lines: Vec<LineInfo>,
+        pub inlinees: Vec<Function>,
+        pub inline: bool,
+    }
+
+    impl From<debuginfo::LineInfo<'_>> for LineInfo {
+        fn from(li: debuginfo::LineInfo) -> Self {
+            LineInfo {
+                address: li.address,
+                size: li.size,
+                file: li.file.path_str(),
+                line: li.line,
+            }
+        }
+    }
+
+    impl From<debuginfo::Function<'_>> for Function {
+        fn from(f: debuginfo::Function) -> Self {
+            Function {
+                address: f.address,
+                size: f.size,
+                name: f.name.into_string(),
+                lines: f.lines.into_iter().map(Into::into).collect(),
+                inlinees: f.inlinees.into_iter().map(Into::into).collect(),
+                inline: f.inline,
+            }
+        }
+    }
+
+    impl Function {
+        pub fn end_address(&self) -> u64 {
+            self.address + self.size
+        }
+    }
+
+    impl DebugInfoSymbolProvider {
+        async fn debug_info(&self, path: PathBuf) -> Option<&DebugInfo> {
+            self.loaded
+                .cache_default(path.clone())
+                .get(|| DebugInfo::new(&path))
+                .await
+                .as_ref()
+        }
+    }
+
+    #[async_trait]
+    impl super::SymbolProvider for DebugInfoSymbolProvider {
+        async fn fill_symbol(
+            &self,
+            module: &(dyn Module + Sync),
+            frame: &mut (dyn FrameSymbolizer + Send),
+        ) -> Result<(), FillSymbolError> {
+            // Saturating cast never added :(
+            // https://github.com/rust-lang/rust/issues/23596
+            fn saturating_cast(from: u64) -> u32 {
+                if from > u32::MAX as u64 {
+                    u32::MAX
+                } else {
+                    from as u32
+                }
+            }
+
+            let dbg = module.debug_file().ok_or(FillSymbolError {})?;
+            let info = self
+                .debug_info(dbg.as_ref().into())
+                .await
+                .ok_or(FillSymbolError {})?;
+
+            // From this point on, we consider that symbols were found for the module, so we no
+            // longer return FillSymbolError.
+            let function = info.function_by_address(frame.get_instruction());
+
+            if let Some(function) = function {
+                // XXX parameter size
+                frame.set_function(function.name.as_ref(), function.address, 0);
+                for inlinee in &function.inlinees {
+                    let (file, line) = inlinee
+                        .lines
+                        .first()
+                        .map(|line| (line.file.as_str(), saturating_cast(line.line)))
+                        .unzip();
+                    frame.add_inline_frame(inlinee.name.as_ref(), file, line);
+                }
+                if let Some(line) = function.lines.first() {
+                    frame.set_source_file(
+                        line.file.as_ref(),
+                        saturating_cast(line.line),
+                        line.address,
+                    );
+                }
+            }
+
+            Ok(())
+        }
+
+        async fn walk_frame(
+            &self,
+            module: &(dyn Module + Sync),
+            walker: &mut (dyn FrameWalker + Send),
+        ) -> Option<()> {
+            let dbg = module.debug_file()?;
+            let info = self.debug_info(dbg.as_ref().into()).await?;
+            info.unwind_symbol_file
+                .as_ref()
+                .and_then(|sym_file| sym_file.walk_frame(module, walker))
+        }
+
+        async fn get_file_path(
+            &self,
+            module: &(dyn Module + Sync),
+            file_kind: FileKind,
+        ) -> Result<PathBuf, FileError> {
+            let path = match file_kind {
+                FileKind::BreakpadSym => None,
+                FileKind::Binary => Some(PathBuf::from(module.code_file().as_ref())),
+                FileKind::ExtraDebugInfo => module.debug_file().map(|p| PathBuf::from(p.as_ref())),
+            };
+            match path {
+                Some(path) if path.exists() => Ok(path),
+                _ => Err(FileError::NotFound),
+            }
+        }
+
+        fn stats(&self) -> HashMap<String, SymbolStats> {
+            HashMap::new()
+        }
+
+        fn pending_stats(&self) -> PendingSymbolStats {
+            PendingSymbolStats::default()
+        }
+    }
+}
