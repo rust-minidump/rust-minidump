@@ -50,6 +50,7 @@ fn start_child(failure: FailureType) -> Child {
         .expect("failed to execute child")
 }
 
+// XXX: minidumper is somewhat slow to establish the connection, making the test slow.
 fn write_minidump(minidump_file: &Path, failure: FailureType) {
     use minidumper::{LoopAction, MinidumpBinary, Server, ServerHandler};
     use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -81,7 +82,7 @@ fn write_minidump(minidump_file: &Path, failure: FailureType) {
     let mut child = start_child(failure);
 
     /// Maximum time we want to wait for the child to execute and crash.
-    const CHILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+    const CHILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
     // Run the server.
     let shutdown = AtomicBool::default();
@@ -104,7 +105,7 @@ fn write_minidump(minidump_file: &Path, failure: FailureType) {
     drop(child.kill());
     if !minidump_file.exists() {
         // Likely a timeout occurred
-        panic!("expected child process to crash within 2 seconds");
+        panic!("expected child process to crash within {:?}", CHILD_TIMEOUT);
     }
 }
 
