@@ -68,6 +68,6 @@ fn analyze_basic_minidump() {
         assert!(threads.is_array() && threads.len() == 1);
         assert!(threads[0].is_object());
         let frames = &threads[0]["frames"];
-        assert!(frames.is_array() && frames.len() > 0);
+        assert!(frames.is_array() && !frames.is_empty());
     }
 }

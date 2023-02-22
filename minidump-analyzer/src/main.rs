@@ -233,12 +233,9 @@ use processor::Processor;
 pub fn main() {
     env_logger::init();
 
-    match try_main() {
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-        Ok(_) => (),
+    if let Err(e) = try_main() {
+        eprintln!("{e}");
+        std::process::exit(1);
     }
 }
 
