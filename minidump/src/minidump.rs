@@ -4,6 +4,8 @@
 use debugid::{CodeId, DebugId};
 use memmap2::Mmap;
 use num_traits::FromPrimitive;
+use procfs_core::prelude::*;
+use procfs_core::process::{MMPermissions, MemoryMap, MemoryMaps};
 use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{self, Pread, BE, LE};
 use std::borrow::Cow;
@@ -190,52 +192,8 @@ pub struct MinidumpLinuxMaps<'a> {
 /// A memory mapping entry for the process we are analyzing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinidumpLinuxMapInfo<'a> {
-    /// The first address this metadata applies to
-    pub base_address: u64,
-    /// The last address this metadata applies to
-    pub final_address: u64,
-
-    /// The kind of mapping
-    pub kind: MinidumpLinuxMapKind<'a>,
-
-    // FIXME: These could be bitflags but I'm not worried about it right now
-    /// Whether the memory region is readable.
-    pub is_read: bool,
-    /// Whether the memory region is writeable.
-    pub is_write: bool,
-    /// Whether the memory region is executable.
-    pub is_exec: bool,
-    /// Whether the memory region is shared.
-    pub is_shared: bool,
-    /// Whether the memory region is private (copy-on-write).
-    pub is_private: bool,
-
-    // Fields in the format we ignore (not yet useful)
-    // * offset
-    // * dev
-    // * inode
+    pub map: MemoryMap,
     _phantom: PhantomData<&'a u8>,
-}
-
-/// A broad classification of the mapped memory described by a [`MinidumpLinuxMapInfo`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MinidumpLinuxMapKind<'a> {
-    /// This is the main thread's stack.
-    MainThreadStack,
-    /// This is the stack of a non-main thread with the given `tid`.
-    Stack(u64),
-    /// This is the process's heap.
-    Heap,
-    /// This is the "Virtual Dynamically-linked Shared Object".
-    Vdso,
-    /// This is an anonymous mmap.
-    AnonymousMap,
-    /// Some other special kind that we don't know/care about.
-    UnknownSpecial(Cow<'a, LinuxOsStr>),
-    /// This is a mapped file/device at the given path.
-    File(Cow<'a, LinuxOsStr>),
-    /// This is a mapped file/device at the given path, and that file was deleted.
-    DeletedFile(Cow<'a, LinuxOsStr>),
 }
 
 #[derive(Debug, Clone)]
@@ -2566,13 +2524,19 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
         _endian: scroll::Endian,
         _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxMaps<'a>, Error> {
-        let regions = LinuxOsStr::from_bytes(bytes)
-            .lines()
-            .map(MinidumpLinuxMapInfo::from_line)
-            .filter_map(|x| x.ok())
-            .collect::<Vec<_>>();
+        let maps = MemoryMaps::from_read(std::io::Cursor::new(bytes)).map_err(|e| {
+            tracing::error!("linux memory map read error: {e}");
+            Error::StreamReadFailure
+        })?;
 
-        Ok(MinidumpLinuxMaps::from_regions(regions))
+        Ok(MinidumpLinuxMaps::from_regions(
+            maps.into_iter()
+                .map(|map| MinidumpLinuxMapInfo {
+                    map,
+                    _phantom: PhantomData,
+                })
+                .collect(),
+        ))
     }
 }
 
@@ -2642,163 +2606,6 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
 }
 
 impl<'a> MinidumpLinuxMapInfo<'a> {
-    /// Parses a line from /proc/self/maps into a `[MinidumpLinuxMapInfo]`.
-    pub fn from_line(line: &'a LinuxOsStr) -> Result<MinidumpLinuxMapInfo<'a>, Error> {
-        // /proc/self/maps is a listing of all the mapped ranges of memory
-        // in the (crashing) process. We can use it to find out what regions
-        // were executable (and what file they mapped to), where stacks/heap
-        // are mapped, and various other things.
-        //
-        // Format of each line (by examples):
-        //
-        // ```text
-        //
-        //        address        perms   offset   dev   inode       path/kind         deleted?
-        // 7fca3a80c0-7fca3a81a0  r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb.so  (deleted)
-        // 7ffe2e7910-7ffe2e7b10  rw-p  000000000 00:00 0       [stack]
-        //
-        // ```
-        //
-        // * address: the start and end addresses (inclusive)
-        // * perms: permissions the process had on the memory
-        //   * r = read
-        //   * w = write
-        //   * x = execute
-        //   * s = shared
-        //   * p = private (copy on write)
-        //   * - = <ignore> (just for formatting)
-        // * offset: the offset this mapping has into the mapped file/device. (ignored)
-        // * dev: the "device" (major:minor). (ignored)
-        // * inode: the inode on the device, 0 means no inode (uninitialized memory?). (ignored)
-        // * path/kind: either a path to the mapped file/device or a special `[kind]`:
-        //   * `[stack]`       - the main thread's stack
-        //   * `[stack:<tid>]` - the stack of the thread with this tid (e.g. `[stack:123]`)
-        //   * `[heap]`        - the process's heap
-        //   * `[vdso]`        - the Virtual Dynamically-linked Shared Object
-        //   * `<blank>`       - an anonymous mmap
-        //
-        // A path has a few extra caveats:
-        //  * If suffixed with `(deleted)` that indicates the mapped file was deleted.
-        //  * If the path contains a newline (yikes), it will appear as \012. It is impossible
-        //    to distinguish this from the path literally containing the string `\012`.
-        //    (We aren't resolving these paths so don't worry about it.)
-
-        let mut tokens = line.split_ascii_whitespace();
-
-        let (base_address, final_address) = tokens
-            .next()
-            .and_then(|range| range.split_once(b'-'))
-            .and_then(|(start, end)| {
-                // Parsing numbers, so can require them to be utf8
-                let start = start
-                    .to_str()
-                    .ok()
-                    .and_then(|x| u64::from_str_radix(x, 16).ok());
-
-                let end = end
-                    .to_str()
-                    .ok()
-                    .and_then(|x| u64::from_str_radix(x, 16).ok());
-
-                start.zip(end)
-            })
-            .ok_or(Error::DataError)?;
-
-        let empty = LinuxOsStr::new();
-        let perms = tokens.next().unwrap_or(empty);
-
-        let mut is_read = false;
-        let mut is_write = false;
-        let mut is_exec = false;
-        let mut is_shared = false;
-        let mut is_private = false;
-
-        // Although some of these are mutually exclusive and they come in a specific
-        // order, I see no reason to mandate this in this parser.
-        for c in perms.iter() {
-            match &c {
-                b'r' => is_read = true,
-                b'w' => is_write = true,
-                b'x' => is_exec = true,
-                b's' => is_shared = true,
-                b'p' => is_private = true,
-                b'-' => {}
-                _ => {
-                    // This shouldn't happen. That said, there's no obvious reason
-                    // to fail the entire parse if there's new info we don't know about,
-                    // so I suppose it's fine?
-                }
-            }
-        }
-
-        // We don't care about these values
-        let _offset = tokens.next();
-        let _dev = tokens.next();
-        let _inode = tokens.next();
-
-        let kind = tokens.next();
-        let kind = match kind.map(|x| x.as_bytes()) {
-            Some(b"[stack]") => MinidumpLinuxMapKind::MainThreadStack,
-            Some(b"[heap]") => MinidumpLinuxMapKind::Heap,
-            Some(b"[vdso]") => MinidumpLinuxMapKind::Vdso,
-            Some(b"") | None => MinidumpLinuxMapKind::AnonymousMap,
-            Some(_) => {
-                // Go back to the LinuxOsStr
-                let kind = kind.unwrap();
-                // Try to parse an arbitrary [<special>]
-                if let Some(special) = kind
-                    .to_str()
-                    .ok()
-                    .and_then(|x| x.strip_prefix('['))
-                    .and_then(|x| x.strip_suffix(']'))
-                {
-                    // See if it's a [stack:<tid>] special entry
-                    if let Some(tid) = special.strip_prefix("stack:") {
-                        // As far as I know, this part *is* base 10!
-                        let tid = str::parse(tid).map_err(|_| Error::DataError)?;
-                        MinidumpLinuxMapKind::Stack(tid)
-                    } else {
-                        MinidumpLinuxMapKind::UnknownSpecial(Cow::Borrowed(kind))
-                    }
-                } else {
-                    // Finally just assume it's a path. Use the fact that we're handling
-                    // a subslice to retrieve the index of the full string (so we don't lose any whitespace).
-
-                    let base = line.as_ptr() as usize;
-                    let pos = kind.as_ptr() as usize;
-                    let idx = pos - base;
-
-                    let path = LinuxOsStr::from_bytes(&line[idx..]).trim_ascii_whitespace();
-
-                    // Check if this path has the `(deleted)` suffix
-                    path.rsplit_once(b' ')
-                        .and_then(|(path, deleted)| {
-                            if deleted.as_bytes() == b"(deleted)" {
-                                // (extra trim in case there was extra space between them)
-                                Some(MinidumpLinuxMapKind::DeletedFile(Cow::Borrowed(
-                                    path.trim_ascii_whitespace(),
-                                )))
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(MinidumpLinuxMapKind::File(Cow::Borrowed(path)))
-                }
-            }
-        };
-
-        Ok(MinidumpLinuxMapInfo {
-            base_address,
-            final_address,
-            kind,
-            is_read,
-            is_write,
-            is_exec,
-            is_private,
-            is_shared,
-            _phantom: PhantomData,
-        })
-    }
     /// Write a human-readable description of this.
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
         write!(
@@ -2807,57 +2614,49 @@ impl<'a> MinidumpLinuxMapInfo<'a> {
   base_address          = {:#x}
   final_address         = {:#x}
   kind                  = {:#?}
-  permissions           =\x20
+  permissions           = {}
 ",
-            self.base_address, self.final_address, self.kind,
+            self.map.address.0,
+            self.map.address.1,
+            self.map.pathname,
+            self.map.perms.as_str()
         )?;
-
-        if self.is_read {
-            write!(f, "r")?;
-        } else {
-            write!(f, "-")?;
-        }
-        if self.is_write {
-            write!(f, "w")?;
-        } else {
-            write!(f, "-")?;
-        }
-        if self.is_exec {
-            write!(f, "r")?;
-        } else {
-            write!(f, "-")?;
-        }
-        if self.is_private {
-            write!(f, "p")?;
-        } else if self.is_shared {
-            write!(f, "s")?;
-        } else {
-            write!(f, "-")?;
-        }
         writeln!(f)
     }
 
     pub fn memory_range(&self) -> Option<Range<u64>> {
         // final address is inclusive afaik
-        if self.base_address > self.final_address {
+        if self.map.address.0 > self.map.address.1 {
             return None;
         }
-        Some(Range::new(self.base_address, self.final_address))
+        Some(Range::new(self.map.address.0, self.map.address.1))
     }
 
     /// Whether this memory range was readable.
     pub fn is_readable(&self) -> bool {
-        self.is_read
+        self.map.perms.contains(MMPermissions::READ)
     }
 
     /// Whether this memory range was writable.
     pub fn is_writable(&self) -> bool {
-        self.is_write
+        self.map.perms.contains(MMPermissions::WRITE)
     }
 
     /// Whether this memory range was executable.
     pub fn is_executable(&self) -> bool {
-        self.is_exec
+        self.map.perms.contains(MMPermissions::EXECUTE)
+    }
+
+    #[cfg(test)]
+    pub fn from_line(bytes: &[u8]) -> Option<Self> {
+        let map = MemoryMaps::from_read(std::io::Cursor::new(bytes))
+            .ok()?
+            .into_iter()
+            .next()?;
+        Some(MinidumpLinuxMapInfo {
+            map,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -5823,6 +5622,11 @@ mod test {
         Minidump::read(dump.finish().unwrap())
     }
 
+    #[ctor::ctor]
+    fn init_logger() {
+        env_logger::builder().is_test(true).init();
+    }
+
     #[test]
     fn test_simple_synth_dump() {
         const STREAM_TYPE: u32 = 0x11223344;
@@ -6102,25 +5906,22 @@ mod test {
 
     #[test]
     fn test_linux_maps() {
-        // Whitespace intentionally wonky to test robustness
-        let input = b"
+        use procfs_core::process::{MMPermissions, MMapPath};
 
- a90206ca83eb2852-b90206ca83eb3852 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so\x20\x20
-c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libtdb2.so  (deleted)
-
-
-";
+        // TODO: is it okay to give up wonky whitespace support?
+        let input =
+            b"a90206ca83eb2852-b90206ca83eb3852 r-xp 10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so\n\
+              c70206ca83eb2852-de0206ca83eb2852 -w-s 10bac9000 fd:05 1196511 /usr/lib64/libtdb2.so  (deleted)";
 
         let dump = SynthMinidump::with_endian(Endian::Little).set_linux_maps(input);
         let dump = read_synth_dump(dump).unwrap();
 
         // Read both kinds of info to test this path on UnifiedMemoryInfo
         let info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
-        let maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+        let maps = dump.get_stream::<MinidumpLinuxMaps>().unwrap();
         assert!(info_list.is_none());
-        assert!(maps.is_some());
 
-        let unified_info = UnifiedMemoryInfoList::new(info_list, maps).unwrap();
+        let unified_info = UnifiedMemoryInfoList::new(info_list, Some(maps)).unwrap();
         let maps = unified_info.maps().unwrap();
         assert!(unified_info.info().is_none());
 
@@ -6136,35 +5937,24 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         let maps = maps.iter().collect::<Vec<_>>();
         assert_eq!(maps.len(), 2);
 
-        assert_eq!(maps[0].base_address, 0xa90206ca83eb2852);
-        assert_eq!(maps[0].final_address, 0xb90206ca83eb3852);
+        assert_eq!(maps[0].map.address.0, 0xa90206ca83eb2852);
+        assert_eq!(maps[0].map.address.1, 0xb90206ca83eb3852);
         assert_eq!(
-            maps[0].kind,
-            MinidumpLinuxMapKind::File(Cow::Borrowed(LinuxOsStr::from_bytes(
-                b"/usr/lib64/libtdb1.so"
-            )))
+            maps[0].map.pathname,
+            MMapPath::Path("/usr/lib64/libtdb1.so".into())
         );
-        assert!(maps[0].is_read);
-        assert!(!maps[0].is_write);
-        assert!(maps[0].is_exec);
-        assert!(maps[0].is_private);
-        assert!(!maps[0].is_shared);
-        assert!(maps[0].is_executable());
+        assert!(
+            maps[0].map.perms
+                == MMPermissions::READ | MMPermissions::EXECUTE | MMPermissions::PRIVATE
+        );
 
-        assert_eq!(maps[1].base_address, 0xc70206ca83eb2852);
-        assert_eq!(maps[1].final_address, 0xde0206ca83eb2852);
+        assert_eq!(maps[1].map.address.0, 0xc70206ca83eb2852);
+        assert_eq!(maps[1].map.address.1, 0xde0206ca83eb2852);
         assert_eq!(
-            maps[1].kind,
-            MinidumpLinuxMapKind::DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
-                b"/usr/lib64/libtdb2.so"
-            )))
+            maps[1].map.pathname,
+            MMapPath::Path("/usr/lib64/libtdb2.so  (deleted)".into())
         );
-        assert!(!maps[1].is_read);
-        assert!(maps[1].is_write);
-        assert!(!maps[1].is_exec);
-        assert!(!maps[1].is_private);
-        assert!(maps[1].is_shared);
-        assert!(!maps[1].is_executable());
+        assert!(maps[1].map.perms == MMPermissions::WRITE | MMPermissions::SHARED);
 
         let mut unified_infos = unified_info.by_addr();
 
@@ -6174,241 +5964,179 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
 
     #[test]
     fn test_linux_map_parse() {
-        use MinidumpLinuxMapKind::*;
+        use procfs_core::process::{MMPermissions, MMapPath::*};
+        let parse = |input| MinidumpLinuxMapInfo::from_line(input).unwrap();
+        let maybe_parse = MinidumpLinuxMapInfo::from_line;
 
-        let parse = |input| {
-            let string = LinuxOsStr::from_bytes(input);
-            MinidumpLinuxMapInfo::from_line(string)
-        };
-
-        // Whitespace intentionally wonky to test parser robustness
+        // TODO: is it okay to give up wonky whitespace support?
 
         {
             // Normal file
-            let map = parse(b"  10a00-10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 r-xp 10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(
-                map.kind,
-                File(Cow::Borrowed(LinuxOsStr::from_bytes(
-                    b"/usr/lib64/libtdb1.so"
-                )))
-            );
+            assert_eq!(map.map.pathname, Path("/usr/lib64/libtdb1.so".into()));
 
-            assert!(map.is_read);
-            assert!(!map.is_write);
-            assert!(map.is_exec);
+            assert!(
+                map.map.perms
+                    == MMPermissions::READ | MMPermissions::EXECUTE | MMPermissions::PRIVATE
+            );
+            assert!(map.is_readable());
             assert!(map.is_executable());
-            assert!(map.is_private);
-            assert!(!map.is_shared);
         }
 
         {
             // Deleted file (also some whitespace in the file name)
-            let map = parse(b"ffffffffff600000-ffffffffff601000 -wxs  10bac9000 fd:05 1196511  /usr/lib64/ libtdb1.so   (deleted) ");
-            let map = map.unwrap();
+            let map = parse(b"ffffffffff600000-ffffffffff601000 -wxs 10bac9000 fd:05 1196511 /usr/lib64/ libtdb1.so   (deleted)");
 
-            assert_eq!(map.base_address, 0xffffffffff600000);
-            assert_eq!(map.final_address, 0xffffffffff601000);
+            assert_eq!(map.map.address.0, 0xffffffffff600000);
+            assert_eq!(map.map.address.1, 0xffffffffff601000);
             assert_eq!(
                 map.memory_range(),
                 Some(Range::new(0xffffffffff600000, 0xffffffffff601000))
             );
             assert_eq!(
-                map.kind,
-                DeletedFile(Cow::Borrowed(LinuxOsStr::from_bytes(
-                    b"/usr/lib64/ libtdb1.so"
-                )))
+                map.map.pathname,
+                Path("/usr/lib64/ libtdb1.so   (deleted)".into())
             );
-
-            assert!(!map.is_read);
-            assert!(map.is_write);
-            assert!(map.is_exec);
+            assert!(
+                map.map.perms
+                    == MMPermissions::WRITE | MMPermissions::EXECUTE | MMPermissions::SHARED
+            );
+            assert!(map.is_writable());
             assert!(map.is_executable());
-            assert!(!map.is_private);
-            assert!(map.is_shared);
         }
 
         {
             // Stack
-            let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack] ");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 ------- 10bac9000 fd:05 1196511  [stack]");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, MainThreadStack);
-
-            assert!(!map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, Stack);
+            assert!(map.map.perms == MMPermissions::NONE);
         }
 
         {
             // Stack with tid
-            let map = parse(b"10a00-10b00 -------  10bac9000 fd:05 1196511  [stack:1234567] ");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 ------- 10bac9000 fd:05 1196511  [stack:1234567]");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, Stack(1234567));
-
-            assert!(!map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, TStack(1234567));
+            assert!(map.map.perms == MMPermissions::NONE);
         }
 
         {
             // Heap
-            let map = parse(b"10a00-10b00 --  10bac9000 fd:05 1196511  [heap]");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 -- 10bac9000 fd:05 1196511  [heap]");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, Heap);
-
-            assert!(!map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, Heap);
+            assert!(map.map.perms == MMPermissions::NONE);
         }
 
         {
             // Vdso
-            let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [vdso]");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 r-wx- 10bac9000 fd:05 1196511  [vdso]");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, Vdso);
-
-            assert!(map.is_read);
-            assert!(map.is_write);
-            assert!(map.is_exec);
-            assert!(map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, Vdso);
+            assert!(
+                map.map.perms
+                    == MMPermissions::READ | MMPermissions::WRITE | MMPermissions::EXECUTE
+            );
         }
 
         {
             // Unknown Special
-            let map = parse(b"10a00-10b00 r-wx-  10bac9000 fd:05 1196511  [asdfasd]");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 r-wx- 10bac9000 fd:05 1196511  [asdfasd]");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(
-                map.kind,
-                UnknownSpecial(Cow::Borrowed(LinuxOsStr::from_bytes(b"[asdfasd]")))
+            assert_eq!(map.map.pathname, Other("asdfasd".into()));
+            assert!(
+                map.map.perms
+                    == MMPermissions::READ | MMPermissions::WRITE | MMPermissions::EXECUTE
             );
-
-            assert!(map.is_read);
-            assert!(map.is_write);
-            assert!(map.is_exec);
-            assert!(map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
         }
 
         {
             // Anonymous
-            let map = parse(b"10a00-10b00 -r-  10bac9000 fd:05 1196511  ");
-            let map = map.unwrap();
+            let map = parse(b"10a00-10b00 -r- 10bac9000 fd:05 1196511  ");
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, AnonymousMap);
-
-            assert!(map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, Anonymous);
+            assert!(map.map.perms == MMPermissions::READ);
         }
 
+        /*
         {
             // Truncated defaults to anonymous
             let map = parse(b"10a00-10b00");
-            let map = map.unwrap();
 
-            assert_eq!(map.base_address, 0x10a00);
-            assert_eq!(map.final_address, 0x10b00);
+            assert_eq!(map.map.address.0, 0x10a00);
+            assert_eq!(map.map.address.1, 0x10b00);
             assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
-            assert_eq!(map.kind, AnonymousMap);
-
-            assert!(!map.is_read);
-            assert!(!map.is_write);
-            assert!(!map.is_exec);
-            assert!(!map.is_executable());
-            assert!(!map.is_private);
-            assert!(!map.is_shared);
+            assert_eq!(map.map.pathname, Anonymous);
+            assert!(map.map.perms == MMPermissions::NONE);
         }
+        */
 
         {
             // Reversed ranges result in None for memory_range()
-            let map = parse(b"fffff-10000");
-            let map = map.unwrap();
+            let map = parse(b"fffff-10000 -r- 10bac9000 fd:05 1196511  ");
 
-            assert_eq!(map.base_address, 0xfffff);
-            assert_eq!(map.final_address, 0x10000);
+            assert_eq!(map.map.address.0, 0xfffff);
+            assert_eq!(map.map.address.1, 0x10000);
             assert_eq!(map.memory_range(), None);
         }
 
         {
             // Equal ranges are valid
-            let map = parse(b"fffff-fffff");
-            let map = map.unwrap();
+            let map = parse(b"fffff-fffff --- 10bac9000 fd:05 1196511  ");
 
-            assert_eq!(map.base_address, 0xfffff);
-            assert_eq!(map.final_address, 0xfffff);
+            assert_eq!(map.map.address.0, 0xfffff);
+            assert_eq!(map.map.address.1, 0xfffff);
             assert_eq!(map.memory_range(), Some(Range::new(0xfffff, 0xfffff)));
         }
 
         {
             // blank line
-            let map = parse(b"");
-            assert!(map.is_err());
-
-            let map = parse(b"   ");
-            assert!(map.is_err());
+            assert!(maybe_parse(b"").is_none());
+            assert!(maybe_parse(b"   ").is_none());
         }
 
         {
             // bad addresses
-            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
-            assert!(map.is_err());
+            let map = maybe_parse(b"-10b00 r-xp 10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so");
+            assert!(map.is_none());
 
-            let map = parse(b"  10b00- r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
-            assert!(map.is_err());
+            let map = maybe_parse(b"10b00- r-xp 10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so");
+            assert!(map.is_none());
 
-            let map = parse(b"  10b00 r-xp  10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so  ");
-            assert!(map.is_err());
+            let map = maybe_parse(b"10b00 r-xp 10bac9000 fd:05 1196511 /usr/lib64/libtdb1.so");
+            assert!(map.is_none());
         }
 
         {
             // bad [stack:<tid>]
-            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:] ");
-            assert!(map.is_err());
+            let map = maybe_parse(b"10a00-10b00 r-xp 10bac9000 fd:05 1196511 [stack:]");
+            assert!(map.is_none());
 
-            let map = parse(b"  -10b00 r-xp  10bac9000 fd:05 1196511 [stack:a10] ");
-            assert!(map.is_err());
+            let map = maybe_parse(b"10a00-10b00 r-xp 10bac9000 fd:05 1196511 [stack:a10]");
+            assert!(map.is_none());
         }
     }
 

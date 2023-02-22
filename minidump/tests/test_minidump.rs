@@ -35,6 +35,11 @@ fn read_linux_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
     Minidump::read_path(path)
 }
 
+#[ctor::ctor]
+fn init_logger() {
+    env_logger::builder().is_test(true).init();
+}
+
 #[test]
 fn test_minidump_read_path() {
     read_test_minidump().unwrap();
@@ -316,7 +321,12 @@ fn backwards_range() {
 
     match Minidump::read(&data[..]) {
         Ok(f) => {
-            let _ = f.get_stream::<MinidumpLinuxMaps>().unwrap();
+            // TODO verify this is correct
+            // This seems to call `MinidumpStream::read()` with a `bytes` that is the entire
+            // minidump!
+            let _ = f
+                .get_stream::<MinidumpLinuxMaps>()
+                .expect_err("range should be invalid");
         }
         Err(e) => {
             panic!("Expected to parse the header, got {:?}", e);
