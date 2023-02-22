@@ -1,15 +1,111 @@
-use minidump_writer::minidump_writer::MinidumpWriter;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use tempfile::tempdir;
 
-fn start_child() -> Child {
+/// Child failure types.
+///
+/// These must correspond to tests defined in `client.rs` (per the `Display` implementation).
+#[derive(Debug, Clone, Copy)]
+enum FailureType {
+    RaiseAbort,
+}
+
+impl FailureType {
+    pub fn test_name(&self) -> &str {
+        match self {
+            FailureType::RaiseAbort => "raise_abort",
+        }
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for FailureType {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.test_name().as_ref()
+    }
+}
+
+impl std::fmt::Display for FailureType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.test_name())
+    }
+}
+
+fn start_child(failure: FailureType) -> Child {
     Command::new("cargo")
-        .arg("test")
-        .arg("client::basic_entry")
+        .args([
+            "test",
+            "--package",
+            env!("CARGO_PKG_NAME"),
+            "--test",
+            "client",
+            "--",
+            "--include-ignored",
+        ])
+        .arg(failure)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .expect("failed to execute child")
+}
+
+fn write_minidump(minidump_file: &Path, failure: FailureType) {
+    use minidumper::{LoopAction, MinidumpBinary, Server, ServerHandler};
+    use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+
+    struct Handler {
+        minidump_file: PathBuf,
+    }
+
+    impl ServerHandler for Handler {
+        fn create_minidump_file(&self) -> std::io::Result<(File, PathBuf)> {
+            let f = File::create(&self.minidump_file)?;
+            let p = self.minidump_file.clone();
+            Ok((f, p))
+        }
+
+        fn on_minidump_created(
+            &self,
+            result: Result<MinidumpBinary, minidumper::Error>,
+        ) -> LoopAction {
+            result.expect("failed to write minidump");
+            LoopAction::Exit
+        }
+
+        fn on_message(&self, _kind: u32, _buffer: Vec<u8>) {}
+    }
+
+    let mut server =
+        Server::with_name(&failure.to_string()).expect("failed to create minidumper server");
+    let mut child = start_child(failure);
+
+    /// Maximum time we want to wait for the child to execute and crash.
+    const CHILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+    // Run the server.
+    let shutdown = AtomicBool::default();
+    std::thread::scope(|s| {
+        let handle = s.spawn(|| {
+            std::thread::park_timeout(CHILD_TIMEOUT);
+            shutdown.store(true, Relaxed);
+        });
+        server
+            .run(
+                Box::new(Handler {
+                    minidump_file: minidump_file.into(),
+                }),
+                &shutdown,
+                None,
+            )
+            .expect("minidumper server failure");
+        handle.thread().unpark();
+    });
+    drop(child.kill());
+    if !minidump_file.exists() {
+        // Likely a timeout occurred
+        panic!("expected child process to crash within 2 seconds");
+    }
 }
 
 #[test]
@@ -19,16 +115,7 @@ fn analyze_basic_minidump() {
     let extra_file = dir.path().join("mini.extra");
 
     // Create minidump from test.
-    {
-        let mut child = start_child();
-        let pid = child.id() as i32;
-
-        let mut writer = MinidumpWriter::new(pid, pid);
-        writer
-            .dump(&mut File::create(&minidump_file).expect("failed to create minidump file"))
-            .expect("failed to write minidump");
-        child.kill().expect("child already terminated?");
-    }
+    write_minidump(&minidump_file, FailureType::RaiseAbort);
 
     // Create empty extra file
     {
