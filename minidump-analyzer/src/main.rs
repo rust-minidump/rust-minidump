@@ -174,15 +174,7 @@ mod processor {
                     json::object! {
                         "ip": frame.instruction,
                         "module_index": frame.module.as_ref().and_then(|m| self.module_index(m)),
-                        "trust": match frame.trust {
-                            FrameTrust::Context => "context",
-                            FrameTrust::PreWalked => "prewalked",
-                            FrameTrust::CallFrameInfo => "cfi",
-                            FrameTrust::FramePointer => "frame_pointer",
-                            FrameTrust::CfiScan => "cfi_scan",
-                            FrameTrust::Scan => "scan",
-                            FrameTrust::None => "none"
-                        }
+                        "trust": frame.trust.json_name(),
                     }
                 }).collect::<Vec<_>>()
             }
