@@ -13,9 +13,9 @@ use std::{boxed::Box, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;
 use minidump_processor::{
-    http_symbol_supplier, simple_symbol_supplier, MultiSymbolProvider,
-    PendingProcessorStatSubscriptions, PendingProcessorStats, ProcessorOptions, SymbolProvider,
-    Symbolizer,
+    debuginfo::DebugInfoSymbolProvider, http_symbol_supplier, simple_symbol_supplier,
+    MultiSymbolProvider, PendingProcessorStatSubscriptions, PendingProcessorStats,
+    ProcessorOptions, SymbolProvider, Symbolizer,
 };
 
 use clap::{
@@ -194,6 +194,10 @@ struct Cli {
     /// This is an experimental feature, which currently only shows up in --human output.
     #[arg(long)]
     recover_function_args: bool,
+
+    /// Use debug information from local files referred to by the minidump, if present.
+    #[arg(long)]
+    use_local_debuginfo: bool,
 
     /// base URL from which URLs to symbol files can be constructed
     ///
@@ -418,6 +422,10 @@ async fn main_result() -> std::io::Result<()> {
             }
 
             let mut provider = MultiSymbolProvider::new();
+
+            if cli.use_local_debuginfo {
+                provider.add(Box::new(DebugInfoSymbolProvider::default()));
+            }
 
             if !cli.symbols_url.is_empty() {
                 provider.add(Box::new(Symbolizer::new(http_symbol_supplier(

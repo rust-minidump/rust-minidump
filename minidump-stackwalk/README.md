@@ -324,6 +324,10 @@ minidump itself.
 
 This is an experimental feature, which currently only shows up in --human output.
 
+#### `--use-local-debuginfo`
+
+Use debug information from local files referred to by the minidump, if present.
+
 #### `--symbols-url <SYMBOLS_URL>`
 
 base URL from which URLs to symbol files can be constructed
