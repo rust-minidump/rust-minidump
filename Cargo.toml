@@ -2,7 +2,6 @@
 members = [
         "breakpad-symbols",
         "minidump",
-        "minidump-analyzer",
         "minidump-common",
         "minidump-processor",
         "minidump-stackwalk",
