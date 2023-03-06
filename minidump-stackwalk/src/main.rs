@@ -424,7 +424,7 @@ async fn main_result() -> std::io::Result<()> {
             let mut provider = MultiSymbolProvider::new();
 
             if cli.use_local_debuginfo {
-                provider.add(Box::new(DebugInfoSymbolProvider::default()));
+                provider.add(Box::<DebugInfoSymbolProvider>::default());
             }
 
             if !cli.symbols_url.is_empty() {
