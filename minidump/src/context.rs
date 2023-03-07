@@ -1302,6 +1302,25 @@ impl MinidumpContext {
         })
     }
 
+    /// Get the size (in bytes) of general-purpose registers.
+    pub fn register_size(&self) -> usize {
+        fn get<T: CpuContext>(_: &T) -> usize {
+            std::mem::size_of::<T::Register>()
+        }
+
+        match &self.raw {
+            MinidumpRawContext::X86(ctx) => get(ctx),
+            MinidumpRawContext::Ppc(ctx) => get(ctx),
+            MinidumpRawContext::Ppc64(ctx) => get(ctx),
+            MinidumpRawContext::Amd64(ctx) => get(ctx),
+            MinidumpRawContext::Sparc(ctx) => get(ctx),
+            MinidumpRawContext::Arm(ctx) => get(ctx),
+            MinidumpRawContext::Arm64(ctx) => get(ctx),
+            MinidumpRawContext::OldArm64(ctx) => get(ctx),
+            MinidumpRawContext::Mips(ctx) => get(ctx),
+        }
+    }
+
     /// Write a human-readable description of this `MinidumpContext` to `f`.
     ///
     /// This is very verbose, it is the format used by `minidump_dump`.

@@ -60,7 +60,7 @@ async fn test_processor() {
     // TODO:
     // assert_eq!(state.system_info.cpu_info.unwrap(),
     // "GenuineIntel family 6 model 13 stepping 8");
-    assert_eq!(state.exception_info.unwrap().address, 0x45);
+    assert_eq!(state.exception_info.unwrap().address.0, 0x45);
     assert_eq!(state.threads.len(), 2);
     assert_eq!(state.requesting_thread.unwrap(), 0);
 
@@ -295,13 +295,15 @@ async fn test_bit_flip() {
 
     let state = read_synth_dump(dump).await;
 
-    assert_eq!(
-        state
-            .exception_info
-            .expect("missing exception info")
-            .possible_bit_flips,
-        vec![0x80000]
-    );
+    let bit_flips = state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips;
+
+    assert_eq!(bit_flips.len(), 1);
+    let bf = bit_flips.into_iter().next().unwrap();
+    assert_eq!(bf.address.0, 0x80000);
+    assert_eq!(bf.details, Default::default());
 }
 
 #[tokio::test]
