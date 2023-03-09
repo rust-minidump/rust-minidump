@@ -375,16 +375,21 @@ pub struct BitFlipDetails {
     pub was_non_canonical: bool,
     /// The corrected address is null.
     pub is_null: bool,
-    /// There are poison patterns in one or more registers.
+    /// The original address was fairly low.
     ///
-    /// This is currently only set if is_null is set (as that's the only case we use in calculating
-    /// confidence).
-    pub poison_registers: bool,
+    /// This is only populated if `is_null` is true, and may indicate that a bit flip didn't occur
+    /// (and the original value was merely a small value which is more likely to be produced by
+    /// booleans, iteration, etc).
+    pub was_low: bool,
     /// The number of registers near the corrected address.
     ///
     /// This will only be populated for sufficiently high addresses (to avoid high false positive
     /// rates).
     pub nearby_registers: u32,
+    /// There are poison patterns in one or more registers.
+    ///
+    /// This may indicate that a bit flip _didn't_ occur, and instead there was a UAF.
+    pub poison_registers: bool,
 }
 
 mod confidence {
@@ -412,9 +417,11 @@ mod confidence {
 
     pub const NON_CANONICAL: f32 = HIGH;
     pub const NULL: f32 = MEDIUM;
-    pub const NULL_POISON: f32 = LOW;
-    pub const NEARBY_REGISTER: f32 = MEDIUM;
-    pub const NEARBY_REGISTER_SCALE: f32 = 0.05;
+    pub const NEARBY_REGISTER: [f32; 4] = [MEDIUM, MEDIUM + 0.05, MEDIUM + 0.1, MEDIUM + 0.15];
+
+    // Detractors
+    pub const POISON: f32 = MEDIUM;
+    pub const ORIGINAL_LOW: f32 = MEDIUM;
 }
 
 impl BitFlipDetails {
@@ -429,19 +436,24 @@ impl BitFlipDetails {
         }
 
         if self.is_null {
-            if self.poison_registers {
-                values.push(NULL_POISON);
-            } else {
-                values.push(NULL);
+            let mut val = NULL;
+            if self.was_low {
+                val *= ORIGINAL_LOW;
             }
+            values.push(val);
         }
 
         if self.nearby_registers > 0 {
-            let nearby = std::cmp::min(self.nearby_registers, 4);
-            values.push(NEARBY_REGISTER + NEARBY_REGISTER_SCALE * nearby as f32);
+            let nearby = std::cmp::min(self.nearby_registers as usize, NEARBY_REGISTER.len()) - 1;
+            values.push(NEARBY_REGISTER[nearby]);
         }
 
-        combine(&values)
+        let mut ret = combine(&values);
+
+        if self.poison_registers {
+            ret *= POISON;
+        }
+        ret
     }
 }
 
@@ -449,6 +461,8 @@ impl BitFlipDetails {
 pub struct PossibleBitFlip {
     /// The un-bit-flipped (potentially correct) address.
     pub address: Address,
+    /// The register which held the bit-flipped address, if from a register at all.
+    pub source_register: Option<&'static str>,
     /// Heuristics related to the determination of the bit flip.
     pub details: BitFlipDetails,
     /// A confidence level for the bit flip, derived from the details.
@@ -459,10 +473,14 @@ pub struct PossibleBitFlip {
 /// heuristics with regard to register contents.
 const NEARBY_REGISTER_DISTANCE: u64 = 1 << 12;
 
+/// The cutoff for addresses considered "low".
+const LOW_ADDRESS_CUTOFF: u64 = NEARBY_REGISTER_DISTANCE * 2;
+
 impl PossibleBitFlip {
-    pub fn new(address: u64) -> Self {
+    pub fn new(address: u64, source_register: Option<&'static str>) -> Self {
         PossibleBitFlip {
             address: address.into(),
+            source_register,
             details: Default::default(),
             confidence: None,
         }
@@ -470,10 +488,12 @@ impl PossibleBitFlip {
 
     pub fn calculate_heuristics(
         &mut self,
+        original_address: u64,
         was_non_canonical: bool,
         context: Option<&MinidumpContext>,
     ) {
         self.details.is_null = self.address.0 == 0;
+        self.details.was_low = self.details.is_null && original_address <= LOW_ADDRESS_CUTOFF;
         self.details.was_non_canonical = was_non_canonical;
 
         self.details.nearby_registers = 0;
@@ -493,7 +513,7 @@ impl PossibleBitFlip {
 
             // Don't calculate nearby registers for low addresses, there will be a high false
             // positive rate.
-            let should_calculate_nearby_registers = self.address.0 > NEARBY_REGISTER_DISTANCE * 2;
+            let should_calculate_nearby_registers = self.address.0 > LOW_ADDRESS_CUTOFF;
 
             for (_, addr) in context.valid_registers() {
                 if should_calculate_nearby_registers
@@ -502,12 +522,13 @@ impl PossibleBitFlip {
                     self.details.nearby_registers += 1;
                 }
 
-                if self.details.is_null && !self.details.poison_registers && is_repeated(addr) {
+                if !self.details.poison_registers && is_repeated(addr) {
                     // Poison patterns from
                     // https://searchfox.org/mozilla-central/rev/3002762e41363de8ee9ca80196d55e79651bcb6b/js/src/util/Poison.h#52
                     //
-                    // 0xA5 from xmalloc
-                    // 0xe5 from #808
+                    // 0xa5 from xmalloc/jemalloc
+                    // 0xe5 from mozilla jemalloc
+                    // (https://searchfox.org/mozilla-central/source/memory/build/mozjemalloc.cpp#1412)
                     match (addr & 0xff) as u8 {
                         0x2b | 0x2d | 0x2f | 0x49 | 0x4b | 0x4d | 0x4f | 0x6b | 0x8b | 0x9b
                         | 0x9f | 0xa5 | 0xbb | 0xcc | 0xcd | 0xce | 0xdb | 0xe5 => {
@@ -962,8 +983,12 @@ impl ProcessState {
                 for (idx, (confidence, b)) in bit_flips_with_confidence.iter().enumerate() {
                     writeln!(
                         f,
-                        "  {idx}. Valid address: {addr} ({confidence:.3})",
-                        addr = b.address
+                        "  {idx}. Valid address: {register}{addr} ({confidence:.3})",
+                        addr = b.address,
+                        register = match b.source_register {
+                            None => Default::default(),
+                            Some(name) => format!("{name}="),
+                        }
                     )?;
                 }
             }

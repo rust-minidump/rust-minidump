@@ -155,8 +155,12 @@ anyway.
            "was_non_canonical": <bool>,
            /// Whether the bit-flipped address is null.
            "is_null": <bool>,
-           /// Whether any poison registers values were found in registers.
-           /// This is only set when `is_null` is true.
+           /// Whether the original address was fairly low.
+           /// This is only set if `is_null` is true, and may indicate that a
+           /// bit flip didn't occur (low values could be the result of many
+           /// things).
+           "was_low": <bool>,
+           /// Whether any poison register values were found.
            "poison_registers": <bool>,
            /// How many registers containing values near the bit-flip-corrected address.
            /// This is only set for corrected addresses which are sufficiently

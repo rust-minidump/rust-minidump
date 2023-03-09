@@ -571,6 +571,7 @@ where
 
     let mut exception_info: Option<crate::ExceptionInfo> = None;
     let mut exception_context: Option<std::borrow::Cow<MinidumpContext>> = None;
+    let mut instruction_registers: BTreeSet<&'static str> = Default::default();
 
     if let Some(exception) = exception_ref {
         let reason = exception.get_crash_reason(system_info.os, system_info.cpu);
@@ -584,34 +585,40 @@ where
 
         // If we have a context, we can attempt to analyze the crashing thread's instructions
         if let Some(context) = &exception_context {
-            exception_info =
-                crate::op_analysis::analyze_thread_context(context, &memory_list, stack_memory_ref)
-                    .map(|op_analysis| {
-                        let memory_accesses = op_analysis.memory_accesses.as_deref();
+            match crate::op_analysis::analyze_thread_context(
+                context,
+                &memory_list,
+                stack_memory_ref,
+            ) {
+                Ok(op_analysis) => {
+                    let memory_accesses = op_analysis.memory_accesses.as_deref();
 
-                        let adjusted_address = try_detect_null_pointer_in_disguise(memory_accesses)
-                            .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
-                            .or_else(|| {
-                                try_get_non_canonical_crash_address(
-                                    &system_info,
-                                    memory_accesses,
-                                    reason,
-                                    address,
-                                )
-                                .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
-                            });
+                    let adjusted_address = try_detect_null_pointer_in_disguise(memory_accesses)
+                        .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
+                        .or_else(|| {
+                            try_get_non_canonical_crash_address(
+                                &system_info,
+                                memory_accesses,
+                                reason,
+                                address,
+                            )
+                            .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
+                        });
 
-                        crate::ExceptionInfo {
-                            reason,
-                            address: address.into(),
-                            adjusted_address,
-                            instruction_str: Some(op_analysis.instruction_str),
-                            memory_accesses: op_analysis.memory_accesses,
-                            possible_bit_flips: Default::default(),
-                        }
-                    })
-                    .map_err(|e| tracing::warn!("failed to analyze the thread context: {}", e))
-                    .ok();
+                    exception_info = Some(crate::ExceptionInfo {
+                        reason,
+                        address: address.into(),
+                        adjusted_address,
+                        instruction_str: Some(op_analysis.instruction_str),
+                        memory_accesses: op_analysis.memory_accesses,
+                        possible_bit_flips: Default::default(),
+                    });
+                    instruction_registers = op_analysis.registers;
+                }
+                Err(e) => {
+                    tracing::warn!("failed to analyze the thread context: {e}");
+                }
+            }
         }
 
         if exception_info.is_none() {
@@ -649,13 +656,33 @@ where
                 )),
             };
             if let Some((address, bit_range)) = bit_flip_address {
+                let memory_op = bitflip::MemoryOperation::from_crash_reason(&info.reason);
                 info.possible_bit_flips = bitflip::try_bit_flips(
                     address,
+                    None,
                     bit_range,
                     exception_context.as_deref(),
                     &memory_info,
-                    bitflip::MemoryOperation::from_crash_reason(&info.reason),
+                    memory_op,
                 );
+                if let Some(context) = exception_context.as_deref() {
+                    for reg in instruction_registers {
+                        if let Some(address) = context.get_register(reg) {
+                            info.possible_bit_flips.extend(bitflip::try_bit_flips(
+                                address,
+                                Some(reg),
+                                bit_range,
+                                exception_context.as_deref(),
+                                &memory_info,
+                                // We assume that a register that is causing a crash due to a flipped
+                                // bit has the same memory operation as the crash (i.e. we assume that
+                                // the base address, possibly combined with some offset, is still in
+                                // the same memory region).
+                                memory_op,
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
@@ -957,7 +984,7 @@ mod bitflip {
     use crate::PossibleBitFlip;
 
     /// The memory operation occurring when a crash occurred.
-    #[derive(Default, PartialEq, Eq)]
+    #[derive(Default, PartialEq, Eq, Clone, Copy)]
     pub enum MemoryOperation {
         #[default]
         Unknown,
@@ -1015,6 +1042,7 @@ mod bitflip {
     /// Otherwise, specify one of the operations that was occurring.
     pub fn try_bit_flips(
         address: u64,
+        source_register: Option<&'static str>,
         bit_range: BitRange,
         exception_context: Option<&MinidumpContext>,
         memory_info: &UnifiedMemoryInfoList,
@@ -1028,9 +1056,13 @@ mod bitflip {
             }
         }
 
-        let create_possible_address = |address: u64| {
-            let mut ret = PossibleBitFlip::new(address);
-            ret.calculate_heuristics(bit_range == BitRange::Amd64NonCanonical, exception_context);
+        let create_possible_address = |new_address: u64| {
+            let mut ret = PossibleBitFlip::new(new_address, source_register);
+            ret.calculate_heuristics(
+                address,
+                bit_range == BitRange::Amd64NonCanonical,
+                exception_context,
+            );
             ret
         };
 
