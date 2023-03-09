@@ -41,6 +41,8 @@ Options:
           **UNSTABLE** An input JSON file with the extra information
       --recover-function-args
           **UNSTABLE** Heuristically recover function arguments
+      --use-local-debuginfo
+          Use debug information from local files referred to by the minidump, if present
       --symbols-url <SYMBOLS_URL>
           base URL from which URLs to symbol files can be constructed
       --symbols-cache <SYMBOLS_CACHE>
