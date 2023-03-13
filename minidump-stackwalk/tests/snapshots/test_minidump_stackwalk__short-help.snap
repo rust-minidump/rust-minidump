@@ -53,7 +53,7 @@ Options:
       --symbols-path <SYMBOLS_PATH>
           Path to a symbol file
   -h, --help
-          Print help information (use `--help` for more detail)
+          Print help (see more with '--help')
   -V, --version
-          Print version information
+          Print version
 
