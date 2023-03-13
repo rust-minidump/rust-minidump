@@ -169,9 +169,9 @@ Path to a symbol file.
 If multiple symbols-path values are provided, all symbol files will be merged into minidump-stackwalk's symbol database.
 
 #### `-h, --help`
-Print help information (use `-h` for a summary)
+Print help (see a summary with '-h')
 
 #### `-V, --version`
-Print version information
+Print version
 
 
