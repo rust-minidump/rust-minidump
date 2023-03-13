@@ -482,7 +482,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "simplelog",
- "symbolic 10.2.1",
+ "symbolic",
  "tokio",
  "url",
  "uuid",
@@ -1180,7 +1180,7 @@ dependencies = [
  "scroll",
  "serde",
  "serde_json",
- "symbolic 11.1.0",
+ "symbolic",
  "test-assembler",
  "thiserror",
  "tokio",
@@ -1915,21 +1915,10 @@ version = "12.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cffc999e171c8a5fb707727e20837a4687c6806f4dc35a8c76048eb735e41b11"
 dependencies = [
- "symbolic-cfi 10.2.1",
- "symbolic-common 10.2.1",
- "symbolic-debuginfo 10.2.1",
+ "symbolic-cfi",
+ "symbolic-common",
+ "symbolic-debuginfo",
  "symbolic-demangle",
-]
-
-[[package]]
-name = "symbolic"
-version = "11.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "220047ad8c7b304542d390969a5b4be62b9a8c95a55bee8f905b0bd8ea5664db"
-dependencies = [
- "symbolic-cfi 11.1.0",
- "symbolic-common 11.1.0",
- "symbolic-debuginfo 11.1.0",
 ]
 
 [[package]]
@@ -1938,19 +1927,8 @@ version = "12.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9b1d074933ef15473fd995224209224414388e2d135ac34f3024e74573f9cf7"
 dependencies = [
- "symbolic-common 10.2.1",
- "symbolic-debuginfo 10.2.1",
- "thiserror",
-]
-
-[[package]]
-name = "symbolic-cfi"
-version = "11.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e74b42efeee1eed577833ed1a1b4f4d5dd72e597ef60286ea0535c56ec090eff"
-dependencies = [
- "symbolic-common 11.1.0",
- "symbolic-debuginfo 11.1.0",
+ "symbolic-common",
+ "symbolic-debuginfo",
  "thiserror",
 ]
 
@@ -1959,18 +1937,6 @@ name = "symbolic-common"
 version = "12.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26212dc7aeb75abb4cc84320a50dd482977089402f7b4043b454d6d79d8536e7"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid",
-]
-
-[[package]]
-name = "symbolic-common"
-version = "11.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46939659856f0595dbbdbe0c8271d11c6788c780c859bf9afd834a723dd78fa3"
 dependencies = [
  "debugid",
  "memmap2",
@@ -2004,40 +1970,8 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 10.2.1",
- "symbolic-ppdb 10.2.1",
- "thiserror",
- "wasmparser",
- "zip",
-]
-
-[[package]]
-name = "symbolic-debuginfo"
-version = "11.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a442c100d3884c3834be145adc3583de3c755f89d89887dc1f1bbc9bb67c464c"
-dependencies = [
- "bitvec",
- "dmsort",
- "elementtree",
- "elsa",
- "fallible-iterator",
- "flate2",
- "gimli",
- "goblin",
- "lazy_static",
- "lazycell",
- "nom",
- "nom-supreme",
- "parking_lot 0.12.1",
- "pdb-addr2line",
- "regex",
- "scroll",
- "serde",
- "serde_json",
- "smallvec",
- "symbolic-common 11.1.0",
- "symbolic-ppdb 11.1.0",
+ "symbolic-common",
+ "symbolic-ppdb",
  "thiserror",
  "wasmparser",
  "zip",
@@ -2053,7 +1987,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common 10.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
