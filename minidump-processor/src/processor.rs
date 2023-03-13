@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use minidump::system_info::PointerWidth;
 use minidump::{self, *};
 
 use crate::op_analysis::MemoryAccess;
@@ -619,29 +620,34 @@ where
     });
 
     // Check for bit-flips of the exception address
-    if let Some(info) = &mut exception_info {
-        let bit_flip_address = match &info.adjusted_address {
-            // Use the non canonical address if present.
-            Some(AdjustedAddress::NonCanonical(v)) => Some((*v, BitRange::Amd64NonCanonical)),
-            // If we think the address is a null pointer with an offset, don't try bit flips.
-            Some(AdjustedAddress::NullPointerWithOffset(_)) => None,
-            // Try the crashing address if no adjustments have been made.
-            None => Some((
-                info.address,
-                if system_info.cpu != system_info::Cpu::X86_64 {
-                    BitRange::All
-                } else {
-                    BitRange::Amd64Canononical
-                },
-            )),
-        };
-        if let Some((address, bit_range)) = bit_flip_address {
-            info.possible_bit_flips = try_bit_flips(
-                address,
-                bit_range,
-                &memory_info,
-                MemoryOperation::from_crash_reason(&info.reason),
-            );
+    //
+    // Only check for bit-flips on 64-bit systems, as the large memory space makes false-positives
+    // less likely.
+    if system_info.cpu.pointer_width() == PointerWidth::Bits64 {
+        if let Some(info) = &mut exception_info {
+            let bit_flip_address = match &info.adjusted_address {
+                // Use the non canonical address if present.
+                Some(AdjustedAddress::NonCanonical(v)) => Some((*v, BitRange::Amd64NonCanonical)),
+                // If we think the address is a null pointer with an offset, don't try bit flips.
+                Some(AdjustedAddress::NullPointerWithOffset(_)) => None,
+                // Try the crashing address if no adjustments have been made.
+                None => Some((
+                    info.address,
+                    if system_info.cpu != system_info::Cpu::X86_64 {
+                        BitRange::All
+                    } else {
+                        BitRange::Amd64Canononical
+                    },
+                )),
+            };
+            if let Some((address, bit_range)) = bit_flip_address {
+                info.possible_bit_flips = try_bit_flips(
+                    address,
+                    bit_range,
+                    &memory_info,
+                    MemoryOperation::from_crash_reason(&info.reason),
+                );
+            }
         }
     }
 
