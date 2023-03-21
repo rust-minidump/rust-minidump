@@ -354,7 +354,7 @@ pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSu
 pub mod debuginfo {
     use super::*;
     use breakpad_symbols::SymbolFile;
-    use cachemap::CacheMap;
+    use cachemap2::CacheMap;
     use futures_util::lock::Mutex;
     use memmap2::Mmap;
     use std::collections::HashMap;

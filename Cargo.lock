@@ -177,9 +177,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cachemap"
-version = "0.1.0"
-source = "git+https://github.com/afranchuk/cachemap#443e3672fc15244a17406123be12a2e0214ebe39"
+name = "cachemap2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7bba2f68a9fefca870fed897de7c655f9d5c1eaf1cd9517db96c9a3861f648b"
 
 [[package]]
 name = "cc"
@@ -1169,7 +1170,7 @@ version = "0.15.2"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
- "cachemap",
+ "cachemap2",
  "debugid",
  "doc-comment",
  "futures-util",
