@@ -17,6 +17,7 @@
 #![deny(missing_docs)]
 
 use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
+use std::collections::BTreeSet;
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +54,8 @@ pub struct OpAnalysis {
     /// that access could not be determined, `Some(Vec<len==0>)` means it was successfully
     /// determined that the instruction doesn't access memory.
     pub memory_accesses: Option<Vec<MemoryAccess>>,
+    /// A list of all registers which were used by this instruction.
+    pub registers: BTreeSet<&'static str>,
 }
 
 /// Details about a memory access performed by an instruction
@@ -154,10 +157,28 @@ mod amd64 {
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
+        let registers = get_registers(decoded_instruction);
+
         Ok(OpAnalysis {
             instruction_str,
             memory_accesses,
+            registers,
         })
+    }
+
+    fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
+        let mut ret = BTreeSet::new();
+        for op in 0..i.operand_count() {
+            if let Some(reginfo) = RegOperandInfo::try_from_operand(i.operand(op)) {
+                if let Some(reg) = reginfo.base_reg {
+                    ret.insert(reg.name());
+                }
+                if let Some(reg) = reginfo.index_reg {
+                    ret.insert(reg.name());
+                }
+            }
+        }
+        ret
     }
 
     struct GetMemoryAccess<'a> {
@@ -217,6 +238,17 @@ mod amd64 {
                 _ => return None,
             }
             Some(info)
+        }
+    }
+
+    trait ContextExt {
+        fn get_regspec(&self, regspec: RegSpec) -> Result<u64, OpAnalysisError>;
+    }
+
+    impl ContextExt for MinidumpContext {
+        fn get_regspec(&self, regspec: RegSpec) -> Result<u64, OpAnalysisError> {
+            self.get_register(regspec.name())
+                .ok_or(OpAnalysisError::RegisterInvalid)
         }
     }
 
@@ -317,7 +349,9 @@ mod amd64 {
                     // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
                     // JMPF) will be valid, so we don't check immediate operands, only registers.
                     match decoded_instruction.operand(0) {
-                        Operand::Register(reg) => push_indirect_access(self.get_reg(reg)?),
+                        Operand::Register(reg) => {
+                            push_indirect_access(self.context.get_regspec(reg)?)
+                        }
                         other_operand => {
                             // If the operand was some sort of register dereference, try to get the
                             // _actual_ address from the memory list.
@@ -339,7 +373,7 @@ mod amd64 {
                 Opcode::RETURN | Opcode::RETF | Opcode::IRET | Opcode::IRETD | Opcode::IRETQ => {
                     // Use the return address (from the stack)
                     if let (Ok(rsp), Some(stack)) =
-                        (self.get_reg(RegSpec::rsp()), &self.stack_memory)
+                        (self.context.get_regspec(RegSpec::rsp()), &self.stack_memory)
                     {
                         if let Some(address) = stack.get_memory_at_address::<u64>(rsp) {
                             push_indirect_access(address);
@@ -364,7 +398,7 @@ mod amd64 {
             };
 
             if let Some(reg) = register_operand_info.base_reg {
-                let base = self.get_reg(reg)?;
+                let base = self.context.get_regspec(reg)?;
                 access.address = base;
                 // If the base contains zero, this is very likely a dereference of a null pointer
                 // plus an offset
@@ -374,7 +408,7 @@ mod amd64 {
             }
 
             if let Some(reg) = register_operand_info.index_reg {
-                let index = self.get_reg(reg)?;
+                let index = self.context.get_regspec(reg)?;
                 let scale = register_operand_info.scale.unwrap_or(1);
                 let scaled_index = index.wrapping_mul(scale.into());
                 access.address = access.address.wrapping_add(scaled_index);
@@ -384,12 +418,6 @@ mod amd64 {
             access.address = access.address.wrapping_add(disp);
 
             Ok(access)
-        }
-
-        fn get_reg(&self, reg: RegSpec) -> Result<u64, OpAnalysisError> {
-            self.context
-                .get_register(reg.name())
-                .ok_or(OpAnalysisError::RegisterInvalid)
         }
     }
 

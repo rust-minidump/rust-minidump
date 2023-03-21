@@ -4,6 +4,7 @@
 //! The state of a process.
 
 use std::borrow::{Borrow, Cow};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
@@ -12,7 +13,7 @@ use std::time::SystemTime;
 use crate::op_analysis::MemoryAccess;
 use crate::system_info::SystemInfo;
 use crate::{FrameSymbolizer, SymbolStats};
-use minidump::system_info::Cpu;
+use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
 use serde_json::json;
@@ -37,6 +38,64 @@ pub enum FrameTrust {
     /// Given as instruction pointer in a context.
     Context,
 }
+
+#[derive(Default)]
+struct SerializationContext {
+    pub pointer_width: Option<PointerWidth>,
+}
+
+std::thread_local! {
+    static SERIALIZATION_CONTEXT: RefCell<SerializationContext> = Default::default();
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(into = "String")]
+pub struct Address(pub u64);
+
+impl From<u64> for Address {
+    fn from(v: u64) -> Self {
+        Address(v)
+    }
+}
+
+impl From<Address> for u64 {
+    fn from(a: Address) -> Self {
+        a.0
+    }
+}
+
+impl From<Address> for String {
+    fn from(a: Address) -> Self {
+        a.to_string()
+    }
+}
+
+impl std::ops::Deref for Address {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Address {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl std::fmt::Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let pointer_width = SERIALIZATION_CONTEXT
+            .with(|ctx| ctx.borrow().pointer_width.unwrap_or(PointerWidth::Unknown));
+        match pointer_width {
+            PointerWidth::Bits32 => write!(f, "{:#010x}", self.0),
+            _ => write!(f, "{:#018x}", self.0),
+        }
+    }
+}
+
+pub type AddressOffset = Address;
 
 #[derive(Debug, Clone)]
 pub enum CallingConvention {
@@ -279,7 +338,7 @@ pub struct ExceptionInfo {
     /// caused the crash. For data access errors this will be the data address
     /// that caused the fault. For code errors, this will be the address of the
     /// instruction that caused the fault.
-    pub address: u64,
+    pub address: Address,
     /// In certain circumstances, the previous `address` member may report a sub-optimal value
     /// for debugging purposes. If instruction analysis is able to successfully determine a
     /// more helpful value, it will be reported here.
@@ -291,7 +350,7 @@ pub struct ExceptionInfo {
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
     ///
     /// The original address was possibly the result of faulty hardware, alpha particles, etc.
-    pub possible_bit_flips: Vec<u64>,
+    pub possible_bit_flips: Vec<PossibleBitFlip>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -305,9 +364,184 @@ pub struct ExceptionInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdjustedAddress {
     /// The original access was an Amd64 "non-canonical" address; actual address is provided here.
-    NonCanonical(u64),
+    NonCanonical(Address),
     /// The base pointer was null; offset from base is provided here.
-    NullPointerWithOffset(u64),
+    NullPointerWithOffset(AddressOffset),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct BitFlipDetails {
+    /// The bit flip caused a non-canonical address access.
+    pub was_non_canonical: bool,
+    /// The corrected address is null.
+    pub is_null: bool,
+    /// The original address was fairly low.
+    ///
+    /// This is only populated if `is_null` is true, and may indicate that a bit flip didn't occur
+    /// (and the original value was merely a small value which is more likely to be produced by
+    /// booleans, iteration, etc).
+    pub was_low: bool,
+    /// The number of registers near the corrected address.
+    ///
+    /// This will only be populated for sufficiently high addresses (to avoid high false positive
+    /// rates).
+    pub nearby_registers: u32,
+    /// There are poison patterns in one or more registers.
+    ///
+    /// This may indicate that a bit flip _didn't_ occur, and instead there was a UAF.
+    pub poison_registers: bool,
+}
+
+mod confidence {
+    /* The hat from which these numbers are drawn.
+           .~~~~`\~~\
+          ;       ~~ \
+          |           ;
+      ,--------,______|---.
+     /          \-----`    \
+     `.__________`-_______-'
+    */
+
+    const HIGH: f32 = 0.90;
+    const MEDIUM: f32 = 0.50;
+    const LOW: f32 = 0.25;
+
+    pub fn combine(values: &[f32]) -> f32 {
+        1.0f32 - values.iter().map(|v| 1.0f32 - v).product::<f32>()
+    }
+
+    // TODO: do we want this at all, vs Option<f32> for confidence?
+    // The only problem is there may not be a good way to display this (i.e. omitting a confidence
+    // would potentially make those seem _stronger_).
+    pub const BASELINE: f32 = LOW;
+
+    pub const NON_CANONICAL: f32 = HIGH;
+    pub const NULL: f32 = MEDIUM;
+    pub const NEARBY_REGISTER: [f32; 4] = [MEDIUM, MEDIUM + 0.05, MEDIUM + 0.1, MEDIUM + 0.15];
+
+    // Detractors
+    pub const POISON: f32 = MEDIUM;
+    pub const ORIGINAL_LOW: f32 = MEDIUM;
+}
+
+impl BitFlipDetails {
+    /// Calculate a confidence level between 0 and 1 pertaining to the bit flip likelihood.
+    pub fn confidence(&self) -> f32 {
+        use confidence::*;
+        let mut values = Vec::with_capacity(4);
+        values.push(BASELINE);
+
+        if self.was_non_canonical {
+            values.push(NON_CANONICAL);
+        }
+
+        if self.is_null {
+            let mut val = NULL;
+            if self.was_low {
+                val *= ORIGINAL_LOW;
+            }
+            values.push(val);
+        }
+
+        if self.nearby_registers > 0 {
+            let nearby = std::cmp::min(self.nearby_registers as usize, NEARBY_REGISTER.len()) - 1;
+            values.push(NEARBY_REGISTER[nearby]);
+        }
+
+        let mut ret = combine(&values);
+
+        if self.poison_registers {
+            ret *= POISON;
+        }
+        ret
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct PossibleBitFlip {
+    /// The un-bit-flipped (potentially correct) address.
+    pub address: Address,
+    /// The register which held the bit-flipped address, if from a register at all.
+    pub source_register: Option<&'static str>,
+    /// Heuristics related to the determination of the bit flip.
+    pub details: BitFlipDetails,
+    /// A confidence level for the bit flip, derived from the details.
+    pub confidence: Option<f32>,
+}
+
+/// The maximum distance between addresses to consider them "nearby" when calculating bit flip
+/// heuristics with regard to register contents.
+const NEARBY_REGISTER_DISTANCE: u64 = 1 << 12;
+
+/// The cutoff for addresses considered "low".
+const LOW_ADDRESS_CUTOFF: u64 = NEARBY_REGISTER_DISTANCE * 2;
+
+impl PossibleBitFlip {
+    pub fn new(address: u64, source_register: Option<&'static str>) -> Self {
+        PossibleBitFlip {
+            address: address.into(),
+            source_register,
+            details: Default::default(),
+            confidence: None,
+        }
+    }
+
+    pub fn calculate_heuristics(
+        &mut self,
+        original_address: u64,
+        was_non_canonical: bool,
+        context: Option<&MinidumpContext>,
+    ) {
+        self.details.is_null = self.address.0 == 0;
+        self.details.was_low = self.details.is_null && original_address <= LOW_ADDRESS_CUTOFF;
+        self.details.was_non_canonical = was_non_canonical;
+
+        self.details.nearby_registers = 0;
+        self.details.poison_registers = false;
+        if let Some(context) = context {
+            let register_size = context.register_size();
+
+            let is_repeated = match register_size {
+                2 => |addr: u64| addr == (addr & 0xff) * 0x0101,
+                4 => |addr: u64| addr == (addr & 0xff) * 0x01010101,
+                8 => |addr: u64| addr == (addr & 0xff) * 0x0101010101010101,
+                other => {
+                    tracing::warn!("unsupported register size: {other}");
+                    |_| false
+                }
+            };
+
+            // Don't calculate nearby registers for low addresses, there will be a high false
+            // positive rate.
+            let should_calculate_nearby_registers = self.address.0 > LOW_ADDRESS_CUTOFF;
+
+            for (_, addr) in context.valid_registers() {
+                if should_calculate_nearby_registers
+                    && self.address.0.abs_diff(addr) <= NEARBY_REGISTER_DISTANCE
+                {
+                    self.details.nearby_registers += 1;
+                }
+
+                if !self.details.poison_registers && is_repeated(addr) {
+                    // Poison patterns from
+                    // https://searchfox.org/mozilla-central/rev/3002762e41363de8ee9ca80196d55e79651bcb6b/js/src/util/Poison.h#52
+                    //
+                    // 0xa5 from xmalloc/jemalloc
+                    // 0xe5 from mozilla jemalloc
+                    // (https://searchfox.org/mozilla-central/source/memory/build/mozjemalloc.cpp#1412)
+                    match (addr & 0xff) as u8 {
+                        0x2b | 0x2d | 0x2f | 0x49 | 0x4b | 0x4d | 0x4f | 0x6b | 0x8b | 0x9b
+                        | 0x9f | 0xa5 | 0xbb | 0xcc | 0xcd | 0xce | 0xdb | 0xe5 => {
+                            self.details.poison_registers = true;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+
+        self.confidence = Some(self.details.confidence());
+    }
 }
 
 /// The state of a process as recorded by a `Minidump`.
@@ -666,6 +900,8 @@ impl ProcessState {
     }
 
     fn print_internal<T: Write>(&self, f: &mut T, brief: bool) -> io::Result<()> {
+        self.set_print_context();
+
         writeln!(f, "Operating system: {}", self.system_info.os.long_name())?;
         if let Some(ref ver) = self.system_info.format_os_version() {
             writeln!(f, "                  {ver}")?;
@@ -697,17 +933,17 @@ impl ProcessState {
             writeln!(f, "Crash reason:  {}", crash_info.reason)?;
 
             if let Some(adjusted_address) = &crash_info.adjusted_address {
-                writeln!(f, "Crash address: {:#x} **", crash_info.address)?;
+                writeln!(f, "Crash address: {} **", crash_info.address)?;
                 match adjusted_address {
                     AdjustedAddress::NonCanonical(address) => {
-                        writeln!(f, "    ** Non-canonical address detected: {address:#x}")?
+                        writeln!(f, "    ** Non-canonical address detected: {address}")?
                     }
                     AdjustedAddress::NullPointerWithOffset(offset) => {
-                        writeln!(f, "    ** Null pointer detected with offset: {offset:#x}")?
+                        writeln!(f, "    ** Null pointer detected with offset: {offset}")?
                     }
                 }
             } else {
-                writeln!(f, "Crash address: {:#x}", crash_info.address)?;
+                writeln!(f, "Crash address: {}", crash_info.address)?;
             }
 
             if let Some(ref crashing_instruction_str) = crash_info.instruction_str {
@@ -718,7 +954,7 @@ impl ProcessState {
                 if !memory_accesses.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
                     for (idx, access) in memory_accesses.iter().enumerate() {
-                        writeln!(f, "  {}. Address: 0x{:016x}", idx, access.address)?;
+                        writeln!(f, "  {idx}. Address: {}", Address(access.address))?;
                         if let Some(size) = access.size {
                             writeln!(f, "     Size: {size}")?;
                         } else {
@@ -732,8 +968,28 @@ impl ProcessState {
 
             if !crash_info.possible_bit_flips.is_empty() {
                 writeln!(f, "Crashing address may be the result of a flipped bit:")?;
-                for (idx, addr) in crash_info.possible_bit_flips.iter().enumerate() {
-                    writeln!(f, "  {idx}. Valid address: 0x{addr:016x}")?;
+                let mut bit_flips_with_confidence = crash_info
+                    .possible_bit_flips
+                    .iter()
+                    .map(|b| (b.confidence.unwrap_or_default(), b))
+                    .collect::<Vec<_>>();
+                // Sort by confidence (descending), then address (ascending).
+                bit_flips_with_confidence.sort_unstable_by(|(conf_a, bf_a), (conf_b, bf_b)| {
+                    conf_a
+                        .total_cmp(conf_b)
+                        .reverse()
+                        .then_with(|| bf_a.address.cmp(&bf_b.address))
+                });
+                for (idx, (confidence, b)) in bit_flips_with_confidence.iter().enumerate() {
+                    writeln!(
+                        f,
+                        "  {idx}. Valid address: {register}{addr} ({confidence:.3})",
+                        addr = b.address,
+                        register = match b.source_register {
+                            None => Default::default(),
+                            Some(name) => format!("{name}="),
+                        }
+                    )?;
                 }
             }
         } else {
@@ -911,10 +1167,13 @@ Unknown streams encountered:
     pub fn print_json<T: Write>(&self, f: &mut T, pretty: bool) -> Result<(), serde_json::Error> {
         // See ../json-schema.md for details on this format.
 
+        self.set_print_context();
+
         let sys = &self.system_info;
 
-        // Curry self for use in `map`
-        let json_hex = |val: u64| -> String { self.json_hex(val) };
+        fn json_hex(address: u64) -> String {
+            Address(address).to_string()
+        }
 
         let mut output = json!({
             // Currently unused, we either produce no output or successful output.
@@ -933,16 +1192,16 @@ Unknown streams encountered:
             },
             "crash_info": {
                 "type": self.exception_info.as_ref().map(|info| info.reason).map(|reason| reason.to_string()),
-                "address": self.exception_info.as_ref().map(|info| info.address).map(json_hex),
+                "address": self.exception_info.as_ref().map(|info| info.address),
                 "adjusted_address": self.exception_info.as_ref().map(|info| {
                     info.adjusted_address.as_ref().map(|adjusted| match adjusted {
                         AdjustedAddress::NonCanonical(address) => json!({
                             "kind": "non-canonical",
-                            "address": json_hex(*address),
+                            "address": address,
                         }),
                         AdjustedAddress::NullPointerWithOffset(offset) => json!({
                             "kind": "null-pointer",
-                            "offset": json_hex(*offset),
+                            "offset": offset,
                         }),
                     })
                 }),
@@ -958,8 +1217,7 @@ Unknown streams encountered:
                     })
                 }),
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
-                    (!info.possible_bit_flips.is_empty())
-                        .then(|| info.possible_bit_flips.iter().copied().map(json_hex).collect::<Vec<_>>())
+                    (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
@@ -1139,15 +1397,9 @@ Unknown streams encountered:
         }
     }
 
-    // Convert an integer to a hex string, with leading 0's for uniform width.
-    fn json_hex(&self, val: u64) -> String {
-        match self.system_info.cpu {
-            Cpu::X86 | Cpu::Ppc | Cpu::Sparc | Cpu::Arm | Cpu::Mips => {
-                format!("0x{val:08x}")
-            }
-            _ => {
-                format!("0x{val:016x}")
-            }
-        }
+    fn set_print_context(&self) {
+        SERIALIZATION_CONTEXT.with(|ctx| {
+            ctx.borrow_mut().pointer_width = Some(self.system_info.cpu.pointer_width());
+        });
     }
 }

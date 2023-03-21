@@ -30,6 +30,7 @@ Features are grouped under three families which can be used for bulk enabling:
 Standard JSON types apply, which we will use as follows:
 
 * `<u32>` (unsigned 32-bit integer)
+* `<f32>` (IEEE 32-bit floating-point)
 * `<bool>`
 * `<string>`
 * `<array>`
@@ -146,7 +147,29 @@ anyway.
     /// A list of addresses that could have been the actual address the program
     /// wanted to access, but which were changed by a bit-flip.
     "possible_bit_flips": [
-      <hexstring>
+      {
+        "address": <hexstring>,
+        /// Flags related to the calculation of confidence in a bit-flip.
+        "details": {
+           /// Whether the original address was non-canonical.
+           "was_non_canonical": <bool>,
+           /// Whether the bit-flipped address is null.
+           "is_null": <bool>,
+           /// Whether the original address was fairly low.
+           /// This is only set if `is_null` is true, and may indicate that a
+           /// bit flip didn't occur (low values could be the result of many
+           /// things).
+           "was_low": <bool>,
+           /// Whether any poison register values were found.
+           "poison_registers": <bool>,
+           /// How many registers containing values near the bit-flip-corrected address.
+           /// This is only set for corrected addresses which are sufficiently
+           /// high to avoid false positives with (likely) low values.
+           "nearby_registers": <u32>
+        },
+        /// The calculated confidence value in the bit-flip-corrected address.
+        "confidence": <f32>
+      }
     ],
 
     // The thread id of the thread that caused the crash (or requested the minidump).

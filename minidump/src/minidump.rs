@@ -4486,7 +4486,7 @@ impl<'a> MinidumpException<'a> {
         &self,
         system_info: &MinidumpSystemInfo,
         misc: Option<&MinidumpMiscInfo>,
-    ) -> Option<Cow<MinidumpContext>> {
+    ) -> Option<Cow<'a, MinidumpContext>> {
         MinidumpContext::read(self.context?, self.endian, system_info, misc)
             .ok()
             .map(Cow::Owned)
