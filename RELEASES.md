@@ -2,6 +2,7 @@
 # Next Version
 
 * Make all `minidump-common::format` structs writable with `scroll`.
+* Don't fail reading the entire module list if one module has an invalid size.
 
 # Version 0.15.2 (2022-12-07)
 
