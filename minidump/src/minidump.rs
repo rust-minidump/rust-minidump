@@ -1509,6 +1509,7 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
                 // Bad image size.
                 tracing::warn!(
                     module_index,
+                    base = raw.base_of_image,
                     size = raw.size_of_image,
                     "bad module image size"
                 );
