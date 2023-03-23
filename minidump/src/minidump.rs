@@ -1504,11 +1504,15 @@ impl<'a> MinidumpStream<'a> for MinidumpModuleList {
         let raw_modules: Vec<md::MINIDUMP_MODULE> = read_stream_list(&mut offset, bytes, endian)?;
         // read auxiliary data for each module
         let mut modules = Vec::with_capacity(raw_modules.len());
-        for raw in raw_modules.into_iter() {
+        for (module_index, raw) in raw_modules.into_iter().enumerate() {
             if raw.size_of_image == 0 || raw.size_of_image as u64 > (u64::MAX - raw.base_of_image) {
                 // Bad image size.
-                // TODO: just drop this module, keep the rest?
-                return Err(Error::ModuleReadFailure);
+                tracing::warn!(
+                    module_index,
+                    size = raw.size_of_image,
+                    "bad module image size"
+                );
+                continue;
             }
             modules.push(MinidumpModule::read(raw, all, endian, system_info)?);
         }
