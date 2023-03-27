@@ -4,8 +4,7 @@ use libfuzzer_sys::fuzz_target;
 use minidump::system_info::{Cpu, Os};
 use minidump::{MinidumpContext, MinidumpContextValidity, MinidumpMemory, UnifiedMemory};
 use minidump::{MinidumpModule, MinidumpModuleList};
-use minidump_processor::walk_stack;
-use minidump_processor::{string_symbol_supplier, CallStack, ProcessorOptions,  Symbolizer, SystemInfo};
+use minidump_walk_stack::{string_symbol_supplier, walk_stack, CallStack, Symbolizer, SystemInfo};
 use std::collections::HashMap;
 use test_assembler::Section;
 
@@ -56,12 +55,11 @@ impl TestFixture {
         };
 
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
-        let options = ProcessorOptions::default();
         let mut stack = CallStack::with_context(context);
 
         walk_stack(
             0,
-            &options,
+            (),
             &mut stack,
             Some(UnifiedMemory::Memory(&stack_memory)),
             &self.modules,
@@ -79,5 +77,5 @@ fuzz_target!(|data: (&[u8], minidump::MinidumpRawContext)| {
     let mut stack = Section::new();
     stack.start().set_const(0x80000000);
     stack = stack.append_bytes(data.0);
-    minidump_processor_fuzz::fuzzing_block_on(f.walk_stack(stack));
+    minidump_walk_stack_fuzz::fuzzing_block_on(f.walk_stack(stack));
 });

@@ -565,6 +565,7 @@ dependencies = [
  "memmap2",
  "minidump",
  "minidump-common",
+ "minidump-walk-stack",
  "scroll",
  "serde",
  "serde_json",
@@ -583,8 +584,21 @@ dependencies = [
  "minidump",
  "minidump-common",
  "minidump-processor",
+ "minidump-walk-stack",
  "pin-utils",
  "test-assembler",
+]
+
+[[package]]
+name = "minidump-walk-stack"
+version = "0.15.2"
+dependencies = [
+ "async-trait",
+ "breakpad-symbols",
+ "minidump",
+ "minidump-common",
+ "scroll",
+ "tracing",
 ]
 
 [[package]]

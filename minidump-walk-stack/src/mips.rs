@@ -1,17 +1,13 @@
-use std::collections::HashSet;
-use std::convert::TryFrom;
-
+use super::impl_prelude::*;
 use minidump::format::ContextFlagsCpu;
 use minidump::{
     CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpModuleList,
     MinidumpRawContext, UnifiedMemory,
 };
 use scroll::ctx::{SizeWith, TryFromCtx};
+use std::collections::HashSet;
+use std::convert::TryFrom;
 use tracing::trace;
-
-use crate::stackwalker::unwind::Unwind;
-use crate::stackwalker::CfiStackWalker;
-use crate::{FrameTrust, StackFrame, SymbolProvider, SystemInfo};
 
 type MipsContext = minidump::format::CONTEXT_MIPS;
 type Pointer = <MipsContext as CpuContext>::Register;

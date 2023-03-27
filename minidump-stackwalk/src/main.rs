@@ -13,9 +13,11 @@ use std::{boxed::Box, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;
 use minidump_processor::{
+    PendingProcessorStatSubscriptions, PendingProcessorStats, ProcessorOptions,
+};
+use minidump_walk_stack::{
     debuginfo::DebugInfoSymbolProvider, http_symbol_supplier, simple_symbol_supplier,
-    MultiSymbolProvider, PendingProcessorStatSubscriptions, PendingProcessorStats,
-    ProcessorOptions, SymbolProvider, Symbolizer,
+    MultiSymbolProvider, SymbolProvider, Symbolizer,
 };
 
 use clap::{

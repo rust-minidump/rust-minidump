@@ -4,10 +4,7 @@
 // NOTE: arm64_old.rs and arm64.rs should be identical except for the names of
 // their context types.
 
-use crate::process_state::{FrameTrust, StackFrame};
-use crate::stackwalker::unwind::Unwind;
-use crate::stackwalker::CfiStackWalker;
-use crate::{SymbolProvider, SystemInfo};
+use super::impl_prelude::*;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext,
     Module, UnifiedMemory,
@@ -15,7 +12,7 @@ use minidump::{
 use std::collections::HashSet;
 use tracing::trace;
 
-type ArmContext = minidump::format::CONTEXT_ARM64_OLD;
+type ArmContext = minidump::format::CONTEXT_ARM64;
 type Pointer = <ArmContext as CpuContext>::Register;
 type Registers = minidump::format::Arm64RegisterNumbers;
 
@@ -58,7 +55,7 @@ where
         // Default to forwarding all callee-saved regs verbatim.
         // The CFI evaluator may clear or overwrite these values.
         // The stack pointer and instruction pointer are not included.
-        caller_ctx: *ctx,
+        caller_ctx: ctx.clone(),
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
@@ -111,7 +108,7 @@ where
     // Let's not do that to keep our code more uniform.
 
     let context = MinidumpContext {
-        raw: MinidumpRawContext::OldArm64(stack_walker.caller_ctx),
+        raw: MinidumpRawContext::Arm64(stack_walker.caller_ctx),
         valid: new_valid,
     };
     Some(StackFrame::from_context(context, FrameTrust::CallFrameInfo))
@@ -251,7 +248,7 @@ where
     valid.insert(STACK_POINTER);
 
     let context = MinidumpContext {
-        raw: MinidumpRawContext::OldArm64(caller_ctx),
+        raw: MinidumpRawContext::Arm64(caller_ctx),
         valid: MinidumpContextValidity::Some(valid),
     };
     Some(StackFrame::from_context(context, FrameTrust::FramePointer))
@@ -372,7 +369,7 @@ where
             valid.insert(STACK_POINTER);
 
             let context = MinidumpContext {
-                raw: MinidumpRawContext::OldArm64(caller_ctx),
+                raw: MinidumpRawContext::Arm64(caller_ctx),
                 valid: MinidumpContextValidity::Some(valid),
             };
             return Some(StackFrame::from_context(context, FrameTrust::Scan));

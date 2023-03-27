@@ -6,6 +6,7 @@ members = [
         "minidump-processor",
         "minidump-stackwalk",
         "minidump-synth",
+        "minidump-walk-stack",
 ]
 exclude = [
     "testdata/*",

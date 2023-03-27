@@ -9,14 +9,13 @@ use std::time::{Duration, SystemTime};
 
 use minidump::system_info::PointerWidth;
 use minidump::{self, *};
+use minidump_walk_stack::{
+    walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
+};
 
 use crate::op_analysis::MemoryAccess;
-use crate::process_state::{CallStack, CallStackInfo, LinuxStandardBase, ProcessState};
-use crate::stackwalker;
-use crate::symbols::*;
-use crate::system_info::SystemInfo;
-use crate::{arg_recovery, FrameTrust, StackFrame};
-use crate::{evil, AdjustedAddress};
+use crate::process_state::{LinuxStandardBase, ProcessState};
+use crate::{arg_recovery, evil, AdjustedAddress};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -901,9 +900,12 @@ impl<'a> MinidumpInfo<'a> {
                             }
                         }
 
-                        stackwalker::walk_stack(
-                            i,
-                            options,
+                        walk_stack(
+                            |frame_idx: usize, frame: &StackFrame| {
+                                if let Some(reporter) = options.stat_reporter {
+                                    reporter.add_walked_frame(i, frame_idx, frame);
+                                }
+                            },
                             stack,
                             stack_memory,
                             modules,
