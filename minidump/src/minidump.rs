@@ -2,8 +2,6 @@
 // file at the top-level directory of this distribution.
 
 use debugid::{CodeId, DebugId};
-use encoding::all::{UTF_16BE, UTF_16LE};
-use encoding::{DecoderTrap, Encoding};
 use memmap2::Mmap;
 use num_traits::FromPrimitive;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -678,15 +676,15 @@ fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -
     if size % 2 != 0 || (*offset + size) > bytes.len() {
         return None;
     }
-    let encoding: &dyn Encoding = match endian {
-        scroll::Endian::Little => UTF_16LE,
-        scroll::Endian::Big => UTF_16BE,
+    let encoding = match endian {
+        scroll::Endian::Little => encoding_rs::UTF_16LE,
+        scroll::Endian::Big => encoding_rs::UTF_16BE,
     };
+
     let s = encoding
-        .decode(&bytes[*offset..*offset + size], DecoderTrap::Strict)
-        .ok()?;
+        .decode_without_bom_handling_and_without_replacement(&bytes[*offset..*offset + size])?;
     *offset += size;
-    Some(s)
+    Some(s.into())
 }
 
 #[inline]
@@ -4636,7 +4634,9 @@ fn utf16_to_string(data: &[u16]) -> Option<String> {
     let len = data.iter().take_while(|c| **c != 0).count();
     let s16 = &data[..len];
     let bytes = unsafe { slice::from_raw_parts(s16.as_ptr() as *const u8, s16.len() * 2) };
-    UTF_16LE.decode(bytes, DecoderTrap::Strict).ok()
+    encoding_rs::UTF_16LE
+        .decode_without_bom_handling_and_without_replacement(bytes)
+        .map(String::from)
 }
 
 impl MinidumpAssertion {

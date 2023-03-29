@@ -16,8 +16,6 @@
 // Some test_assembler types do not have Debug, so be a bit more lenient here.
 #![allow(missing_debug_implementations)]
 
-use encoding::all::UTF_16LE;
-use encoding::{EncoderTrap, Encoding};
 use minidump_common::format as md;
 use scroll::ctx::SizeWith;
 use scroll::LE;
@@ -861,7 +859,22 @@ pub struct DumpString {
 impl DumpString {
     /// Create a new `DumpString` with `s` as its contents, using `endian` endianness.
     pub fn new(s: &str, endian: Endian) -> DumpString {
-        let u16_s = UTF_16LE.encode(s, EncoderTrap::Strict).unwrap();
+        let u16_s = s
+            .encode_utf16()
+            .fold(Vec::with_capacity(s.len() * 2), |mut v, s| {
+                match endian {
+                    Endian::Little => {
+                        v.push((s & 0xff) as u8);
+                        v.push((s >> 8) as u8);
+                    }
+                    Endian::Big => {
+                        v.push((s >> 8) as u8);
+                        v.push((s & 0xff) as u8);
+                    }
+                }
+                v
+            });
+
         let section = Section::with_endian(endian)
             .D32(u16_s.len() as u32)
             .append_bytes(&u16_s);
