@@ -605,7 +605,8 @@ impl FrameTrust {
         }
     }
 
-    fn json_name(&self) -> &'static str {
+    /// Returns the frame trust name as a string.
+    pub fn as_str(&self) -> &'static str {
         match *self {
             FrameTrust::Context => "context",
             FrameTrust::PreWalked => "prewalked",
@@ -1342,7 +1343,7 @@ Unknown streams encountered:
                         .map(json_hex),
                     "missing_symbols": frame.function_name.is_none(),
                     // none | scan | cfi_scan | frame_pointer | cfi | context | prewalked
-                    "trust": frame.trust.json_name(),
+                    "trust": frame.trust.as_str()
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
 
