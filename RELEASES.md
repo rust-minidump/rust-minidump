@@ -1,6 +1,8 @@
 <!-- next-header -->
 # Next Version
 
+# Version 0.16.0 (2023-04-05)
+
 * Make all `minidump-common::format` structs writable with `scroll`.
 * Don't fail reading the entire module list if one module has an invalid size.
 * All crates now explicitly include the MIT license
