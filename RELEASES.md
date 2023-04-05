@@ -3,6 +3,39 @@
 
 * Make all `minidump-common::format` structs writable with `scroll`.
 * Don't fail reading the entire module list if one module has an invalid size.
+* All crates now explicitly include the MIT license
+* The stack walker will now fetch the CPU microcode value from the evil JSON
+  payload when it's not present in the minidump
+* Crashes with jmp/call/ret instruction to non-canonical addresses now show the
+  real address we jumped to instead of 0x0000000000000000 or 0xffffffffffffffff
+* Updated several dependencies further decreasing the total number of crates
+  it depends upon.
+
+## NULL-pointer crash detection
+
+The `minidump-processor` crate will use the disassembly of the current
+instruction to check whether the crash involved a NULL-pointer access. Crashes
+caused by accessing NULL pointers often exhibit near-NULL address making it less
+clear what the underlying problem was. When using `minidump-stackwalk` the JSON
+output will contain an `adjusted_address` field holding the reason for the
+adjustment (`null-pointer`) as well as the offest from NULL.
+
+## Potential bit-flip detection
+
+The `minidump-processor` crate contains new logic that detects crashes that have
+been potentially caused by a bit-flip in the user's machine memory. This
+detection is driven by a heuristic as it is impossible to completely tell apart
+software crashes from ones induced by flaky hardware. The tests we conducted on
+real crash data showed this heuristic to be very effective in telling apart such
+crashes. When using `minidump-stackwalk` this information will be added to the
+JSON output under the `possible_bit_flips` field.
+
+## Stack walking using native debug information
+
+The stack walker now supports using native debug information available on the
+host in addition to Breakpad .sym files. This functionality is enabled by
+passing the `--use-local-debuginfo` flag to `minidump-stackwalk` when processing
+a crash.
 
 # Version 0.15.2 (2022-12-07)
 
