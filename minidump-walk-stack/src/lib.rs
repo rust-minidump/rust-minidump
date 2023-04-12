@@ -718,7 +718,7 @@ async fn fill_source_line_info<P>(
 pub enum OnWalkedFrame<'a> {
     None,
     #[allow(clippy::type_complexity)]
-    Some(Box<dyn FnMut(usize, &StackFrame) + 'a>),
+    Some(Box<dyn FnMut(usize, &StackFrame) + Send + 'a>),
 }
 
 impl From<()> for OnWalkedFrame<'_> {
@@ -727,7 +727,7 @@ impl From<()> for OnWalkedFrame<'_> {
     }
 }
 
-impl<'a, F: FnMut(usize, &StackFrame) + 'a> From<F> for OnWalkedFrame<'a> {
+impl<'a, F: FnMut(usize, &StackFrame) + Send + 'a> From<F> for OnWalkedFrame<'a> {
     fn from(f: F) -> Self {
         Self::Some(Box::new(f))
     }
