@@ -13,7 +13,7 @@ libfuzzer-sys = "0.4"
 async-trait = "0.1.52"
 minidump = { path = "../../minidump", features = ["arbitrary_impls"] }
 minidump-common = { path = "../../minidump-common", features = ["arbitrary"] }
-minidump-walk-stack = { path = "../../minidump-walk-stack" }
+minidump-unwind = { path = "../../minidump-unwind" }
 pin-utils = "0.1.0"
 test-assembler = "0.1.6"
 

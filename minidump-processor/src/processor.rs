@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 
 use minidump::system_info::PointerWidth;
 use minidump::{self, *};
-use minidump_walk_stack::{
+use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };
 

@@ -20,7 +20,7 @@ If you do need to use minidump-processor as a library, we still recommend using 
 ```rust
 use minidump::Minidump;
 use minidump_processor::ProcessorOptions;
-use minidump_walk_stack::{http_symbol_supplier, Symbolizer};
+use minidump_unwind::{http_symbol_supplier, Symbolizer};
 use serde_json::Value;
 
 #[tokio::main]

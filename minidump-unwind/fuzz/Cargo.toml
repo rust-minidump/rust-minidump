@@ -1,5 +1,5 @@
 [package]
-name = "minidump-walk-stack-fuzz"
+name = "minidump-unwind-fuzz"
 version = "0.15.2"
 authors = ["Automatically generated"]
 publish = false
@@ -15,7 +15,7 @@ minidump-common = { path = "../../minidump-common", features = ["arbitrary"] }
 pin-utils = "0.1.0"
 test-assembler = "0.1.6"
 
-[dependencies.minidump-walk-stack]
+[dependencies.minidump-unwind]
 path = ".."
 
 # Prevent this from interfering with workspaces
@@ -23,7 +23,7 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "walk_stack"
-path = "fuzz_targets/walk_stack.rs"
+name = "unwind"
+path = "fuzz_targets/unwind.rs"
 test = false
 doc = false

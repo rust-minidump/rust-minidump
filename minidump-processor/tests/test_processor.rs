@@ -6,7 +6,7 @@ use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
 use minidump_processor::{LinuxStandardBase, ProcessState};
-use minidump_walk_stack::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
+use minidump_unwind::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
 use minidump_synth::*;

@@ -1,5 +1,5 @@
 [package]
-name = "minidump-walk-stack"
+name = "minidump-unwind"
 description = "A library for producing stack traces from minidump files."
 version = "0.16.0"
 authors = ["Alex Franchuk <afranchuk@mozilla.com>"]

@@ -205,7 +205,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "minidump-walk-stack"
+name = "minidump-unwind"
 version = "0.16.0"
 dependencies = [
  "async-trait",
@@ -217,13 +217,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "minidump-walk-stack-fuzz"
+name = "minidump-unwind-fuzz"
 version = "0.15.2"
 dependencies = [
  "libfuzzer-sys",
  "minidump",
  "minidump-common",
- "minidump-walk-stack",
+ "minidump-unwind",
  "pin-utils",
  "test-assembler",
 ]

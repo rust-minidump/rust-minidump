@@ -101,7 +101,7 @@ jobs:
           PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           command: fuzz
-          args: build --fuzz-dir minidump-walk-stack/fuzz
+          args: build --fuzz-dir minidump-unwind/fuzz
 
   test:
     runs-on: ${{ matrix.os }}

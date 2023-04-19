@@ -302,7 +302,7 @@ dependencies = [
  "memmap2",
  "minidump",
  "minidump-common",
- "minidump-walk-stack",
+ "minidump-unwind",
  "scroll",
  "serde",
  "serde_json",
@@ -320,13 +320,13 @@ dependencies = [
  "minidump",
  "minidump-common",
  "minidump-processor",
- "minidump-walk-stack",
+ "minidump-unwind",
  "pin-utils",
  "test-assembler",
 ]
 
 [[package]]
-name = "minidump-walk-stack"
+name = "minidump-unwind"
 version = "0.16.0"
 dependencies = [
  "async-trait",

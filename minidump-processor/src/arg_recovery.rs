@@ -1,5 +1,5 @@
 use minidump::{CpuContext, MinidumpRawContext, UnifiedMemory};
-use minidump_walk_stack::{CallStack, CallingConvention, FunctionArg, FunctionArgs};
+use minidump_unwind::{CallStack, CallingConvention, FunctionArg, FunctionArgs};
 
 // # Recovering x86 function arguments
 //

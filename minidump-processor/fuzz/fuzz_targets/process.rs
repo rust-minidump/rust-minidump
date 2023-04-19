@@ -1,14 +1,14 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
-use minidump_walk_stack::{FileError, FileKind, SymbolError, SymbolFile, Symbolizer};
+use minidump_unwind::{FileError, FileKind, SymbolError, SymbolFile, Symbolizer};
 
 struct StaticSymbolSupplier {
     file: Vec<u8>,
 }
 
 #[async_trait::async_trait]
-impl minidump_walk_stack::SymbolSupplier for StaticSymbolSupplier {
+impl minidump_unwind::SymbolSupplier for StaticSymbolSupplier {
     async fn locate_symbols(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),

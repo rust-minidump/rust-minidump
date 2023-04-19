@@ -14,7 +14,7 @@ use crate::op_analysis::MemoryAccess;
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
-use minidump_walk_stack::{CallStack, CallStackInfo, SymbolStats, SystemInfo};
+use minidump_unwind::{CallStack, CallStackInfo, SymbolStats, SystemInfo};
 use serde_json::json;
 
 #[derive(Default)]

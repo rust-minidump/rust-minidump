@@ -1119,7 +1119,7 @@ dependencies = [
  "minidump",
  "minidump-common",
  "minidump-synth",
- "minidump-walk-stack",
+ "minidump-unwind",
  "scroll",
  "serde",
  "serde_json",
@@ -1141,7 +1141,7 @@ dependencies = [
  "minidump-common",
  "minidump-processor",
  "minidump-synth",
- "minidump-walk-stack",
+ "minidump-unwind",
  "test-assembler",
  "tokio",
  "tracing",
@@ -1158,7 +1158,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "minidump-walk-stack"
+name = "minidump-unwind"
 version = "0.16.0"
 dependencies = [
  "async-trait",

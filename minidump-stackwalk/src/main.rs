@@ -15,7 +15,7 @@ use minidump::*;
 use minidump_processor::{
     PendingProcessorStatSubscriptions, PendingProcessorStats, ProcessorOptions,
 };
-use minidump_walk_stack::{
+use minidump_unwind::{
     debuginfo::DebugInfoSymbolProvider, http_symbol_supplier, simple_symbol_supplier,
     MultiSymbolProvider, SymbolProvider, Symbolizer,
 };
