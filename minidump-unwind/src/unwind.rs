@@ -1,8 +1,7 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use crate::process_state::StackFrame;
-use crate::{SymbolProvider, SystemInfo};
+use super::{StackFrame, SymbolProvider, SystemInfo};
 use minidump::{MinidumpModuleList, UnifiedMemory};
 
 /// A trait for things that can unwind to a caller.

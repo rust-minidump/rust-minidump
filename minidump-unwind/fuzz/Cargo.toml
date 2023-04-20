@@ -1,6 +1,6 @@
 [package]
-name = "minidump-processor-fuzz"
-version = "0.14.0"
+name = "minidump-unwind-fuzz"
+version = "0.15.2"
 authors = ["Automatically generated"]
 publish = false
 edition = "2018"
@@ -10,14 +10,12 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-async-trait = "0.1.52"
 minidump = { path = "../../minidump", features = ["arbitrary_impls"] }
 minidump-common = { path = "../../minidump-common", features = ["arbitrary"] }
-minidump-unwind = { path = "../../minidump-unwind" }
 pin-utils = "0.1.0"
 test-assembler = "0.1.6"
 
-[dependencies.minidump-processor]
+[dependencies.minidump-unwind]
 path = ".."
 
 # Prevent this from interfering with workspaces
@@ -25,7 +23,7 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "process"
-path = "fuzz_targets/process.rs"
+name = "unwind"
+path = "fuzz_targets/unwind.rs"
 test = false
 doc = false

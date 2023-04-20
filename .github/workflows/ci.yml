@@ -96,6 +96,12 @@ jobs:
         with:
           command: fuzz
           args: build --fuzz-dir minidump-processor/fuzz
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: fuzz
+          args: build --fuzz-dir minidump-unwind/fuzz
 
   test:
     runs-on: ${{ matrix.os }}

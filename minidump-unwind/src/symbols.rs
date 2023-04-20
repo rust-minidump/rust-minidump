@@ -20,7 +20,7 @@
 //! While minidump-processor provides implementations of these traits:
 //!
 //! * [FrameSymbolizer][] - callbacks that symbolication uses to return its results.
-//!     * Implemented by [StackFrame][crate::process_state::StackFrame]
+//!     * Implemented by [StackFrame][crate::StackFrame]
 //!     * Implemented by DummyFrame (private, for a stack scanning heuristic)
 //! * [FrameWalker][] - callbacks that cfi eval uses to read callee state and write caller state.
 //!     * Implemented by CfiStackWalker (private)
@@ -50,44 +50,43 @@
 //!     * While this *is* handled by minidump-processor, it doesn't actually look at the value. It's
 //!       just there to be An Error Type for the sake of API design.
 //!
-//!
-//!
-//! # Example
-//!
-//! ```rust
-//! use minidump::Minidump;
-//! use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), ()> {
-//!     // Read the minidump
-//!     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
-//!
-//!     // Configure the symbolizer and processor
-//!     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
-//!     let symbols_paths = vec![];
-//!     let mut symbols_cache = std::env::temp_dir();
-//!     symbols_cache.push("minidump-cache");
-//!     let symbols_tmp = std::env::temp_dir();
-//!     let timeout = std::time::Duration::from_secs(1000);
-//!
-//!     let options = ProcessorOptions::default();
-//!     let provider = Symbolizer::new(http_symbol_supplier(
-//!         symbols_paths,
-//!         symbols_urls,
-//!         symbols_cache,
-//!         symbols_tmp,
-//!         timeout,
-//!     ));
-//!
-//!     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
-//!         .await
-//!         .map_err(|_| ())?;
-//!     state.print(&mut std::io::stdout()).map_err(|_| ())?;
-//!     Ok(())
-//! }
-//! ```
-//!
+// TODO relocate?
+// # Example
+//
+// ```rust
+// use minidump::Minidump;
+// use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
+//
+// #[tokio::main]
+// async fn main() -> Result<(), ()> {
+//     // Read the minidump
+//     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
+//
+//     // Configure the symbolizer and processor
+//     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
+//     let symbols_paths = vec![];
+//     let mut symbols_cache = std::env::temp_dir();
+//     symbols_cache.push("minidump-cache");
+//     let symbols_tmp = std::env::temp_dir();
+//     let timeout = std::time::Duration::from_secs(1000);
+//
+//     let options = ProcessorOptions::default();
+//     let provider = Symbolizer::new(http_symbol_supplier(
+//         symbols_paths,
+//         symbols_urls,
+//         symbols_cache,
+//         symbols_tmp,
+//         timeout,
+//     ));
+//
+//     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
+//         .await
+//         .map_err(|_| ())?;
+//     state.print(&mut std::io::stdout()).map_err(|_| ())?;
+//     Ok(())
+// }
+// ```
+//
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -351,6 +350,7 @@ pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSu
     breakpad_symbols::StringSymbolSupplier::new(modules)
 }
 
+#[cfg(feature = "debuginfo")]
 pub mod debuginfo {
     use super::*;
     use breakpad_symbols::SymbolFile;

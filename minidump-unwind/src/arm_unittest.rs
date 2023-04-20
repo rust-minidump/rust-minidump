@@ -1,12 +1,9 @@
 // Copyright 2015 Ted Mielczarek. See the COPYRIGHT
 // file at the top-level directory of this distribution.
 
-use crate::stackwalker::walk_stack;
-use crate::{process_state::*, ProcessorOptions};
-use crate::{string_symbol_supplier, Symbolizer, SystemInfo};
+use crate::*;
 use minidump::format::CONTEXT_ARM;
 use minidump::system_info::{Cpu, Os};
-use minidump::*;
 use std::collections::HashMap;
 use test_assembler::*;
 
@@ -56,12 +53,10 @@ impl TestFixture {
             endian: scroll::LE,
         };
         let symbolizer = Symbolizer::new(string_symbol_supplier(self.symbols.clone()));
-        let options = ProcessorOptions::default();
         let mut stack = CallStack::with_context(context);
 
         walk_stack(
-            0,
-            &options,
+            (),
             &mut stack,
             Some(UnifiedMemory::Memory(&stack_memory)),
             &self.modules,

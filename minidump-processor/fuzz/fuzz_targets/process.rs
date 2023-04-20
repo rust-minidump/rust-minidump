@@ -1,24 +1,26 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 
+use minidump_unwind::{FileError, FileKind, SymbolError, SymbolFile, Symbolizer};
+
 struct StaticSymbolSupplier {
     file: Vec<u8>,
 }
 
 #[async_trait::async_trait]
-impl minidump_processor::SymbolSupplier for StaticSymbolSupplier {
+impl minidump_unwind::SymbolSupplier for StaticSymbolSupplier {
     async fn locate_symbols(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),
-    ) -> Result<minidump_processor::SymbolFile, minidump_processor::SymbolError> {
-        minidump_processor::SymbolFile::from_bytes(&self.file)
+    ) -> Result<SymbolFile, SymbolError> {
+        SymbolFile::from_bytes(&self.file)
     }
     async fn locate_file(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),
-        _file_kind: minidump_processor::FileKind,
-    ) -> Result<std::path::PathBuf, minidump_processor::FileError> {
-        Err(minidump_processor::FileError::NotFound)
+        _file_kind: FileKind,
+    ) -> Result<std::path::PathBuf, FileError> {
+        Err(FileError::NotFound)
     }
 }
 
@@ -28,7 +30,7 @@ fuzz_target!(|data: (&[u8], &[u8])| {
             file: data.1.to_vec(),
         };
 
-        let provider = minidump_processor::Symbolizer::new(supplier);
+        let provider = Symbolizer::new(supplier);
         // Fuzz every possible feature
         let options = minidump_processor::ProcessorOptions::unstable_all();
 

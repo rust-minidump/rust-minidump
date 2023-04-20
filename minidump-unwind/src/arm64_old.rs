@@ -4,28 +4,27 @@
 // NOTE: arm64_old.rs and arm64.rs should be identical except for the names of
 // their context types.
 
-use crate::process_state::{FrameTrust, StackFrame};
-use crate::stackwalker::unwind::Unwind;
-use crate::stackwalker::CfiStackWalker;
+use super::impl_prelude::*;
 use crate::{SymbolProvider, SystemInfo};
-use minidump::system_info::Os;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext,
-    UnifiedMemory,
+    Module, UnifiedMemory,
 };
 use std::collections::HashSet;
 use tracing::trace;
 
-type ArmContext = minidump::format::CONTEXT_ARM;
+type ArmContext = minidump::format::CONTEXT_ARM64_OLD;
 type Pointer = <ArmContext as CpuContext>::Register;
-type Registers = minidump::format::ArmRegisterNumbers;
+type Registers = minidump::format::Arm64RegisterNumbers;
 
 const POINTER_WIDTH: Pointer = std::mem::size_of::<Pointer>() as Pointer;
 const FRAME_POINTER: &str = Registers::FramePointer.name();
-const STACK_POINTER: &str = Registers::StackPointer.name();
-const PROGRAM_COUNTER: &str = Registers::ProgramCounter.name();
-const _LINK_REGISTER: &str = Registers::LinkRegister.name();
-const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", "fp"];
+const LINK_REGISTER: &str = Registers::LinkRegister.name();
+const STACK_POINTER: &str = "sp";
+const PROGRAM_COUNTER: &str = "pc";
+const CALLEE_SAVED_REGS: &[&str] = &[
+    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "fp",
+];
 
 async fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
@@ -39,6 +38,7 @@ where
     P: SymbolProvider + Sync,
 {
     trace!("trying cfi");
+
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = modules.module_at_address(callee.instruction)?;
@@ -56,7 +56,7 @@ where
         // Default to forwarding all callee-saved regs verbatim.
         // The CFI evaluator may clear or overwrite these values.
         // The stack pointer and instruction pointer are not included.
-        caller_ctx: ctx.clone(),
+        caller_ctx: *ctx,
         caller_validity: callee_forwarded_regs(valid),
 
         stack_memory,
@@ -65,8 +65,33 @@ where
     symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
+
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
+    let new_valid = MinidumpContextValidity::Some(stack_walker.caller_validity);
+
+    // Apply ptr auth stripping
+    let caller_pc = ptr_auth_strip(modules, caller_pc);
+    stack_walker
+        .caller_ctx
+        .set_register(PROGRAM_COUNTER, caller_pc);
+    // Nothing should really ever restore lr, but CFI is more magic so whatever sure
+    if let Some(lr) = stack_walker
+        .caller_ctx
+        .get_register(LINK_REGISTER, &new_valid)
+    {
+        stack_walker
+            .caller_ctx
+            .set_register(LINK_REGISTER, ptr_auth_strip(modules, lr));
+    }
+    if let Some(fp) = stack_walker
+        .caller_ctx
+        .get_register(FRAME_POINTER, &new_valid)
+    {
+        stack_walker
+            .caller_ctx
+            .set_register(FRAME_POINTER, ptr_auth_strip(modules, fp));
+    }
 
     trace!(
         "cfi evaluation was successful -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
@@ -79,9 +104,13 @@ where
     // values are correct. I Don't Like This, but it's what breakpad does and
     // we should start with a baseline of parity.
 
+    // FIXME?: for whatever reason breakpad actually does block on the address
+    // being canonical *ONLY* for arm64, which actually rejects null pc early!
+    // Let's not do that to keep our code more uniform.
+
     let context = MinidumpContext {
-        raw: MinidumpRawContext::Arm(stack_walker.caller_ctx),
-        valid: MinidumpContextValidity::Some(stack_walker.caller_validity),
+        raw: MinidumpRawContext::OldArm64(stack_walker.caller_ctx),
+        valid: new_valid,
     };
     Some(StackFrame::from_context(context, FrameTrust::CallFrameInfo))
 }
@@ -100,65 +129,108 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
     callee: &StackFrame,
+    _grand_callee: Option<&StackFrame>,
     stack_memory: UnifiedMemory<'_, '_>,
-    _modules: &MinidumpModuleList,
-    system_info: &SystemInfo,
+    modules: &MinidumpModuleList,
     _symbol_provider: &P,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
-    // The ARM manual states that:
-    // > LR can be used for other purposes when it is not required to support
-    // > a return from a subroutine.
-    // In other words, we need to be conservative and treat it as a general
-    // purpose register. Except on iOS, which has stricter conventions around
-    // register use, and does guarantee that LR contains a valid return addr.
-    if system_info.os != Os::Ios {
-        return None;
-    }
-
     trace!("trying frame pointer");
-    // Assume that the standard %fp-using ARM calling convention is in use.
-    // The main quirk of this ABI is that the return address doesn't need to
-    // be restored from the stack -- it's already in the link register (lr).
-    // But that means we need to save/restore lr itself so that the *caller's*
-    // return address can be recovered.
+    // Ok so there exists 3 kinds of stackframes in ARM64:
     //
-    // In the standard calling convention, the following happens:
+    // * stackless leaves
+    // * stackful leaves
+    // * normal frames
     //
-    // lr := return_address   (done implicitly by a call)
-    // PUSH fp, lr            (save fp and lr to the stack -- ARM pushes in pairs)
+    //
+    // # Normal Frames
+    //
+    // Let's start with normal frames. In the standard calling convention, the following happens:
+    //
+    // lr := return_address   (performed implicitly by ARM's function call instruction)
+    // PUSH fp, lr            (save fp and lr to the stack -- ARM64 pushes in pairs)
     // fp := sp               (update the frame pointer to the current stack pointer)
     //
     // So to restore the caller's registers, we have:
     //
+    // pc := *(fp + ptr)      (this will get the return address, usual offset caveats apply)
     // sp := fp + ptr*2
-    // pc := *(fp + ptr)
     // fp := *fp
+    //
+    // Note that although we push lr, we don't restore lr. That's because lr is just our
+    // return address, and is therefore essentially a "saved" pc. lr is caller-saved *and*
+    // automatically overwritten by every CALL, so the callee (the frame we're unwinding right now)
+    // has no business ever knowing it, let alone restoring it. lr is generally just saved
+    // immediately and then used as a free general purpose register, and therefore will generally
+    // contain random garbage unrelated to unwinding.
+    //
+    //
+    // # Leaf Functions
+    //
+    // Now leaf functions are a bit messier. These are functions which don't call other functions
+    // and therefore don't actually ever need to save lr or fp. As such, they can be entirely
+    // stackless, although they don't have to be. So calling a leaf function is just:
+    //
+    // lr := return_address
+    // <possibly some pushes, but maybe not>
+    //
+    // And to restore the caller's registers, we have:
+    //
+    // pc := lr
+    // sp := sp - <some arbitrary value>
+    // fp := fp
+    //
+    // Unfortunately, we're unaware of any way to "detect" that a function is a leaf or not
+    // without symbols/cfi just telling you that. Since we're in frame pointer unwinding,
+    // we probably don't have those available! And even if we did, we still wouldn't know if
+    // the frame was stackless or not, so we wouldn't know how to restore sp reliably and might
+    // get the stack in a weird state for subsequent (possibly CFI-based) frames.
+    // Also, if we incorrectly guess a frame is a leaf, we'll also use a probably-random-garbage
+    // lr as a pc and potentially halluncinate a bunch.
+    //
+    //
+    // # Conclusion
+    //
+    // At the moment we think it's safest/best to just always assume we're unwinding a normal
+    // frame. Statistically this is true (most frames are, even if they happen to be at the
+    // top of the stack when we crash), and if the frame *is* a leaf then our `fp` is likely
+    // to be the correct fp of the next frame. This will effectively result in us unwinding
+    // our caller instead of ourselves, causing the caller to be omitted from the backtrace
+    // but otherwise perfectly syncing up for the rest of the frames.
     let valid = &callee.context.valid;
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
-    if last_fp >= u32::MAX - POINTER_WIDTH * 2 {
+    if last_fp >= u64::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
         // debug builds will still panic, and this guard protects against it without
         // drowning the rest of the code in checked_add.
         return None;
     }
+
     let (caller_fp, caller_pc, caller_sp) = if last_fp == 0 {
         // In this case we want unwinding to stop. One of the termination conditions in get_caller_frame
         // is that caller_sp <= last_sp. Therefore we can force termination by setting caller_sp = last_sp.
         (0, 0, last_sp)
     } else {
         (
-            stack_memory.get_memory_at_address(last_fp as u64)?,
-            stack_memory.get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
+            stack_memory.get_memory_at_address(last_fp)?,
+            stack_memory.get_memory_at_address(last_fp + POINTER_WIDTH)?,
             last_fp + POINTER_WIDTH * 2,
         )
     };
+    let caller_fp = ptr_auth_strip(modules, caller_fp);
+    let caller_pc = ptr_auth_strip(modules, caller_pc);
 
-    // Don't do any more validation, just assume it worked.
+    // Don't accept obviously wrong instruction pointers.
+    if is_non_canonical(caller_pc) {
+        trace!("rejecting frame pointer result for unreasonable instruction pointer");
+        return None;
+    }
+
+    // Don't actually validate that the stack makes sense (duplicating breakpad behaviour).
 
     trace!(
         "frame pointer seems valid -- caller_pc: 0x{:016x}, caller_sp: 0x{:016x}",
@@ -177,10 +249,68 @@ where
     valid.insert(STACK_POINTER);
 
     let context = MinidumpContext {
-        raw: MinidumpRawContext::Arm(caller_ctx),
+        raw: MinidumpRawContext::OldArm64(caller_ctx),
         valid: MinidumpContextValidity::Some(valid),
     };
     Some(StackFrame::from_context(context, FrameTrust::FramePointer))
+}
+
+fn ptr_auth_strip(modules: &MinidumpModuleList, ptr: Pointer) -> Pointer {
+    // ARMv8.3 introduced a code hardening system called "Pointer Authentication"
+    // which is used on Apple platforms. It adds some extra high bits to the
+    // several pointers when they get pushed to memory, including the return
+    // address (lr) and frame pointer (fp), which both get pushed at the start
+    // of most non-leaf functions.
+    //
+    // We lack some of the proper context to implement the "strip" primitive, because
+    // the amount of bits that are "real" pointer depends on various extensions like
+    // pointer tagging and how big page tables are. If we allocate too many bits to
+    // "real" then we can get ptr_auth bits in our pointers, and if we allocate too
+    // few we can end up truncating our pointers. Thankfully we'll usually have a bit
+    // of margin from pointers not having the highest real bits set.
+    //
+    // To help us guess, we have a few pieces of information:
+    //
+    // * Apple seems to default to a 17/47 split, so 47 bits for "real" is a good baseline
+    // * We know the address ranges of various loaded (and unloaded modules)
+    // * We know the address range of the stacks
+    // * We *can* know the address range of some sections of the heap (MemoryList)
+    // * We *can* know the page mappings (MemoryInfo)
+    //
+    // Right now we only incorporate the first two. Ideally we would process all those sources
+    // once at the start of stack walking and pass it down to the ARM stackwalker but that's
+    // a lot of annoying rewiring that won't necessarily improve results.
+    let apple_default_max_addr = (1 << 47) - 1;
+    let max_module_addr = modules
+        .by_addr()
+        .next_back()
+        .map(|last_module| {
+            last_module
+                .base_address()
+                .saturating_add(last_module.size())
+        })
+        .unwrap_or(0);
+    let max_addr = u64::max(apple_default_max_addr, max_module_addr);
+
+    // We can convert a "highest" address into a suitable mask by getting the next_power_of_two
+    // (a single bit >= the max) and subtracting one from it (producing all 1's <= that bit).
+    // There are two corner cases to this:
+    //
+    // * the next_power_of_two being 2^65, in which case our mask should be !0 (all ones)
+    // * the max addr being a power of two already means we will actually lose that one value
+    //
+    // The first case is handled by using checked_next_power_of_two. The second case isn't really
+    // handled by it very improbable. We do however make sure the apple max isn't a power of two.
+    let mask = max_addr
+        .checked_next_power_of_two()
+        .map(|high_bit| high_bit - 1)
+        .unwrap_or(!0);
+
+    // In principle, if we've done a good job of computing the mask, we can apply it regardless
+    // of if there's any ptr auth bits. Either it will clear the auth or be a noop. We don't
+    // check if this messes up, because there's too many subtleties like JITed code to reliably
+    // detect this going awry.
+    ptr & mask
 }
 
 async fn get_caller_by_scan<P>(
@@ -217,7 +347,7 @@ where
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
         if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
@@ -240,7 +370,7 @@ where
             valid.insert(STACK_POINTER);
 
             let context = MinidumpContext {
-                raw: MinidumpRawContext::Arm(caller_ctx),
+                raw: MinidumpRawContext::OldArm64(caller_ctx),
                 valid: MinidumpContextValidity::Some(valid),
             };
             return Some(StackFrame::from_context(context, FrameTrust::Scan));
@@ -281,11 +411,20 @@ async fn instruction_seems_valid<P>(
 where
     P: SymbolProvider + Sync,
 {
-    super::instruction_seems_valid_by_symbols(instruction as u64, modules, symbol_provider).await
+    if is_non_canonical(instruction) || instruction == 0 {
+        return false;
+    }
+
+    super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
+}
+
+fn is_non_canonical(instruction: Pointer) -> bool {
+    // Reject instructions in the first page or above the user-space threshold.
+    !(0x1000..=0x000fffffffffffff).contains(&instruction)
 }
 
 /*
-// ARM is currently hyper-permissive, so we don't use this,
+// ARM64 is currently hyper-permissive, so we don't use this,
 // but here it is in case we change our minds!
 fn stack_seems_valid(
     caller_sp: Pointer,
@@ -312,7 +451,7 @@ impl Unwind for ArmContext {
         grand_callee: Option<&StackFrame>,
         stack_memory: Option<UnifiedMemory<'_, '_>>,
         modules: &MinidumpModuleList,
-        system_info: &SystemInfo,
+        _system_info: &SystemInfo,
         syms: &P,
     ) -> Option<StackFrame>
     where
@@ -326,7 +465,7 @@ impl Unwind for ArmContext {
             frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
         }
         if frame.is_none() {
-            frame = get_caller_by_frame_pointer(self, callee, stack, modules, system_info, syms);
+            frame = get_caller_by_frame_pointer(self, callee, grand_callee, stack, modules, syms);
         }
         if frame.is_none() {
             frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
@@ -343,11 +482,13 @@ impl Unwind for ArmContext {
             trace!("instruction pointer was nullish, assuming unwind complete");
             return None;
         }
+
         // If the new stack pointer is at a lower address than the old,
         // then that's clearly incorrect. Treat this as end-of-stack to
         // enforce progress and avoid infinite loops.
+
         let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always("sp") as u64;
+        let last_sp = self.get_register_always("sp");
         if sp <= last_sp {
             // Arm leaf functions may not actually touch the stack (thanks
             // to the link register allowing you to "push" the return address
@@ -365,11 +506,11 @@ impl Unwind for ArmContext {
 
         // A caller's ip is the return address, which is the instruction
         // *after* the CALL that caused us to arrive at the callee. Set
-        // the value to 2 less than that, so it points to the CALL instruction
-        // (arm instructions are all 2 bytes wide). This is important because
+        // the value to 4 less than that, so it points to the CALL instruction
+        // (arm64 instructions are all 4 bytes wide). This is important because
         // we use this value to lookup the CFI we need to unwind the next frame.
         let ip = frame.context.get_instruction_pointer();
-        frame.instruction = ip - 2;
+        frame.instruction = ip - 4;
 
         Some(frame)
     }
