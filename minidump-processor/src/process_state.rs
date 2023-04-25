@@ -457,6 +457,9 @@ impl ProcessState {
                         } else {
                             writeln!(f, "     Size: Unknown")?;
                         }
+                        if access.is_likely_guard_page {
+                            writeln!(f, "     This address falls in a likely guard page.")?;
+                        }
                     }
                 } else {
                     writeln!(f, "No memory accessed by instruction")?;
@@ -706,10 +709,15 @@ Unknown streams encountered:
                 "memory_accesses": self.exception_info.as_ref().and_then(|info| {
                     info.memory_accesses.as_ref().map(|accesses| {
                         accesses.iter().map(|access| {
-                            json!({
+                            let mut map = json!({
                                 "address": json_hex(access.address),
                                 "size": access.size,
-                            })
+                            });
+                            // Only add the `is_likely_guard_page` field when it is affirmative.
+                            if access.is_likely_guard_page {
+                                map["is_likely_guard_page"] = true.into();
+                            }
+                            map
                         }).collect::<Vec<_>>()
                     })
                 }),
