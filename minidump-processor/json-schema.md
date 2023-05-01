@@ -140,7 +140,10 @@ anyway.
     "memory_accesses": [
       {
         "address": <hexstring>,
-        "size": <u32>
+        "size": <u32>,
+        /// Whether the address falls in a likely guard page (typically indicating buffer overflow).
+        /// This field may only be present when the value is `true`.
+        "is_likely_guard_page": <bool>
       }
     ],
 

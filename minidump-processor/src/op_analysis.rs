@@ -65,6 +65,8 @@ pub struct MemoryAccess {
     pub address: u64,
     /// Whether or not this memory access is likely the result of a null-pointer dereference
     pub is_likely_null_pointer_dereference: bool,
+    /// Whether or not this memory access was part of a likely guard page.
+    pub is_likely_guard_page: bool,
     /// The size of the memory access
     ///
     /// Note that this is optional, as there are weird instructions that do not know the size
@@ -302,11 +304,13 @@ mod amd64 {
                     Operand::DisplacementU32(disp) => Some(MemoryAccess {
                         address: disp.into(),
                         is_likely_null_pointer_dereference: false,
+                        is_likely_guard_page: false,
                         size: mem_size,
                     }),
                     Operand::DisplacementU64(disp) => Some(MemoryAccess {
                         address: disp,
                         is_likely_null_pointer_dereference: false,
+                        is_likely_guard_page: false,
                         size: mem_size,
                     }),
                     other_operand => {
@@ -336,6 +340,7 @@ mod amd64 {
                 accesses.push(MemoryAccess {
                     address,
                     is_likely_null_pointer_dereference: address == 0,
+                    is_likely_guard_page: false,
                     size: Some(1),
                 });
             };
@@ -394,6 +399,7 @@ mod amd64 {
             let mut access = MemoryAccess {
                 address: 0,
                 is_likely_null_pointer_dereference: false,
+                is_likely_guard_page: false,
                 size: access_size,
             };
 

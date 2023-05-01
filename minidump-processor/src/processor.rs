@@ -452,6 +452,7 @@ where
 
     if let Some(details) = &mut exception_details {
         info.check_for_bitflips(details);
+        info.check_for_guard_pages(details);
     }
     info.into_process_state(dump, symbol_provider, exception_details)
         .await
@@ -750,6 +751,21 @@ impl<'a> MinidumpInfo<'a> {
                             // the same memory region).
                             memory_op,
                         ));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check whether memory accesses are accessing likely guard pages.
+    pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
+        if let Some(accesses) = &mut exception_details.info.memory_accesses {
+            for access in accesses {
+                if let Some(info) = self.memory_info.memory_info_at_address(access.address) {
+                    // As a heuristic, we consider any _mapped_ memory which has no permissions to
+                    // be a likely guard page.
+                    if !info.is_readable() && !info.is_writable() && !info.is_executable() {
+                        access.is_likely_guard_page = true;
                     }
                 }
             }
