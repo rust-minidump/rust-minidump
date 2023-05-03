@@ -396,7 +396,8 @@ pub mod debuginfo {
     }
 
     struct DebugInfo {
-        functions: Vec<Function>,
+        // Sorted by function address, mutually exclusive
+        functions: AddressRanges<Function>,
         unwind_symbol_file: Option<SymbolFile>,
     }
 
@@ -412,7 +413,7 @@ pub mod debuginfo {
         }
 
         pub fn from_object(object: Object) -> Self {
-            let mut functions: Vec<Function> = object
+            let functions = object
                 .debug_session()
                 .ok()
                 .map(|session| {
@@ -423,7 +424,6 @@ pub mod debuginfo {
                         .collect()
                 })
                 .unwrap_or_default();
-            functions.sort_unstable_by_key(|f| f.address);
 
             let unwind_symbol_file = CfiCache::from_object(&object)
                 .ok()
@@ -437,22 +437,7 @@ pub mod debuginfo {
 
         /// Find the function which contains the given address, if any.
         pub fn function_by_address(&self, addr: u64) -> Option<&Function> {
-            // Get the index of the first function that starts after our search address.
-            let functions = &self.functions;
-            let index_after_location = functions.partition_point(|f| addr >= f.address);
-            if index_after_location == 0 {
-                return None;
-            }
-            // Get the index of the last function which is _before_ our address, and check whether
-            // the address falls within the function.
-            let index = index_after_location - 1;
-            let function = &functions[index];
-            debug_assert!(function.address <= addr);
-            if addr < function.end_address() {
-                Some(function)
-            } else {
-                None
-            }
+            self.functions.find(addr)
         }
     }
 
@@ -461,20 +446,111 @@ pub mod debuginfo {
     // impossible (as currently implemented), as `ObjectDebugSession` includes a few variants which
     // are not `Send`, and so cannot be used in an `async` method of `DebugInfoSymbolProvider`.
 
-    pub struct LineInfo {
+    #[derive(Debug)]
+    struct LineInfo {
         pub address: u64,
         pub size: Option<u64>,
         pub file: String,
         pub line: u64,
     }
 
-    pub struct Function {
+    #[derive(Debug)]
+    struct Function {
         pub address: u64,
         pub size: u64,
         pub name: Name<'static>,
-        pub lines: Vec<LineInfo>,
-        pub inlinees: Vec<Function>,
-        pub inline: bool,
+        // Sorted by line address, mutually exclusive
+        pub lines: AddressRanges<LineInfo>,
+        // Sorted by function address, mutually exclusive
+        pub inlinees: AddressRanges<Function>,
+        pub _inline: bool,
+    }
+
+    trait AddressRange {
+        fn start(&self) -> u64;
+        fn end(&self) -> u64;
+    }
+
+    #[derive(Debug)]
+    struct AddressRanges<T> {
+        inner: Vec<T>,
+    }
+
+    impl<T> Default for AddressRanges<T> {
+        fn default() -> Self {
+            AddressRanges {
+                inner: Default::default(),
+            }
+        }
+    }
+
+    impl<T: AddressRange> AddressRanges<T> {
+        pub fn find(&self, address: u64) -> Option<&T> {
+            self.inner
+                .binary_search_by(|item| {
+                    use std::cmp::Ordering::*;
+                    if address < item.start() {
+                        Greater
+                    } else if item.end() <= address {
+                        Less
+                    } else {
+                        Equal
+                    }
+                })
+                .ok()
+                .map(|index| &self.inner[index])
+        }
+    }
+
+    impl<T> std::ops::Deref for AddressRanges<T> {
+        type Target = [T];
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+
+    impl<T: AddressRange> std::iter::FromIterator<T> for AddressRanges<T> {
+        fn from_iter<I>(iter: I) -> Self
+        where
+            I: IntoIterator<Item = T>,
+        {
+            let mut inner = Vec::from_iter(iter);
+            inner.sort_unstable_by_key(|item| item.start());
+            AddressRanges { inner }
+        }
+    }
+
+    impl AddressRange for LineInfo {
+        fn start(&self) -> u64 {
+            self.address
+        }
+
+        fn end(&self) -> u64 {
+            self.address + self.size.unwrap_or(1)
+        }
+    }
+
+    impl AddressRange for Function {
+        fn start(&self) -> u64 {
+            self.address
+        }
+
+        fn end(&self) -> u64 {
+            self.address + self.size
+        }
+    }
+
+    impl Function {
+        pub fn inlinees_at_address(&self, address: u64) -> impl Iterator<Item = &Function> {
+            std::iter::successors(Some(self), move |func| func.inlinees.find(address))
+                // Skip the first item, which is the top-level (non-inlined) function
+                .skip(1)
+        }
+
+        pub fn line_info_at_address(&self, address: u64) -> Option<&LineInfo> {
+            self.lines.find(address)
+        }
     }
 
     impl From<debuginfo::LineInfo<'_>> for LineInfo {
@@ -500,14 +576,8 @@ pub mod debuginfo {
                 },
                 lines: f.lines.into_iter().map(Into::into).collect(),
                 inlinees: f.inlinees.into_iter().map(Into::into).collect(),
-                inline: f.inline,
+                _inline: f.inline,
             }
-        }
-    }
-
-    impl Function {
-        pub fn end_address(&self) -> u64 {
-            self.address + self.size
         }
     }
 
@@ -544,13 +614,13 @@ pub mod debuginfo {
                 .await
                 .ok_or(FillSymbolError {})?;
 
+            let address = frame.get_instruction() - module.base_address();
+
             // From this point on, we consider that symbols were found for the module, so we no
             // longer return FillSymbolError.
-            let function =
-                info.function_by_address(frame.get_instruction() - module.base_address());
+            let function = info.function_by_address(address);
 
             if let Some(function) = function {
-                // XXX parameter size
                 use symbolic::demangle::{Demangle, DemangleOptions};
                 frame.set_function(
                     function
@@ -558,12 +628,12 @@ pub mod debuginfo {
                         .try_demangle(DemangleOptions::complete())
                         .as_ref(),
                     function.address,
+                    // FIXME parameter size missing
                     0,
                 );
-                for inlinee in &function.inlinees {
+                for inlinee in function.inlinees_at_address(address) {
                     let (file, line) = inlinee
-                        .lines
-                        .first()
+                        .line_info_at_address(address)
                         .map(|line| (line.file.as_str(), saturating_cast(line.line)))
                         .unzip();
                     frame.add_inline_frame(
@@ -575,7 +645,7 @@ pub mod debuginfo {
                         line,
                     );
                 }
-                if let Some(line) = function.lines.first() {
+                if let Some(line) = function.line_info_at_address(address) {
                     frame.set_source_file(
                         line.file.as_ref(),
                         saturating_cast(line.line),
