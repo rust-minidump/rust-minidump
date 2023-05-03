@@ -759,12 +759,21 @@ impl<'a> MinidumpInfo<'a> {
 
     /// Check whether memory accesses are accessing likely guard pages.
     pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
+        const GUARD_MEMORY_MAX_SIZE: u64 = 2 << 14;
+
         if let Some(accesses) = &mut exception_details.info.memory_accesses {
             for access in accesses {
                 if let Some(info) = self.memory_info.memory_info_at_address(access.address) {
-                    // As a heuristic, we consider any _mapped_ memory which has no permissions to
-                    // be a likely guard page.
-                    if !info.is_readable() && !info.is_writable() && !info.is_executable() {
+                    // As a heuristic, we consider any mapped memory which has no permissions and
+                    // is less than 4 pages in size to be a likely guard page.
+                    if !info.is_readable()
+                        && !info.is_writable()
+                        && !info.is_executable()
+                        && info
+                            .memory_range()
+                            .map(|r| r.end - r.start <= GUARD_MEMORY_MAX_SIZE)
+                            .unwrap_or(false)
+                    {
                         access.is_likely_guard_page = true;
                     }
                 }
