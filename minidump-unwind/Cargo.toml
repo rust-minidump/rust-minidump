@@ -27,7 +27,7 @@ memmap2 = { version = "0.5.7", optional = true }
 minidump = { version = "0.16.0", path = "../minidump" }
 minidump-common = { version = "0.16.0", path = "../minidump-common" }
 scroll = "0.11.0"
-symbolic = { version = "12", features = ["cfi", "debuginfo"], optional = true }
+symbolic = { version = "12", features = ["cfi", "debuginfo", "demangle"], optional = true }
 tracing = { version = "0.1.34", features = ["log"] }
 
 [dev-dependencies]
