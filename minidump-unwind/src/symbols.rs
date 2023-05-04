@@ -627,7 +627,7 @@ pub mod debuginfo {
                         .name
                         .try_demangle(DemangleOptions::complete())
                         .as_ref(),
-                    function.address,
+                    function.address + module.base_address(),
                     // FIXME parameter size missing
                     0,
                 );
@@ -649,7 +649,7 @@ pub mod debuginfo {
                     frame.set_source_file(
                         line.file.as_ref(),
                         saturating_cast(line.line),
-                        line.address,
+                        line.address + module.base_address(),
                     );
                 }
             }
