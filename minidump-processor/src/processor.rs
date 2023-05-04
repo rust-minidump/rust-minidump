@@ -763,19 +763,37 @@ impl<'a> MinidumpInfo<'a> {
 
         if let Some(accesses) = &mut exception_details.info.memory_accesses {
             for access in accesses {
-                if let Some(info) = self.memory_info.memory_info_at_address(access.address) {
-                    // As a heuristic, we consider any mapped memory which has no permissions and
-                    // is less than 4 pages in size to be a likely guard page.
-                    if !info.is_readable()
-                        && !info.is_writable()
-                        && !info.is_executable()
-                        && info
-                            .memory_range()
-                            .map(|r| r.end - r.start <= GUARD_MEMORY_MAX_SIZE)
-                            .unwrap_or(false)
-                    {
-                        access.is_likely_guard_page = true;
+                let Some(info) = self.memory_info.memory_info_at_address(access.address) else { continue; };
+                let Some(range) = info.memory_range() else { continue; };
+
+                fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
+                    range.is_readable() || range.is_writable() || range.is_executable()
+                }
+
+                let is_adjacent_to_accessible_memory = || {
+                    for region in self.memory_info.by_addr() {
+                        let Some(other_range) = region.memory_range() else { continue; };
+                        if other_range.end + 1 == range.start && is_accessible(&region) {
+                            return true;
+                        }
+                        if range.end + 1 == other_range.start {
+                            // At this point we won't encounter any other relevant regions as we're
+                            // iterating by address, so return.
+                            return is_accessible(&region);
+                        }
                     }
+                    false
+                };
+
+                // As a heuristic, we consider any mapped memory to be a guard page if it:
+                // * has no permissions,
+                // * is less than `GUARD_MEMORY_MAX_SIZE`, and
+                // * is adjacent to a region with permissions.
+                if !is_accessible(&info)
+                    && range.end - range.start < GUARD_MEMORY_MAX_SIZE
+                    && is_adjacent_to_accessible_memory()
+                {
+                    access.is_likely_guard_page = true;
                 }
             }
         }
