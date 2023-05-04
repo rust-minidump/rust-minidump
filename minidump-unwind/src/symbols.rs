@@ -438,7 +438,7 @@ pub mod debuginfo {
         pub fn function_by_address(&self, addr: u64) -> Option<&Function> {
             // Get the index of the first function that starts after our search address.
             let functions = &self.functions;
-            let index_after_location = functions.partition_point(|f| addr < f.address);
+            let index_after_location = functions.partition_point(|f| addr >= f.address);
             if index_after_location == 0 {
                 return None;
             }
@@ -536,7 +536,8 @@ pub mod debuginfo {
 
             // From this point on, we consider that symbols were found for the module, so we no
             // longer return FillSymbolError.
-            let function = info.function_by_address(frame.get_instruction());
+            let function =
+                info.function_by_address(frame.get_instruction() - module.base_address());
 
             if let Some(function) = function {
                 // XXX parameter size
