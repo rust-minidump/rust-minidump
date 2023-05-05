@@ -362,6 +362,7 @@ pub mod debuginfo {
     use std::path::Path;
     use symbolic::{
         cfi::CfiCache,
+        common::Name,
         debuginfo::{self, Object},
     };
 
@@ -455,6 +456,11 @@ pub mod debuginfo {
         }
     }
 
+    // You may see the below `Function` and `LineInfo` and think that this is needless copying of
+    // data, and that instead the `ObjectDebugSession` could be stored and used. However this is
+    // impossible (as currently implemented), as `ObjectDebugSession` includes a few variants which
+    // are not `Send`, and so cannot be used in an `async` method of `DebugInfoSymbolProvider`.
+
     pub struct LineInfo {
         pub address: u64,
         pub size: Option<u64>,
@@ -465,7 +471,7 @@ pub mod debuginfo {
     pub struct Function {
         pub address: u64,
         pub size: u64,
-        pub name: String,
+        pub name: Name<'static>,
         pub lines: Vec<LineInfo>,
         pub inlinees: Vec<Function>,
         pub inline: bool,
@@ -487,7 +493,11 @@ pub mod debuginfo {
             Function {
                 address: f.address,
                 size: f.size,
-                name: f.name.into_string(),
+                name: {
+                    let mangling = f.name.mangling();
+                    let lang = f.name.language();
+                    Name::new(f.name.into_string(), mangling, lang)
+                },
                 lines: f.lines.into_iter().map(Into::into).collect(),
                 inlinees: f.inlinees.into_iter().map(Into::into).collect(),
                 inline: f.inline,
@@ -541,14 +551,29 @@ pub mod debuginfo {
 
             if let Some(function) = function {
                 // XXX parameter size
-                frame.set_function(function.name.as_ref(), function.address, 0);
+                use symbolic::demangle::{Demangle, DemangleOptions};
+                frame.set_function(
+                    function
+                        .name
+                        .try_demangle(DemangleOptions::complete())
+                        .as_ref(),
+                    function.address,
+                    0,
+                );
                 for inlinee in &function.inlinees {
                     let (file, line) = inlinee
                         .lines
                         .first()
                         .map(|line| (line.file.as_str(), saturating_cast(line.line)))
                         .unzip();
-                    frame.add_inline_frame(inlinee.name.as_ref(), file, line);
+                    frame.add_inline_frame(
+                        inlinee
+                            .name
+                            .try_demangle(DemangleOptions::complete())
+                            .as_ref(),
+                        file,
+                        line,
+                    );
                 }
                 if let Some(line) = function.lines.first() {
                     frame.set_source_file(
