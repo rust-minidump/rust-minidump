@@ -3,6 +3,9 @@
 
 //! Unwind stack frames for a thread.
 
+#[cfg(all(doctest, feature = "http"))]
+doc_comment::doctest!("../README.md");
+
 mod amd64;
 mod arm;
 mod arm64;
