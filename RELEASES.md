@@ -8,6 +8,7 @@
 * All crates now explicitly include the MIT license
 * The stack walker will now fetch the CPU microcode value from the evil JSON
   payload when it's not present in the minidump
+* CPU microcode value in the JSON output changed types from u32 to hexstring
 * Crashes with jmp/call/ret instruction to non-canonical addresses now show the
   real address we jumped to instead of 0x0000000000000000 or 0xffffffffffffffff
 * Updated several dependencies further decreasing the total number of crates
