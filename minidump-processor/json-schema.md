@@ -223,7 +223,7 @@ anyway.
     "cpu_count": <u32>,
 
     // The version number of the microcode running on the CPU
-    "cpu_microcode_version": <u32>,
+    "cpu_microcode_version": <hexstring>,
   }, // system_info
 
 
