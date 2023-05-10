@@ -1,23 +1,14 @@
-//! This module defines the interface between minidump-processor and its [Symbolizer][].
+//! This module defines the interface used by minidump-unwind to symbolize stack traces.
 //!
-//! minidump-processor and the [Symbolizer][] communicate using a series of traits. The symbolizer
-//! must provide implementations of these traits:
+//! minidump-unwind uses a series of traits to represent symbolizing functionality and interfaces:
 //!
 //! * [SymbolProvider][] - provides symbolication, cfi evaluation, and debug statistics
-//!     * Implemented by [Symbolizer][]
-//!     * This actually doesn't need to be a trait in the current design, it exists to allow
-//!       multiple symbolicators to be used together, via [MultiSymbolProvider][]. The other
-//!       SymbolProviders have been removed, but I figured it would be a waste to throw out
-//!       this minimally intrusive machinery.
+//!     * Implemented by [Symbolizer][] and [debuginfo::DebugInfoSymbolProvider][] (requires the
+//!       `debuginfo` feature to be enabled).
 //!
 //! * [SymbolSupplier][] - maps a [Module][] to a [SymbolFile][]
-//!     * minidump-processor does not directly use this, it's just there so the Symbolizer can
-//!       generically handle different symbol fetching strategies (which minidump-processor
-//!       selects and configures).
-//!
-//!
-//!
-//! While minidump-processor provides implementations of these traits:
+//!     * minidump-unwind does not directly use this, it's just there so the Symbolizer can
+//!       generically handle different symbol fetching strategies.
 //!
 //! * [FrameSymbolizer][] - callbacks that symbolication uses to return its results.
 //!     * Implemented by [StackFrame][crate::StackFrame]
@@ -26,67 +17,28 @@
 //!     * Implemented by CfiStackWalker (private)
 //!
 //!
-//!
-//! The symbolizer is responsible for providing the following concrete functions, which
-//! minidump-processor uses to select and configure the symbol fetching strategy:
+//! The following concrete functions are provided to allow configuration of the symbol fetching
+//! strategy:
 //!
 //! * [http_symbol_supplier][] - a [SymbolSupplier][] that can find symbols over HTTP (and cache).
+//!   Requires the `http` feature to be enabled.
 //! * [simple_symbol_supplier][] - a [SymbolSupplier][] that can find symbols on disk.
 //! * [string_symbol_supplier][] - a mock [SymbolSupplier][] for tests.
 //!
 //!
-//!
-//! And the following concrete types:
+//! The following concrete types are provided:
 //!
 //! * [Symbolizer][] - the main interface of the symbolizer, implementing [SymbolProvider][].
-//!     * Wraps the [SymbolSupplier][] implementation that minidump-processor selects.
+//!     * Wraps the [SymbolSupplier][] implementation that is selected.
 //!     * Queries the [SymbolSupplier] and manages the SymbolFiles however it pleases.
 //! * [SymbolStats][] - debug statistic output.
 //! * [SymbolFile][] - a payload that a [SymbolProvider][] returns to the Symbolizer.
-//!     * Never handled by minidump-processor, public for the trait. (use this for whatever)
+//!     * Never handled by minidump-unwind, public for the trait.
 //! * [SymbolError][] - possible errors a [SymbolProvider][] can yield.
-//!     * Never handled by minidump-processor, public for the trait. (use this for whatever)
+//!     * Never handled by minidump-unwind, public for the trait.
 //! * [FillSymbolError][] - possible errors for `fill_symbol`.
-//!     * While this *is* handled by minidump-processor, it doesn't actually look at the value. It's
-//!       just there to be An Error Type for the sake of API design.
-//!
-// TODO relocate?
-// # Example
-//
-// ```rust
-// use minidump::Minidump;
-// use minidump_processor::{http_symbol_supplier, ProcessorOptions, Symbolizer};
-//
-// #[tokio::main]
-// async fn main() -> Result<(), ()> {
-//     // Read the minidump
-//     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
-//
-//     // Configure the symbolizer and processor
-//     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
-//     let symbols_paths = vec![];
-//     let mut symbols_cache = std::env::temp_dir();
-//     symbols_cache.push("minidump-cache");
-//     let symbols_tmp = std::env::temp_dir();
-//     let timeout = std::time::Duration::from_secs(1000);
-//
-//     let options = ProcessorOptions::default();
-//     let provider = Symbolizer::new(http_symbol_supplier(
-//         symbols_paths,
-//         symbols_urls,
-//         symbols_cache,
-//         symbols_tmp,
-//         timeout,
-//     ));
-//
-//     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
-//         .await
-//         .map_err(|_| ())?;
-//     state.print(&mut std::io::stdout()).map_err(|_| ())?;
-//     Ok(())
-// }
-// ```
-//
+//!     * While this *is* handled by minidump-unwind, it doesn't actually look at the value. It's
+//!       just there to be an Error type for the sake of API design.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

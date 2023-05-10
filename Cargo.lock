@@ -1164,6 +1164,7 @@ dependencies = [
  "async-trait",
  "breakpad-symbols",
  "cachemap2",
+ "doc-comment",
  "futures-util",
  "memmap2",
  "minidump",
