@@ -1,6 +1,25 @@
 <!-- next-header -->
 # Next Version
 
+* Stack-walking using native debug information was somewhat buggy, after more
+  thorough testing it should be now on-par with breakpad symbol file-based
+  stack-walking.
+
+## New minidump-unwind crate
+
+The stack walking machinery has been extracted from the minidump-processor
+crate and put in a separate one. This crate has significantly less dependencies
+than the minidump-processor crate which makes it easier to vendor it in
+projects that only care about stack walking.
+
+## Guard-page detection
+
+While analyzing a crash minidump-stackwalk will check if the crashing address
+hit a potential guard page. Guard pages are usually introduced by the memory
+allocator around larger allocation and have no permissions set. If the crash
+address hit one of these pages the `memory_accesses` filed in the JSON output
+will contain the `is_likely_guard_page: true` field.
+
 # Version 0.16.0 (2023-04-05)
 
 * Make all `minidump-common::format` structs writable with `scroll`.

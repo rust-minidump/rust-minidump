@@ -50,8 +50,8 @@ Options:
       --symbols-tmp <SYMBOLS_TMP>
           A directory to use as temp space for downloading symbols
       --symbols-download-timeout-secs <SYMBOLS_DOWNLOAD_TIMEOUT_SECS>
-          The maximum amount of time (in seconds) a symbol file download is allowed to take [default:
-          1000]
+          The maximum amount of time (in seconds) a symbol file download is allowed to take
+          [default: 1000]
       --symbols-path <SYMBOLS_PATH>
           Path to a symbol file
   -h, --help
