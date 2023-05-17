@@ -1,6 +1,8 @@
 <!-- next-header -->
 # Next Version
 
+# Version 0.17.0 (2023-05-17)
+
 * Stack-walking using native debug information was somewhat buggy, after more
   thorough testing it should be now on-par with breakpad symbol file-based
   stack-walking.

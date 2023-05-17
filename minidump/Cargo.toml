@@ -1,7 +1,7 @@
 [package]
 name = "minidump"
 description = "A parser for the minidump format."
-version = "0.16.0"
+version = "0.17.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 homepage = "https://github.com/rust-minidump/rust-minidump"
@@ -17,7 +17,7 @@ debugid = "0.8.0"
 encoding_rs = "0.8"
 tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.5.7"
-minidump-common = { version = "0.16.0", path = "../minidump-common" }
+minidump-common = { version = "0.17.0", path = "../minidump-common" }
 num-traits = "0.2"
 range-map = "0.2"
 scroll = "0.11.0"
