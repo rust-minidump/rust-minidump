@@ -1,6 +1,9 @@
 {
     "path_prefix": "minidump-stackwalk",
     "changelog": true,
+    "mdbook": {
+        "path": "../docs"
+    },
     "artifacts": {
       "cargo_dist": true,
       "package_managers": {
