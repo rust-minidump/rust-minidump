@@ -164,9 +164,11 @@ version = "0.17.0"
 dependencies = [
  "async-trait",
  "cab",
+ "cachemap2",
  "circular",
  "debugid",
  "dump_syms",
+ "futures-util",
  "minidump-common",
  "nom",
  "range-map",

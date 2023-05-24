@@ -1,6 +1,7 @@
 //! Contains HTTP symbol retrieval specific functionality
 
 use crate::*;
+use cachemap2::CacheMap;
 use reqwest::{Client, Url};
 use std::fs;
 use std::io::{self, Write};
@@ -19,7 +20,7 @@ type FileKey = (ModuleKey, FileKind);
 pub struct HttpSymbolSupplier {
     /// File paths that are known to be in the cache
     #[allow(clippy::type_complexity)]
-    cached_file_paths: Mutex<HashMap<FileKey, CachedOperation<(PathBuf, Option<Url>), FileError>>>,
+    cached_file_paths: CacheMap<FileKey, CachedAsyncResult<(PathBuf, Option<Url>), FileError>>,
     /// HTTP Client to use for fetching symbols.
     client: Client,
     /// URLs to search for symbols.
@@ -66,7 +67,7 @@ impl HttpSymbolSupplier {
             .collect();
         local_paths.push(cache.clone());
         let local = SimpleSymbolSupplier::new(local_paths);
-        let cached_file_paths = Mutex::default();
+        let cached_file_paths = Default::default();
         HttpSymbolSupplier {
             client,
             cached_file_paths,
@@ -83,16 +84,9 @@ impl HttpSymbolSupplier {
         module: &(dyn Module + Sync),
         file_kind: FileKind,
     ) -> Result<(PathBuf, Option<Url>), FileError> {
-        let k = file_key(module, file_kind);
-        let file_once = self
-            .cached_file_paths
-            .lock()
-            .unwrap()
-            .entry(k)
-            .or_default()
-            .clone();
-        file_once
-            .get_or_init(|| async {
+        self.cached_file_paths
+            .cache_default(file_key(module, file_kind))
+            .get(|| async {
                 // First look for the file in the cache
                 if let Ok(path) = self.local.locate_file(module, file_kind).await {
                     return Ok((path, None));
@@ -134,6 +128,7 @@ impl HttpSymbolSupplier {
                 Err(FileError::NotFound)
             })
             .await
+            .as_ref()
             .clone()
     }
 }
