@@ -593,7 +593,7 @@ impl<T, E> CachedAsyncResult<T, E> {
         if guard.is_none() {
             *guard = Some(Arc::new(f().await));
         }
-        unsafe { guard.as_ref().unwrap_unchecked() }.clone()
+        guard.as_ref().unwrap().clone()
     }
 }
 
