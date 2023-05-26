@@ -5037,15 +5037,20 @@ where
                 .or(Err(Error::MissingDirectory))?;
             if let Some((old_idx, old_dir)) = streams.insert(dir.stream_type, (i, dir.clone())) {
                 if let Some(known_stream_type) = MINIDUMP_STREAM_TYPE::from_u32(dir.stream_type) {
-                    warn!("Minidump contains multiple streams of type {} ({:?}) at indices {} ({} bytes) and {} ({} bytes) (using {})",
-                        dir.stream_type,
-                        known_stream_type,
-                        old_idx,
-                        old_dir.location.data_size,
-                        i,
-                        dir.location.data_size,
-                        i,
-                    );
+                    if !(known_stream_type == MINIDUMP_STREAM_TYPE::UnusedStream
+                        && old_dir.location.data_size == 0
+                        && dir.location.data_size == 0)
+                    {
+                        warn!("Minidump contains multiple streams of type {} ({:?}) at indices {} ({} bytes) and {} ({} bytes) (using {})",
+                            dir.stream_type,
+                            known_stream_type,
+                            old_idx,
+                            old_dir.location.data_size,
+                            i,
+                            dir.location.data_size,
+                            i,
+                        );
+                    }
                 } else {
                     warn!("Minidump contains multiple streams of unknown type {} at indices {} ({} bytes) and {} ({} bytes) (using {})",
                         dir.stream_type,
