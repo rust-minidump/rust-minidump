@@ -415,6 +415,12 @@ pub struct MinidumpMacCrashInfo {
     pub raw: Vec<RawMacCrashInfo>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MinidumpMacBootargs {
+    pub raw: md::MINIDUMP_MAC_BOOTARGS,
+    pub bootargs: Option<String>,
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum RawMiscInfo {
@@ -3547,6 +3553,44 @@ impl MinidumpMacCrashInfo {
     }
 }
 
+impl<'a> MinidumpStream<'a> for MinidumpMacBootargs {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MozMacosBootargsStream as u32;
+
+    fn read(
+        bytes: &[u8],
+        all: &[u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpMacBootargs, Error> {
+        let raw: md::MINIDUMP_MAC_BOOTARGS = bytes
+            .pread_with(0, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let stream_type = raw.stream_type;
+        if stream_type != Self::STREAM_TYPE {
+            warn!(
+                "MozMacosBootargsStream record doesn't have the right stream type? {}",
+                Self::STREAM_TYPE
+            );
+        }
+        let mut bootargs_offset = raw.bootargs as usize;
+        let bootargs = read_string_utf16(&mut bootargs_offset, all, endian);
+
+        Ok(MinidumpMacBootargs {
+            raw,
+            bootargs,
+        })
+    }
+}
+
+impl MinidumpMacBootargs {
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        writeln!(f, "mac_boot_args = {}", self.bootargs.as_deref().unwrap_or(""))?;
+        writeln!(f)?;
+        Ok(())
+    }
+}
+
 impl<'a> MinidumpStream<'a> for MinidumpLinuxLsbRelease<'a> {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxLsbRelease as u32;
 
@@ -5145,6 +5189,7 @@ where
     /// * [`MinidumpLinuxMaps`][]
     /// * [`MinidumpLinuxProcStatus`][]
     /// * [`MinidumpMacCrashInfo`][]
+    /// * [`MinidumpMacBootargs`][]
     /// * [`MinidumpMemoryList`][]
     /// * [`MinidumpMemory64List`][]
     /// * [`MinidumpMemoryInfoList`][]

@@ -337,6 +337,7 @@ pub struct ProcessState {
     /// Linux Standard Base Info
     pub linux_standard_base: Option<LinuxStandardBase>,
     pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
+    pub mac_boot_args: Option<MinidumpMacBootargs>,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
@@ -529,6 +530,10 @@ impl ProcessState {
                     writeln!(f, "    message2: {val}")?;
                 }
             }
+            writeln!(f)?;
+        }
+        if let Some(ref info) = self.mac_boot_args {
+            writeln!(f, "Mac Boot Args: {}", info.bootargs.as_deref().unwrap_or(""))?;
             writeln!(f)?;
         }
         if let Some(ref time) = self.process_create_time {
@@ -751,6 +756,8 @@ Unknown streams encountered:
                     "message2": record.message2(),
                 })).collect::<Vec<_>>()
             })),
+            // optional
+            "mac_boot_args": self.mac_boot_args.as_ref().map(|info| info.bootargs.as_ref()),
 
             // the first module is always the main one
             "main_module": 0,

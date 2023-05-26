@@ -638,6 +638,14 @@ anyway.
     ] // records
   }, // mac_crash_info
 
+
+
+
+
+
+  // MacOS-specific kernel boot args
+  "mac_boot_args": <string>,
+
 }
 ```
 

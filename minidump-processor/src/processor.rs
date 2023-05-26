@@ -467,6 +467,7 @@ struct MinidumpInfo<'a> {
     linux_standard_base: Option<LinuxStandardBase>,
     system_info: SystemInfo,
     mac_crash_info: Option<Vec<RawMacCrashInfo>>,
+    mac_boot_args: Option<MinidumpMacBootargs>,
     misc_info: Option<MinidumpMiscInfo>,
     dump_thread_id: Option<u32>,
     requesting_thread_id: Option<u32>,
@@ -571,6 +572,8 @@ impl<'a> MinidumpInfo<'a> {
             .ok()
             .map(|info| info.raw);
 
+        let mac_boot_args = dump.get_stream::<MinidumpMacBootargs>().ok();
+
         let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
         // If Breakpad info exists in dump, get dump and requesting thread ids.
         let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
@@ -608,6 +611,7 @@ impl<'a> MinidumpInfo<'a> {
             linux_standard_base,
             system_info,
             mac_crash_info,
+            mac_boot_args,
             misc_info,
             dump_thread_id,
             requesting_thread_id,
@@ -897,6 +901,7 @@ impl<'a> MinidumpInfo<'a> {
             system_info: self.system_info,
             linux_standard_base: self.linux_standard_base,
             mac_crash_info: self.mac_crash_info,
+            mac_boot_args: self.mac_boot_args,
             threads,
             modules: self.modules,
             unloaded_modules: self.unloaded_modules,
