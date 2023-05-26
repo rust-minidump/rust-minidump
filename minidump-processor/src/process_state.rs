@@ -533,7 +533,11 @@ impl ProcessState {
             writeln!(f)?;
         }
         if let Some(ref info) = self.mac_boot_args {
-            writeln!(f, "Mac Boot Args: {}", info.bootargs.as_deref().unwrap_or(""))?;
+            writeln!(
+                f,
+                "Mac Boot Args: {}",
+                info.bootargs.as_deref().unwrap_or("")
+            )?;
             writeln!(f)?;
         }
         if let Some(ref time) = self.process_create_time {

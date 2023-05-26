@@ -3576,16 +3576,17 @@ impl<'a> MinidumpStream<'a> for MinidumpMacBootargs {
         let mut bootargs_offset = raw.bootargs as usize;
         let bootargs = read_string_utf16(&mut bootargs_offset, all, endian);
 
-        Ok(MinidumpMacBootargs {
-            raw,
-            bootargs,
-        })
+        Ok(MinidumpMacBootargs { raw, bootargs })
     }
 }
 
 impl MinidumpMacBootargs {
     pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
-        writeln!(f, "mac_boot_args = {}", self.bootargs.as_deref().unwrap_or(""))?;
+        writeln!(
+            f,
+            "mac_boot_args = {}",
+            self.bootargs.as_deref().unwrap_or("")
+        )?;
         writeln!(f)?;
         Ok(())
     }
