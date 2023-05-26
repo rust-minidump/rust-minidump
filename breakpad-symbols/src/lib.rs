@@ -38,7 +38,9 @@
 //! ```
 
 use async_trait::async_trait;
+use cachemap2::CacheMap;
 use debugid::{CodeId, DebugId};
+use futures_util::lock::Mutex as FutMutex;
 use tracing::trace;
 
 use std::boxed::Box;
@@ -569,6 +571,32 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
     )
 }
 
+struct CachedAsyncResult<T, E> {
+    inner: FutMutex<Option<Arc<Result<T, E>>>>,
+}
+
+impl<T, E> Default for CachedAsyncResult<T, E> {
+    fn default() -> Self {
+        CachedAsyncResult {
+            inner: FutMutex::new(None),
+        }
+    }
+}
+
+impl<T, E> CachedAsyncResult<T, E> {
+    pub async fn get<'a, F, Fut>(&self, f: F) -> Arc<Result<T, E>>
+    where
+        F: FnOnce() -> Fut + 'a,
+        Fut: std::future::Future<Output = Result<T, E>> + 'a,
+    {
+        let mut guard = self.inner.lock().await;
+        if guard.is_none() {
+            *guard = Some(Arc::new(f().await));
+        }
+        guard.as_ref().unwrap().clone()
+    }
+}
+
 /// Symbolicate stack frames.
 ///
 /// A `Symbolizer` manages loading symbols and looking up symbols in them
@@ -588,8 +616,6 @@ fn module_key(module: &(dyn Module + Sync)) -> ModuleKey {
 /// [get_symbol]: struct.Symbolizer.html#method.get_symbol_at_address
 /// [fill_symbol]: struct.Symbolizer.html#method.fill_symbol
 
-type CachedOperation<T, E> = Arc<tokio::sync::OnceCell<Result<T, E>>>;
-
 pub struct Symbolizer {
     /// Symbol supplier for locating symbols.
     supplier: Box<dyn SymbolSupplier + Send + Sync + 'static>,
@@ -598,8 +624,9 @@ pub struct Symbolizer {
     // note that using an lru-cache would mess up the fact that we currently
     // use this for statistics collection. Splitting out statistics would be
     // way messier but not impossible.
-    symbols: Mutex<HashMap<ModuleKey, CachedOperation<SymbolFile, SymbolError>>>,
+    symbols: CacheMap<ModuleKey, CachedAsyncResult<SymbolFile, SymbolError>>,
     pending_stats: Mutex<PendingSymbolStats>,
+    stats: Mutex<HashMap<String, SymbolStats>>,
 }
 
 impl Symbolizer {
@@ -607,8 +634,9 @@ impl Symbolizer {
     pub fn new<T: SymbolSupplier + Send + Sync + 'static>(supplier: T) -> Symbolizer {
         Symbolizer {
             supplier: Box::new(supplier),
-            symbols: Mutex::new(HashMap::new()),
+            symbols: CacheMap::default(),
             pending_stats: Mutex::default(),
+            stats: Mutex::default(),
         }
     }
 
@@ -675,8 +703,7 @@ impl Symbolizer {
     ) -> Result<(), FillSymbolError> {
         let cached_sym = self.get_symbols(module).await;
         let sym = cached_sym
-            .get()
-            .unwrap()
+            .as_ref()
             .as_ref()
             .map_err(|_| FillSymbolError {})?;
         sym.fill_symbol(module, frame);
@@ -687,14 +714,50 @@ impl Symbolizer {
     ///
     /// Keys are the file name of the module (code_file's file name).
     pub fn stats(&self) -> HashMap<String, SymbolStats> {
+        self.stats.lock().unwrap().clone()
+    }
+
+    /// Get live symbol stats for interactive updates.
+    pub fn pending_stats(&self) -> PendingSymbolStats {
+        self.pending_stats.lock().unwrap().clone()
+    }
+
+    /// Tries to use CFI to walk the stack frame of the FrameWalker
+    /// using the symbols of the given Module. Output will be written
+    /// using the FrameWalker's `set_caller_*` APIs.
+    pub async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
+        let cached_sym = self.get_symbols(module).await;
+        let sym = cached_sym.as_ref();
+        if let Ok(sym) = sym {
+            trace!("found symbols for address, searching for cfi entries");
+            sym.walk_frame(module, walker)
+        } else {
+            trace!("couldn't find symbols for address, cannot use cfi");
+            None
+        }
+    }
+
+    /// Gets the fully parsed SymbolFile for a given module (or an Error).
+    ///
+    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
+    async fn get_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Arc<Result<SymbolFile, SymbolError>> {
         self.symbols
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(k, res)| {
-                let res = res.get().expect("Had uninitialized SymbolFile entry?");
+            .cache_default(module_key(module))
+            .get(|| async {
+                trace!("locating symbols for module {}", module.code_file());
+                self.pending_stats.lock().unwrap().symbols_requested += 1;
+                let result = self.supplier.locate_symbols(module).await;
+                self.pending_stats.lock().unwrap().symbols_processed += 1;
+
                 let mut stats = SymbolStats::default();
-                match res {
+                match &result {
                     Ok(sym) => {
                         stats.symbol_url = sym.url.clone();
                         stats.loaded_symbols = true;
@@ -714,55 +777,12 @@ impl Symbolizer {
                         stats.corrupt_symbols = true;
                     }
                 }
-                (leafname(&k.0).to_string(), stats)
-            })
-            .collect()
-    }
+                let key = leafname(module.code_file().as_ref()).to_string();
+                self.stats.lock().unwrap().insert(key, stats);
 
-    /// Get live symbol stats for interactive updates.
-    pub fn pending_stats(&self) -> PendingSymbolStats {
-        self.pending_stats.lock().unwrap().clone()
-    }
-
-    /// Tries to use CFI to walk the stack frame of the FrameWalker
-    /// using the symbols of the given Module. Output will be written
-    /// using the FrameWalker's `set_caller_*` APIs.
-    pub async fn walk_frame(
-        &self,
-        module: &(dyn Module + Sync),
-        walker: &mut (dyn FrameWalker + Send),
-    ) -> Option<()> {
-        let cached_sym = self.get_symbols(module).await;
-        let sym = cached_sym.get().unwrap().as_ref();
-        if let Ok(sym) = sym {
-            trace!("found symbols for address, searching for cfi entries");
-            sym.walk_frame(module, walker)
-        } else {
-            trace!("couldn't find symbols for address, cannot use cfi");
-            None
-        }
-    }
-
-    /// Gets the fully parsed SymbolFile for a given module (or an Error).
-    ///
-    /// This returns a CachedOperation which is guaranteed to already be resolved (lifetime stuff).
-    async fn get_symbols(
-        &self,
-        module: &(dyn Module + Sync),
-    ) -> CachedOperation<SymbolFile, SymbolError> {
-        // This clones an Arc<Once> that we will use to only do this operation once
-        let k = module_key(module);
-        let symbol_once = self.symbols.lock().unwrap().entry(k).or_default().clone();
-        symbol_once
-            .get_or_init(|| async {
-                trace!("locating symbols for module {}", module.code_file());
-                self.pending_stats.lock().unwrap().symbols_requested += 1;
-                let result = self.supplier.locate_symbols(module).await;
-                self.pending_stats.lock().unwrap().symbols_processed += 1;
                 result
             })
-            .await;
-        symbol_once
+            .await
     }
 
     /// Gets the path to a file for a given module (or an Error).
