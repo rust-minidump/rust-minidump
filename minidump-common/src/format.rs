@@ -311,6 +311,12 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// See ['MINIDUMP_MAC_CRASH_INFO'].
     MozMacosCrashInfoStream = 0x4d7a0001,
+
+    /// The kernel boot args on the machine where the crashed process is
+    /// running. Only available on macOS. 0x4D7A = "Mz".
+    ///
+    /// See ['MINIDUMP_MAC_BOOTARGS']
+    MozMacosBootargsStream = 0x4d7a0002,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
@@ -2402,6 +2408,13 @@ pub const MAC_CRASH_INFO_STRING_MAX_SIZE: usize = 8192;
 /// sections per process. But the __crash_info section is almost entirely
 /// undocumented, so just in case we set a large maximum.
 pub const MAC_CRASH_INFOS_MAX: usize = 20;
+
+/// MacOS kernel boot args
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_MAC_BOOTARGS {
+    pub stream_type: u32,
+    pub bootargs: RVA64,
+}
 
 bitflags! {
     /// Possible values of [`ARMCpuInfo::elf_hwcaps`]

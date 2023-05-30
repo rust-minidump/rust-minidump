@@ -78,6 +78,7 @@
 //! * [`MinidumpLinuxMaps`][]
 //! * [`MinidumpLinuxProcStatus`][]
 //! * [`MinidumpMacCrashInfo`][]
+//! * [`MinidumpMacBootargs`][]
 //! * [`MinidumpMemoryList`][]
 //! * [`MinidumpMemoryInfoList`][]
 //! * [`MinidumpMiscInfo`][]

@@ -14,6 +14,7 @@ expression: json_out
     "type": null
   },
   "lsb_release": null,
+  "mac_boot_args": null,
   "mac_crash_info": null,
   "main_module": 0,
   "modules": [],
