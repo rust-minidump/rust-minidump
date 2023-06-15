@@ -14,7 +14,9 @@ travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
 # Allows retrieval of symbols from debug info.
-debuginfo = ["cachemap2", "futures-util", "memmap2", "symbolic"]
+debuginfo = ["cachemap2", "futures-util", "memmap2", "symbolic-cfi", "symbolic-common", "symbolic-debuginfo", "symbolic-demangle"]
+# Allows demangling of swift symbols in debug info.
+swift = ["debuginfo", "symbolic-demangle/swift"]
 # Allows retrieval of symbol files via HTTP
 http = ["breakpad-symbols/http"]
 
@@ -27,7 +29,10 @@ memmap2 = { version = "0.5.7", optional = true }
 minidump = { version = "0.17.0", path = "../minidump" }
 minidump-common = { version = "0.17.0", path = "../minidump-common" }
 scroll = "0.11.0"
-symbolic = { version = "12", features = ["cfi", "debuginfo", "demangle"], optional = true }
+symbolic-cfi = { version = "12", optional = true }
+symbolic-common = { version = "12", optional = true }
+symbolic-debuginfo = { version = "12", optional = true }
+symbolic-demangle = { version = "12", default-features = false, features = ["cpp", "msvc", "rust"], optional = true }
 tracing = { version = "0.1.34", features = ["log"] }
 
 [dev-dependencies]
