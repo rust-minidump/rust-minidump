@@ -312,11 +312,9 @@ pub mod debuginfo {
     use std::collections::HashMap;
     use std::fs::File;
     use std::path::Path;
-    use symbolic::{
-        cfi::CfiCache,
-        common::Name,
-        debuginfo::{self, Object},
-    };
+    use symbolic_cfi::CfiCache;
+    use symbolic_common::Name;
+    use symbolic_debuginfo::{self as debuginfo, Object};
 
     /// A symbol provider which gets symbol information from the crashing binaries on the local
     /// system.
@@ -360,7 +358,7 @@ pub mod debuginfo {
             // The file is presumably read-only (being some binary or debug info file).
             let mapped = unsafe { Mmap::map(&file) }.ok()?;
 
-            let object = debuginfo::Object::parse(&mapped).ok()?;
+            let object = Object::parse(&mapped).ok()?;
             Some(Self::from_object(object))
         }
 
@@ -573,7 +571,7 @@ pub mod debuginfo {
             let function = info.function_by_address(address);
 
             if let Some(function) = function {
-                use symbolic::demangle::{Demangle, DemangleOptions};
+                use symbolic_demangle::{Demangle, DemangleOptions};
                 frame.set_function(
                     function
                         .name
