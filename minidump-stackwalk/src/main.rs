@@ -600,7 +600,7 @@ fn print_help_markdown(out: &mut dyn Write) -> std::io::Result<()> {
             let line = line.trim();
 
             // argument names are subheadings
-            if line.starts_with('-') || line.starts_with('<') {
+            if line.starts_with('-') || (line.starts_with('<') && !line.starts_with("<http")) {
                 writeln!(out, "#### `{line}`")?;
                 continue;
             }
