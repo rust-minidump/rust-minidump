@@ -574,7 +574,7 @@ pub mod debuginfo {
                     // else fall back to code file below
                 }
 
-                return code_file_path.to_owned();
+                code_file_path.to_owned()
             }
 
             self.debug_info(unwind_info_file(module)).await
