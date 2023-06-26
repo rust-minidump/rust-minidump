@@ -353,7 +353,13 @@ pub mod debuginfo {
 
     impl DebugInfo {
         pub fn new(file: &Path) -> Option<Self> {
-            let file = File::open(file).ok()?;
+            let file = match File::open(file) {
+                Ok(file) => file,
+                Err(e) => {
+                    tracing::error!("failed to open {} for debug info: {e}", file.display());
+                    return None;
+                }
+            };
             // # Safety
             // The file is presumably read-only (being some binary or debug info file).
             let mapped = unsafe { Mmap::map(&file) }.ok()?;
@@ -539,6 +545,40 @@ pub mod debuginfo {
                 .await
                 .as_ref()
         }
+
+        async fn module_debug_info(&self, module: &(dyn Module + Sync)) -> Option<&DebugInfo> {
+            /// Get the file path that contains unwind info for the given module.
+            fn unwind_info_file(module: &(dyn Module + Sync)) -> PathBuf {
+                // Windows x86_64 always stores the unwind info _only_ in the binary.
+                let ignore_debug_file = cfg!(all(windows, target_arch = "x86_64"));
+
+                let code_file = module.code_file();
+                let code_file_path: &Path = code_file.as_ref().as_ref();
+
+                if !ignore_debug_file {
+                    if let Some(file) = module.debug_file() {
+                        let file_path: &Path = file.as_ref().as_ref();
+                        // Anchor relative paths in the code file parent.
+                        if file_path.is_relative() {
+                            if let Some(parent) = code_file_path.parent() {
+                                let path = parent.join(file_path);
+                                if path.exists() {
+                                    return path;
+                                }
+                            }
+                        }
+                        if file_path.exists() {
+                            return file_path.to_owned();
+                        }
+                    }
+                    // else fall back to code file below
+                }
+
+                return code_file_path.to_owned();
+            }
+
+            self.debug_info(unwind_info_file(module)).await
+        }
     }
 
     #[async_trait]
@@ -558,9 +598,8 @@ pub mod debuginfo {
                 }
             }
 
-            let dbg = module.debug_file().ok_or(FillSymbolError {})?;
             let info = self
-                .debug_info(dbg.as_ref().into())
+                .module_debug_info(module)
                 .await
                 .ok_or(FillSymbolError {})?;
 
@@ -612,8 +651,7 @@ pub mod debuginfo {
             module: &(dyn Module + Sync),
             walker: &mut (dyn FrameWalker + Send),
         ) -> Option<()> {
-            let dbg = module.debug_file()?;
-            let info = self.debug_info(dbg.as_ref().into()).await?;
+            let info = self.module_debug_info(module).await?;
             info.unwind_symbol_file
                 .as_ref()
                 .and_then(|sym_file| sym_file.walk_frame(module, walker))
