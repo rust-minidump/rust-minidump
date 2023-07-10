@@ -425,10 +425,15 @@ async fn main_result() -> std::io::Result<()> {
 
             let mut provider = MultiSymbolProvider::new();
 
+            let system_info = dump
+                .get_stream::<MinidumpSystemInfo>()
+                .expect("need system info");
             let modules = dump.get_stream::<MinidumpModuleList>().unwrap_or_default();
 
             if cli.use_local_debuginfo {
-                provider.add(Box::new(DebugInfoSymbolProvider::new(&modules).await));
+                provider.add(Box::new(
+                    DebugInfoSymbolProvider::new(&system_info, &modules).await,
+                ));
             }
 
             if !cli.symbols_url.is_empty() {

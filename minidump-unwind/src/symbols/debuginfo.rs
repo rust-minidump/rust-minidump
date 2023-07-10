@@ -5,25 +5,135 @@ use cachemap2::CacheMap;
 use framehop::Unwinder;
 use futures_util::lock::Mutex;
 use memmap2::Mmap;
-use minidump::{MinidumpModuleList, Module};
+use minidump::{MinidumpModuleList, MinidumpSystemInfo, Module};
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use wholesym::{SymbolManager, SymbolManagerConfig, SymbolMap};
 
-type ModuleData = std::borrow::Cow<'static, [u8]>;
-
 /// A symbol provider which gets information from the minidump modules on the local system.
+///
+/// Note: this symbol provider will currently only restore the registers necessary for unwinding
+/// the given platform. In the future this may be extended to restore all registers.
 pub struct DebugInfoSymbolProvider {
-    unwinder: framehop::x86_64::UnwinderX86_64<ModuleData>,
-    unwind_cache: PerThread<framehop::x86_64::CacheX86_64<ModuleData>>,
+    unwinder: Box<dyn UnwinderInterface + Send + Sync>,
     /// Indexed by module base address.
     symbols: HashMap<ModuleKey, Mutex<SymbolMap>>,
     symbol_manager: SymbolManager,
     /// The caches and unwinder operate on the memory held by the mapped modules, so this field
     /// must not be dropped until after they are dropped.
     _mapped_modules: Box<[Mmap]>,
+}
+
+type ModuleData = std::borrow::Cow<'static, [u8]>;
+type FHModule = framehop::Module<ModuleData>;
+
+struct UnwinderImpl<U: Unwinder> {
+    unwinder: U,
+    unwind_cache: PerThread<U::Cache>,
+}
+
+impl<U: Unwinder + Default> Default for UnwinderImpl<U> {
+    fn default() -> Self {
+        UnwinderImpl {
+            unwinder: Default::default(),
+            unwind_cache: Default::default(),
+        }
+    }
+}
+
+impl UnwinderImpl<framehop::x86_64::UnwinderX86_64<ModuleData>> {
+    pub fn x86_64() -> Box<dyn UnwinderInterface + Send + Sync> {
+        Box::<Self>::default()
+    }
+}
+
+impl UnwinderImpl<framehop::aarch64::UnwinderAarch64<ModuleData>> {
+    pub fn aarch64() -> Box<dyn UnwinderInterface + Send + Sync> {
+        Box::<Self>::default()
+    }
+}
+
+trait WalkerRegs: Sized {
+    fn regs_from_walker(walker: &(dyn FrameWalker + Send)) -> Option<Self>;
+    fn update_walker(self, walker: &mut (dyn FrameWalker + Send)) -> Option<()>;
+}
+
+impl WalkerRegs for framehop::x86_64::UnwindRegsX86_64 {
+    fn regs_from_walker(walker: &(dyn FrameWalker + Send)) -> Option<Self> {
+        let sp = walker.get_callee_register("rsp")?;
+        let bp = walker.get_callee_register("rbp")?;
+        let ip = walker.get_callee_register("rip")?;
+        Some(Self::new(ip, sp, bp))
+    }
+
+    fn update_walker(self, walker: &mut (dyn FrameWalker + Send)) -> Option<()> {
+        walker.set_cfa(self.sp())?;
+        walker.set_caller_register("rbp", self.bp())?;
+        Some(())
+    }
+}
+
+impl WalkerRegs for framehop::aarch64::UnwindRegsAarch64 {
+    fn regs_from_walker(walker: &(dyn FrameWalker + Send)) -> Option<Self> {
+        let lr = walker.get_callee_register("lr")?;
+        let sp = walker.get_callee_register("sp")?;
+        let fp = walker.get_callee_register("fp")?;
+        // TODO PtrAuthMask on MacOS?
+        Some(Self::new(lr, sp, fp))
+    }
+
+    fn update_walker(self, walker: &mut (dyn FrameWalker + Send)) -> Option<()> {
+        walker.set_cfa(self.sp())?;
+        walker.set_caller_register("lr", self.lr())?;
+        walker.set_caller_register("fp", self.fp())?;
+        Some(())
+    }
+}
+
+trait UnwinderInterface {
+    fn add_module(&mut self, module: FHModule);
+    fn unwind_frame(&self, walker: &mut (dyn FrameWalker + Send)) -> Option<()>;
+}
+
+impl<U: Unwinder<Module = FHModule>> UnwinderInterface for UnwinderImpl<U>
+where
+    U::UnwindRegs: WalkerRegs,
+    U::Cache: Default,
+{
+    fn add_module(&mut self, module: FHModule) {
+        self.unwinder.add_module(module);
+    }
+
+    fn unwind_frame(&self, walker: &mut (dyn FrameWalker + Send)) -> Option<()> {
+        let mut regs = U::UnwindRegs::regs_from_walker(walker)?;
+        let instruction = walker.get_instruction();
+        let result = self.unwind_cache.with(|cache| {
+            self.unwinder.unwind_frame(
+                if walker.has_grand_callee() {
+                    framehop::FrameAddress::from_return_address(instruction + 1).unwrap()
+                } else {
+                    framehop::FrameAddress::from_instruction_pointer(instruction)
+                },
+                &mut regs,
+                cache,
+                &mut |addr| walker.get_register_at_address(addr).ok_or(()),
+            )
+        });
+        let ra = match result {
+            Ok(ra) => ra,
+            Err(e) => {
+                tracing::error!("failed to unwind frame: {e}");
+                return None;
+            }
+        };
+        if let Some(ra) = ra {
+            walker.set_ra(ra);
+        }
+        regs.update_walker(walker)?;
+        Some(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -145,10 +255,15 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
 }
 
 impl DebugInfoSymbolProvider {
-    pub async fn new(modules: &MinidumpModuleList) -> Self {
+    pub async fn new(system_info: &MinidumpSystemInfo, modules: &MinidumpModuleList) -> Self {
         let mut mapped_modules = Vec::new();
         let mut symbols = HashMap::new();
-        let mut unwinder = framehop::x86_64::UnwinderX86_64::default();
+        use minidump::system_info::Cpu;
+        let mut unwinder = match system_info.cpu {
+            Cpu::X86_64 => UnwinderImpl::x86_64(),
+            Cpu::Arm64 => UnwinderImpl::aarch64(),
+            _ => unimplemented!(),
+        };
         let symbol_manager = SymbolManager::with_config(SymbolManagerConfig::new());
         for module in modules.iter() {
             if let Some((mapped, fhmodule)) = load_unwind_module(module) {
@@ -166,7 +281,6 @@ impl DebugInfoSymbolProvider {
         }
         DebugInfoSymbolProvider {
             unwinder,
-            unwind_cache: Default::default(),
             symbols,
             symbol_manager,
             _mapped_modules: mapped_modules.into(),
@@ -241,37 +355,7 @@ impl super::SymbolProvider for DebugInfoSymbolProvider {
         _module: &(dyn Module + Sync),
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
-        let sp = walker.get_callee_register("rsp")?;
-        let bp = walker.get_callee_register("rbp")?;
-        let ip = walker.get_callee_register("rip")?;
-        let mut regs = framehop::x86_64::UnwindRegsX86_64::new(ip, sp, bp);
-        let result = self.unwind_cache.with(|cache| {
-            self.unwinder.unwind_frame(
-                if walker.has_grand_callee() {
-                    framehop::FrameAddress::from_return_address(ip).unwrap()
-                } else {
-                    framehop::FrameAddress::from_instruction_pointer(ip)
-                },
-                &mut regs,
-                cache,
-                &mut |addr| walker.get_register_at_address(addr).ok_or(()),
-            )
-        });
-        let ra = match result {
-            Ok(ra) => ra,
-            Err(e) => {
-                tracing::error!("failed to unwind frame: {e}");
-                return None;
-            }
-        };
-        tracing::error!("ra = {:?}", ra);
-        if let Some(ra) = ra {
-            walker.set_ra(ra)?;
-        }
-        walker.set_cfa(regs.sp())?;
-        walker.set_caller_register("rbp", regs.bp())?;
-
-        Some(())
+        self.unwinder.unwind_frame(walker)
     }
 
     async fn get_file_path(
