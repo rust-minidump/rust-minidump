@@ -13,8 +13,12 @@ edition = "2018"
 travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
-# Allows retrieval of symbols from debug info.
-debuginfo = ["cachemap2", "framehop", "futures-util", "memmap2", "object", "wholesym"]
+# Alias for debuginfo-symbols.
+debuginfo = ["debuginfo-symbols"]
+# Allows unwinding and retrieval of symbols from debug info.
+debuginfo-symbols = ["debuginfo-unwind", "futures-util", "wholesym"]
+# Allows unwinding from debug info.
+debuginfo-unwind = ["cachemap2", "framehop", "memmap2", "object"]
 # Allows retrieval of symbol files via HTTP
 http = ["breakpad-symbols/http"]
 

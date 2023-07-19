@@ -3,14 +3,11 @@
 use super::{async_trait, FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker};
 use cachemap2::CacheMap;
 use framehop::Unwinder;
-use futures_util::lock::Mutex;
 use memmap2::Mmap;
 use minidump::{MinidumpModuleList, MinidumpSystemInfo, Module};
 use std::cell::UnsafeCell;
-use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use wholesym::{SymbolManager, SymbolManagerConfig, SymbolMap};
 
 /// A symbol provider which gets information from the minidump modules on the local system.
 ///
@@ -18,12 +15,15 @@ use wholesym::{SymbolManager, SymbolManagerConfig, SymbolMap};
 /// the given platform. In the future this may be extended to restore all registers.
 pub struct DebugInfoSymbolProvider {
     unwinder: Box<dyn UnwinderInterface + Send + Sync>,
-    /// Indexed by module base address.
-    symbols: HashMap<ModuleKey, Mutex<SymbolMap>>,
-    symbol_manager: SymbolManager,
+    symbols: Box<dyn SymbolInterface + Send + Sync>,
     /// The caches and unwinder operate on the memory held by the mapped modules, so this field
     /// must not be dropped until after they are dropped.
     _mapped_modules: Box<[Mmap]>,
+}
+
+pub struct DebugInfoSymbolProviderBuilder {
+    #[cfg(feature = "debuginfo-symbols")]
+    enable_symbols: bool,
 }
 
 type ModuleData = std::borrow::Cow<'static, [u8]>;
@@ -133,6 +133,126 @@ where
         }
         regs.update_walker(walker)?;
         Some(())
+    }
+}
+
+#[async_trait]
+trait SymbolInterface {
+    async fn fill_symbol(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError>;
+}
+
+/// A SymbolInterface that always returns `Ok(())` without doing anything.
+struct NoSymbols;
+
+#[async_trait]
+impl SymbolInterface for NoSymbols {
+    async fn fill_symbol(
+        &self,
+        _module: &(dyn Module + Sync),
+        _frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "debuginfo-symbols")]
+mod wholesym_symbol_interface {
+    use super::*;
+    use futures_util::lock::Mutex;
+    use std::collections::HashMap;
+    use wholesym::{SymbolManager, SymbolManagerConfig, SymbolMap};
+
+    pub struct Impl {
+        /// Indexed by module base address.
+        symbols: HashMap<ModuleKey, Mutex<SymbolMap>>,
+        symbol_manager: SymbolManager,
+    }
+
+    impl Impl {
+        pub async fn new(modules: &MinidumpModuleList) -> Self {
+            let mut symbols = HashMap::new();
+            let symbol_manager = SymbolManager::with_config(SymbolManagerConfig::new());
+            for module in modules.iter() {
+                let path = effective_debug_file(module, false);
+                if let Ok(sm) = symbol_manager
+                    .load_symbol_map_for_binary_at_path(&path, None)
+                    .await
+                {
+                    symbols.insert(module.into(), Mutex::new(sm));
+                }
+            }
+            Impl {
+                symbols,
+                symbol_manager,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SymbolInterface for Impl {
+        async fn fill_symbol(
+            &self,
+            module: &(dyn Module + Sync),
+            frame: &mut (dyn FrameSymbolizer + Send),
+        ) -> Result<(), FillSymbolError> {
+            let key = ModuleKey::for_module(module);
+            let symbol_map = self.symbols.get(&key).ok_or(FillSymbolError {})?;
+
+            use std::convert::TryInto;
+            let addr = match (frame.get_instruction() - module.base_address()).try_into() {
+                Ok(a) => a,
+                Err(e) => {
+                    tracing::error!("failed to downcast relative address offset: {e}");
+                    return Ok(());
+                }
+            };
+
+            let (address_info, origin) = {
+                let guard = symbol_map.lock().await;
+                let address_info = guard.lookup_relative_address(addr);
+                let origin = guard.symbol_file_origin();
+                (address_info, origin)
+            };
+
+            if let Some(address_info) = address_info {
+                frame.set_function(
+                    &address_info.symbol.name,
+                    module.base_address() + address_info.symbol.address as u64,
+                    0,
+                );
+                use wholesym::FramesLookupResult::*;
+                let frames = match address_info.frames {
+                    Available(frames) => Some(frames),
+                    External(ext) => self.symbol_manager.lookup_external(&origin, &ext).await,
+                    Unavailable => None,
+                };
+
+                if let Some(frames) = frames {
+                    let mut iter = frames.into_iter().rev();
+                    if let Some(f) = iter.next() {
+                        if let Some(path) = f.file_path {
+                            frame.set_source_file(
+                                path.raw_path(),
+                                f.line_number.unwrap_or(0),
+                                module.base_address() + address_info.symbol.address as u64,
+                            );
+                        }
+                    }
+                    for f in iter {
+                        frame.add_inline_frame(
+                            f.function.as_deref().unwrap_or(""),
+                            f.file_path.as_ref().map(|p| p.raw_path()),
+                            f.line_number,
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -254,37 +374,81 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
     Some((mapped, fhmodule))
 }
 
-impl DebugInfoSymbolProvider {
-    pub async fn new(system_info: &MinidumpSystemInfo, modules: &MinidumpModuleList) -> Self {
+impl Default for DebugInfoSymbolProviderBuilder {
+    fn default() -> Self {
+        DebugInfoSymbolProviderBuilder {
+            #[cfg(feature = "debuginfo-symbols")]
+            enable_symbols: true,
+        }
+    }
+}
+
+impl DebugInfoSymbolProviderBuilder {
+    /// Create a new builder.
+    ///
+    /// This returns the default builder.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Enable or disable symbolication.
+    ///
+    /// This saves processing time if desired, only doing unwinding if symbols are disabled. This
+    /// option is only available when the `wholesym` feature (usually through the `debuginfo`
+    /// feature) is enabled, and defaults to `true`.
+    #[cfg(feature = "debuginfo-symbols")]
+    pub fn symbols(mut self, enable: bool) -> Self {
+        self.enable_symbols = enable;
+        self
+    }
+
+    /// Create the DebugInfoSymbolProvider.
+    pub async fn build(
+        self,
+        system_info: &MinidumpSystemInfo,
+        modules: &MinidumpModuleList,
+    ) -> DebugInfoSymbolProvider {
         let mut mapped_modules = Vec::new();
-        let mut symbols = HashMap::new();
         use minidump::system_info::Cpu;
         let mut unwinder = match system_info.cpu {
             Cpu::X86_64 => UnwinderImpl::x86_64(),
             Cpu::Arm64 => UnwinderImpl::aarch64(),
             _ => unimplemented!(),
         };
-        let symbol_manager = SymbolManager::with_config(SymbolManagerConfig::new());
+
+        #[cfg(not(feature = "debuginfo-symbols"))]
+        let symbols: Box<dyn SymbolInterface + Send + Sync> = Box::new(NoSymbols);
+
+        #[cfg(feature = "debuginfo-symbols")]
+        let symbols: Box<dyn SymbolInterface + Send + Sync> = if self.enable_symbols {
+            Box::new(wholesym_symbol_interface::Impl::new(modules).await)
+        } else {
+            Box::new(NoSymbols)
+        };
+
         for module in modules.iter() {
             if let Some((mapped, fhmodule)) = load_unwind_module(module) {
                 mapped_modules.push(mapped);
                 unwinder.add_module(fhmodule);
             }
-
-            let path = effective_debug_file(module, false);
-            if let Ok(sm) = symbol_manager
-                .load_symbol_map_for_binary_at_path(&path, None)
-                .await
-            {
-                symbols.insert(module.into(), Mutex::new(sm));
-            }
         }
         DebugInfoSymbolProvider {
             unwinder,
             symbols,
-            symbol_manager,
             _mapped_modules: mapped_modules.into(),
         }
+    }
+}
+
+impl DebugInfoSymbolProvider {
+    /// Create a builder for the DebugInfoSymbolProvider.
+    pub fn builder() -> DebugInfoSymbolProviderBuilder {
+        Default::default()
+    }
+
+    /// Create a new DebugInfoSymbolProvider with the default builder settings.
+    pub async fn new(system_info: &MinidumpSystemInfo, modules: &MinidumpModuleList) -> Self {
+        Self::builder().build(system_info, modules).await
     }
 }
 
@@ -295,59 +459,7 @@ impl super::SymbolProvider for DebugInfoSymbolProvider {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        let key = ModuleKey::for_module(module);
-        let symbol_map = self.symbols.get(&key).ok_or(FillSymbolError {})?;
-
-        use std::convert::TryInto;
-        let addr = match (frame.get_instruction() - module.base_address()).try_into() {
-            Ok(a) => a,
-            Err(e) => {
-                tracing::error!("failed to downcast relative address offset: {e}");
-                return Ok(());
-            }
-        };
-
-        let (address_info, origin) = {
-            let guard = symbol_map.lock().await;
-            let address_info = guard.lookup_relative_address(addr);
-            let origin = guard.symbol_file_origin();
-            (address_info, origin)
-        };
-
-        if let Some(address_info) = address_info {
-            frame.set_function(
-                &address_info.symbol.name,
-                module.base_address() + address_info.symbol.address as u64,
-                0,
-            );
-            use wholesym::FramesLookupResult::*;
-            let frames = match address_info.frames {
-                Available(frames) => Some(frames),
-                External(ext) => self.symbol_manager.lookup_external(&origin, &ext).await,
-                Unavailable => None,
-            };
-
-            if let Some(frames) = frames {
-                let mut iter = frames.into_iter().rev();
-                if let Some(f) = iter.next() {
-                    if let Some(path) = f.file_path {
-                        frame.set_source_file(
-                            path.raw_path(),
-                            f.line_number.unwrap_or(0),
-                            module.base_address() + address_info.symbol.address as u64,
-                        );
-                    }
-                }
-                for f in iter {
-                    frame.add_inline_frame(
-                        f.function.as_deref().unwrap_or(""),
-                        f.file_path.as_ref().map(|p| p.raw_path()),
-                        f.line_number,
-                    );
-                }
-            }
-        }
-        Ok(())
+        self.symbols.fill_symbol(module, frame).await
     }
 
     async fn walk_frame(
