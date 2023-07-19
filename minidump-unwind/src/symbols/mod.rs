@@ -58,7 +58,7 @@ pub use breakpad_symbols::{
     Symbolizer,
 };
 
-#[cfg(feature = "debuginfo")]
+#[cfg(feature = "debuginfo-unwind")]
 pub mod debuginfo;
 
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
