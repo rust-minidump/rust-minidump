@@ -15,7 +15,7 @@ use minidump_unwind::{
 
 use crate::op_analysis::MemoryAccess;
 use crate::process_state::{LinuxStandardBase, ProcessState};
-use crate::{arg_recovery, evil, AdjustedAddress};
+use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcStatus};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -465,6 +465,7 @@ struct MinidumpInfo<'a> {
     thread_names: MinidumpThreadNames,
     dump_system_info: MinidumpSystemInfo,
     linux_standard_base: Option<LinuxStandardBase>,
+    linux_proc_status: Option<LinuxProcStatus>,
     system_info: SystemInfo,
     mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     mac_boot_args: Option<MinidumpMacBootargs>,
@@ -523,7 +524,7 @@ impl<'a> MinidumpInfo<'a> {
             .get_stream::<MinidumpLinuxCpuInfo>()
             .unwrap_or_default();
         let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
-        let _linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
+        let linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
 
         // Extract everything we care about from linux streams here.
         // We don't eagerly process them in the minidump crate because there's just
@@ -551,6 +552,17 @@ impl<'a> MinidumpInfo<'a> {
                 }
             }
             lsb
+        });
+
+        let linux_proc_status = linux_proc_status.map(|linux_proc_status| {
+            let mut lps = LinuxProcStatus::default();
+            if let Some(pid) = linux_proc_status
+                .iter()
+                .find(|entry| entry.0.as_bytes() == b"Pid")
+            {
+                lps.pid = pid.1.to_string_lossy().parse::<u32>().unwrap()
+            }
+            lps
         });
 
         let cpu_info = dump_system_info
@@ -609,6 +621,7 @@ impl<'a> MinidumpInfo<'a> {
             thread_names,
             dump_system_info,
             linux_standard_base,
+            linux_proc_status,
             system_info,
             mac_crash_info,
             mac_boot_args,
@@ -880,14 +893,18 @@ impl<'a> MinidumpInfo<'a> {
         // Get symbol stats from the symbolizer
         let symbol_stats = symbol_provider.stats();
 
-        // Process create time is optional.
-        let (process_id, process_create_time) = if let Some(misc_info) = self.misc_info.as_ref() {
-            (
-                misc_info.raw.process_id().cloned(),
-                misc_info.process_create_time(),
-            )
+        // Process ID & create time is optional.
+        let process_id = if let Some(misc_info) = self.misc_info.as_ref() {
+            misc_info.raw.process_id().cloned()
         } else {
-            (None, None)
+            self.linux_proc_status
+                .map(|linux_proc_status| linux_proc_status.pid)
+        };
+
+        let process_create_time = if let Some(misc_info) = self.misc_info.as_ref() {
+            misc_info.process_create_time()
+        } else {
+            None
         };
 
         let mut state = ProcessState {

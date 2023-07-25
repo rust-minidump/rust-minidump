@@ -220,6 +220,18 @@ PRETTY_NAME= wow long string!!!
 }
 
 #[tokio::test]
+async fn test_linux_cpu_pid() {
+    let input = b"
+Pid:	3747
+";
+
+    let dump = minimal_minidump().set_linux_proc_status(input);
+    let state = read_synth_dump(dump).await;
+
+    assert_eq!(state.process_id, Some(3747));
+}
+
+#[tokio::test]
 async fn test_linux_environ() {
     // Whitespace intentionally wonky to test robustness
 

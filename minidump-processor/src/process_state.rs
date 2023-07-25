@@ -83,6 +83,11 @@ pub struct LinuxStandardBase {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LinuxProcStatus {
+    pub pid: u32,
+}
+
 /// Info about an exception that may have occurred
 ///
 /// May not be available if the minidump wasn't triggered by an exception, or if required
