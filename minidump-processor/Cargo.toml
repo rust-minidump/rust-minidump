@@ -33,7 +33,7 @@ debugid = "0.8.0"
 futures-util = "0.3.25"
 memmap2 = "0.5.7"
 minidump = { version = "0.17.0", path = "../minidump" }
-minidump-common = { version = "0.17.0", path = "../minidump-common" }
+minidump-common = { version = "0.18.0", path = "../minidump-common" }
 minidump-unwind = { version = "0.17.0", path = "../minidump-unwind" }
 scroll = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }

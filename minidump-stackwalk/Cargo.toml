@@ -24,7 +24,7 @@ mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 clap = { version = "4.0.18", features = ["cargo", "wrap_help", "derive"] }
 indicatif = "0.17.0"
 minidump = { version = "0.17.0", path = "../minidump" }
-minidump-common = { version = "0.17.0", path = "../minidump-common" }
+minidump-common = { version = "0.18.0", path = "../minidump-common" }
 minidump-processor = { version = "0.17.0", path = "../minidump-processor" }
 minidump-unwind = { version = "0.17.0", path = "../minidump-unwind", features = ["debuginfo", "http"] }
 tokio = { version = "1.12.0", features = ["full"] }

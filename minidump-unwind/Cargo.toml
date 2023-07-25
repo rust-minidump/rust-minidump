@@ -27,7 +27,7 @@ cachemap2 = { version = "0.2.0", optional = true }
 futures-util = { version = "0.3.25", optional = true }
 memmap2 = { version = "0.5.7", optional = true }
 minidump = { version = "0.17.0", path = "../minidump" }
-minidump-common = { version = "0.17.0", path = "../minidump-common" }
+minidump-common = { version = "0.18.0", path = "../minidump-common" }
 scroll = "0.11.0"
 symbolic-cfi = { version = "12", optional = true }
 symbolic-common = { version = "12", optional = true }

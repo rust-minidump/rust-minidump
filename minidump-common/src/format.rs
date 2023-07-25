@@ -775,6 +775,7 @@ bitflags! {
     /// This applies to the [`CONTEXT_ARM`], [`CONTEXT_PPC`], [`CONTEXT_MIPS`],
     /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`] and
     /// [`CONTEXT_ARM64_OLD`] structs.
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsCpu: u32 {
         const CONTEXT_IA64 = 0x80000;
         /// Super-H, includes SH3, from winnt.h in the Windows CE 5.0 SDK
@@ -808,92 +809,97 @@ impl ContextFlagsCpu {
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_AMD64.context_flags`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsAmd64: u32 {
         /// SegSs, Rsp, SegCs, Rip, and EFlags
-        const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Rax, Rcx, Rdx, Rbx, Rbp, Rsi, Rdi, and R8-R15
-        const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// SegDs, SegEs, SegFs, and SegGs
-        const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Xmm0-Xmm15
-        const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits;
+        const CONTEXT_AMD64_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_AMD64.bits();
         /// Dr0-Dr3 and Dr6-Dr7
-        const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits;
-        const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits;
-        const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits | Self::CONTEXT_AMD64_INTEGER.bits | Self::CONTEXT_AMD64_FLOATING_POINT.bits;
-        const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits | Self::CONTEXT_AMD64_SEGMENTS.bits | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits;
+        const CONTEXT_AMD64_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_AMD64.bits();
+        const CONTEXT_AMD64_XSTATE = 0x00000020 | ContextFlagsCpu::CONTEXT_AMD64.bits();
+        const CONTEXT_AMD64_FULL = Self::CONTEXT_AMD64_CONTROL.bits() | Self::CONTEXT_AMD64_INTEGER.bits() | Self::CONTEXT_AMD64_FLOATING_POINT.bits();
+        const CONTEXT_AMD64_ALL = Self::CONTEXT_AMD64_FULL.bits() | Self::CONTEXT_AMD64_SEGMENTS.bits() | Self::CONTEXT_AMD64_DEBUG_REGISTERS.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_X86.context_flags`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsX86: u32 {
         /// Ebp, Eip, SegCs, EFlags, Esp, SegSs
-        const CONTEXT_X86_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Edi, Esi, Ebx, Edx, Ecx, Eax
-        const CONTEXT_X86_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// SegDs, SegEs, SegFs, and SegGs
-        const CONTEXT_X86_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_SEGMENTS = 0x00000004 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Fpcr, Fpsr, Fptag, Fpioff, Fpisel, Fpdoff, Fpdsel, Mxcsr, Mxcsr_mask, Xmm0-Xmm7
-        const CONTEXT_X86_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_X86.bits;
+        const CONTEXT_X86_FLOATING_POINT = 0x00000008 | ContextFlagsCpu::CONTEXT_X86.bits();
         /// Dr0-Dr3 and Dr6-Dr7
-        const CONTEXT_X86_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_EXTENDED_REGISTERS = 0x00000020 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_XSTATE = 0x00000040 | ContextFlagsCpu::CONTEXT_X86.bits;
-        const CONTEXT_X86_FULL = Self::CONTEXT_X86_CONTROL.bits | Self::CONTEXT_X86_INTEGER.bits | Self::CONTEXT_X86_SEGMENTS.bits;
-        const CONTEXT_X86_ALL = Self::CONTEXT_X86_FULL.bits | Self::CONTEXT_X86_FLOATING_POINT.bits | Self::CONTEXT_X86_DEBUG_REGISTERS.bits | Self::CONTEXT_X86_EXTENDED_REGISTERS.bits;
+        const CONTEXT_X86_DEBUG_REGISTERS = 0x00000010 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_EXTENDED_REGISTERS = 0x00000020 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_XSTATE = 0x00000040 | ContextFlagsCpu::CONTEXT_X86.bits();
+        const CONTEXT_X86_FULL = Self::CONTEXT_X86_CONTROL.bits() | Self::CONTEXT_X86_INTEGER.bits() | Self::CONTEXT_X86_SEGMENTS.bits();
+        const CONTEXT_X86_ALL = Self::CONTEXT_X86_FULL.bits() | Self::CONTEXT_X86_FLOATING_POINT.bits() | Self::CONTEXT_X86_DEBUG_REGISTERS.bits() | Self::CONTEXT_X86_EXTENDED_REGISTERS.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM64.context_flags`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsArm64: u32 {
         /// FP, LR, SP, PC, and CPSR
-        const CONTEXT_ARM64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// X0-X28 (but maybe not X18)
-        const CONTEXT_ARM64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
-        const CONTEXT_ARM64_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
-        const CONTEXT_ARM64_DEBUG_REGISTERS = 0x0000008 | ContextFlagsCpu::CONTEXT_ARM64.bits;
+        const CONTEXT_ARM64_DEBUG_REGISTERS = 0x0000008 | ContextFlagsCpu::CONTEXT_ARM64.bits();
         /// Whether x18 has a valid value, because on Windows it contains the TEB.
         ///
         /// NOTE: at this precise moment breakpad doesn't define this, but Microsoft does!
-        const CONTEXT_ARM64_X18 = 0x0000010 | ContextFlagsCpu::CONTEXT_ARM64.bits;
-        const CONTEXT_ARM64_FULL = Self::CONTEXT_ARM64_CONTROL.bits | Self::CONTEXT_ARM64_INTEGER.bits | Self::CONTEXT_ARM64_FLOATING_POINT.bits;
-        const CONTEXT_ARM64_ALL = Self::CONTEXT_ARM64_FULL.bits | Self::CONTEXT_ARM64_DEBUG_REGISTERS.bits | Self::CONTEXT_ARM64_X18.bits;
+        const CONTEXT_ARM64_X18 = 0x0000010 | ContextFlagsCpu::CONTEXT_ARM64.bits();
+        const CONTEXT_ARM64_FULL = Self::CONTEXT_ARM64_CONTROL.bits() | Self::CONTEXT_ARM64_INTEGER.bits() | Self::CONTEXT_ARM64_FLOATING_POINT.bits();
+        const CONTEXT_ARM64_ALL = Self::CONTEXT_ARM64_FULL.bits() | Self::CONTEXT_ARM64_DEBUG_REGISTERS.bits() | Self::CONTEXT_ARM64_X18.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM64_OLD.context_flags`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsArm64Old: u32 {
         // Yes, breakpad never defined CONTROL for this context
 
         /// FP, LR, SP, PC, CPSR, and X0-X28
-        const CONTEXT_ARM64_OLD_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
+        const CONTEXT_ARM64_OLD_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits();
         /// Fpcr, Fpsr, D0-D31 (AKA Q0-Q31, AKA S0-S31)
-        const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits;
-        const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits;
-        const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits;
+        const CONTEXT_ARM64_OLD_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM64_OLD.bits();
+        const CONTEXT_ARM64_OLD_FULL = Self::CONTEXT_ARM64_OLD_INTEGER.bits() | Self::CONTEXT_ARM64_OLD_FLOATING_POINT.bits();
+        const CONTEXT_ARM64_OLD_ALL = Self::CONTEXT_ARM64_OLD_FULL.bits();
     }
 }
 
 bitflags! {
     /// Flags available for use in [`CONTEXT_ARM.context_flags`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ContextFlagsArm: u32 {
         // Yes, breakpad never defined CONTROL for this context
 
         /// SP, LR, PC, and CPSR
-        const CONTEXT_ARM_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_CONTROL = 0x00000001 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// R0-R12
-        const CONTEXT_ARM_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_INTEGER = 0x00000002 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// Q0-Q15 / D0-D31 / S0-S31
-        const CONTEXT_ARM_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM.bits;
+        const CONTEXT_ARM_FLOATING_POINT = 0x00000004 | ContextFlagsCpu::CONTEXT_ARM.bits();
         /// DBGBVR, DBGBCR, DBGWVR, DBGWCR
-        const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits;
-        const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits | Self::CONTEXT_ARM_INTEGER.bits | Self::CONTEXT_ARM_FLOATING_POINT.bits;
-        const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits;
+        const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits();
+        const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits() | Self::CONTEXT_ARM_INTEGER.bits() | Self::CONTEXT_ARM_FLOATING_POINT.bits();
+        const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits() | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits();
     }
 }
 
@@ -1801,6 +1807,7 @@ impl From<u8> for XSTATE_FEATURE {
 
 bitflags! {
     /// Known flags for `MINIDUMP_MISC_INFO*.flags1`
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct MiscInfoFlags: u32 {
         const MINIDUMP_MISC1_PROCESS_ID            = 0x00000001;
         const MINIDUMP_MISC1_PROCESS_TIMES         = 0x00000002;
@@ -1867,6 +1874,7 @@ pub struct MINIDUMP_MEMORY_INFO {
 
 bitflags! {
     /// Potential values for [`MINIDUMP_MEMORY_INFO::state`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct MemoryState: u32 {
         const MEM_COMMIT  = 0x01000;
         const MEM_FREE    = 0x10000;
@@ -1880,6 +1888,7 @@ bitflags! {
     /// See [Microsoft's documentation][msdn] for details.
     ///
     /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/Memory/memory-protection-constants
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct MemoryProtection: u32 {
         const PAGE_NOACCESS           = 0x01;
         const PAGE_READONLY           = 0x02;
@@ -1898,6 +1907,7 @@ bitflags! {
 
 bitflags! {
     /// Potential values for [`MINIDUMP_MEMORY_INFO::_type`]
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct MemoryType: u32 {
         const MEM_PRIVATE = 0x00020000;
         const MEM_MAPPED  = 0x00040000;
@@ -1925,6 +1935,7 @@ bitflags! {
     /// Taken from definitions in Breakpad's [minidump_format.h][fmt].
     ///
     /// [fmt]: https://chromium.googlesource.com/breakpad/breakpad/+/88d8114fda3e4a7292654bd6ac0c34d6c88a8121/src/google_breakpad/common/minidump_format.h#989
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct BreakpadInfoValid: u32 {
         const DumpThreadId       = 1 << 0;
         const RequestingThreadId = 1 << 1;
@@ -2422,6 +2433,7 @@ bitflags! {
     /// This matches the Linux kernel definitions from [<asm/hwcaps.h>][hwcap].
     ///
     /// [hwcap]: https://elixir.bootlin.com/linux/latest/source/arch/arm/include/uapi/asm/hwcap.h
+    #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
     pub struct ArmElfHwCaps: u32 {
         const HWCAP_SWP       = (1 << 0);
         const HWCAP_HALF      = (1 << 1);
@@ -2443,7 +2455,7 @@ bitflags! {
         const HWCAP_IDIVA     = (1 << 17);
         const HWCAP_IDIVT     = (1 << 18);
         const HWCAP_VFPD32    = (1 << 19);
-        const HWCAP_IDIV      = ArmElfHwCaps::HWCAP_IDIVA.bits | Self::HWCAP_IDIVT.bits;
+        const HWCAP_IDIV      = ArmElfHwCaps::HWCAP_IDIVA.bits() | Self::HWCAP_IDIVT.bits();
         const HWCAP_LPAE      = (1 << 20);
         const HWCAP_EVTSTRM   = (1 << 21);
     }
