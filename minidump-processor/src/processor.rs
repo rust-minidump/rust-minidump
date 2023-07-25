@@ -534,36 +534,8 @@ impl<'a> MinidumpInfo<'a> {
 
         let cpu_microcode_version = get_microcode_version(&linux_cpu_info, &evil);
 
-        let linux_standard_base = linux_standard_base.map(|linux_standard_base| {
-            let mut lsb = LinuxStandardBase::default();
-            for (key, val) in linux_standard_base.iter() {
-                match key.as_bytes() {
-                    b"DISTRIB_ID" | b"ID" => lsb.id = val.to_string_lossy().into_owned(),
-                    b"DISTRIB_RELEASE" | b"VERSION_ID" => {
-                        lsb.release = val.to_string_lossy().into_owned()
-                    }
-                    b"DISTRIB_CODENAME" | b"VERSION_CODENAME" => {
-                        lsb.codename = val.to_string_lossy().into_owned()
-                    }
-                    b"DISTRIB_DESCRIPTION" | b"PRETTY_NAME" => {
-                        lsb.description = val.to_string_lossy().into_owned()
-                    }
-                    _ => {}
-                }
-            }
-            lsb
-        });
-
-        let linux_proc_status = linux_proc_status.map(|linux_proc_status| {
-            let mut lps = LinuxProcStatus::default();
-            if let Some(pid) = linux_proc_status
-                .iter()
-                .find(|entry| entry.0.as_bytes() == b"Pid")
-            {
-                lps.pid = pid.1.to_string_lossy().parse::<u32>().unwrap()
-            }
-            lps
-        });
+        let linux_standard_base = linux_standard_base.map(LinuxStandardBase::from);
+        let linux_proc_status = linux_proc_status.map(LinuxProcStatus::from);
 
         let cpu_info = dump_system_info
             .cpu_info()

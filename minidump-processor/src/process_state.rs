@@ -83,9 +83,43 @@ pub struct LinuxStandardBase {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Default)]
+impl From<MinidumpLinuxLsbRelease<'_>> for LinuxStandardBase {
+    fn from(linux_standard_base: MinidumpLinuxLsbRelease) -> Self {
+        let mut lsb = LinuxStandardBase::default();
+        for (key, val) in linux_standard_base.iter() {
+            match key.as_bytes() {
+                b"DISTRIB_ID" | b"ID" => lsb.id = val.to_string_lossy().into_owned(),
+                b"DISTRIB_RELEASE" | b"VERSION_ID" => {
+                    lsb.release = val.to_string_lossy().into_owned()
+                }
+                b"DISTRIB_CODENAME" | b"VERSION_CODENAME" => {
+                    lsb.codename = val.to_string_lossy().into_owned()
+                }
+                b"DISTRIB_DESCRIPTION" | b"PRETTY_NAME" => {
+                    lsb.description = val.to_string_lossy().into_owned()
+                }
+                _ => {}
+            }
+        }
+        lsb
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LinuxProcStatus {
     pub pid: u32,
+}
+
+impl From<MinidumpLinuxProcStatus<'_>> for LinuxProcStatus {
+    fn from(status: MinidumpLinuxProcStatus) -> Self {
+        let pid = status
+            .iter()
+            .find(|entry| entry.0.as_bytes() == b"Pid")
+            .map_or(0, |key_val| {
+                key_val.1.to_string_lossy().parse::<u32>().unwrap_or(0)
+            });
+        LinuxProcStatus { pid }
+    }
 }
 
 /// Info about an exception that may have occurred
