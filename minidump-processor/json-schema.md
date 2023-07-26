@@ -171,7 +171,10 @@ anyway.
            "nearby_registers": <u32>
         },
         /// The calculated confidence value in the bit-flip-corrected address.
-        "confidence": <f32>
+        "confidence": <f32>,
+        /// The source register from which the address was retrieved, or `null` if there was no
+        /// source register (e.g. the address was the crashing address).
+        "source_register": <string>
       }
     ],
 
