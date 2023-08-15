@@ -1434,7 +1434,7 @@ impl Stream for MiscStream {
 /// Populate a `CONTEXT_X86` struct with the given `endian`, `eip`, and `esp`.
 pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
     let section = Section::with_endian(endian)
-        .D32(0x1007f) // context_flags: CONTEXT_ALL
+        .D32(0x1003f) // context_flags: CONTEXT_X86_ALL
         .append_repeated(0, 4 * 6) // dr0,1,2,3,6,7, 4 bytes each
         .append_repeated(0, md::FLOATING_SAVE_AREA_X86::size_with(&LE)) // float_save
         .append_repeated(0, 4 * 11) // gs-ebp, 4 bytes each
@@ -1452,7 +1452,7 @@ pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
 pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
     let section = Section::with_endian(endian)
         .append_repeated(0, mem::size_of::<u64>() * 6) // p[1-6]_home
-        .D32(0x10001f) // context_flags: CONTEXT_ALL
+        .D32(0x10001f) // context_flags: CONTEXT_AMD64_ALL
         .D32(0) // mx_csr
         .append_repeated(0, mem::size_of::<u16>() * 6) // cs,ds,es,fs,gs,ss
         .D32(0) // eflags
@@ -1465,6 +1465,25 @@ pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
         .append_repeated(0, mem::size_of::<u128>() * 26) // vector_register
         .append_repeated(0, mem::size_of::<u64>() * 6); // trailing stuff
     assert_eq!(section.size(), md::CONTEXT_AMD64::size_with(&LE) as u64);
+    section
+}
+
+/// Populate a `CONTEXT_ARM64` struct with the given `endian`, `pc`, and `sp`.
+pub fn arm64_context(endian: Endian, pc: u64, sp: u64) -> Section {
+    let section = Section::with_endian(endian)
+        .D32(0x40001f) // context_flags: CONTEXT_ARM64_ALL
+        .D32(0) // cpsr
+        .append_repeated(0, mem::size_of::<u64>() * 31) // iregs[x0, x1, ..., x28, fp, lr],
+        .D64(sp) // sp
+        .D64(pc) // pc
+        .append_repeated(0, mem::size_of::<u128>() * 32) // float_regs[d0, d1, ..., d31]
+        .D32(0) // fpcr
+        .D32(0) // fpsr
+        .append_repeated(0, mem::size_of::<u32>() * 8) // bcr[0-7]
+        .append_repeated(0, mem::size_of::<u64>() * 8) // bvr[0-7]
+        .append_repeated(0, mem::size_of::<u32>() * 2) // wcr[0-1]
+        .append_repeated(0, mem::size_of::<u64>() * 2); // wvr[0-1]
+    assert_eq!(section.size(), md::CONTEXT_ARM64::size_with(&LE) as u64);
     section
 }
 

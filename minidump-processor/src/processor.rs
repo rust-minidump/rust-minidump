@@ -694,6 +694,14 @@ impl<'a> MinidumpInfo<'a> {
             return;
         }
 
+        // Do not check for bit-flips on 64-bit ARM systems as the lack of disassembly
+        // support can lead to false positives when dealing with near-NULL crashes
+        // caused by register + offset addressing with power-of-2 offsets. Remove this
+        // once issue #863 is fixed.
+        if self.system_info.cpu == system_info::Cpu::Arm64 {
+            return;
+        }
+
         let info = &mut exception_details.info;
 
         use bitflip::BitRange;
