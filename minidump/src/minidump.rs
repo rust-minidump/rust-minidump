@@ -248,7 +248,7 @@ pub struct MinidumpMemoryInfoList<'a> {
 /// Metadata about a region of memory (whether it is executable, freed, private, and so on).
 pub struct MinidumpMemoryInfo<'a> {
     /// The raw value from the minidump.
-    raw: md::MINIDUMP_MEMORY_INFO,
+    pub raw: md::MINIDUMP_MEMORY_INFO,
     /// The memory protection when the region was initially allocated.
     pub allocation_protection: md::MemoryProtection,
     /// The state of the pages in the region (whether it is freed or not).
