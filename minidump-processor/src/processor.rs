@@ -760,8 +760,12 @@ impl<'a> MinidumpInfo<'a> {
 
         if let Some(accesses) = &mut exception_details.info.memory_accesses {
             for access in accesses {
-                let Some(info) = self.memory_info.memory_info_at_address(access.address) else { continue; };
-                let Some(range) = info.memory_range() else { continue; };
+                let Some(info) = self.memory_info.memory_info_at_address(access.address) else {
+                    continue;
+                };
+                let Some(range) = info.memory_range() else {
+                    continue;
+                };
 
                 fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
                     range.is_readable() || range.is_writable() || range.is_executable()
@@ -769,7 +773,9 @@ impl<'a> MinidumpInfo<'a> {
 
                 let is_adjacent_to_accessible_memory = || {
                     for region in self.memory_info.by_addr() {
-                        let Some(other_range) = region.memory_range() else { continue; };
+                        let Some(other_range) = region.memory_range() else {
+                            continue;
+                        };
                         if other_range.end + 1 == range.start && is_accessible(&region) {
                             return true;
                         }
