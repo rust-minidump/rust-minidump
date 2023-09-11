@@ -2,10 +2,11 @@
 
 use crate::*;
 use cachemap2::CacheMap;
-use reqwest::{Client, Url};
+use reqwest::{Client, Url, redirect};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 use tempfile::NamedTempFile;
 use tracing::{debug, trace, warn};
@@ -179,6 +180,73 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
     temp.persist_noclobber(final_path)?;
 
     Ok(())
+}
+
+/// The result of a lookup by code_file/code_identifier against a symbol
+/// server.
+#[derive(Debug, Clone)]
+pub struct DebugInfoResult {
+    debug_file: String,
+    debug_identifier: DebugId,
+}
+
+/// Given a vector of symbol urls and a module with a code_file and code_identifier,
+/// this tries to request a symbol file using the code file and code identifier.
+///
+/// `<code file>/<code identifier>/<code file>.sym`
+///
+/// If the symbol server returns an HTTP 302 redirect, the Location header will
+/// have the correct download API url with the debug file and debug identifier.
+///
+/// This is supported by tecken
+///
+/// This returns a DebugInfoResult with the new debug file and debug identifier
+/// or None.
+async fn lookup_debug_info_by_code_info(
+    symbol_urls: &Vec<Url>,
+    module: &(dyn Module + Sync),
+) -> Option<DebugInfoResult> {
+    let lookup_path = match code_info_breakpad_sym_lookup(module) {
+        Some(value) => value,
+        _ => return None,
+    };
+
+    for base_url in symbol_urls {
+        let url = base_url.join(&lookup_path).ok()?;
+
+        debug!("Trying code file / code identifier lookup: {}", url);
+
+        // This should not follow redirects--we want the next url if there is one
+        let no_redirects_client = Client::builder()
+            .redirect(redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        let response = no_redirects_client.get(url.clone()).send().await;
+        match response {
+            Ok(res) => {
+                let res_status = res.status();
+                if res_status == reqwest::StatusCode::FOUND || res_status == reqwest::StatusCode::MOVED_PERMANENTLY {
+                    let mut new_url = res.headers().get("Location").unwrap().to_str().unwrap();
+                    if new_url.starts_with("/") {
+                        new_url = new_url.strip_prefix("/").unwrap();
+                    }
+                    let mut parts = new_url.split("/");
+                    let debug_file = String::from(parts.next().unwrap());
+                    let debug_identifier = DebugId::from_str(parts.next().unwrap()).unwrap();
+
+                    debug!("Found debug info {} {}", debug_file, debug_identifier);
+                    return Some(DebugInfoResult {
+                        debug_file: debug_file,
+                        debug_identifier: debug_identifier,
+                    });
+                }
+            },
+            _ => (),
+        }
+    }
+
+    None
 }
 
 /// Fetch a symbol file from the URL made by combining `base_url` and `rel_path` using `client`,
@@ -470,8 +538,43 @@ impl SymbolSupplier for HttpSymbolSupplier {
         &self,
         module: &(dyn Module + Sync),
     ) -> Result<SymbolFile, SymbolError> {
+        // If we don't have a debug_file or debug_identifier, then try to get it
+        // from a symbol server.
+        let mut debug_file = module.debug_file().unwrap_or_default().into_owned();
+        let mut debug_id = module.debug_identifier().unwrap_or_default();
+
+        if debug_file.to_string().is_empty() || debug_id.is_nil() {
+            debug!("Missing debug file or debug identifier--trying lookup with code info");
+            match lookup_debug_info_by_code_info(&self.urls, module).await {
+                Some(debug_info_result) => {
+                    debug_file = debug_info_result.debug_file;
+                    debug_id = debug_info_result.debug_identifier;
+                },
+                _ => (),
+            }
+        }
+
+        // Build a minimal module for lookups with the debug file and debug
+        // identifier we need to use
+        let code_file = module.code_file().into_owned();
+        let lookup_module = SimpleModule {
+            debug_file: if debug_file.to_string().is_empty() {
+                None
+            } else {
+                Some(debug_file)
+            },
+            debug_id: Some(debug_id),
+            code_file: if code_file.to_string().is_empty() {
+                None
+            } else {
+                Some(code_file)
+            },
+            code_identifier: module.code_identifier(),
+            ..SimpleModule::default()
+        };
+
         // First: try local paths for sym files
-        let local_result = self.local.locate_symbols(module).await;
+        let local_result = self.local.locate_symbols(&lookup_module).await;
         if !matches!(local_result, Err(SymbolError::NotFound)) {
             // Everything but NotFound prevents cascading
             return local_result;
@@ -481,7 +584,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
         // Second: try to directly download sym files
         for url in &self.urls {
             // First, try to get a breakpad .sym file from the symbol server
-            let sym = fetch_symbol_file(&self.client, url, module, &self.cache, &self.tmp).await;
+            let sym = fetch_symbol_file(&self.client, url, &lookup_module, &self.cache, &self.tmp).await;
             match sym {
                 Ok(file) => {
                     trace!("HttpSymbolSupplier parsed file!");
@@ -498,7 +601,7 @@ impl SymbolSupplier for HttpSymbolSupplier {
             trace!("symbols: trying to fetch native symbols");
             // Find native files
             let mut native_artifacts = vec![];
-            native_artifacts.push(self.locate_file_internal(module, FileKind::Binary).await);
+            native_artifacts.push(self.locate_file_internal(&lookup_module, FileKind::Binary).await);
             native_artifacts.push(
                 self.locate_file_internal(module, FileKind::ExtraDebugInfo)
                     .await,
@@ -506,14 +609,14 @@ impl SymbolSupplier for HttpSymbolSupplier {
 
             // Now try to run dump_syms to produce a .sym
             let sym_lookup =
-                breakpad_sym_lookup(module).ok_or(SymbolError::MissingDebugFileOrId)?;
+                breakpad_sym_lookup(&lookup_module).ok_or(SymbolError::MissingDebugFileOrId)?;
             let output = self.cache.join(sym_lookup.cache_rel);
             if dump_syms(&native_artifacts, &output).await.is_ok() {
                 trace!("symbols: dump_syms successful! using local result");
                 // We want dump_syms to leave us in a state "as if" we had downloaded
                 // the symbol file, so as a guard against that diverging, we now use
                 // the proper cache-lookup path to read the file dump_syms just wrote.
-                if let Ok(local_result) = self.local.locate_symbols(module).await {
+                if let Ok(local_result) = self.local.locate_symbols(&lookup_module).await {
                     return Ok(local_result);
                 } else {
                     warn!("dump_syms succeeded, but there was no symbol file in the cache?");
