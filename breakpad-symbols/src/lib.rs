@@ -972,7 +972,7 @@ mod test {
             write_good_symbol_file(&path.join(sym));
             // Should load OK now that it exists.
             assert!(
-                matches!(supplier.locate_symbols(&m).await, Ok(_)),
+                supplier.locate_symbols(&m).await.is_ok(),
                 "{}",
                 format!("Located symbols for {sym}")
             );
