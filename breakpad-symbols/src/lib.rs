@@ -228,7 +228,12 @@ pub fn code_info_breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<Str
     }
     let leaf = leafname(&code_file);
     let filename = replace_or_add_extension(leaf, "dll", "sym");
-    let rel_path = [leaf, &code_identifier.to_string().to_uppercase(), &filename[..]].join("/");
+    let rel_path = [
+        leaf,
+        &code_identifier.to_string().to_uppercase(),
+        &filename[..],
+    ]
+    .join("/");
 
     Some(rel_path)
 }

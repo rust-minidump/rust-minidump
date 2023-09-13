@@ -2,7 +2,7 @@
 
 use crate::*;
 use cachemap2::CacheMap;
-use reqwest::{Client, Url, redirect};
+use reqwest::{redirect, Client, Url};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -223,26 +223,25 @@ async fn lookup_debug_info_by_code_info(
             .unwrap();
 
         let response = no_redirects_client.get(url.clone()).send().await;
-        match response {
-            Ok(res) => {
-                let res_status = res.status();
-                if res_status == reqwest::StatusCode::FOUND || res_status == reqwest::StatusCode::MOVED_PERMANENTLY {
-                    let mut new_url = res.headers().get("Location").unwrap().to_str().unwrap();
-                    if new_url.starts_with("/") {
-                        new_url = new_url.strip_prefix("/").unwrap();
-                    }
-                    let mut parts = new_url.split("/");
-                    let debug_file = String::from(parts.next().unwrap());
-                    let debug_identifier = DebugId::from_str(parts.next().unwrap()).unwrap();
-
-                    debug!("Found debug info {} {}", debug_file, debug_identifier);
-                    return Some(DebugInfoResult {
-                        debug_file: debug_file,
-                        debug_identifier: debug_identifier,
-                    });
+        if let Ok(res) = response {
+            let res_status = res.status();
+            if res_status == reqwest::StatusCode::FOUND
+                || res_status == reqwest::StatusCode::MOVED_PERMANENTLY
+            {
+                let mut new_url = res.headers().get("Location").unwrap().to_str().unwrap();
+                if new_url.starts_with('/') {
+                    new_url = new_url.strip_prefix('/').unwrap();
                 }
-            },
-            _ => (),
+                let mut parts = new_url.split('/');
+                let debug_file = String::from(parts.next().unwrap());
+                let debug_identifier = DebugId::from_str(parts.next().unwrap()).unwrap();
+
+                debug!("Found debug info {} {}", debug_file, debug_identifier);
+                return Some(DebugInfoResult {
+                    debug_file,
+                    debug_identifier,
+                });
+            }
         }
     }
 
@@ -545,12 +544,11 @@ impl SymbolSupplier for HttpSymbolSupplier {
 
         if debug_file.to_string().is_empty() || debug_id.is_nil() {
             debug!("Missing debug file or debug identifier--trying lookup with code info");
-            match lookup_debug_info_by_code_info(&self.urls, module).await {
-                Some(debug_info_result) => {
-                    debug_file = debug_info_result.debug_file;
-                    debug_id = debug_info_result.debug_identifier;
-                },
-                _ => (),
+            if let Some(debug_info_result) =
+                lookup_debug_info_by_code_info(&self.urls, module).await
+            {
+                debug_file = debug_info_result.debug_file;
+                debug_id = debug_info_result.debug_identifier;
             }
         }
 
@@ -584,7 +582,8 @@ impl SymbolSupplier for HttpSymbolSupplier {
         // Second: try to directly download sym files
         for url in &self.urls {
             // First, try to get a breakpad .sym file from the symbol server
-            let sym = fetch_symbol_file(&self.client, url, &lookup_module, &self.cache, &self.tmp).await;
+            let sym =
+                fetch_symbol_file(&self.client, url, &lookup_module, &self.cache, &self.tmp).await;
             match sym {
                 Ok(file) => {
                     trace!("HttpSymbolSupplier parsed file!");
@@ -601,7 +600,10 @@ impl SymbolSupplier for HttpSymbolSupplier {
             trace!("symbols: trying to fetch native symbols");
             // Find native files
             let mut native_artifacts = vec![];
-            native_artifacts.push(self.locate_file_internal(&lookup_module, FileKind::Binary).await);
+            native_artifacts.push(
+                self.locate_file_internal(&lookup_module, FileKind::Binary)
+                    .await,
+            );
             native_artifacts.push(
                 self.locate_file_internal(module, FileKind::ExtraDebugInfo)
                     .await,
