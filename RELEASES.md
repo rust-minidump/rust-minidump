@@ -1,6 +1,15 @@
 # Unreleased
 
-Nothing Yet!
+* Add support for the MozMacosBootargsStream minidump stream which captures
+  information holding macOS kernel boot arguments.
+* Always use the code file for unwinding on Windows when using native debug
+  information. Previously the stack walker could use the PDB file which does
+  not contain unwinding information in 64-bit builds.
+* Populate the process ID field on Linux, this displays the PID of the crashed
+  process.
+* Expose the MINIDUMP_MEMORY_INFO fields in the public API.
+* Disable bit-flip detection on 64-bit ARM minidumps since it's prone to
+  false positives.
 
 # Version 0.17.0 (2023-05-17)
 
