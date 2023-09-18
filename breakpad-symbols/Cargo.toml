@@ -21,7 +21,7 @@ http = ["reqwest", "tempfile"]
 mozilla_cab_symbols = ["http", "cab"]
 
 [dependencies]
-async-trait = "0.1.51"
+async-trait = "0.1.52"
 cab = { version = "0.4.1", optional = true }
 cachemap2 = "0.2.0"
 circular = "0.3.0"
