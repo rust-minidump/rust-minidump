@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.18.0 (2023-09-18)
+
 * Add support for the MozMacosBootargsStream minidump stream which captures
   information holding macOS kernel boot arguments.
 * Always use the code file for unwinding on Windows when using native debug
