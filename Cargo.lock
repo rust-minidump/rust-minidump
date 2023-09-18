@@ -1122,6 +1122,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memmap2"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "memoffset"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1144,7 +1153,7 @@ dependencies = [
  "debugid",
  "doc-comment",
  "encoding_rs",
- "memmap2",
+ "memmap2 0.7.1",
  "minidump-common",
  "minidump-synth",
  "num-traits",
@@ -1180,7 +1189,7 @@ dependencies = [
  "debugid",
  "doc-comment",
  "futures-util",
- "memmap2",
+ "memmap2 0.7.1",
  "minidump",
  "minidump-common",
  "minidump-synth",
@@ -1231,7 +1240,7 @@ dependencies = [
  "cachemap2",
  "doc-comment",
  "futures-util",
- "memmap2",
+ "memmap2 0.7.1",
  "minidump",
  "minidump-common",
  "scroll",
@@ -1988,7 +1997,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e0e9bc48b3852f36a84f8d0da275d50cb3c2b88b59b9ec35fdd8b7fa239e37d"
 dependencies = [
  "debugid",
- "memmap2",
+ "memmap2 0.5.10",
  "stable_deref_trait",
  "uuid",
 ]
