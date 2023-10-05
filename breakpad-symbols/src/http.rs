@@ -228,13 +228,26 @@ async fn lookup_debug_info_by_code_info(
             if res_status == reqwest::StatusCode::FOUND
                 || res_status == reqwest::StatusCode::MOVED_PERMANENTLY
             {
-                let mut new_url = res.headers().get("Location").unwrap().to_str().unwrap();
+                let mut new_url = match res.headers().get("Location") {
+                    Some(new_url_result) => new_url_result.to_str().unwrap(),
+                    _ => continue,
+                };
                 if new_url.starts_with('/') {
                     new_url = new_url.strip_prefix('/').unwrap();
                 }
                 let mut parts = new_url.split('/');
-                let debug_file = String::from(parts.next().unwrap());
-                let debug_identifier = DebugId::from_str(parts.next().unwrap()).unwrap();
+
+                let debug_file = match parts.next() {
+                    Some(debug_file_result) => String::from(debug_file_result),
+                    _ => continue,
+                };
+                let debug_identifier = match parts.next() {
+                    Some(debug_id_result) => match DebugId::from_str(debug_id_result) {
+                        Ok(thing) => thing,
+                        _ => continue,
+                    },
+                    None => continue,
+                };
 
                 debug!("Found debug info {} {}", debug_file, debug_identifier);
                 return Some(DebugInfoResult {
@@ -244,6 +257,11 @@ async fn lookup_debug_info_by_code_info(
             }
         }
     }
+
+    debug!(
+        "No debug file / debug id found with lookup path {}.",
+        lookup_path
+    );
 
     None
 }
@@ -539,37 +557,27 @@ impl SymbolSupplier for HttpSymbolSupplier {
     ) -> Result<SymbolFile, SymbolError> {
         // If we don't have a debug_file or debug_identifier, then try to get it
         // from a symbol server.
-        let mut debug_file = module.debug_file().unwrap_or_default().into_owned();
-        let mut debug_id = module.debug_identifier().unwrap_or_default();
+        let mut debug_file = module.debug_file().map(|name| name.into_owned());
+        let mut debug_id = module.debug_identifier();
 
-        if debug_file.to_string().is_empty() || debug_id.is_nil() {
+        if debug_file.is_none() || debug_id.is_none() {
             debug!("Missing debug file or debug identifier--trying lookup with code info");
             if let Some(debug_info_result) =
                 lookup_debug_info_by_code_info(&self.urls, module).await
             {
-                debug_file = debug_info_result.debug_file;
-                debug_id = debug_info_result.debug_identifier;
+                debug_file = Some(debug_info_result.debug_file);
+                debug_id = Some(debug_info_result.debug_identifier);
             }
         }
 
         // Build a minimal module for lookups with the debug file and debug
         // identifier we need to use
-        let code_file = module.code_file().into_owned();
-        let lookup_module = SimpleModule {
-            debug_file: if debug_file.to_string().is_empty() {
-                None
-            } else {
-                Some(debug_file)
-            },
-            debug_id: Some(debug_id),
-            code_file: if code_file.to_string().is_empty() {
-                None
-            } else {
-                Some(code_file)
-            },
-            code_identifier: module.code_identifier(),
-            ..SimpleModule::default()
-        };
+        let lookup_module = SimpleModule::from_basic_info(
+            debug_file,
+            debug_id,
+            Some(module.code_file().into_owned()),
+            module.code_identifier(),
+        );
 
         // First: try local paths for sym files
         let local_result = self.local.locate_symbols(&lookup_module).await;

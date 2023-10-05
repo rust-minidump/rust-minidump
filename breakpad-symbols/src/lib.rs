@@ -122,6 +122,24 @@ impl SimpleModule {
             ..SimpleModule::default()
         }
     }
+
+    /// Create a `SimpleModule` with `debug_file`, `debug_id`, `code_file`, and `code_identifier`.
+    ///
+    /// Uses `default` for the remaining fields.
+    pub fn from_basic_info(
+        debug_file: Option<String>,
+        debug_id: Option<DebugId>,
+        code_file: Option<String>,
+        code_identifier: Option<CodeId>,
+    ) -> SimpleModule {
+        SimpleModule {
+            debug_file,
+            debug_id,
+            code_file,
+            code_identifier,
+            ..SimpleModule::default()
+        }
+    }
 }
 
 impl Module for SimpleModule {
