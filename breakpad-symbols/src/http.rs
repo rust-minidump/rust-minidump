@@ -190,6 +190,48 @@ pub struct DebugInfoResult {
     debug_identifier: DebugId,
 }
 
+/// Perform a code_file/code_identifier lookup for a specific symbol server.
+async fn individual_lookup_debug_info_by_code_info(
+    base_url: &Url,
+    lookup_path: &str,
+) -> Option<DebugInfoResult> {
+    let url = base_url.join(lookup_path).ok()?;
+
+    debug!("Trying code file / code identifier lookup: {}", url);
+
+    // This should not follow redirects--we want the next url if there is one
+    let no_redirects_client = Client::builder()
+        .redirect(redirect::Policy::none())
+        .build()
+        .unwrap();
+
+    let response = no_redirects_client.get(url.clone()).send().await;
+    if let Ok(res) = response {
+        let res_status = res.status();
+        if res_status == reqwest::StatusCode::FOUND
+            || res_status == reqwest::StatusCode::MOVED_PERMANENTLY
+        {
+            let location_header = res.headers().get("Location")?;
+            let mut new_url = location_header.to_str().ok()?;
+            if new_url.starts_with('/') {
+                new_url = new_url.strip_prefix('/').unwrap();
+            }
+            let mut parts = new_url.split('/');
+            let debug_file_part = parts.next()?;
+            let debug_file = String::from(debug_file_part);
+            let debug_identifier_part = parts.next()?;
+            let debug_identifier = DebugId::from_str(debug_identifier_part).ok()?;
+            debug!("Found debug info {} {}", debug_file, debug_identifier);
+            return Some(DebugInfoResult {
+                debug_file,
+                debug_identifier,
+            });
+        }
+    }
+
+    None
+}
+
 /// Given a vector of symbol urls and a module with a code_file and code_identifier,
 /// this tries to request a symbol file using the code file and code identifier.
 ///
@@ -206,55 +248,13 @@ async fn lookup_debug_info_by_code_info(
     symbol_urls: &Vec<Url>,
     module: &(dyn Module + Sync),
 ) -> Option<DebugInfoResult> {
-    let lookup_path = match code_info_breakpad_sym_lookup(module) {
-        Some(value) => value,
-        _ => return None,
-    };
+    let lookup_path = code_info_breakpad_sym_lookup(module)?;
 
     for base_url in symbol_urls {
-        let url = base_url.join(&lookup_path).ok()?;
-
-        debug!("Trying code file / code identifier lookup: {}", url);
-
-        // This should not follow redirects--we want the next url if there is one
-        let no_redirects_client = Client::builder()
-            .redirect(redirect::Policy::none())
-            .build()
-            .unwrap();
-
-        let response = no_redirects_client.get(url.clone()).send().await;
-        if let Ok(res) = response {
-            let res_status = res.status();
-            if res_status == reqwest::StatusCode::FOUND
-                || res_status == reqwest::StatusCode::MOVED_PERMANENTLY
-            {
-                let mut new_url = match res.headers().get("Location") {
-                    Some(new_url_result) => new_url_result.to_str().unwrap(),
-                    _ => continue,
-                };
-                if new_url.starts_with('/') {
-                    new_url = new_url.strip_prefix('/').unwrap();
-                }
-                let mut parts = new_url.split('/');
-
-                let debug_file = match parts.next() {
-                    Some(debug_file_result) => String::from(debug_file_result),
-                    _ => continue,
-                };
-                let debug_identifier = match parts.next() {
-                    Some(debug_id_result) => match DebugId::from_str(debug_id_result) {
-                        Ok(thing) => thing,
-                        _ => continue,
-                    },
-                    None => continue,
-                };
-
-                debug!("Found debug info {} {}", debug_file, debug_identifier);
-                return Some(DebugInfoResult {
-                    debug_file,
-                    debug_identifier,
-                });
-            }
+        if let Some(result) =
+            individual_lookup_debug_info_by_code_info(base_url, &lookup_path).await
+        {
+            return Some(result);
         }
     }
 
