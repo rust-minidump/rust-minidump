@@ -203,7 +203,7 @@ async fn individual_lookup_debug_info_by_code_info(
     let no_redirects_client = Client::builder()
         .redirect(redirect::Policy::none())
         .build()
-        .unwrap();
+        .ok()?;
 
     let response = no_redirects_client.get(url.clone()).send().await;
     if let Ok(res) = response {
@@ -214,7 +214,7 @@ async fn individual_lookup_debug_info_by_code_info(
             let location_header = res.headers().get("Location")?;
             let mut new_url = location_header.to_str().ok()?;
             if new_url.starts_with('/') {
-                new_url = new_url.strip_prefix('/').unwrap();
+                new_url = new_url.strip_prefix('/').unwrap_or(new_url);
             }
             let mut parts = new_url.split('/');
             let debug_file_part = parts.next()?;
