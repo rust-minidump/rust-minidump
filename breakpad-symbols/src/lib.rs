@@ -122,6 +122,24 @@ impl SimpleModule {
             ..SimpleModule::default()
         }
     }
+
+    /// Create a `SimpleModule` with `debug_file`, `debug_id`, `code_file`, and `code_identifier`.
+    ///
+    /// Uses `default` for the remaining fields.
+    pub fn from_basic_info(
+        debug_file: Option<String>,
+        debug_id: Option<DebugId>,
+        code_file: Option<String>,
+        code_identifier: Option<CodeId>,
+    ) -> SimpleModule {
+        SimpleModule {
+            debug_file,
+            debug_id,
+            code_file,
+            code_identifier,
+            ..SimpleModule::default()
+        }
+    }
 }
 
 impl Module for SimpleModule {
@@ -206,6 +224,36 @@ pub fn breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
         cache_rel: rel_path.clone(),
         server_rel: rel_path,
     })
+}
+
+/// Get a relative symbol path at which to locate symbols for `module` using
+/// the code file and code identifier. This is helpful for Microsoft modules
+/// where we don't have a valid debug filename and debug id to retrieve the
+/// symbol file with and the symbol server supports looking up debug filename
+/// and debug id using the code file and code id.
+///
+/// If `code file` ends with *.dll* the leaf filename will have that removed.
+/// `extension` is the expected extension for the symbol filename, generally
+/// *sym* if Breakpad text format symbols are expected.
+///
+/// `<code file>/<code identifier>/<code file>.sym`
+pub fn code_info_breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<String> {
+    let code_file = module.code_file();
+    let code_identifier = module.code_identifier()?;
+
+    if code_file.is_empty() {
+        return None;
+    }
+    let leaf = leafname(&code_file);
+    let filename = replace_or_add_extension(leaf, "dll", "sym");
+    let rel_path = [
+        leaf,
+        &code_identifier.to_string().to_uppercase(),
+        &filename[..],
+    ]
+    .join("/");
+
+    Some(rel_path)
 }
 
 /// Returns a lookup for this module's extra debuginfo (pdb)
@@ -904,6 +952,35 @@ mod test {
                 "foo.pdb/ABCD1234ABCD1234ABCDABCD12345678a/foo.sym"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_code_info_breakpad_sym_lookup() {
+        // Test normal data
+        let m = SimpleModule {
+            code_file: Some("foo.dll".to_string()),
+            code_identifier: Some(CodeId::from_str("64E782C570C4000").unwrap()),
+            ..SimpleModule::default()
+        };
+        assert_eq!(
+            &code_info_breakpad_sym_lookup(&m).unwrap(),
+            "foo.dll/64E782C570C4000/foo.sym"
+        );
+
+        let bad = SimpleModule::default();
+        assert!(code_info_breakpad_sym_lookup(&bad).is_none());
+
+        let bad2 = SimpleModule {
+            code_file: Some("foo".to_string()),
+            ..SimpleModule::default()
+        };
+        assert!(code_info_breakpad_sym_lookup(&bad2).is_none());
+
+        let bad3 = SimpleModule {
+            code_identifier: Some(CodeId::from_str("64E782C570C4000").unwrap()),
+            ..SimpleModule::default()
+        };
+        assert!(code_info_breakpad_sym_lookup(&bad3).is_none());
     }
 
     fn mksubdirs(path: &Path, dirs: &[&str]) -> Vec<PathBuf> {
