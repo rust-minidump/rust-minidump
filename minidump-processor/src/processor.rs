@@ -849,8 +849,7 @@ impl<'a> MinidumpInfo<'a> {
                 let name = self
                     .thread_names
                     .get_name(thread.raw.thread_id)
-                    .map(|cow| cow.into_owned())
-                    .or_else(|| self.evil.thread_names.get(&thread.raw.thread_id).cloned());
+                    .map(|cow| cow.into_owned());
 
                 let (info, frames) = if let Some(context) = context {
                     let ctx = context.clone();

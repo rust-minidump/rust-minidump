@@ -1,5 +1,3 @@
 {
-    "ModuleSignatureInfo": "{ \"rust-minidump\": [\"test_app.exe\", \"whatever.dll\"] }",
-
-    "ThreadIdNameMapping": "3060:\"MyThreadName\", 1:\"MyUnusedThreadName\","
+    "ModuleSignatureInfo": "{ \"rust-minidump\": [\"test_app.exe\", \"whatever.dll\"] }"
 }
