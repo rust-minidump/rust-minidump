@@ -317,6 +317,11 @@ pub enum MINIDUMP_STREAM_TYPE {
     ///
     /// See ['MINIDUMP_MAC_BOOTARGS']
     MozMacosBootargsStream = 0x4d7a0002,
+
+    /// The number of FDs in /proc/self/fd/ from a Linux system
+    MozLinuxFDs = 0x4d7a0003,
+    /// The contents of /proc/self/limits from a Linux system
+    MozLinuxLimits = 0x4d7a0004,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
