@@ -216,10 +216,20 @@ async fn individual_lookup_debug_info_by_code_info(
             if new_url.starts_with('/') {
                 new_url = new_url.strip_prefix('/').unwrap_or(new_url);
             }
-            let mut parts = new_url.split('/');
-            let debug_file_part = parts.next()?;
+
+            // new_url looks like some/path/stuff/xul.pdb/somedebugid/xul.sym and we want the debug
+            // file and debug id portions which are the third from end and second from end
+            let mut parts: Vec<&str> = new_url.split('/').collect();
+            if parts.len() < 3 {
+                return None;
+            }
+            while parts.len() > 3 {
+                parts.remove(0);
+            }
+
+            let debug_file_part = parts[0];
             let debug_file = String::from(debug_file_part);
-            let debug_identifier_part = parts.next()?;
+            let debug_identifier_part = parts[1];
             let debug_identifier = DebugId::from_str(debug_identifier_part).ok()?;
             debug!("Found debug info {} {}", debug_file, debug_identifier);
             return Some(DebugInfoResult {
