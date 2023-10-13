@@ -86,7 +86,7 @@ expression: stdout
       }
     ],
     "last_error_value": null,
-    "thread_name": "MyThreadName",
+    "thread_name": null,
     "threads_index": 0
   },
   "lsb_release": null,
@@ -351,7 +351,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
-      "thread_name": "MyThreadName"
+      "thread_name": null
     },
     {
       "frame_count": 0,

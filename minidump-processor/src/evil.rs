@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use std::str::FromStr;
 use tracing::error;
 
 /// Things extracted from the Evil JSON File
@@ -12,8 +11,6 @@ use tracing::error;
 pub(crate) struct Evil {
     /// module name => cert
     pub certs: HashMap<String, String>,
-    /// thread id => thread name
-    pub thread_names: HashMap<u32, String>,
     /// The microcode version of the cpu
     pub cpu_microcode_version: Option<String>,
 }
@@ -71,33 +68,6 @@ pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
         })
         .unwrap_or_default();
 
-    // Get thread name mappings
-
-    // In typical evil json fashion, this list doesn't conform to even the evil_obj format!
-    // It's just a set of comma-separated int:string pairs, with a trailing comma.
-    // This cannot be parsed as JSON at all, since the keys are not strings. So we just
-    // do a sloppy `split` based parse and hope we don't encounter thread names with commas
-    // in them because I hate this JSON file with a passion.
-    //
-    // ex: 123: "name1", 456: "name",
-    let thread_names = json
-        .remove("ThreadIdNameMapping")
-        .unwrap_or_default()
-        .as_str()
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|entry| {
-            entry.split_once(':').and_then(|(key, val)| {
-                let key = u32::from_str(key).ok();
-                let val = val
-                    .strip_prefix('"')
-                    .and_then(|val| val.strip_suffix('"'))
-                    .map(String::from);
-                key.zip(val)
-            })
-        })
-        .collect();
-
     // The CPUMicrocodeVersion field is a hex string starting with "0x"; the string formatting will
     // be verified later.
     let cpu_microcode_version = json
@@ -106,7 +76,6 @@ pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
 
     Some(Evil {
         certs,
-        thread_names,
         cpu_microcode_version,
     })
 }
