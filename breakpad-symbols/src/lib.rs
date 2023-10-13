@@ -192,8 +192,8 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 /// A lookup we would like to perform for some file (sym, exe, pdb, dll, ...)
 #[derive(Debug, Clone)]
 pub struct FileLookup {
-    cache_rel: String,
-    server_rel: String,
+    pub cache_rel: String,
+    pub server_rel: String,
 }
 
 /// Get a relative symbol path at which to locate symbols for `module`.
