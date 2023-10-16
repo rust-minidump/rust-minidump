@@ -738,7 +738,6 @@ where
         LinuxProcStatus,
         LinuxCpuInfo,
         LinuxMaps,
-        MozLinuxFDs,
         MozLinuxLimits
     ) {
         if let Ok(contents) = dump.get_raw_stream(stream as u32) {
