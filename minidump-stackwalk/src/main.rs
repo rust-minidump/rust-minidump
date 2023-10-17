@@ -673,6 +673,9 @@ where
     if let Ok(module_list) = dump.get_stream::<MinidumpUnloadedModuleList>() {
         module_list.print(output)?;
     }
+    if let Ok(handles) = dump.get_stream::<MinidumpHandleDataStream>() {
+        handles.print(output)?;
+    }
     if let Some(memory_list) = unified_memory {
         memory_list.print(output, brief)?;
     }
