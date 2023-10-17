@@ -357,6 +357,10 @@
 //!
 //! * [`MinidumpMemoryInfoList`][] (entries are [`MINIDUMP_MEMORY_INFO`][format::MINIDUMP_MEMORY_INFO])
 //! * [`MinidumpUnloadedModuleList`][] (entries are [`MINIDUMP_UNLOADED_MODULE`][format::MINIDUMP_UNLOADED_MODULE])
+//! * [`MinidumpHandleDataStream`][] is a slight variation of this format with different
+//!   filed names and a trailing `u32` member reserved for future use (entries
+//!   are [`MINIDUMP_HANDLE_DESCRIPTOR`][format::MINIDUMP_HANDLE_DESCRIPTOR] and
+//!   [`MINIDUMP_HANDLE_DESCRIPTOR_2`][format::MINIDUMP_HANDLE_DESCRIPTOR_2])
 //!
 //!
 //!
