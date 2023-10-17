@@ -67,6 +67,8 @@ pub struct SynthMinidump {
     linux_environ: Option<SimpleStream>,
     /// /proc/self/status string
     linux_proc_status: Option<SimpleStream>,
+    /// /proc/self/limits string
+    linux_proc_limits: Option<SimpleStream>,
     /// Continuous memory used by `Memory64List` stream
     memory64_section: Option<Section>,
 }
@@ -223,6 +225,7 @@ impl SynthMinidump {
             linux_environ: None,
             linux_cpu_info: None,
             linux_proc_status: None,
+            linux_proc_limits: None,
             crashpad_info: None,
             memory64_section: Some(memory64_section),
         }
@@ -362,6 +365,15 @@ impl SynthMinidump {
         self
     }
 
+    /// Set the contents of the `LinuxProcLimits` stream.
+    pub fn set_linux_proc_limits(mut self, proc_limits: &[u8]) -> SynthMinidump {
+        self.linux_proc_limits = Some(SimpleStream {
+            stream_type: md::MINIDUMP_STREAM_TYPE::MozLinuxLimits as u32,
+            section: Section::new().append_bytes(proc_limits),
+        });
+        self
+    }
+
     /// Set the contents of the `LinuxCpuInfo` stream.
     pub fn set_linux_cpu_info(mut self, cpu_info: &[u8]) -> SynthMinidump {
         self.linux_cpu_info = Some(SimpleStream {
@@ -459,6 +471,9 @@ impl SynthMinidump {
             self = self.add_stream(stream);
         }
         if let Some(stream) = self.linux_proc_status.take() {
+            self = self.add_stream(stream);
+        }
+        if let Some(stream) = self.linux_proc_limits.take() {
             self = self.add_stream(stream);
         }
         if let Some(stream) = self.linux_environ.take() {

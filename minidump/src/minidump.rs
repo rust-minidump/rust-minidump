@@ -476,6 +476,12 @@ pub struct MinidumpLinuxProcStatus<'a> {
     data: &'a [u8],
 }
 
+/// Interesting values extracted from /proc/self/limits
+#[derive(Default, Debug)]
+pub struct MinidumpLinuxProcLimits<'a> {
+    data: &'a [u8],
+}
+
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CrashReason {
@@ -3631,6 +3637,19 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcStatus<'a> {
     }
 }
 
+impl<'a> MinidumpStream<'a> for MinidumpLinuxProcLimits<'a> {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MozLinuxLimits as u32;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpLinuxProcLimits<'a>, Error> {
+        Ok(Self { data: bytes })
+    }
+}
+
 impl<'a> MinidumpStream<'a> for MinidumpLinuxCpuInfo<'a> {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::LinuxCpuInfo as u32;
 
@@ -3687,6 +3706,22 @@ impl<'a> MinidumpLinuxProcStatus<'a> {
     }
 
     /// Get the raw bytes of the `/proc/self/status` dump.
+    pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
+        Cow::Borrowed(self.data)
+    }
+}
+
+impl<'a> MinidumpLinuxProcLimits<'a> {
+    /// Get an iterator over the key-value pairs stored in the `/proc/self/limits` dump.
+    ///
+    /// Keys and values are `trim`ed of leading/trailing spaces, and if a key
+    /// or value was surrounded by quotes ("like this"), the quotes will be
+    /// stripped.
+    pub fn iter(&self) -> impl Iterator<Item = &'a LinuxOsStr> {
+        LinuxOsStr::from_bytes(self.data).lines()
+    }
+
+    /// Get the raw bytes of the `/proc/self/limits` dump.
     pub fn raw_bytes(&self) -> Cow<'a, [u8]> {
         Cow::Borrowed(self.data)
     }

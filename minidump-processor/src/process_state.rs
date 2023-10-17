@@ -122,6 +122,74 @@ impl From<MinidumpLinuxProcStatus<'_>> for LinuxProcStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Limit {
+    Error,
+    Unlimited,
+    Limited(u64)
+}
+
+#[derive(Debug, Clone)]
+pub struct LinuxProcLimit {
+    pub name: String,
+    pub soft: Limit,
+    pub hard: Limit,
+    pub unit: String
+}
+
+#[derive(Debug, Clone)]
+pub struct LinuxProcLimits {
+    pub limits: HashMap<String, LinuxProcLimit>
+}
+
+fn parse_limit(s: String) -> Limit {
+    match s.trim() {
+        "unlimited" => Limit::Unlimited,
+        val => Limit::Limited(val.parse::<u64>().unwrap_or(0))
+    }
+}
+
+impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
+    fn from(limits: MinidumpLinuxProcLimits) -> Self {
+        let hash: HashMap::<String, LinuxProcLimit> = limits
+            .iter()
+            .map(|line| {
+                line
+                    .lines()
+                    .map(|li: &strings::LinuxOsStr| li.to_string_lossy())
+                    .collect()
+            })
+            .map(|l: String| {
+                l
+                    .split("  ")
+                    .filter(|x| x.len() > 0)
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+            })
+            .filter(|m| m.len() > 0 && m[0].contains("Max"))
+            .map(|m| {
+                let u = if m.len() == 3 {
+                    "n/a".to_string()
+                } else {
+                    m[3].trim().to_string()
+                };
+
+                let name = m[0].trim().to_string();
+                let lim = LinuxProcLimit {
+                    name: name.clone(),
+                    soft: parse_limit(m[1].clone()),
+                    hard: parse_limit(m[2].clone()),
+                    unit: u
+                };
+
+                (name, lim)
+            })
+            .collect();
+
+        LinuxProcLimits { limits: hash }
+    }
+}
+
 /// Info about an exception that may have occurred
 ///
 /// May not be available if the minidump wasn't triggered by an exception, or if required
@@ -375,6 +443,8 @@ pub struct ProcessState {
     pub system_info: SystemInfo,
     /// Linux Standard Base Info
     pub linux_standard_base: Option<LinuxStandardBase>,
+    /// Linux Proc Limits
+    pub linux_proc_limits: Option<LinuxProcLimits>,
     pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     pub mac_boot_args: Option<MinidumpMacBootargs>,
     /// The modules that were loaded into the process represented by the
