@@ -129,6 +129,19 @@ pub enum Limit {
     Limited(u64)
 }
 
+impl serde::Serialize for Limit {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match *self {
+            Limit::Error => serializer.serialize_str("err"),
+            Limit::Unlimited => serializer.serialize_str("unlimited"),
+            Limit::Limited(val) => serializer.serialize_u64(val)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LinuxProcLimit {
     pub name: String,
@@ -852,6 +865,15 @@ Unknown streams encountered:
                 "release": lsb.release,
                 "codename": lsb.codename,
                 "description": lsb.description,
+            })),
+            // optional
+            "proc_limits": self.linux_proc_limits.as_ref().map(|limits| json!({
+                "limits": limits.limits.iter().map(|limit| json!({
+                    "name": limit.1.name,
+                    "soft": limit.1.soft,
+                    "hard": limit.1.hard,
+                    "unit": limit.1.unit,
+                })).collect::<Vec<_>>()
             })),
             // optional
             "mac_crash_info": self.mac_crash_info.as_ref().map(|info| json!({
