@@ -144,7 +144,6 @@ impl serde::Serialize for Limit {
 
 #[derive(Debug, Clone)]
 pub struct LinuxProcLimit {
-    pub name: String,
     pub soft: Limit,
     pub hard: Limit,
     pub unit: String
@@ -155,7 +154,7 @@ pub struct LinuxProcLimits {
     pub limits: HashMap<String, LinuxProcLimit>
 }
 
-fn parse_limit(s: String) -> Limit {
+fn parse_limit(s: &str) -> Limit {
     match s.trim() {
         "unlimited" => Limit::Unlimited,
         val => Limit::Limited(val.parse::<u64>().unwrap_or(0))
@@ -166,20 +165,18 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
     fn from(limits: MinidumpLinuxProcLimits) -> Self {
         let hash: HashMap::<String, LinuxProcLimit> = limits
             .iter()
-            .map(|line| {
-                line
-                    .lines()
-                    .map(|li: &strings::LinuxOsStr| li.to_string_lossy())
-                    .collect()
+            .filter(|l| {
+                !l.is_empty()
             })
-            .map(|l: String| {
+            .skip(1) // skip header
+            .map(|line: &strings::LinuxOsStr| line.to_string_lossy())
+            .map(|l| {
                 l
                     .split("  ")
-                    .filter(|x| x.len() > 0)
+                    .filter(|x| !x.is_empty())
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
             })
-            .filter(|m| m.len() > 0 && m[0].contains("Max"))
             .map(|m| {
                 let u = if m.len() == 3 {
                     "n/a".to_string()
@@ -189,9 +186,8 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
 
                 let name = m[0].trim().to_string();
                 let lim = LinuxProcLimit {
-                    name: name.clone(),
-                    soft: parse_limit(m[1].clone()),
-                    hard: parse_limit(m[2].clone()),
+                    soft: parse_limit(&m[1]),
+                    hard: parse_limit(&m[2]),
                     unit: u
                 };
 
@@ -869,7 +865,7 @@ Unknown streams encountered:
             // optional
             "proc_limits": self.linux_proc_limits.as_ref().map(|limits| json!({
                 "limits": limits.limits.iter().map(|limit| json!({
-                    "name": limit.1.name,
+                    "name": limit.0,
                     "soft": limit.1.soft,
                     "hard": limit.1.hard,
                     "unit": limit.1.unit,

@@ -319,7 +319,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     MozMacosBootargsStream = 0x4d7a0002,
 
     /// The contents of /proc/self/limits from a Linux system
-    MozLinuxLimits = 0x4d7a0004,
+    MozLinuxLimits = 0x4d7a0003,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
