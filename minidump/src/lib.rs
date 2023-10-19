@@ -87,7 +87,7 @@
 //! * [`MinidumpThreadList`][]
 //! * [`MinidumpThreadNames`][]
 //! * [`MinidumpUnloadedModuleList`][]
-//! * [`MozLinuxLimits`][]
+//! * [`MinidumpLinuxProcLimits`][]
 //!
 //!
 //!
@@ -383,7 +383,7 @@
 //! * [`MinidumpLinuxEnviron`][] (separator is `=`)
 //! * [`MinidumpLinuxLsbRelease`][] (separator is `=`)
 //! * [`MinidumpLinuxProcStatus`][] (separator is `:`)
-//! * [`MozLinuxLimits`][] (separator is ` `)
+//! * [`MinidumpLinuxProcLimits`][] (separator is ` `)
 //!
 //!
 //!
