@@ -281,8 +281,6 @@ Max realtime timeout      unlimited            unlimited            us
     let dump = minimal_minidump().set_linux_proc_limits(input);
     let _state = read_synth_dump(dump).await;
 
-    _state.print_json(&mut std::io::stderr(), true);
-
     if let Some(limits) = _state.linux_proc_limits {
         let max_open_files = limits.limits["Max open files"].clone();
         assert_eq!(max_open_files.soft, Limit::Limited(1048576));
