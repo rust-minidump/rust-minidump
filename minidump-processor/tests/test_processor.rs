@@ -302,7 +302,7 @@ Max realtime timeout      unlimited            unlimited            us
         assert_eq!(max_realtime_timeout.hard, Limit::Unlimited);
         assert_eq!(max_realtime_timeout.unit, "us");
     } else {
-        assert!(false, "No /proc/PID/limits")
+        panic!("No /proc/PID/limits")
     }
 }
 
