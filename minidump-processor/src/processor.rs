@@ -15,7 +15,7 @@ use minidump_unwind::{
 
 use crate::op_analysis::MemoryAccess;
 use crate::process_state::{LinuxStandardBase, ProcessState};
-use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcStatus, LinuxProcLimits};
+use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcLimits, LinuxProcStatus};
 
 /// Configuration of the processor's exact behaviour.
 ///

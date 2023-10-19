@@ -126,7 +126,7 @@ impl From<MinidumpLinuxProcStatus<'_>> for LinuxProcStatus {
 pub enum Limit {
     Error,
     Unlimited,
-    Limited(u64)
+    Limited(u64),
 }
 
 impl serde::Serialize for Limit {
@@ -137,7 +137,7 @@ impl serde::Serialize for Limit {
         match *self {
             Limit::Error => serializer.serialize_str("err"),
             Limit::Unlimited => serializer.serialize_str("unlimited"),
-            Limit::Limited(val) => serializer.serialize_u64(val)
+            Limit::Limited(val) => serializer.serialize_u64(val),
         }
     }
 }
@@ -146,33 +146,30 @@ impl serde::Serialize for Limit {
 pub struct LinuxProcLimit {
     pub soft: Limit,
     pub hard: Limit,
-    pub unit: String
+    pub unit: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct LinuxProcLimits {
-    pub limits: HashMap<String, LinuxProcLimit>
+    pub limits: HashMap<String, LinuxProcLimit>,
 }
 
 fn parse_limit(s: &str) -> Limit {
     match s.trim() {
         "unlimited" => Limit::Unlimited,
-        val => Limit::Limited(val.parse::<u64>().unwrap_or(0))
+        val => Limit::Limited(val.parse::<u64>().unwrap_or(0)),
     }
 }
 
 impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
     fn from(limits: MinidumpLinuxProcLimits) -> Self {
-        let hash: HashMap::<String, LinuxProcLimit> = limits
+        let hash: HashMap<String, LinuxProcLimit> = limits
             .iter()
-            .filter(|l| {
-                !l.is_empty()
-            })
+            .filter(|l| !l.is_empty())
             .skip(1) // skip header
             .map(|line: &strings::LinuxOsStr| line.to_string_lossy())
             .map(|l| {
-                l
-                    .split("  ")
+                l.split("  ")
                     .filter(|x| !x.is_empty())
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
@@ -188,7 +185,7 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
                 let lim = LinuxProcLimit {
                     soft: parse_limit(&m[1]),
                     hard: parse_limit(&m[2]),
-                    unit: u
+                    unit: u,
                 };
 
                 (name, lim)
