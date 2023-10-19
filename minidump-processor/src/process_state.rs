@@ -122,6 +122,80 @@ impl From<MinidumpLinuxProcStatus<'_>> for LinuxProcStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Limit {
+    Error,
+    Unlimited,
+    Limited(u64),
+}
+
+impl serde::Serialize for Limit {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match *self {
+            Limit::Error => serializer.serialize_str("err"),
+            Limit::Unlimited => serializer.serialize_str("unlimited"),
+            Limit::Limited(val) => serializer.serialize_u64(val),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LinuxProcLimit {
+    pub soft: Limit,
+    pub hard: Limit,
+    pub unit: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LinuxProcLimits {
+    pub limits: HashMap<String, LinuxProcLimit>,
+}
+
+fn parse_limit(s: &str) -> Limit {
+    match s.trim() {
+        "unlimited" => Limit::Unlimited,
+        val => Limit::Limited(val.parse::<u64>().unwrap_or(0)),
+    }
+}
+
+impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
+    fn from(limits: MinidumpLinuxProcLimits) -> Self {
+        let hash: HashMap<String, LinuxProcLimit> = limits
+            .iter()
+            .filter(|l| !l.is_empty())
+            .skip(1) // skip header
+            .map(|line: &strings::LinuxOsStr| line.to_string_lossy())
+            .map(|l| {
+                l.split("  ")
+                    .filter(|x| !x.is_empty())
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+            })
+            .map(|m| {
+                let u = if m.len() == 3 {
+                    "n/a".to_string()
+                } else {
+                    m[3].trim().to_string()
+                };
+
+                let name = m[0].trim().to_string();
+                let lim = LinuxProcLimit {
+                    soft: parse_limit(&m[1]),
+                    hard: parse_limit(&m[2]),
+                    unit: u,
+                };
+
+                (name, lim)
+            })
+            .collect();
+
+        LinuxProcLimits { limits: hash }
+    }
+}
+
 /// Info about an exception that may have occurred
 ///
 /// May not be available if the minidump wasn't triggered by an exception, or if required
@@ -375,6 +449,8 @@ pub struct ProcessState {
     pub system_info: SystemInfo,
     /// Linux Standard Base Info
     pub linux_standard_base: Option<LinuxStandardBase>,
+    /// Linux Proc Limits
+    pub linux_proc_limits: Option<LinuxProcLimits>,
     pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     pub mac_boot_args: Option<MinidumpMacBootargs>,
     /// The modules that were loaded into the process represented by the
@@ -782,6 +858,15 @@ Unknown streams encountered:
                 "release": lsb.release,
                 "codename": lsb.codename,
                 "description": lsb.description,
+            })),
+            // optional
+            "proc_limits": self.linux_proc_limits.as_ref().map(|limits| json!({
+                "limits": limits.limits.iter().map(|limit| json!({
+                    "name": limit.0,
+                    "soft": limit.1.soft,
+                    "hard": limit.1.hard,
+                    "unit": limit.1.unit,
+                })).collect::<Vec<_>>()
             })),
             // optional
             "mac_crash_info": self.mac_crash_info.as_ref().map(|info| json!({

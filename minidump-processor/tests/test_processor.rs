@@ -6,7 +6,7 @@ use minidump::{
     Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
 };
 use minidump_common::format::MemoryProtection;
-use minidump_processor::{LinuxStandardBase, ProcessState};
+use minidump_processor::{Limit, LinuxStandardBase, ProcessState};
 use minidump_unwind::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
@@ -251,6 +251,59 @@ async fn test_linux_proc_status() {
 
     let dump = minimal_minidump().set_linux_proc_status(input);
     let _state = read_synth_dump(dump).await;
+}
+
+#[tokio::test]
+async fn test_linux_proc_limits() {
+    // Whitespace intentionally wonky to test robustness
+
+    // TODO: add tests for values we care about
+    let input = b"
+Limit                     Soft Limit           Hard Limit           Units     
+Max cpu time              unlimited            unlimited            seconds   
+Max file size             unlimited            unlimited            bytes     
+Max data size             unlimited            unlimited            bytes     
+Max stack size            8388608              unlimited            bytes     
+Max core file size        0                    unlimited            bytes     
+Max resident set          unlimited            unlimited            bytes     
+Max processes             111064               111064               processes 
+Max open files            1048576              1048576              files     
+Max locked memory         3653476352           3653476352           bytes     
+Max address space         unlimited            unlimited            bytes     
+Max file locks            unlimited            unlimited            locks     
+Max pending signals       111064               111064               signals   
+Max msgqueue size         819200               819200               bytes     
+Max nice priority         0                    0                    
+Max realtime priority     0                    0                    
+Max realtime timeout      unlimited            unlimited            us        
+";
+
+    let dump = minimal_minidump().set_linux_proc_limits(input);
+    let _state = read_synth_dump(dump).await;
+
+    if let Some(limits) = _state.linux_proc_limits {
+        let max_open_files = limits.limits["Max open files"].clone();
+        assert_eq!(max_open_files.soft, Limit::Limited(1048576));
+        assert_eq!(max_open_files.hard, Limit::Limited(1048576));
+        assert_eq!(max_open_files.unit, "files");
+
+        let max_stack_size = limits.limits["Max stack size"].clone();
+        assert_eq!(max_stack_size.soft, Limit::Limited(8388608));
+        assert_eq!(max_stack_size.hard, Limit::Unlimited);
+        assert_eq!(max_stack_size.unit, "bytes");
+
+        let max_nice_priority = limits.limits["Max nice priority"].clone();
+        assert_eq!(max_nice_priority.soft, Limit::Limited(0));
+        assert_eq!(max_nice_priority.hard, Limit::Limited(0));
+        assert_eq!(max_nice_priority.unit, "n/a");
+
+        let max_realtime_timeout = limits.limits["Max realtime timeout"].clone();
+        assert_eq!(max_realtime_timeout.soft, Limit::Unlimited);
+        assert_eq!(max_realtime_timeout.hard, Limit::Unlimited);
+        assert_eq!(max_realtime_timeout.unit, "us");
+    } else {
+        panic!("No /proc/PID/limits")
+    }
 }
 
 #[tokio::test]

@@ -279,6 +279,7 @@ expression: stdout
   ],
   "modules_contains_cert_info": false,
   "pid": 3932,
+  "proc_limits": null,
   "status": "OK",
   "system_info": {
     "cpu_arch": "x86",

@@ -15,7 +15,7 @@ use minidump_unwind::{
 
 use crate::op_analysis::MemoryAccess;
 use crate::process_state::{LinuxStandardBase, ProcessState};
-use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcStatus};
+use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcLimits, LinuxProcStatus};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -466,6 +466,7 @@ struct MinidumpInfo<'a> {
     dump_system_info: MinidumpSystemInfo,
     linux_standard_base: Option<LinuxStandardBase>,
     linux_proc_status: Option<LinuxProcStatus>,
+    linux_proc_limits: Option<LinuxProcLimits>,
     system_info: SystemInfo,
     mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     mac_boot_args: Option<MinidumpMacBootargs>,
@@ -525,6 +526,7 @@ impl<'a> MinidumpInfo<'a> {
             .unwrap_or_default();
         let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
         let linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
+        let linux_proc_limits = dump.get_stream::<MinidumpLinuxProcLimits>().ok();
 
         // Extract everything we care about from linux streams here.
         // We don't eagerly process them in the minidump crate because there's just
@@ -536,6 +538,7 @@ impl<'a> MinidumpInfo<'a> {
 
         let linux_standard_base = linux_standard_base.map(LinuxStandardBase::from);
         let linux_proc_status = linux_proc_status.map(LinuxProcStatus::from);
+        let linux_proc_limits = linux_proc_limits.map(LinuxProcLimits::from);
 
         let cpu_info = dump_system_info
             .cpu_info()
@@ -594,6 +597,7 @@ impl<'a> MinidumpInfo<'a> {
             dump_system_info,
             linux_standard_base,
             linux_proc_status,
+            linux_proc_limits,
             system_info,
             mac_crash_info,
             mac_boot_args,
@@ -902,6 +906,7 @@ impl<'a> MinidumpInfo<'a> {
             requesting_thread,
             system_info: self.system_info,
             linux_standard_base: self.linux_standard_base,
+            linux_proc_limits: self.linux_proc_limits,
             mac_crash_info: self.mac_crash_info,
             mac_boot_args: self.mac_boot_args,
             threads,
