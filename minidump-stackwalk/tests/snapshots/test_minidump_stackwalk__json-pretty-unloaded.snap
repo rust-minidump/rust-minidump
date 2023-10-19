@@ -20,6 +20,7 @@ expression: json_out
   "modules": [],
   "modules_contains_cert_info": false,
   "pid": null,
+  "proc_limits": null,
   "status": "OK",
   "system_info": {
     "cpu_arch": "x86",
