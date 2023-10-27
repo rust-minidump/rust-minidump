@@ -5784,11 +5784,12 @@ mod test {
     use md::GUID;
     use minidump_common::format::{PlatformId, ProcessorArchitecture};
     use minidump_synth::{
-        self, AnnotationValue, CrashpadInfo, DumpString, Exception, Memory,
-        MemoryInfo as SynthMemoryInfo, MiscFieldsBuildString, MiscFieldsPowerInfo,
-        MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields, MiscStream,
-        Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, SystemInfo, Thread,
-        ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
+        self, AnnotationValue, CrashpadInfo, DumpString, Exception,
+        HandleDescriptor as SynthHandleDescriptor, Memory, MemoryInfo as SynthMemoryInfo,
+        MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
+        MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
+        SynthMinidump, SystemInfo, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
+        STOCK_VERSION_INFO,
     };
     use std::mem;
     use test_assembler::*;
@@ -7390,5 +7391,56 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules[0].debug_file(), None);
         assert_eq!(modules[0].raw.base_of_image, 0x7f602915e000);
         assert_eq!(modules[0].raw.size_of_image, 0x26000);
+    }
+
+    #[test]
+    fn test_handle_data_stream() {
+        const HANDLE_VALUE: u64 = 123;
+        const TYPE_NAME: &str = "This is a type name";
+        const OBJECT_NAME: &str = "And this is an object name";
+
+        let type_name = DumpString::new(TYPE_NAME, Endian::Little);
+        let object_name = DumpString::new(OBJECT_NAME, Endian::Little);
+        let handle = SynthHandleDescriptor::new(
+            Endian::Little,
+            HANDLE_VALUE,
+            Some(&type_name),
+            Some(&object_name),
+            0xf00ff00f,
+            0xcafecafe,
+            0xcacacaca,
+            0xbeefbeef,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_handle_descriptor(handle)
+            .add(type_name)
+            .add(object_name);
+        let dump = read_synth_dump(dump).unwrap();
+        let handle_data_stream = dump
+            .get_stream::<MinidumpHandleDataStream>()
+            .expect("The HANDLE_DATA_STREAM must be present");
+        let handles = handle_data_stream.iter().collect::<Vec<_>>();
+        assert_eq!(handles.len(), 1);
+        assert_eq!(
+            handles[0]
+                .raw
+                .handle()
+                .expect("The `handle` field must be present"),
+            &HANDLE_VALUE
+        );
+        assert_eq!(
+            handles[0]
+                .type_name
+                .as_ref()
+                .expect("The `type_name` field must be populated"),
+            TYPE_NAME
+        );
+        assert_eq!(
+            handles[0]
+                .object_name
+                .as_ref()
+                .expect("The `object_name` field must be populated"),
+            OBJECT_NAME
+        );
     }
 }

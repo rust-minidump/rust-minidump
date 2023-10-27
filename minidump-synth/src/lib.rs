@@ -71,6 +71,8 @@ pub struct SynthMinidump {
     linux_proc_limits: Option<SimpleStream>,
     /// Continuous memory used by `Memory64List` stream
     memory64_section: Option<Section>,
+    /// List of handles in this minidump.
+    handle_data_stream: Option<ExListStream<HandleDescriptor>>,
 }
 
 /// A block of data contained in a minidump.
@@ -228,6 +230,12 @@ impl SynthMinidump {
             linux_proc_limits: None,
             crashpad_info: None,
             memory64_section: Some(memory64_section),
+            handle_data_stream: Some(ExListStream::new_with_header_size(
+                md::MINIDUMP_STREAM_TYPE::HandleDataStream,
+                mem::size_of::<md::MINIDUMP_HANDLE_DATA_STREAM>(),
+                mem::size_of::<md::MINIDUMP_HANDLE_DESCRIPTOR>(),
+                endian,
+            )),
         }
     }
 
@@ -317,6 +325,15 @@ impl SynthMinidump {
             .thread_names_list
             .take()
             .map(|thread_names_list| thread_names_list.add(thread_name));
+        self
+    }
+
+    /// Add `handle` to `self`, adding it to the handle data stream as well.
+    pub fn add_handle_descriptor(mut self, handle: HandleDescriptor) -> SynthMinidump {
+        self.handle_data_stream = self
+            .handle_data_stream
+            .take()
+            .map(|handle_data_stream| handle_data_stream.add(handle));
         self
     }
 
@@ -482,6 +499,9 @@ impl SynthMinidump {
         if let Some(memory64_section) = self.memory64_section.take() {
             self = self.add(memory64_section);
         }
+        // Add the handle data stream if any handle descriptors were added.
+        let handle_data = self.handle_data_stream.take();
+        self = self.finish_ex_list(handle_data);
 
         let SynthMinidump {
             section,
@@ -744,8 +764,18 @@ pub struct ExList<T: ListItem> {
     _type: PhantomData<T>,
 }
 
+const EX_LIST_SIZE_OF_HEADER: usize = 12;
+
 impl<T: ListItem> ExList<T> {
     pub fn new(size_of_entry: usize, endian: Endian) -> Self {
+        Self::new_with_header_size(EX_LIST_SIZE_OF_HEADER, size_of_entry, endian)
+    }
+
+    pub fn new_with_header_size(
+        size_of_header: usize,
+        size_of_entry: usize,
+        endian: Endian,
+    ) -> Self {
         let count_label = Label::new();
 
         // Newer list streams have an extended header:
@@ -755,10 +785,12 @@ impl<T: ListItem> ExList<T> {
         // number_of_entries: u32,
         // ...entries
 
+        let padding = size_of_header - EX_LIST_SIZE_OF_HEADER;
         let section = Section::with_endian(endian)
-            .D32(12)
+            .D32(size_of_header as u32)
             .D32(size_of_entry as u32)
-            .D32(&count_label);
+            .D32(&count_label)
+            .append_repeated(0, padding);
 
         ExList {
             section,
@@ -830,6 +862,18 @@ impl<T: ListItem> ExListStream<T> {
         Self {
             stream_type: stream_type.into(),
             list: ExList::new(size_of_entry, endian),
+        }
+    }
+
+    pub fn new_with_header_size<S: Into<u32>>(
+        stream_type: S,
+        size_of_header: usize,
+        size_of_entry: usize,
+        endian: Endian,
+    ) -> Self {
+        Self {
+            stream_type: stream_type.into(),
+            list: ExList::new_with_header_size(size_of_header, size_of_entry, endian),
         }
     }
 
@@ -1136,7 +1180,7 @@ impl From<Memory> for Section {
     }
 }
 
-/// A minidump unloaded module.
+/// A minidump memory information element.
 pub struct MemoryInfo {
     section: Section,
 }
@@ -1172,6 +1216,45 @@ impl_dumpsection!(MemoryInfo);
 impl From<MemoryInfo> for Section {
     fn from(info: MemoryInfo) -> Self {
         info.section
+    }
+}
+
+/// A minidump handle descriptor.
+pub struct HandleDescriptor {
+    section: Section,
+}
+
+impl HandleDescriptor {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        endian: Endian,
+        handle: u64,
+        type_name: Option<&DumpString>,
+        object_name: Option<&DumpString>,
+        attributes: u32,
+        granted_access: u32,
+        handle_count: u32,
+        pointer_count: u32,
+    ) -> HandleDescriptor {
+        let type_name_rva = type_name.map_or(Label::from_const(0), |t| t.file_offset());
+        let object_name_rva = object_name.map_or(Label::from_const(0), |o| o.file_offset());
+        let section = Section::with_endian(endian)
+            .D64(handle)
+            .D32(type_name_rva)
+            .D32(object_name_rva)
+            .D32(attributes)
+            .D32(granted_access)
+            .D32(handle_count)
+            .D32(pointer_count);
+        HandleDescriptor { section }
+    }
+}
+
+impl_dumpsection!(HandleDescriptor);
+
+impl From<HandleDescriptor> for Section {
+    fn from(descriptor: HandleDescriptor) -> Self {
+        descriptor.section
     }
 }
 
