@@ -40,3 +40,7 @@ test-assembler = "0.1.6"
 pre-release-replacements = [
   {file="../RELEASES.md", search="# Unreleased", replace="# Unreleased\n\nNothing Yet!\n\n\n# Version {{version}} ({{date}})", exactly=1},
 ]
+
+[package.metadata.wix]
+upgrade-guid = "23C72699-7F27-49C7-B8A3-3D5939EB4D6B"
+path-guid = "DD461542-889E-4826-886D-E47830290719"
