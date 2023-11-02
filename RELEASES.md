@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.19.0 (2023-11-02)
+
 * The stackwalker can now lookup symbols using a module's code identifier if
   the debug identifier is missing. This is useful with Windows minidumps
   lacking debug identifiers (a condition that happens rather frequently when
