@@ -1,7 +1,15 @@
 # Unreleased
 
-Nothing Yet!
-
+* The stackwalker can now lookup symbols using a module's code identifier if
+  the debug identifier is missing. This is useful with Windows minidumps
+  lacking debug identifiers (a condition that happens rather frequently when
+  Windows is running out of memory at the time of minidump generation).
+* Added a custom `MozLinuxLimits` stream that captures the contents of
+  the `/proc/<pid>/limits` file of the affected process.
+* Add support for the `HandleDataStream` stream type. This includes all public
+  types that can appear in the stream.
+* Remove support for the `ThreadIdNameMapping` annotation which is unused since
+  we added support for the thread names stream.
 
 # Version 0.18.0 (2023-09-18)
 
