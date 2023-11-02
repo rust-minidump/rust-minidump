@@ -481,6 +481,7 @@ struct MinidumpInfo<'a> {
     linux_maps: Option<MinidumpLinuxMaps<'a>>,
     */
     memory_info: UnifiedMemoryInfoList<'a>,
+    handle_data_stream: Option<MinidumpHandleDataStream>,
     exception: Option<MinidumpException<'a>>,
     //exception_details: Option<ExceptionDetails<'a>>,
 }
@@ -585,6 +586,7 @@ impl<'a> MinidumpInfo<'a> {
         let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
         let memory_info =
             UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
+        let handle_data_stream = dump.get_stream::<MinidumpHandleDataStream>().ok();
 
         // Get exception info if it exists.
         let exception = dump.get_stream::<MinidumpException>().ok();
@@ -612,6 +614,7 @@ impl<'a> MinidumpInfo<'a> {
             linux_maps: Option<MinidumpLinuxMaps<'a>>,
             */
             memory_info,
+            handle_data_stream,
             exception,
             //exception_details: None,
         })
@@ -912,6 +915,7 @@ impl<'a> MinidumpInfo<'a> {
             threads,
             modules: self.modules,
             unloaded_modules: self.unloaded_modules,
+            handles: self.handle_data_stream,
             unknown_streams,
             unimplemented_streams,
             symbol_stats,

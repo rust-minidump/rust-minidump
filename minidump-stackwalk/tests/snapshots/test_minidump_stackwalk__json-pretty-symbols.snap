@@ -89,6 +89,7 @@ expression: stdout
     "thread_name": null,
     "threads_index": 0
   },
+  "handles": null,
   "lsb_release": null,
   "mac_boot_args": null,
   "mac_crash_info": null,

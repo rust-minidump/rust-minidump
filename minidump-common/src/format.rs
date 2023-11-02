@@ -209,6 +209,9 @@ pub enum MINIDUMP_STREAM_TYPE {
     Memory64ListStream = 9,
     CommentStreamA = 10,
     CommentStreamW = 11,
+    /// The list of handles used by the process
+    ///
+    /// See [`MINIDUMP_HANDLE_DATA_STREAM`]
     HandleDataStream = 12,
     FunctionTable = 13,
     /// The list of executable modules from the process that were unloaded by the time of the crash
@@ -2461,4 +2464,91 @@ bitflags! {
         const HWCAP_LPAE      = (1 << 20);
         const HWCAP_EVTSTRM   = (1 << 21);
     }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
+pub enum MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE {
+    MiniHandleObjectInformationNone,
+    MiniThreadInformation1,
+    MiniMutantInformation1,
+    MiniMutantInformation2,
+    MiniProcessInformation1,
+    MiniProcessInformation2,
+    MiniEventInformation1,
+    MiniSectionInformation1,
+    MiniSemaphoreInformation1,
+    MiniHandleObjectInformationTypeMax,
+}
+
+/// OS-specific handle object information. Microsoft headers state that it can
+/// change based on the target platform. The object is larger than this structure
+/// (as specified by `size_of_info`) and the remaining data is stored after the
+/// `size_of_info` field. The format of this information is not specified.
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_OBJECT_INFORMATION {
+    /// RVA pointing to the next handle object information. Elements of this type
+    /// are chained and the last one has this field set to 0.
+    pub next_info_rva: RVA,
+    /// Type of this handle object information element, see [`MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE`]
+    pub info_type: u32,
+    /// Size of this element, this must be larger than `size_of::<MINIDUMP_HANDLE_OBJECT_INFORMATION>()`
+    pub size_of_info: u32,
+}
+
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DESCRIPTOR {
+    /// The operating system handle value. A HANDLE on Windows and file descriptor number on Linux.
+    pub handle: u64,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object type of the handle.
+    /// This member can be zero.
+    pub type_name_rva: RVA,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object name of the handle.
+    /// This member can be zero.
+    pub object_name_rva: RVA,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub attributes: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub granted_access: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub handle_count: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub pointer_count: u32,
+}
+
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DESCRIPTOR_2 {
+    /// The operating system handle value. A HANDLE on Windows and file descriptor number on Linux.
+    pub handle: u64,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object type of the handle.
+    /// This member can be zero.
+    pub type_name_rva: RVA,
+    /// An RVA to a `MINIDUMP_STRING` structure that specifies the object name of the handle.
+    /// This member can be zero.
+    pub object_name_rva: RVA,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub attributes: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub granted_access: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub handle_count: u32,
+    /// The meaning of this member depends on the handle type and the operating system.
+    pub pointer_count: u32,
+    /// An RVA to a [`MINIDUMP_HANDLE_OBJECT_INFORMATION`] structure that specifies object-specific information.
+    /// This member can be 0 if there is no extra information.
+    pub object_info_rva: RVA,
+    /// Reserved for future use; must be zero.
+    reserved0: u32,
+}
+
+#[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
+pub struct MINIDUMP_HANDLE_DATA_STREAM {
+    /// The size of this header, in bytes.
+    pub size_of_header: u32,
+    /// The size of each descriptor in the stream, in bytes.
+    pub size_of_descriptor: u32,
+    /// The number of descriptors in the stream.
+    pub number_of_descriptors: u32,
+    /// Reserved for future use; must be zero.
+    pub reserved: u32,
 }

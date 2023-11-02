@@ -98,6 +98,8 @@ pub enum Error {
     DataError,
     #[error("Error reading CodeView data")]
     CodeViewReadFailure,
+    #[error("Uknown element type")]
+    UknownElementType,
 }
 
 impl Error {
@@ -118,6 +120,7 @@ impl Error {
             Error::MemoryReadFailure => "MemoryReadFailure",
             Error::DataError => "DataError",
             Error::CodeViewReadFailure => "CodeViewReadFailure",
+            Error::UknownElementType => "UnknownElementType",
         }
     }
 }
@@ -322,6 +325,48 @@ pub struct MinidumpUnloadedModuleList {
     /// Map from address range to index in modules.
     /// Use `MinidumpUnloadedModuleList::modules_at_address`.
     modules_by_addr: Vec<(Range<u64>, usize)>,
+}
+
+/// Contains object-specific information for a handle. Microsoft documentation
+/// doesn't describe the contents of this type.
+#[derive(Debug, Clone)]
+pub struct MinidumpHandleObjectInformation {
+    pub raw: md::MINIDUMP_HANDLE_OBJECT_INFORMATION,
+    pub info_type: md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE,
+}
+
+impl fmt::Display for MinidumpHandleObjectInformation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{raw: {:?}, type: {:?}}}", self.raw, self.info_type)
+    }
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub enum RawHandleDescriptor {
+    HandleDescriptor(md::MINIDUMP_HANDLE_DESCRIPTOR),
+    HandleDescriptor2(md::MINIDUMP_HANDLE_DESCRIPTOR_2),
+}
+
+/// Describes the state of an individual system handle at the time the minidump was written.
+#[derive(Debug, Clone)]
+pub struct MinidumpHandleDescriptor {
+    /// The `MINIDUMP_HANDKE_DESCRIPTOR` data direct from the minidump file.
+    pub raw: RawHandleDescriptor,
+    /// The name of the type of this handle, if present.
+    pub type_name: Option<String>,
+    /// The object name of this handle, if present.
+    /// On Linux this is the file path.
+    pub object_name: Option<String>,
+    /// Object information for this handle, can be empty, platform-specific.
+    pub object_infos: Vec<MinidumpHandleObjectInformation>,
+}
+
+/// A stream holding all the system handles at the time the minidump was written.
+/// On Linux this is the list of open file descriptors.
+#[derive(Debug, Clone)]
+pub struct MinidumpHandleDataStream {
+    pub handles: Vec<MinidumpHandleDescriptor>,
 }
 
 /// The state of a thread from the process when the minidump was written.
@@ -1632,6 +1677,292 @@ impl<'a> MinidumpStream<'a> for MinidumpUnloadedModuleList {
             modules.push(MinidumpUnloadedModule::read(raw, all, endian)?);
         }
         Ok(MinidumpUnloadedModuleList::from_modules(modules))
+    }
+}
+
+// Generates an accessor for a HANDLE_DESCRIPTOR field with the following syntax:
+//
+// * VERSION_NUMBER: FIELD_NAME -> FIELD_TYPE
+//
+// With the following definitions:
+//
+// * VERSION_NUMBER: The HANDLE_DESCRIPTOR version this field was introduced in
+// * FIELD_NAME: The name of the field to read
+// * FIELD_TYPE: The type of the field
+macro_rules! handle_descriptor_accessors {
+    () => {};
+    (@def $name:ident $t:ty [$($variant:ident)+]) => {
+        #[allow(unreachable_patterns)]
+        pub fn $name(&self) -> Option<&$t> {
+            match self {
+                $(
+                    RawHandleDescriptor::$variant(ref raw) => Some(&raw.$name),
+                )+
+                _ => None,
+            }
+        }
+    };
+    (1: $name:ident -> $t:ty, $($rest:tt)*) => {
+        handle_descriptor_accessors!(@def $name $t [HandleDescriptor HandleDescriptor2]);
+        handle_descriptor_accessors!($($rest)*);
+    };
+
+    (2: $name:ident -> $t:ty, $($rest:tt)*) => {
+        handle_descriptor_accessors!(@def $name $t [HandleDescriptor2]);
+        handle_descriptor_accessors!($($rest)*);
+    };
+}
+
+impl RawHandleDescriptor {
+    handle_descriptor_accessors!(
+        1: handle -> u64,
+        1: type_name_rva -> md::RVA,
+        1: object_name_rva -> md::RVA,
+        1: attributes -> u32,
+        1: granted_access -> u32,
+        1: handle_count -> u32,
+        1: pointer_count -> u32,
+        2: object_info_rva -> md::RVA,
+    );
+}
+
+impl MinidumpHandleDescriptor {
+    /// Write a human-readable description.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        macro_rules! write_simple_field {
+            ($stream:ident, $field:ident, $format:literal) => {
+                write!(f, "  {:18}= ", stringify!($field))?;
+                match self.raw.$field() {
+                    Some($field) => {
+                        writeln!(f, $format, $field)?;
+                    }
+                    None => writeln!(f, "(invalid)")?,
+                }
+            };
+            ($stream:ident, $field:ident) => {
+                write_simple_field!($stream, $field, "{}");
+            };
+        }
+
+        writeln!(f, "MINIDUMP_HANDLE_DESCRIPTOR")?;
+        write_simple_field!(f, handle, "{:#x}");
+        write_simple_field!(f, type_name_rva, "{:#x}");
+        write_simple_field!(f, object_name_rva, "{:#x}");
+        write_simple_field!(f, attributes, "{:#x}");
+        write_simple_field!(f, granted_access, "{:#x}");
+        write_simple_field!(f, handle_count);
+        write_simple_field!(f, pointer_count);
+        write_simple_field!(f, object_info_rva, "{:#x}");
+        write!(f, "  (type_name)       = ")?;
+        if let Some(type_name) = &self.type_name {
+            writeln!(f, "{type_name:}")?;
+        } else {
+            writeln!(f, "(null)")?;
+        };
+        write!(f, "  (object_name)     = ")?;
+        if let Some(object_name) = &self.object_name {
+            writeln!(f, "{object_name:}")?;
+        } else {
+            writeln!(f, "(null)")?;
+        };
+        if self.object_infos.is_empty() {
+            writeln!(f, "  (object_info)     = (null)")?;
+        } else {
+            for object_info in &self.object_infos {
+                writeln!(f, "  (object_info)     = {object_info:}")?;
+            }
+        }
+        writeln!(f)
+    }
+
+    fn read_string(offset: usize, ctx: HandleDescriptorContext) -> Option<String> {
+        let mut offset = offset;
+        if offset != 0 {
+            read_string_utf16(&mut offset, ctx.bytes, ctx.endianess)
+        } else {
+            None
+        }
+    }
+
+    fn read_object_info(
+        offset: usize,
+        ctx: HandleDescriptorContext,
+    ) -> Option<MinidumpHandleObjectInformation> {
+        if offset != 0 {
+            ctx.bytes
+                .pread_with::<md::MINIDUMP_HANDLE_OBJECT_INFORMATION>(offset, ctx.endianess)
+                .ok()
+                .map(|raw| MinidumpHandleObjectInformation {
+                    raw: raw.clone(),
+                    info_type: md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE::from_u32(raw.info_type)
+                        .unwrap(),
+                })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct HandleDescriptorContext<'a> {
+    bytes: &'a [u8],
+    fieldsize: u32,
+    endianess: scroll::Endian,
+}
+
+impl<'a> HandleDescriptorContext<'a> {
+    fn new(bytes: &'a [u8], fieldsize: u32, endianess: scroll::Endian) -> HandleDescriptorContext {
+        HandleDescriptorContext {
+            bytes,
+            fieldsize,
+            endianess,
+        }
+    }
+}
+
+impl<'a> TryFromCtx<'a, HandleDescriptorContext<'a>> for MinidumpHandleDescriptor {
+    type Error = scroll::Error;
+
+    fn try_from_ctx(
+        src: &'a [u8],
+        ctx: HandleDescriptorContext,
+    ) -> Result<(Self, usize), Self::Error> {
+        const MINIDUMP_HANDLE_DESCRIPTOR_SIZE: u32 =
+            mem::size_of::<md::MINIDUMP_HANDLE_DESCRIPTOR>() as u32;
+        const MINIDUMP_HANDLE_DESCRIPTOR_2_SIZE: u32 =
+            mem::size_of::<md::MINIDUMP_HANDLE_DESCRIPTOR_2>() as u32;
+
+        match ctx.fieldsize {
+            MINIDUMP_HANDLE_DESCRIPTOR_SIZE => {
+                let raw = src.pread_with::<md::MINIDUMP_HANDLE_DESCRIPTOR>(0, ctx.endianess)?;
+                let type_name = Self::read_string(raw.type_name_rva as usize, ctx);
+                let object_name = Self::read_string(raw.object_name_rva as usize, ctx);
+                Ok((
+                    MinidumpHandleDescriptor {
+                        raw: RawHandleDescriptor::HandleDescriptor(raw),
+                        type_name,
+                        object_name,
+                        object_infos: Vec::new(),
+                    },
+                    ctx.fieldsize as usize,
+                ))
+            }
+            MINIDUMP_HANDLE_DESCRIPTOR_2_SIZE => {
+                let raw = src.pread_with::<md::MINIDUMP_HANDLE_DESCRIPTOR_2>(0, ctx.endianess)?;
+                let type_name = Self::read_string(raw.type_name_rva as usize, ctx);
+                let object_name = Self::read_string(raw.object_name_rva as usize, ctx);
+                let mut object_infos = Vec::<MinidumpHandleObjectInformation>::new();
+                let mut object_info_rva = raw.object_info_rva;
+
+                while object_info_rva != 0 {
+                    if let Some(object_info) = Self::read_object_info(object_info_rva as usize, ctx)
+                    {
+                        object_info_rva = object_info.raw.next_info_rva;
+                        object_infos.push(object_info);
+                    } else {
+                        break;
+                    }
+                }
+
+                Ok((
+                    MinidumpHandleDescriptor {
+                        raw: RawHandleDescriptor::HandleDescriptor2(raw),
+                        type_name,
+                        object_name,
+                        object_infos,
+                    },
+                    ctx.fieldsize as usize,
+                ))
+            }
+            _ => Err(scroll::Error::BadInput {
+                size: ctx.fieldsize as usize,
+                msg: "Unknown MINIDUMP_HANDLE_DESCRIPTOR type",
+            }),
+        }
+    }
+}
+
+impl MinidumpHandleDataStream {
+    /// Return an empty `MinidumpHandleDataStream`.
+    pub fn new() -> MinidumpHandleDataStream {
+        MinidumpHandleDataStream { handles: vec![] }
+    }
+
+    /// Create a `MinidumpHandleDataStream` from a list of `MinidumpHandleDescriptor`s.
+    pub fn from_handles(handles: Vec<MinidumpHandleDescriptor>) -> MinidumpHandleDataStream {
+        MinidumpHandleDataStream { handles }
+    }
+
+    /// Iterate over the handles in the order contained in the minidump.
+    pub fn iter(&self) -> impl Iterator<Item = &MinidumpHandleDescriptor> {
+        self.handles.iter()
+    }
+
+    /// Write a human-readable description.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpHandleDataStream
+  handle_count = {}
+
+",
+            self.handles.len()
+        )?;
+        for (i, handle) in self.handles.iter().enumerate() {
+            writeln!(f, "handle[{i}]")?;
+            handle.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for MinidumpHandleDataStream {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpHandleDataStream {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::HandleDataStream as u32;
+
+    fn read(
+        bytes: &'a [u8],
+        all: &'a [u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpHandleDataStream, Error> {
+        let mut offset = 0;
+
+        let size_of_header = bytes
+            .gread_with::<u32>(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+        let size_of_descriptor = bytes
+            .gread_with::<u32>(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+        let number_of_descriptors = bytes
+            .gread_with::<u32>(&mut offset, endian)
+            .or(Err(Error::StreamReadFailure))?;
+
+        let ctx = HandleDescriptorContext::new(all, size_of_descriptor, endian);
+        let (number_of_entries, _) = ensure_count_in_bound(
+            bytes,
+            number_of_descriptors as usize,
+            size_of_descriptor as usize,
+            size_of_header as usize,
+        )?;
+
+        // Skip the header
+        offset = size_of_header as usize;
+
+        let mut descriptors = Vec::<MinidumpHandleDescriptor>::with_capacity(number_of_entries);
+        for _ in 0..number_of_entries {
+            let descriptor: MinidumpHandleDescriptor = bytes
+                .gread_with(&mut offset, ctx)
+                .or(Err(Error::StreamReadFailure))?;
+            descriptors.push(descriptor);
+        }
+
+        Ok(MinidumpHandleDataStream::from_handles(descriptors))
     }
 }
 
@@ -5240,6 +5571,7 @@ where
     /// * [`MinidumpThreadList`][]
     /// * [`MinidumpThreadNames`][]
     /// * [`MinidumpUnloadedModuleList`][]
+    /// * [`MinidumpHandleDataStream`][]
     ///
     pub fn get_stream<S>(&'a self) -> Result<S, Error>
     where
@@ -5291,7 +5623,7 @@ where
     /// If there are multiple copies of the same stream type (which should not happen for
     /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 32] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 31] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -5301,7 +5633,6 @@ where
             MINIDUMP_STREAM_TYPE::ThreadExListStream,
             MINIDUMP_STREAM_TYPE::CommentStreamA,
             MINIDUMP_STREAM_TYPE::CommentStreamW,
-            MINIDUMP_STREAM_TYPE::HandleDataStream,
             MINIDUMP_STREAM_TYPE::FunctionTable,
             MINIDUMP_STREAM_TYPE::ThreadInfoListStream,
             MINIDUMP_STREAM_TYPE::HandleOperationListStream,
@@ -5453,11 +5784,12 @@ mod test {
     use md::GUID;
     use minidump_common::format::{PlatformId, ProcessorArchitecture};
     use minidump_synth::{
-        self, AnnotationValue, CrashpadInfo, DumpString, Exception, Memory,
-        MemoryInfo as SynthMemoryInfo, MiscFieldsBuildString, MiscFieldsPowerInfo,
-        MiscFieldsProcessTimes, MiscFieldsTimeZone, MiscInfo5Fields, MiscStream,
-        Module as SynthModule, ModuleCrashpadInfo, SimpleStream, SynthMinidump, SystemInfo, Thread,
-        ThreadName, UnloadedModule as SynthUnloadedModule, STOCK_VERSION_INFO,
+        self, AnnotationValue, CrashpadInfo, DumpString, Exception,
+        HandleDescriptor as SynthHandleDescriptor, Memory, MemoryInfo as SynthMemoryInfo,
+        MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
+        MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
+        SynthMinidump, SystemInfo, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
+        STOCK_VERSION_INFO,
     };
     use std::mem;
     use test_assembler::*;
@@ -7059,5 +7391,56 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
         assert_eq!(modules[0].debug_file(), None);
         assert_eq!(modules[0].raw.base_of_image, 0x7f602915e000);
         assert_eq!(modules[0].raw.size_of_image, 0x26000);
+    }
+
+    #[test]
+    fn test_handle_data_stream() {
+        const HANDLE_VALUE: u64 = 123;
+        const TYPE_NAME: &str = "This is a type name";
+        const OBJECT_NAME: &str = "And this is an object name";
+
+        let type_name = DumpString::new(TYPE_NAME, Endian::Little);
+        let object_name = DumpString::new(OBJECT_NAME, Endian::Little);
+        let handle = SynthHandleDescriptor::new(
+            Endian::Little,
+            HANDLE_VALUE,
+            Some(&type_name),
+            Some(&object_name),
+            0xf00ff00f,
+            0xcafecafe,
+            0xcacacaca,
+            0xbeefbeef,
+        );
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_handle_descriptor(handle)
+            .add(type_name)
+            .add(object_name);
+        let dump = read_synth_dump(dump).unwrap();
+        let handle_data_stream = dump
+            .get_stream::<MinidumpHandleDataStream>()
+            .expect("The HANDLE_DATA_STREAM must be present");
+        let handles = handle_data_stream.iter().collect::<Vec<_>>();
+        assert_eq!(handles.len(), 1);
+        assert_eq!(
+            handles[0]
+                .raw
+                .handle()
+                .expect("The `handle` field must be present"),
+            &HANDLE_VALUE
+        );
+        assert_eq!(
+            handles[0]
+                .type_name
+                .as_ref()
+                .expect("The `type_name` field must be populated"),
+            TYPE_NAME
+        );
+        assert_eq!(
+            handles[0]
+                .object_name
+                .as_ref()
+                .expect("The `object_name` field must be populated"),
+            OBJECT_NAME
+        );
     }
 }

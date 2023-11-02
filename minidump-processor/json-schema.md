@@ -588,6 +588,21 @@ anyway.
 
 
 
+  // A list of OS-specific handles that were open in the process. These are
+  // HANDLEs on Windows and file descriptors on Linux. The `handle` field
+  // contains the handle value or file descriptor number, the `type_name`
+  // contains the type of handle (File, Section, etc... on Windows, file, pipe,
+  // socket, etc... on Linux), the `object_name` field contains the name or
+  // path of the handle (in case it's a file).
+  "handles": [
+    {
+      "handle": <u32>,
+      "type_name": <string>
+      "object_name": <string>
+    }
+  ], // handles
+
+
 
 
   // Linux Standard Base information (Linux-specific extended system_info)

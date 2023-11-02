@@ -13,6 +13,7 @@ expression: json_out
     "possible_bit_flips": null,
     "type": null
   },
+  "handles": null,
   "lsb_release": null,
   "mac_boot_args": null,
   "mac_crash_info": null,

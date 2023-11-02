@@ -457,6 +457,7 @@ pub struct ProcessState {
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
     pub unloaded_modules: MinidumpUnloadedModuleList,
+    pub handles: Option<MinidumpHandleDataStream>,
     // modules_without_symbols
     // modules_with_corrupt_symbols
     // exploitability
@@ -993,6 +994,11 @@ Unknown streams encountered:
                 "filename": module.name,
                 "cert_subject": self.cert_info.get(&module.name),
             })).collect::<Vec<_>>(),
+            "handles": self.handles.as_ref().map(|handles| handles.iter().map(|handle| json!({
+                "handle": handle.raw.handle(),
+                "type_name": handle.type_name,
+                "object_name": handle.object_name
+            })).collect::<Vec<_>>()),
         });
 
         if let Some(requesting_thread) = self.requesting_thread {
