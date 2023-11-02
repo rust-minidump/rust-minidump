@@ -1,6 +1,9 @@
 # Unreleased
 
-Nothing Yet!
+* Fixed an issue that prevent the GitHub integration from automatically
+  generating a new release.
+* Updated all dependencies to address some mild security issues in some of the
+  dependent crates.
 
 
 # Version 0.19.0 (2023-11-02)
