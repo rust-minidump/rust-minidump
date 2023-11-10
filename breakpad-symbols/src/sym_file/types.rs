@@ -246,6 +246,8 @@ impl StackInfoWin {
 /// A parsed .sym file containing debug symbols.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SymbolFile {
+    pub module_id: String,
+    pub debug_file: String,
     /// The set of source files involved in compilation.
     pub files: HashMap<u32, String>,
     /// Publicly visible symbols.
