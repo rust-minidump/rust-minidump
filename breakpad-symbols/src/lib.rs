@@ -193,6 +193,8 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
 /// A lookup we would like to perform for some file (sym, exe, pdb, dll, ...)
 #[derive(Debug, Clone)]
 pub struct FileLookup {
+    pub debug_id: String,
+    pub debug_file: String,
     pub cache_rel: String,
     pub server_rel: String,
 }
@@ -224,6 +226,8 @@ pub fn breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
     Some(FileLookup {
         cache_rel: rel_path.clone(),
         server_rel: rel_path,
+        debug_id: debug_id.breakpad().to_string(),
+        debug_file: filename,
     })
 }
 
@@ -267,6 +271,8 @@ pub fn extra_debuginfo_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup
     Some(FileLookup {
         cache_rel: rel_path.clone(),
         server_rel: rel_path,
+        debug_id: debug_id.to_string(),
+        debug_file: leaf.to_string(),
     })
 }
 
@@ -287,6 +293,8 @@ pub fn binary_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
     Some(FileLookup {
         cache_rel: [debug_leaf, &debug_id.breakpad().to_string(), bin_leaf].join("/"),
         server_rel: [bin_leaf, code_id.as_ref(), bin_leaf].join("/"),
+        debug_id: debug_id.to_string(),
+        debug_file: debug_file.to_string(),
     })
 }
 
@@ -470,10 +478,19 @@ impl SymbolSupplier for SimpleSymbolSupplier {
         trace!("SimpleSymbolSupplier search");
         if let Some(lookup) = lookup(module, file_kind) {
             for path in self.paths.iter() {
-                let test_path = path.join(lookup.cache_rel.clone());
-                if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
-                    trace!("SimpleSymbolSupplier found file {}", test_path.display());
-                    return Ok(test_path);
+                if path.is_file() && file_kind == FileKind::BreakpadSym {
+                    if let Ok(sf) = SymbolFile::from_file(path) {
+                        if sf.module_id == lookup.debug_id {
+                            trace!("SimpleSymbolSupplier found file {}", path.display());
+                            return Ok(path.to_path_buf());
+                        }
+                    }
+                } else if path.is_dir() {
+                    let test_path = path.join(lookup.cache_rel.clone());
+                    if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
+                        trace!("SimpleSymbolSupplier found file {}", test_path.display());
+                        return Ok(test_path);
+                    }
                 }
             }
         } else {

@@ -25,7 +25,7 @@ use crate::SymbolError;
 
 #[derive(Debug)]
 enum Line {
-    Module,
+    Module(String, String, String, String),
     Info(Info),
     File(u32, String),
     InlineOrigin(u32, String),
@@ -127,15 +127,23 @@ fn single(predicate: fn(u8) -> bool) -> impl Fn(&[u8]) -> IResult<&[u8], u8> {
 }
 
 // Matches a MODULE record.
-fn module_line(input: &[u8]) -> IResult<&[u8], ()> {
+fn module_line(input: &[u8]) -> IResult<&[u8], (String, String, String, String)> {
     let (input, _) = terminated(tag("MODULE"), space1)(input)?;
-    let (input, _) = cut(tuple((
-        terminated(non_space, space1),  // os
-        terminated(non_space, space1),  // cpu
-        terminated(hex_digit1, space1), // debug id
-        terminated(not_my_eol, my_eol), // filename
+    let (input, (os, cpu, debug_id, filename)) = cut(tuple((
+        terminated(map_res(non_space, str::from_utf8), space1), // os
+        terminated(map_res(non_space, str::from_utf8), space1), // cpu
+        terminated(map_res(hex_digit1, str::from_utf8), space1), // debug id
+        terminated(map_res(not_my_eol, str::from_utf8), my_eol), // filename
     )))(input)?;
-    Ok((input, ()))
+    Ok((
+        input,
+        (
+            os.to_string(),
+            cpu.to_string(),
+            debug_id.to_string(),
+            filename.to_string(),
+        ),
+    ))
 }
 
 // Matches an INFO URL record.
@@ -394,7 +402,7 @@ fn line(input: &[u8]) -> IResult<&[u8], Line> {
             map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
             map(stack_win_line, Line::StackWin),
             map(stack_cfi_init, Line::StackCfi),
-            map(module_line, |_| Line::Module),
+            map(module_line, |(p, a, i, f)| Line::Module(p, a, i, f)),
         )),
         multispace0,
     )(input)
@@ -409,6 +417,8 @@ fn line(input: &[u8]) -> IResult<&[u8], Line> {
 /// whole input is consumed. Then call [`finish`][].
 #[derive(Debug, Default)]
 pub struct SymbolParser {
+    module_id: String,
+    debug_file: String,
     files: HashMap<u32, String>,
     inline_origins: HashMap<u32, String>,
     publics: Vec<PublicSymbol>,
@@ -520,7 +530,7 @@ impl SymbolParser {
             // Now store the item in our partial SymbolFile (or make it the cur_item
             // if it has potential sublines we need to parse first).
             match line {
-                Line::Module => {
+                Line::Module(_platform, _arch, module_id, debug_file) => {
                     // We don't use this but it MUST be the first line
                     if self.lines != 0 {
                         return Err(SymbolError::ParseError(
@@ -528,6 +538,8 @@ impl SymbolParser {
                             self.lines,
                         ));
                     }
+                    self.module_id = module_id;
+                    self.debug_file = debug_file;
                 }
                 Line::Info(Info::Url(cached_url)) => {
                     self.url = Some(cached_url);
@@ -688,6 +700,8 @@ impl SymbolParser {
         self.publics.sort();
 
         SymbolFile {
+            module_id: self.module_id,
+            debug_file: self.debug_file,
             files: self.files,
             publics: self.publics,
             functions: into_rangemap_safe(self.functions),
@@ -734,14 +748,36 @@ fn parse_symbol_bytes(data: &[u8]) -> Result<SymbolFile, SymbolError> {
 fn test_module_line() {
     let line = b"MODULE Linux x86 D3096ED481217FD4C16B29CD9BC208BA0 firefox-bin\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Ok((rest, ())));
+    assert_eq!(
+        module_line(line),
+        Ok((
+            rest,
+            (
+                "Linux".to_string(),
+                "x86".to_string(),
+                "D3096ED481217FD4C16B29CD9BC208BA0".to_string(),
+                "firefox-bin".to_string()
+            )
+        ))
+    );
 }
 
 #[test]
 fn test_module_line_filename_spaces() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox x y z\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Ok((rest, ())));
+    assert_eq!(
+        module_line(line),
+        Ok((
+            rest,
+            (
+                "Windows".to_string(),
+                "x86_64".to_string(),
+                "D3096ED481217FD4C16B29CD9BC208BA0".to_string(),
+                "firefox x y z".to_string()
+            )
+        ))
+    );
 }
 
 /// Sometimes dump_syms on Windows does weird things and produces multiple carriage returns
@@ -750,7 +786,18 @@ fn test_module_line_filename_spaces() {
 fn test_module_line_crcrlf() {
     let line = b"MODULE Windows x86_64 D3096ED481217FD4C16B29CD9BC208BA0 firefox\r\r\n";
     let rest = &b""[..];
-    assert_eq!(module_line(line), Ok((rest, ())));
+    assert_eq!(
+        module_line(line),
+        Ok((
+            rest,
+            (
+                "Windows".to_string(),
+                "x86_64".to_string(),
+                "D3096ED481217FD4C16B29CD9BC208BA0".to_string(),
+                "firefox".to_string()
+            )
+        ))
+    );
 }
 
 #[test]
