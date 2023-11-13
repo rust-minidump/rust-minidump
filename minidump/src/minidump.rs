@@ -4373,7 +4373,8 @@ impl CrashReason {
                 // will be present in the crash thread's instruction field anyway.
                 if record.number_parameters >= 3 {
                     // NOTE: address := info[1];
-                    let nt_status = info[2];
+                    // The status code is 32-bits wide, ignore the upper 32 bits
+                    let nt_status = info[2] & 0xffff_ffff;
                     if let Some(ty) = err::ExceptionCodeWindowsInPageErrorType::from_u64(info[0]) {
                         reason = CrashReason::WindowsInPageError(ty, nt_status);
                     }
@@ -4384,7 +4385,8 @@ impl CrashReason {
                 // invocations and the fast-fail code is stored in
                 // exception_information[0].
                 if record.number_parameters >= 1 {
-                    let fast_fail = info[0];
+                    // The status code is 32-bits wide, ignore the upper 32 bits
+                    let fast_fail = info[0] & 0xffff_ffff;
                     reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
                 }
             }
@@ -5782,7 +5784,10 @@ fn stream_vendor(stream_type: u32) -> &'static str {
 mod test {
     use super::*;
     use md::GUID;
-    use minidump_common::format::{PlatformId, ProcessorArchitecture};
+    use minidump_common::{
+        errors::NtStatusWindows,
+        format::{PlatformId, ProcessorArchitecture},
+    };
     use minidump_synth::{
         self, AnnotationValue, CrashpadInfo, DumpString, Exception,
         HandleDescriptor as SynthHandleDescriptor, Memory, MemoryInfo as SynthMemoryInfo,
@@ -7441,6 +7446,68 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
                 .as_ref()
                 .expect("The `object_name` field must be populated"),
             OBJECT_NAME
+        );
+    }
+
+    #[test]
+    fn test_windows_status_code() {
+        let address = 0x1234_5678_u64;
+        let amd64_system_info = SystemInfo::new(Endian::Little)
+            .set_processor_architecture(ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16)
+            .set_platform_id(PlatformId::VER_PLATFORM_WIN32_NT as u32);
+        let mut exception = Exception::new(Endian::Little);
+        exception.exception_record.exception_code =
+            err::ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR as u32;
+        exception.exception_record.exception_address = address;
+        exception.exception_record.number_parameters = 3;
+        exception.exception_record.exception_information[0] =
+            err::ExceptionCodeWindowsInPageErrorType::WRITE as u64;
+        exception.exception_record.exception_information[1] = address;
+        exception.exception_record.exception_information[2] =
+            err::NtStatusWindows::STATUS_DISK_FULL as u64;
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(amd64_system_info)
+            .add_exception(exception);
+        let dump = read_synth_dump(dump).unwrap();
+        let system_stream = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let exception_stream = dump.get_stream::<MinidumpException>().unwrap();
+        assert_eq!(
+            exception_stream.get_crash_reason(system_stream.os, system_stream.cpu),
+            CrashReason::WindowsInPageError(
+                err::ExceptionCodeWindowsInPageErrorType::WRITE,
+                NtStatusWindows::STATUS_DISK_FULL as u64
+            )
+        );
+
+        // Let's try again but for 32-bit x86
+        let x86_system_info = SystemInfo::new(Endian::Little)
+            .set_processor_architecture(ProcessorArchitecture::PROCESSOR_ARCHITECTURE_INTEL as u16)
+            .set_platform_id(PlatformId::VER_PLATFORM_WIN32_NT as u32);
+        let mut exception = Exception::new(Endian::Little);
+        exception.exception_record.exception_code =
+            err::ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR as u32;
+        exception.exception_record.exception_address = address;
+        exception.exception_record.number_parameters = 3;
+        exception.exception_record.exception_information[0] =
+            err::ExceptionCodeWindowsInPageErrorType::WRITE as u64;
+        exception.exception_record.exception_information[1] = address;
+        // Sign extend the error code like 32-bit windbg.dll does
+        exception.exception_record.exception_information[2] =
+            0xffff_ffff_0000_0000 | (err::NtStatusWindows::STATUS_DISK_FULL as u64);
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(x86_system_info)
+            .add_exception(exception);
+        let dump = read_synth_dump(dump).unwrap();
+        let system_stream = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let exception_stream = dump.get_stream::<MinidumpException>().unwrap();
+        assert_eq!(
+            exception_stream.get_crash_reason(system_stream.os, system_stream.cpu),
+            CrashReason::WindowsInPageError(
+                err::ExceptionCodeWindowsInPageErrorType::WRITE,
+                NtStatusWindows::STATUS_DISK_FULL as u64
+            )
         );
     }
 }
