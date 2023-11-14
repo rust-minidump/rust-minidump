@@ -4726,11 +4726,20 @@ impl fmt::Display for CrashReason {
                     if let Some(mach_port_flavor) =
                         err::ExceptionCodeMacGuardMachPortFlavor::from_u64(flavor)
                     {
+                        // FIXME: GUARD_EXC_STRICT_REPLY, GUARD_EXC_MOD_REFS and GUARD_EXC_IMMOVABLE have additional flags defined here:
+                        // https://github.com/apple-oss-distributions/xnu/blob/1031c584a5e37aff177559b9f69dbd3c8c3fd30a/osfmk/mach/port.h#L518-L538
+                        // They also encode additional data in the subcode (a mach reply type or a kernel return value), one has to
+                        // check Apple's code to figure out each one. Since we haven't encountered them yet in the wild there's no
+                        // hurry to decode those.
                         let port_name = code & 0xfffffff;
-                        write!(
-                            f,
-                            " / {mach_port_flavor:?} port name: {port_name} guard identifier: {subcode}",
-                        )
+                        if subcode != 0 {
+                            write!(
+                                f,
+                                " / {mach_port_flavor:?} port name: {port_name} subcode: {subcode}",
+                            )
+                        } else {
+                            write!(f, " / {mach_port_flavor:?} port name: {port_name}",)
+                        }
                     } else {
                         write!(f, " / {code:#018x} / {subcode:#018x}")
                     }
@@ -4767,6 +4776,17 @@ impl fmt::Display for CrashReason {
                         err::ExceptionCodeMacGuardVirtMemoryFlavor::from_u64(flavor)
                     {
                         write!(f, " / {virt_memory_flavor:?} offset: {subcode}")
+                    } else {
+                        write!(f, " / {code:#018x} / {subcode:#018x}")
+                    }
+                }
+                err::ExceptionCodeMacGuardType::GUARD_TYPE_REJECTED_SC => {
+                    // See https://github.com/apple-oss-distributions/xnu/blob/1031c584a5e37aff177559b9f69dbd3c8c3fd30a/osfmk/kern/exc_guard.h#L149-L163
+                    if let Some(rejected_sc_flavor) =
+                        err::ExceptionCodeMacGuardRejecteSysCallFlavor::from_u64(flavor)
+                    {
+                        let syscall = subcode;
+                        write!(f, " / {rejected_sc_flavor:?} syscall: {syscall}",)
                     } else {
                         write!(f, " / {code:#018x} / {subcode:#018x}")
                     }
