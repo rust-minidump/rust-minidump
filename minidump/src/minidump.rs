@@ -4801,7 +4801,7 @@ impl fmt::Display for CrashReason {
             ex: err::ExceptionCodeLinux,
             flags: u32,
         ) -> fmt::Result {
-            if let Some(si_code) = err::ExceptionCodeLinuxSicode::from_u32(flags) {
+            if let Some(si_code) = err::ExceptionCodeLinuxSicode::from_i32(flags as i32) {
                 if si_code == err::ExceptionCodeLinuxSicode::SI_USER {
                     write!(f, "{ex:?}")
                 } else {
@@ -7528,6 +7528,29 @@ c70206ca83eb2852-de0206ca83eb2852  -w-s  10bac9000 fd:05 1196511 /usr/lib64/libt
                 err::ExceptionCodeWindowsInPageErrorType::WRITE,
                 NtStatusWindows::STATUS_DISK_FULL as u64
             )
+        );
+    }
+
+    #[test]
+    fn test_linux_abort_si_code() {
+        let amd64_system_info = SystemInfo::new(Endian::Little)
+            .set_processor_architecture(ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16)
+            .set_platform_id(PlatformId::Linux as u32);
+        let mut exception = Exception::new(Endian::Little);
+        exception.exception_record.exception_code = err::ExceptionCodeLinux::SIGABRT as u32;
+        exception.exception_record.exception_flags = err::ExceptionCodeLinuxSicode::SI_TKILL as u32;
+
+        let dump = SynthMinidump::with_endian(Endian::Little)
+            .add_system_info(amd64_system_info)
+            .add_exception(exception);
+        let dump = read_synth_dump(dump).unwrap();
+        let system_stream = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+        let exception_stream = dump.get_stream::<MinidumpException>().unwrap();
+        assert_eq!(
+            exception_stream
+                .get_crash_reason(system_stream.os, system_stream.cpu)
+                .to_string(),
+            "SIGABRT / SI_TKILL"
         );
     }
 }
