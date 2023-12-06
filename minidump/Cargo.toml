@@ -19,7 +19,7 @@ tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.8"
 minidump-common = { version = "0.19.1", path = "../minidump-common" }
 num-traits = "0.2"
-procfs-core = { git = "https://github.com/eminence/procfs.git", default-features = false }
+procfs-core = "0.16"
 range-map = "0.2"
 scroll = "0.11.0"
 thiserror = "1.0.37"
