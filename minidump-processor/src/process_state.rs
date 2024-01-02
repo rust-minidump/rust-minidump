@@ -1011,7 +1011,7 @@ Unknown streams encountered:
             // many of the fields here. We don't to keep things more uniform.
 
             // We can't do any of this work if we don't have at least one frame.
-            if let Some(f) = self.threads[requesting_thread].frames.get(0) {
+            if let Some(f) = self.threads[requesting_thread].frames.first() {
                 let registers = json_registers(&f.context);
 
                 // Yuck, spidering through json...
