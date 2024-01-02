@@ -945,8 +945,7 @@ impl<'a> MinidumpInfo<'a> {
                         // as the `exception_context` may refer to a different memory region than
                         // the `thread_context`, which in turn would fail to stack walk.
                         let stack_ptr = stack
-                            .frames
-                            .get(0)
+                            .frames.first()
                             .map(|ctx_frame| ctx_frame.context.get_stack_pointer());
                         if let Some(stack_ptr) = stack_ptr {
                             let contains_stack_ptr = stack_memory
