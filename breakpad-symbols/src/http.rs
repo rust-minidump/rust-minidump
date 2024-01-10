@@ -182,14 +182,6 @@ fn commit_cache_file(mut temp: NamedTempFile, final_path: &Path, url: &Url) -> i
     Ok(())
 }
 
-/// The result of a lookup by code_file/code_identifier against a symbol
-/// server.
-#[derive(Debug, Clone)]
-pub struct DebugInfoResult {
-    debug_file: String,
-    debug_identifier: DebugId,
-}
-
 /// Perform a code_file/code_identifier lookup for a specific symbol server.
 async fn individual_lookup_debug_info_by_code_info(
     base_url: &Url,
@@ -558,20 +550,24 @@ impl SymbolSupplier for HttpSymbolSupplier {
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
-    ) -> Result<SymbolFile, SymbolError> {
+    ) -> Result<LocateSymbolsResult, SymbolError> {
         // If we don't have a debug_file or debug_identifier, then try to get it
         // from a symbol server.
         let mut debug_file = module.debug_file().map(|name| name.into_owned());
         let mut debug_id = module.debug_identifier();
+        let missing_debug_info = debug_file.is_none() || debug_id.is_none();
 
-        if debug_file.is_none() || debug_id.is_none() {
+        let extra_debug_info;
+
+        if missing_debug_info {
             debug!("Missing debug file or debug identifier--trying lookup with code info");
-            if let Some(debug_info_result) =
-                lookup_debug_info_by_code_info(&self.urls, module).await
-            {
-                debug_file = Some(debug_info_result.debug_file);
+            extra_debug_info = lookup_debug_info_by_code_info(&self.urls, module).await;
+            if let Some(debug_info_result) = &extra_debug_info {
+                debug_file = Some(debug_info_result.debug_file.clone());
                 debug_id = Some(debug_info_result.debug_identifier);
             }
+        } else {
+            extra_debug_info = None;
         }
 
         // Build a minimal module for lookups with the debug file and debug
@@ -587,7 +583,10 @@ impl SymbolSupplier for HttpSymbolSupplier {
         let local_result = self.local.locate_symbols(&lookup_module).await;
         if !matches!(local_result, Err(SymbolError::NotFound)) {
             // Everything but NotFound prevents cascading
-            return local_result;
+            return local_result.map(|r| LocateSymbolsResult {
+                symbols: r.symbols,
+                extra_debug_info: r.extra_debug_info.or(extra_debug_info),
+            });
         }
         trace!("HttpSymbolSupplier search (SimpleSymbolSupplier found nothing)");
 
@@ -597,9 +596,12 @@ impl SymbolSupplier for HttpSymbolSupplier {
             let sym =
                 fetch_symbol_file(&self.client, url, &lookup_module, &self.cache, &self.tmp).await;
             match sym {
-                Ok(file) => {
+                Ok(symbols) => {
                     trace!("HttpSymbolSupplier parsed file!");
-                    return Ok(file);
+                    return Ok(LocateSymbolsResult {
+                        symbols,
+                        extra_debug_info,
+                    });
                 }
                 Err(e) => {
                     trace!("HttpSymbolSupplier failed: {}", e);
@@ -631,7 +633,11 @@ impl SymbolSupplier for HttpSymbolSupplier {
                 // the symbol file, so as a guard against that diverging, we now use
                 // the proper cache-lookup path to read the file dump_syms just wrote.
                 if let Ok(local_result) = self.local.locate_symbols(&lookup_module).await {
-                    return Ok(local_result);
+                    // Attach extra debug info to response
+                    return Ok(LocateSymbolsResult {
+                        symbols: local_result.symbols,
+                        extra_debug_info: local_result.extra_debug_info.or(extra_debug_info),
+                    });
                 } else {
                     warn!("dump_syms succeeded, but there was no symbol file in the cache?");
                 }
