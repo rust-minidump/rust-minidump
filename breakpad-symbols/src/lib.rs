@@ -79,6 +79,8 @@ pub struct SymbolStats {
     pub loaded_symbols: bool,
     /// If we tried to parse the symbols, but failed.
     pub corrupt_symbols: bool,
+    /// If the module's debug info had to be looked up, this is the debug info used.
+    pub extra_debug_info: Option<DebugInfoResult>,
 }
 
 /// Statistics on pending symbols.
@@ -384,6 +386,21 @@ impl PartialEq for SymbolError {
     }
 }
 
+/// The result of a lookup by code_file/code_identifier against a symbol
+/// server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugInfoResult {
+    pub debug_file: String,
+    pub debug_identifier: DebugId,
+}
+
+/// The result of locating symbols, with debug info if it had to be looked up.
+#[derive(Debug, PartialEq, Eq)]
+pub struct LocateSymbolsResult {
+    pub symbols: SymbolFile,
+    pub extra_debug_info: Option<DebugInfoResult>,
+}
+
 /// A trait for things that can locate symbols for a given module.
 #[async_trait]
 pub trait SymbolSupplier {
@@ -391,8 +408,10 @@ pub trait SymbolSupplier {
     ///
     /// Implementations may use any strategy for locating and loading
     /// symbols.
-    async fn locate_symbols(&self, module: &(dyn Module + Sync))
-        -> Result<SymbolFile, SymbolError>;
+    async fn locate_symbols(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Result<LocateSymbolsResult, SymbolError>;
 
     /// Locate a specific file associated with a `module`
     ///
@@ -427,7 +446,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
-    ) -> Result<SymbolFile, SymbolError> {
+    ) -> Result<LocateSymbolsResult, SymbolError> {
         let file_path = self
             .locate_file(module, FileKind::BreakpadSym)
             .await
@@ -437,7 +456,10 @@ impl SymbolSupplier for SimpleSymbolSupplier {
             e
         })?;
         trace!("SimpleSymbolSupplier parsed file!");
-        Ok(symbols)
+        Ok(LocateSymbolsResult {
+            symbols,
+            extra_debug_info: None,
+        })
     }
 
     #[tracing::instrument(level = "trace", skip(self, module), fields(module = crate::basename(&module.code_file())))]
@@ -468,12 +490,25 @@ impl SymbolSupplier for SimpleSymbolSupplier {
 #[derive(Default, Debug, Clone)]
 pub struct StringSymbolSupplier {
     modules: HashMap<String, String>,
+    code_info_to_debug_info: HashMap<String, DebugInfoResult>,
 }
 
 impl StringSymbolSupplier {
     /// Make a new StringSymbolSupplier with no modules.
     pub fn new(modules: HashMap<String, String>) -> Self {
-        Self { modules }
+        Self {
+            modules,
+            code_info_to_debug_info: HashMap::new(),
+        }
+    }
+
+    /// Perform a code_file/code_identifier lookup for a specific symbol server.
+    async fn lookup_debug_info_by_code_info(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Option<DebugInfoResult> {
+        let lookup_path = code_info_breakpad_sym_lookup(module)?;
+        self.code_info_to_debug_info.get(&lookup_path).cloned()
     }
 }
 
@@ -483,13 +518,16 @@ impl SymbolSupplier for StringSymbolSupplier {
     async fn locate_symbols(
         &self,
         module: &(dyn Module + Sync),
-    ) -> Result<SymbolFile, SymbolError> {
+    ) -> Result<LocateSymbolsResult, SymbolError> {
         trace!("StringSymbolSupplier search");
         if let Some(symbols) = self.modules.get(&*module.code_file()) {
             trace!("StringSymbolSupplier found file");
             let file = SymbolFile::from_bytes(symbols.as_bytes())?;
             trace!("StringSymbolSupplier parsed file!");
-            return Ok(file);
+            return Ok(LocateSymbolsResult {
+                symbols: file,
+                extra_debug_info: self.lookup_debug_info_by_code_info(module).await,
+            });
         }
         trace!("StringSymbolSupplier could not find file");
         Err(SymbolError::NotFound)
@@ -806,10 +844,11 @@ impl Symbolizer {
 
                 let mut stats = SymbolStats::default();
                 match &result {
-                    Ok(sym) => {
-                        stats.symbol_url = sym.url.clone();
+                    Ok(res) => {
+                        stats.symbol_url = res.symbols.url.clone();
                         stats.loaded_symbols = true;
                         stats.corrupt_symbols = false;
+                        stats.extra_debug_info = res.extra_debug_info.clone();
                     }
                     Err(SymbolError::NotFound) => {
                         stats.loaded_symbols = false;
@@ -828,7 +867,7 @@ impl Symbolizer {
                 let key = leafname(module.code_file().as_ref()).to_string();
                 self.stats.lock().unwrap().insert(key, stats);
 
-                result
+                result.map(|r| r.symbols)
             })
             .await
     }
@@ -1134,5 +1173,53 @@ FUNC 1000 30 10 another func
             .get_symbol_at_address("bar.pdb", debug_id, 0x1010)
             .await
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_extra_debug_info() {
+        let debug_info = DebugInfoResult {
+            debug_file: String::from_str("foo.pdb").unwrap(),
+            debug_identifier: DebugId::from_str("abcd1234-abcd-1234-abcd-abcd12345678-a").unwrap(),
+        };
+
+        let mut supplier = StringSymbolSupplier {
+            modules: HashMap::new(),
+            code_info_to_debug_info: HashMap::new(),
+        };
+        supplier.modules.insert(
+            String::from_str("foo.pdb").unwrap(),
+            String::from_str(
+                "MODULE Linux x86 ABCD1234ABCD1234ABCDABCD12345678a foo
+FILE 1 foo.c
+FUNC 1000 30 10 some func
+1000 30 100 1
+",
+            )
+            .unwrap(),
+        );
+        supplier.code_info_to_debug_info.insert(
+            String::from_str("foo.pdb/64E782C570C4000/foo.pdb.sym").unwrap(),
+            debug_info.clone(),
+        );
+
+        let symbolizer = Symbolizer::new(supplier);
+        let module = SimpleModule::from_basic_info(
+            None,
+            None,
+            Some(String::from_str("foo.pdb").unwrap()),
+            Some(CodeId::from_str("64E782C570C4000").unwrap()),
+        );
+
+        let mut f1 = SimpleFrame::with_instruction(0x1010);
+        symbolizer.fill_symbol(&module, &mut f1).await.unwrap();
+        assert_eq!(f1.function.unwrap(), "some func");
+        assert_eq!(f1.function_base.unwrap(), 0x1000);
+        assert_eq!(f1.source_file.unwrap(), "foo.c");
+        assert_eq!(f1.source_line.unwrap(), 100);
+        assert_eq!(f1.source_line_base.unwrap(), 0x1000);
+
+        let sym_stats = symbolizer.stats();
+        let stats = sym_stats.get("foo.pdb").unwrap();
+        assert_eq!(stats.extra_debug_info, Some(debug_info));
     }
 }

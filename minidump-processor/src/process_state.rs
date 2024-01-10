@@ -901,6 +901,17 @@ Unknown streams encountered:
                 let had_stats = stats.is_some();
                 let default = SymbolStats::default();
                 let stats = stats.unwrap_or(&default);
+                // Resolve debug file and debug id from extra debug info if present
+                let debug_file;
+                let debug_id;
+                let debug_file_cow = module.debug_file().unwrap_or(Cow::Borrowed(""));
+                if let Some(debug_info) = &stats.extra_debug_info {
+                    debug_file = debug_info.debug_file.as_str();
+                    debug_id = debug_info.debug_identifier;
+                } else {
+                    debug_file = debug_file_cow.borrow();
+                    debug_id = module.debug_identifier().unwrap_or_default();
+                }
                 // Only consider the symbols "missing" if the symbolizer
                 // actually has statistics on them (implying it *tried* to
                 // get the symbols but failed.)
@@ -908,9 +919,9 @@ Unknown streams encountered:
                 json!({
                     "base_addr": json_hex(module.raw.base_of_image),
                     // filename | empty string
-                    "debug_file": basename(module.debug_file().unwrap_or(Cow::Borrowed("")).borrow()),
+                    "debug_file": basename(debug_file),
                     // [[:xdigit:]]{33} | empty string
-                    "debug_id": module.debug_identifier().unwrap_or_default().breakpad().to_string(),
+                    "debug_id": debug_id.breakpad().to_string(),
                     "end_addr": json_hex(module.raw.base_of_image + module.raw.size_of_image as u64),
                     "filename": &name,
                     "code_id": module.code_identifier().unwrap_or_default().as_str(),

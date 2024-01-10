@@ -12,8 +12,11 @@ impl minidump_unwind::SymbolSupplier for StaticSymbolSupplier {
     async fn locate_symbols(
         &self,
         _module: &(dyn minidump_common::traits::Module + Sync),
-    ) -> Result<SymbolFile, SymbolError> {
-        SymbolFile::from_bytes(&self.file)
+    ) -> Result<minidump_unwind::LocateSymbolsResult, SymbolError> {
+        SymbolFile::from_bytes(&self.file).map(|symbols| minidump_unwind::LocateSymbolsResult {
+            symbols,
+            extra_debug_info: None,
+        })
     }
     async fn locate_file(
         &self,

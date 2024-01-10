@@ -32,13 +32,19 @@
 //!     * Wraps the [SymbolSupplier][] implementation that is selected.
 //!     * Queries the [SymbolSupplier] and manages the SymbolFiles however it pleases.
 //! * [SymbolStats][] - debug statistic output.
-//! * [SymbolFile][] - a payload that a [SymbolProvider][] returns to the Symbolizer.
+//! * [SymbolFile][] - part of [LocateSymbolsResult][] that a [SymbolProvider][] returns to the
+//!   Symbolizer.
 //!     * Never handled by minidump-unwind, public for the trait.
 //! * [SymbolError][] - possible errors a [SymbolProvider][] can yield.
 //!     * Never handled by minidump-unwind, public for the trait.
 //! * [FillSymbolError][] - possible errors for `fill_symbol`.
 //!     * While this *is* handled by minidump-unwind, it doesn't actually look at the value. It's
 //!       just there to be an Error type for the sake of API design.
+//! * [LocateSymbolsResult][] - a payload that a [SymbolProvider][] returns to the Symbolizer.
+//!     * Never handled by minidump-unwind, public for the trait.
+//! * [DebugInfoResult][] - part of [LocateSymbolsResult][] that a [SymbolProvider][] returns to
+//!   the Symbolizer.
+//!     * Never handled by minidump-unwind, public for the trait.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -47,8 +53,9 @@ use async_trait::async_trait;
 use minidump::Module;
 
 pub use breakpad_symbols::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, PendingSymbolStats,
-    SymbolError, SymbolFile, SymbolStats, SymbolSupplier, Symbolizer,
+    DebugInfoResult, FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker,
+    LocateSymbolsResult, PendingSymbolStats, SymbolError, SymbolFile, SymbolStats, SymbolSupplier,
+    Symbolizer,
 };
 
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
