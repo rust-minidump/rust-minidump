@@ -11,6 +11,7 @@ mod arm;
 mod arm64;
 mod arm64_old;
 mod mips;
+mod riscv64;
 pub mod symbols;
 pub mod system_info;
 mod unwind;
@@ -504,7 +505,7 @@ impl CallStack {
                 use MinidumpRawContext::*;
                 let pointer_width = match &frame.context.raw {
                     X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) => 4,
-                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) => 8,
+                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) | Riscv64(_) => 8,
                 };
 
                 let cc_summary = match args.calling_convention {
@@ -675,6 +676,17 @@ where
             .await
         }
         MinidumpRawContext::Mips(ref ctx) => {
+            ctx.get_caller_frame(
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                system_info,
+                symbol_provider,
+            )
+            .await
+        }
+        MinidumpRawContext::Riscv64(ref ctx) => {
             ctx.get_caller_frame(
                 callee_frame,
                 grand_callee_frame,
