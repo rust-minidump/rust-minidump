@@ -21,7 +21,7 @@ minidump-common = { version = "0.19.1", path = "../minidump-common" }
 num-traits = "0.2"
 procfs-core = "0.16"
 range-map = "0.2"
-scroll = "0.11.0"
+scroll = "0.12.0"
 thiserror = "1.0.37"
 time = { version = "0.3.16", features = ["formatting"] }
 uuid = "1.0.0"
