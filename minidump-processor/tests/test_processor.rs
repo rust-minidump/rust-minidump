@@ -3,7 +3,8 @@
 
 use minidump::system_info::{Cpu, Os};
 use minidump::{
-    Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, Module,
+    Error, Minidump, MinidumpContext, MinidumpContextValidity, MinidumpRawContext, MmapMinidump,
+    Module,
 };
 use minidump_common::format::MemoryProtection;
 use minidump_processor::{Limit, LinuxStandardBase, ProcessState};
@@ -32,7 +33,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<Minidump<'static, memmap2::Mmap>, Error> {
+fn read_test_minidump() -> Result<MmapMinidump<'static>, Error> {
     let path = locate_testdata().join("test.dmp");
     println!("minidump: {path:?}");
     Minidump::read_path(&path)

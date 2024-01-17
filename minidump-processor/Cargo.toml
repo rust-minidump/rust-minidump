@@ -31,7 +31,6 @@ async-trait = "0.1.52"
 breakpad-symbols = { version = "0.19.1", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 futures-util = "0.3.25"
-memmap2 = "0.9"
 minidump = { version = "0.19.1", path = "../minidump" }
 minidump-common = { version = "0.19.1", path = "../minidump-common" }
 minidump-unwind = { version = "0.19.1", path = "../minidump-unwind" }

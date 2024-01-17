@@ -2,7 +2,6 @@
 // file at the top-level directory of this distribution.
 
 use debugid::{CodeId, DebugId};
-use memmap2::Mmap;
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
 use minidump_common::format as md;
@@ -25,12 +24,12 @@ fn get_test_minidump_path(filename: &str) -> PathBuf {
     path
 }
 
-fn read_test_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
+fn read_test_minidump<'a>() -> Result<MmapMinidump<'a>, Error> {
     let path = get_test_minidump_path("test.dmp");
     Minidump::read_path(path)
 }
 
-fn read_linux_minidump<'a>() -> Result<Minidump<'a, Mmap>, Error> {
+fn read_linux_minidump<'a>() -> Result<MmapMinidump<'a>, Error> {
     let path = get_test_minidump_path("linux-mini.dmp");
     Minidump::read_path(path)
 }

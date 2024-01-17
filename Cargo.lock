@@ -1293,7 +1293,6 @@ dependencies = [
  "debugid",
  "doc-comment",
  "futures-util",
- "memmap2 0.9.3",
  "minidump",
  "minidump-common",
  "minidump-synth",
