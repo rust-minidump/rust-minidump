@@ -33,7 +33,7 @@ fn locate_testdata() -> PathBuf {
     panic!("Couldn't find testdata directory! Tried: {:?}", paths);
 }
 
-fn read_test_minidump() -> Result<MmapMinidump<'static>, Error> {
+fn read_test_minidump() -> Result<MmapMinidump, Error> {
     let path = locate_testdata().join("test.dmp");
     println!("minidump: {path:?}");
     Minidump::read_path(&path)

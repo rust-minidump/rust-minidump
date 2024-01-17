@@ -5183,13 +5183,13 @@ impl MinidumpCrashpadInfo {
 }
 
 /// An index into the contents of a memory-mapped minidump.
-pub type MmapMinidump<'a> = Minidump<'a, Mmap>;
+pub type MmapMinidump = Minidump<'static, Mmap>;
 
-impl<'a> Minidump<'a, Mmap> {
+impl MmapMinidump {
     /// Read a `Minidump` from a `Path` to a file on disk.
     ///
     /// See [the type definition](Minidump.html) for an example.
-    pub fn read_path<P>(path: P) -> Result<MmapMinidump<'a>, Error>
+    pub fn read_path<P>(path: P) -> Result<MmapMinidump, Error>
     where
         P: AsRef<Path>,
     {
