@@ -15,8 +15,6 @@ edition = "2018"
 travis-ci = { repository = "rust-minidump/rust-minidump" }
 
 [features]
-# Allows construction of symbol files from native binaries
-dump_syms = ["minidump-processor/dump_syms"]
 # Allows retrieval of CABed symbol files from mozilla servers
 mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 

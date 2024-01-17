@@ -463,87 +463,6 @@ pub fn unpack_cabinet_file(
 
 /// Try to lookup native binaries in the cache and by querying the symbol server
 
-/// Runs dump_syms on the given inputs and produces a .sym file at the give output.
-///
-/// This function has to work around some technical limitations in dump_syms, and
-/// requires some delicate handling:
-///
-/// * All inputs should be in the same directory and have their "natural names"
-///   so that they can be automatically discovered and format-detected.
-///
-/// * Inputs should be ordered in "increasing preference", and debuginfo (pdb)
-///   files should be preferred over executable (exe/dll) files.
-///
-/// This can take a while to run, and is *ideally* just a transient hack while
-/// we teach rust-minidump to handle native debuginfo directly.
-#[cfg(feature = "dump_syms")]
-async fn dump_syms(
-    inputs: &[Result<(PathBuf, Option<Url>), FileError>],
-    output: &Path,
-) -> Result<(), SymbolError> {
-    use dump_syms::dumper;
-
-    if !inputs.iter().any(|input| input.is_ok()) {
-        return Err(SymbolError::NotFound);
-    }
-
-    trace!("symbols: found native symbols! running dump_syms...");
-
-    let mut source_file = None;
-    let mut urls = vec![];
-    for (input_path, input_url) in inputs.iter().flatten() {
-        // If we know where we got this from, record it.
-        if let Some(url) = input_url {
-            urls.push(url.to_string());
-        }
-        // dump_syms only wants one input, and will derive the others
-        // from that one input by looking in the directory. If we have
-        // multiple sources, we want the last one (caller knows the right priority).
-        source_file = Some(input_path);
-    }
-
-    if let Err(e) = dumper::single_file(
-        &dumper::Config {
-            output: dumper::Output::File(output.to_string_lossy()[..].into()),
-            symbol_server: None,
-            debug_id: None,
-            code_id: None,
-            arch: "unknown",
-            num_jobs: 2, // default this
-            check_cfi: false,
-            mapping_var: None,
-            mapping_src: None,
-            mapping_dest: None,
-            mapping_file: None,
-            emit_inlines: true,
-        },
-        &source_file.unwrap().to_string_lossy()[..],
-    ) {
-        debug!("symbols: dump_syms failed: {}", e);
-        Err(std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    }
-
-    {
-        // Write extra metadata to the file
-        let mut temp = std::fs::File::options().append(true).open(output)?;
-        let mut cache_metadata = String::new();
-        for url in urls {
-            cache_metadata.push_str(&format!("INFO URL {}\n", url));
-        }
-        temp.write_all(cache_metadata.as_bytes())?;
-    }
-
-    Ok(())
-}
-
-#[cfg(not(feature = "dump_syms"))]
-async fn dump_syms(
-    _inputs: &[Result<(PathBuf, Option<Url>), FileError>],
-    _output: &Path,
-) -> Result<(), SymbolError> {
-    Ok(())
-}
-
 #[async_trait]
 impl SymbolSupplier for HttpSymbolSupplier {
     #[tracing::instrument(name = "symbols", level = "trace", skip_all, fields(file = crate::basename(&module.code_file())))]
@@ -605,41 +524,6 @@ impl SymbolSupplier for HttpSymbolSupplier {
                 }
                 Err(e) => {
                     trace!("HttpSymbolSupplier failed: {}", e);
-                }
-            }
-        }
-
-        // Third: try to generate a symfile from native symbols
-        if cfg!(feature = "dump_syms") {
-            trace!("symbols: trying to fetch native symbols");
-            // Find native files
-            let mut native_artifacts = vec![];
-            native_artifacts.push(
-                self.locate_file_internal(&lookup_module, FileKind::Binary)
-                    .await,
-            );
-            native_artifacts.push(
-                self.locate_file_internal(module, FileKind::ExtraDebugInfo)
-                    .await,
-            );
-
-            // Now try to run dump_syms to produce a .sym
-            let sym_lookup =
-                breakpad_sym_lookup(&lookup_module).ok_or(SymbolError::MissingDebugFileOrId)?;
-            let output = self.cache.join(sym_lookup.cache_rel);
-            if dump_syms(&native_artifacts, &output).await.is_ok() {
-                trace!("symbols: dump_syms successful! using local result");
-                // We want dump_syms to leave us in a state "as if" we had downloaded
-                // the symbol file, so as a guard against that diverging, we now use
-                // the proper cache-lookup path to read the file dump_syms just wrote.
-                if let Ok(local_result) = self.local.locate_symbols(&lookup_module).await {
-                    // Attach extra debug info to response
-                    return Ok(LocateSymbolsResult {
-                        symbols: local_result.symbols,
-                        extra_debug_info: local_result.extra_debug_info.or(extra_debug_info),
-                    });
-                } else {
-                    warn!("dump_syms succeeded, but there was no symbol file in the cache?");
                 }
             }
         }
