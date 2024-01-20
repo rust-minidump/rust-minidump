@@ -27,6 +27,7 @@ use tracing::trace;
 pub use crate::symbols::*;
 pub use crate::system_info::*;
 
+#[derive(Clone, Copy)]
 struct GetCallerFrameArgs<'a, P> {
     callee_frame: &'a StackFrame,
     grand_callee_frame: Option<&'a StackFrame>,
@@ -38,7 +39,7 @@ struct GetCallerFrameArgs<'a, P> {
 
 mod impl_prelude {
     pub(crate) use super::{
-        CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider, SystemInfo,
+        CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider,
     };
 }
 
@@ -610,7 +611,7 @@ where
 #[tracing::instrument(name = "unwind_frame", level = "trace", skip_all, fields(idx = _frame_idx, fname = args.callee_frame.function_name.as_deref().unwrap_or("")))]
 async fn get_caller_frame<P>(
     _frame_idx: usize,
-    args: GetCallerFrameArgs<'_, P>,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -726,7 +727,7 @@ pub async fn walk_stack<P>(
         }
         let new_frame = get_caller_frame(
             frame_idx,
-            GetCallerFrameArgs {
+            &GetCallerFrameArgs {
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,

@@ -8,7 +8,6 @@ use super::impl_prelude::*;
 use minidump::system_info::Os;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext,
-    UnifiedMemory,
 };
 use std::collections::HashSet;
 use tracing::trace;
@@ -26,19 +25,18 @@ const CALLEE_SAVED_REGS: &[&str] = &["r4", "r5", "r6", "r7", "r8", "r9", "r10", 
 
 async fn get_caller_by_cfi<P>(
     ctx: &ArmContext,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
     trace!("trying cfi");
+    let callee = args.callee_frame;
+    let grand_callee = args.grand_callee_frame;
+
     let valid = &callee.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let module = modules.module_at_address(callee.instruction)?;
+    let module = args.modules.module_at_address(callee.instruction)?;
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
     let has_grand_callee = grand_callee.is_some();
 
@@ -56,10 +54,10 @@ where
         caller_ctx: ctx.clone(),
         caller_validity: callee_forwarded_regs(valid),
 
-        stack_memory,
+        stack_memory: args.stack_memory,
     };
 
-    symbol_provider
+    args.symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
@@ -96,11 +94,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &ArmContext,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    _modules: &MinidumpModuleList,
-    system_info: &SystemInfo,
-    _symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -111,7 +105,7 @@ where
     // In other words, we need to be conservative and treat it as a general
     // purpose register. Except on iOS, which has stricter conventions around
     // register use, and does guarantee that LR contains a valid return addr.
-    if system_info.os != Os::Ios {
+    if args.system_info.os != Os::Ios {
         return None;
     }
 
@@ -133,7 +127,7 @@ where
     // sp := fp + ptr*2
     // pc := *(fp + ptr)
     // fp := *fp
-    let valid = &callee.context.valid;
+    let valid = &args.callee_frame.context.valid;
     let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
@@ -149,8 +143,9 @@ where
         (0, 0, last_sp)
     } else {
         (
-            stack_memory.get_memory_at_address(last_fp as u64)?,
-            stack_memory.get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
+            args.stack_memory.get_memory_at_address(last_fp as u64)?,
+            args.stack_memory
+                .get_memory_at_address(last_fp as u64 + POINTER_WIDTH as u64)?,
             last_fp + POINTER_WIDTH * 2,
         )
     };
@@ -182,10 +177,7 @@ where
 
 async fn get_caller_by_scan<P>(
     ctx: &ArmContext,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -197,7 +189,7 @@ where
     // we assume it's an pc value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // pc value.
-    let valid = &callee.context.valid;
+    let valid = &args.callee_frame.context.valid;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     // Number of pointer-sized values to scan through in our search.
@@ -206,7 +198,7 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = callee.trust {
+    let scan_range = if let FrameTrust::Context = args.callee_frame.trust {
         extended_scan_range
     } else {
         default_scan_range
@@ -214,8 +206,10 @@ where
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc as u64)?;
-        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
+        let caller_pc = args
+            .stack_memory
+            .get_memory_at_address(address_of_pc as u64)?;
+        if instruction_seems_valid(caller_pc, args.modules, args.symbol_provider).await {
             // pc is pushed by CALL, so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
 
@@ -303,29 +297,21 @@ fn stack_seems_valid(
 
 pub async fn get_caller_frame<P>(
     ctx: &ArmContext,
-    args: GetCallerFrameArgs<'_, P>,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
-    let GetCallerFrameArgs {
-        callee_frame: callee,
-        grand_callee_frame: grand_callee,
-        stack_memory: stack,
-        modules,
-        system_info,
-        symbol_provider: syms,
-    } = args;
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {
-        frame = get_caller_by_cfi(ctx, callee, grand_callee, stack, modules, syms).await;
+        frame = get_caller_by_cfi(ctx, args).await;
     }
     if frame.is_none() {
-        frame = get_caller_by_frame_pointer(ctx, callee, stack, modules, system_info, syms);
+        frame = get_caller_by_frame_pointer(ctx, args);
     }
     if frame.is_none() {
-        frame = get_caller_by_scan(ctx, callee, stack, modules, syms).await;
+        frame = get_caller_by_scan(ctx, args).await;
     }
     let mut frame = frame?;
 
@@ -350,7 +336,7 @@ where
         // to a register), so we need to permit the stack pointer to not
         // change for the first frame of the unwind. After that we need
         // more strict validation to avoid infinite loops.
-        let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+        let is_leaf = args.callee_frame.trust == FrameTrust::Context && sp == last_sp;
         if !is_leaf {
             trace!("stack pointer went backwards, assuming unwind complete");
             return None;
