@@ -238,7 +238,7 @@ pub async fn get_caller_frame<P>(
     ctx: &MipsContext,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    stack: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     _system_info: &SystemInfo,
     syms: &P,
@@ -247,7 +247,6 @@ where
     P: SymbolProvider + Sync,
 {
     let ctx32 = Mips32Context::try_from(ctx.clone());
-    let stack = stack_memory?;
 
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
