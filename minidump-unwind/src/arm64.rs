@@ -444,7 +444,7 @@ fn stack_seems_valid(
 
 pub async fn get_caller_frame<P>(
     ctx: &ArmContext,
-    args: GetCallerFrameArgs<'_, P>,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -456,7 +456,7 @@ where
         modules,
         symbol_provider: syms,
         ..
-    } = args;
+    } = *args;
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {

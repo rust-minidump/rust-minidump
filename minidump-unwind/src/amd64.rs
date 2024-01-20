@@ -25,16 +25,14 @@ const CALLEE_SAVED_REGS: &[&str] = &["rbx", "rbp", "r12", "r13", "r14", "r15"];
 
 async fn get_caller_by_cfi<P>(
     ctx: &CONTEXT_AMD64,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
     trace!("trying cfi");
+    let callee = args.callee_frame;
+    let grand_callee = args.grand_callee_frame;
 
     let valid = &callee.context.valid;
     if let MinidumpContextValidity::Some(ref which) = valid {
@@ -43,7 +41,7 @@ where
         }
     }
 
-    let module = modules.module_at_address(callee.instruction)?;
+    let module = args.modules.module_at_address(callee.instruction)?;
 
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
     let has_grand_callee = grand_callee.is_some();
@@ -62,10 +60,10 @@ where
         caller_ctx: ctx.clone(),
         caller_validity: callee_forwarded_regs(valid),
 
-        stack_memory,
+        stack_memory: args.stack_memory,
     };
 
-    symbol_provider
+    args.symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
     let caller_ip = stack_walker.caller_ctx.rip;
@@ -104,15 +102,12 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    _modules: &MinidumpModuleList,
-    system_info: &SystemInfo,
-    _symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
+    let stack_memory = args.stack_memory;
     // On Windows x64, frame-pointer unwinding purely with the data on the stack
     // is not possible, as proper unwinding requires access to `UNWIND_INFO`,
     // because the frame pointer does not necessarily point to the end of the
@@ -121,12 +116,12 @@ where
     // > [The frame register] offset permits pointing the FP register into the
     // > middle of the local stack allocation [...]
     // https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64
-    if system_info.os == Os::Windows {
+    if args.system_info.os == Os::Windows {
         return None;
     }
 
     trace!("trying frame pointer");
-    if let MinidumpContextValidity::Some(ref which) = callee.context.valid {
+    if let MinidumpContextValidity::Some(ref which) = args.callee_frame.context.valid {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
         }
@@ -218,15 +213,14 @@ where
 
 async fn get_caller_by_scan<P>(
     ctx: &CONTEXT_AMD64,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
     trace!("trying scan");
+    let stack_memory = args.stack_memory;
+    let callee = args.callee_frame;
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
@@ -264,7 +258,7 @@ where
     for i in 0..scan_range {
         let address_of_ip = last_sp.checked_add(i * POINTER_WIDTH)?;
         let caller_ip = stack_memory.get_memory_at_address(address_of_ip)?;
-        if instruction_seems_valid(caller_ip, modules, symbol_provider).await {
+        if instruction_seems_valid(caller_ip, args.modules, args.symbol_provider).await {
             // ip is pushed by CALL, so sp is just address_of_ip + ptr
             let caller_sp = address_of_ip.checked_add(POINTER_WIDTH)?;
 
@@ -419,29 +413,21 @@ fn is_non_canonical(ptr: Pointer) -> bool {
 
 pub async fn get_caller_frame<P>(
     ctx: &CONTEXT_AMD64,
-    args: GetCallerFrameArgs<'_, P>,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
-    let GetCallerFrameArgs {
-        callee_frame: callee,
-        grand_callee_frame: grand_callee,
-        stack_memory: stack,
-        modules,
-        system_info,
-        symbol_provider: syms,
-    } = args;
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {
-        frame = get_caller_by_cfi(ctx, callee, grand_callee, stack, modules, syms).await;
+        frame = get_caller_by_cfi(ctx, args).await;
     }
     if frame.is_none() {
-        frame = get_caller_by_frame_pointer(ctx, callee, stack, modules, system_info, syms);
+        frame = get_caller_by_frame_pointer(ctx, args);
     }
     if frame.is_none() {
-        frame = get_caller_by_scan(ctx, callee, stack, modules, syms).await;
+        frame = get_caller_by_scan(ctx, args).await;
     }
     let mut frame = frame?;
 

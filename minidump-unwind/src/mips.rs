@@ -236,7 +236,7 @@ where
 
 pub async fn get_caller_frame<P>(
     ctx: &MipsContext,
-    args: GetCallerFrameArgs<'_, P>,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -248,7 +248,7 @@ where
         modules,
         symbol_provider: syms,
         ..
-    } = args;
+    } = *args;
     let ctx32 = Mips32Context::try_from(ctx.clone());
 
     // .await doesn't like closures, so don't use Option chaining
