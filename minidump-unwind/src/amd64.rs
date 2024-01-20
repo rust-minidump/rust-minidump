@@ -419,16 +419,19 @@ fn is_non_canonical(ptr: Pointer) -> bool {
 
 pub async fn get_caller_frame<P>(
     ctx: &CONTEXT_AMD64,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    system_info: &SystemInfo,
-    syms: &P,
+    args: GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
+    let GetCallerFrameArgs {
+        callee_frame: callee,
+        grand_callee_frame: grand_callee,
+        stack_memory: stack,
+        modules,
+        system_info,
+        symbol_provider: syms,
+    } = args;
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {

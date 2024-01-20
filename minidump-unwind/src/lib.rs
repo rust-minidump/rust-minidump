@@ -27,8 +27,19 @@ use tracing::trace;
 pub use crate::symbols::*;
 pub use crate::system_info::*;
 
+struct GetCallerFrameArgs<'a, P> {
+    callee_frame: &'a StackFrame,
+    grand_callee_frame: Option<&'a StackFrame>,
+    stack_memory: UnifiedMemory<'a, 'a>,
+    modules: &'a MinidumpModuleList,
+    system_info: &'a SystemInfo,
+    symbol_provider: &'a P,
+}
+
 mod impl_prelude {
-    pub(crate) use super::{CfiStackWalker, FrameTrust, StackFrame, SymbolProvider, SystemInfo};
+    pub(crate) use super::{
+        CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider, SystemInfo,
+    };
 }
 
 /// Indicates how well the instruction pointer derived during
@@ -596,97 +607,26 @@ where
     }
 }
 
-#[tracing::instrument(name = "unwind_frame", level = "trace", skip_all, fields(idx = _frame_idx, fname = callee_frame.function_name.as_deref().unwrap_or("")))]
+#[tracing::instrument(name = "unwind_frame", level = "trace", skip_all, fields(idx = _frame_idx, fname = args.callee_frame.function_name.as_deref().unwrap_or("")))]
 async fn get_caller_frame<P>(
     _frame_idx: usize,
-    callee_frame: &StackFrame,
-    grand_callee_frame: Option<&StackFrame>,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    system_info: &SystemInfo,
-    symbol_provider: &P,
+    args: GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
-    match callee_frame.context.raw {
+    match args.callee_frame.context.raw {
         /*
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::PPC64(ctx) => ctx.get_caller_frame(stack_memory),
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
          */
-        MinidumpRawContext::Arm(ref ctx) => {
-            arm::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
-        MinidumpRawContext::Arm64(ref ctx) => {
-            arm64::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
-        MinidumpRawContext::OldArm64(ref ctx) => {
-            arm64_old::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
-        MinidumpRawContext::Amd64(ref ctx) => {
-            amd64::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
-        MinidumpRawContext::X86(ref ctx) => {
-            x86::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
-        MinidumpRawContext::Mips(ref ctx) => {
-            mips::get_caller_frame(
-                ctx,
-                callee_frame,
-                grand_callee_frame,
-                stack_memory,
-                modules,
-                system_info,
-                symbol_provider,
-            )
-            .await
-        }
+        MinidumpRawContext::Arm(ref ctx) => arm::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::Arm64(ref ctx) => arm64::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::OldArm64(ref ctx) => arm64_old::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::Amd64(ref ctx) => amd64::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::X86(ref ctx) => x86::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::Mips(ref ctx) => mips::get_caller_frame(ctx, args).await,
         _ => None,
     }
 }
@@ -786,12 +726,14 @@ pub async fn walk_stack<P>(
         }
         let new_frame = get_caller_frame(
             frame_idx,
-            callee_frame,
-            grand_callee_frame,
-            stack_memory,
-            modules,
-            system_info,
-            symbol_provider,
+            GetCallerFrameArgs {
+                callee_frame,
+                grand_callee_frame,
+                stack_memory,
+                modules,
+                system_info,
+                symbol_provider,
+            },
         )
         .await;
 
