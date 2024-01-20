@@ -601,7 +601,7 @@ async fn get_caller_frame<P>(
     _frame_idx: usize,
     callee_frame: &StackFrame,
     grand_callee_frame: Option<&StackFrame>,
-    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    stack_memory: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     symbol_provider: &P,
@@ -609,8 +609,6 @@ async fn get_caller_frame<P>(
 where
     P: SymbolProvider + Sync,
 {
-    let stack_memory = stack_memory?;
-
     match callee_frame.context.raw {
         /*
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
@@ -770,6 +768,10 @@ pub async fn walk_stack<P>(
         if let OnWalkedFrame::Some(on_walked_frame) = &mut on_walked_frame {
             on_walked_frame(frame_idx, frame);
         }
+
+        let Some(stack_memory) = stack_memory else {
+            break;
+        };
 
         // Walk the new frame
         let callee_frame = &stack.frames.last().unwrap();
