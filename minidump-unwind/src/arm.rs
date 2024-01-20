@@ -301,72 +301,70 @@ fn stack_seems_valid(
 }
 */
 
-impl Unwind for ArmContext {
-    async fn get_caller_frame<P>(
-        &self,
-        callee: &StackFrame,
-        grand_callee: Option<&StackFrame>,
-        stack_memory: Option<UnifiedMemory<'_, '_>>,
-        modules: &MinidumpModuleList,
-        system_info: &SystemInfo,
-        syms: &P,
-    ) -> Option<StackFrame>
-    where
-        P: SymbolProvider + Sync,
-    {
-        let stack = stack_memory?;
+pub async fn get_caller_frame<P>(
+    ctx: &ArmContext,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
+    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
+    syms: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider + Sync,
+{
+    let stack = stack_memory?;
 
-        // .await doesn't like closures, so don't use Option chaining
-        let mut frame = None;
-        if frame.is_none() {
-            frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
-        }
-        if frame.is_none() {
-            frame = get_caller_by_frame_pointer(self, callee, stack, modules, system_info, syms);
-        }
-        if frame.is_none() {
-            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
-        }
-        let mut frame = frame?;
+    // .await doesn't like closures, so don't use Option chaining
+    let mut frame = None;
+    if frame.is_none() {
+        frame = get_caller_by_cfi(ctx, callee, grand_callee, stack, modules, syms).await;
+    }
+    if frame.is_none() {
+        frame = get_caller_by_frame_pointer(ctx, callee, stack, modules, system_info, syms);
+    }
+    if frame.is_none() {
+        frame = get_caller_by_scan(ctx, callee, stack, modules, syms).await;
+    }
+    let mut frame = frame?;
 
-        // We now check the frame to see if it looks like unwinding is complete,
-        // based on the frame we computed having a nonsense value. Returning
-        // None signals to the unwinder to stop unwinding.
+    // We now check the frame to see if it looks like unwinding is complete,
+    // based on the frame we computed having a nonsense value. Returning
+    // None signals to the unwinder to stop unwinding.
 
-        // if the instruction is within the first ~page of memory, it's basically
-        // null, and we can assume unwinding is complete.
-        if frame.context.get_instruction_pointer() < 4096 {
-            trace!("instruction pointer was nullish, assuming unwind complete");
+    // if the instruction is within the first ~page of memory, it's basically
+    // null, and we can assume unwinding is complete.
+    if frame.context.get_instruction_pointer() < 4096 {
+        trace!("instruction pointer was nullish, assuming unwind complete");
+        return None;
+    }
+    // If the new stack pointer is at a lower address than the old,
+    // then that's clearly incorrect. Treat this as end-of-stack to
+    // enforce progress and avoid infinite loops.
+    let sp = frame.context.get_stack_pointer();
+    let last_sp = ctx.get_register_always("sp") as u64;
+    if sp <= last_sp {
+        // Arm leaf functions may not actually touch the stack (thanks
+        // to the link register allowing you to "push" the return address
+        // to a register), so we need to permit the stack pointer to not
+        // change for the first frame of the unwind. After that we need
+        // more strict validation to avoid infinite loops.
+        let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+        if !is_leaf {
+            trace!("stack pointer went backwards, assuming unwind complete");
             return None;
         }
-        // If the new stack pointer is at a lower address than the old,
-        // then that's clearly incorrect. Treat this as end-of-stack to
-        // enforce progress and avoid infinite loops.
-        let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always("sp") as u64;
-        if sp <= last_sp {
-            // Arm leaf functions may not actually touch the stack (thanks
-            // to the link register allowing you to "push" the return address
-            // to a register), so we need to permit the stack pointer to not
-            // change for the first frame of the unwind. After that we need
-            // more strict validation to avoid infinite loops.
-            let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
-            if !is_leaf {
-                trace!("stack pointer went backwards, assuming unwind complete");
-                return None;
-            }
-        }
-
-        // Ok, the frame now seems well and truly valid, do final cleanup.
-
-        // A caller's ip is the return address, which is the instruction
-        // *after* the CALL that caused us to arrive at the callee. Set
-        // the value to 2 less than that, so it points to the CALL instruction
-        // (arm instructions are all 2 bytes wide). This is important because
-        // we use this value to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer();
-        frame.instruction = ip - 2;
-
-        Some(frame)
     }
+
+    // Ok, the frame now seems well and truly valid, do final cleanup.
+
+    // A caller's ip is the return address, which is the instruction
+    // *after* the CALL that caused us to arrive at the callee. Set
+    // the value to 2 less than that, so it points to the CALL instruction
+    // (arm instructions are all 2 bytes wide). This is important because
+    // we use this value to lookup the CFI we need to unwind the next frame.
+    let ip = frame.context.get_instruction_pointer();
+    frame.instruction = ip - 2;
+
+    Some(frame)
 }

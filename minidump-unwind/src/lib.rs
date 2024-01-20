@@ -13,10 +13,8 @@ mod arm64_old;
 mod mips;
 pub mod symbols;
 pub mod system_info;
-mod unwind;
 mod x86;
 
-use self::unwind::Unwind;
 use minidump::*;
 use minidump_common::utils::basename;
 use scroll::ctx::{SizeWith, TryFromCtx};
@@ -30,9 +28,7 @@ pub use crate::symbols::*;
 pub use crate::system_info::*;
 
 mod impl_prelude {
-    pub(crate) use super::{
-        unwind::Unwind, CfiStackWalker, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
-    };
+    pub(crate) use super::{CfiStackWalker, FrameTrust, StackFrame, SymbolProvider, SystemInfo};
 }
 
 /// Indicates how well the instruction pointer derived during
@@ -620,7 +616,8 @@ where
         MinidumpRawContext::SPARC(ctx) => ctx.get_caller_frame(stack_memory),
          */
         MinidumpRawContext::Arm(ref ctx) => {
-            ctx.get_caller_frame(
+            arm::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,
@@ -631,7 +628,8 @@ where
             .await
         }
         MinidumpRawContext::Arm64(ref ctx) => {
-            ctx.get_caller_frame(
+            arm64::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,
@@ -642,7 +640,8 @@ where
             .await
         }
         MinidumpRawContext::OldArm64(ref ctx) => {
-            ctx.get_caller_frame(
+            arm64_old::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,
@@ -653,7 +652,8 @@ where
             .await
         }
         MinidumpRawContext::Amd64(ref ctx) => {
-            ctx.get_caller_frame(
+            amd64::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,
@@ -664,7 +664,8 @@ where
             .await
         }
         MinidumpRawContext::X86(ref ctx) => {
-            ctx.get_caller_frame(
+            x86::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,
@@ -675,7 +676,8 @@ where
             .await
         }
         MinidumpRawContext::Mips(ref ctx) => {
-            ctx.get_caller_frame(
+            mips::get_caller_frame(
+                ctx,
                 callee_frame,
                 grand_callee_frame,
                 stack_memory,

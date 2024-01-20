@@ -417,62 +417,60 @@ fn is_non_canonical(ptr: Pointer) -> bool {
     ptr > 0x7FFFFFFFFFFF && ptr < 0xFFFF800000000000
 }
 
-impl Unwind for CONTEXT_AMD64 {
-    async fn get_caller_frame<P>(
-        &self,
-        callee: &StackFrame,
-        grand_callee: Option<&StackFrame>,
-        stack_memory: Option<UnifiedMemory<'_, '_>>,
-        modules: &MinidumpModuleList,
-        system_info: &SystemInfo,
-        syms: &P,
-    ) -> Option<StackFrame>
-    where
-        P: SymbolProvider + Sync,
-    {
-        let stack = stack_memory?;
+pub async fn get_caller_frame<P>(
+    ctx: &CONTEXT_AMD64,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
+    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    modules: &MinidumpModuleList,
+    system_info: &SystemInfo,
+    syms: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider + Sync,
+{
+    let stack = stack_memory?;
 
-        // .await doesn't like closures, so don't use Option chaining
-        let mut frame = None;
-        if frame.is_none() {
-            frame = get_caller_by_cfi(self, callee, grand_callee, stack, modules, syms).await;
-        }
-        if frame.is_none() {
-            frame = get_caller_by_frame_pointer(self, callee, stack, modules, system_info, syms);
-        }
-        if frame.is_none() {
-            frame = get_caller_by_scan(self, callee, stack, modules, syms).await;
-        }
-        let mut frame = frame?;
-
-        // We now check the frame to see if it looks like unwinding is complete,
-        // based on the frame we computed having a nonsense value. Returning
-        // None signals to the unwinder to stop unwinding.
-
-        // if the instruction is within the first ~page of memory, it's basically
-        // null, and we can assume unwinding is complete.
-        if frame.context.get_instruction_pointer() < 4096 {
-            trace!("instruction pointer was nullish, assuming unwind complete");
-            return None;
-        }
-        // If the new stack pointer is at a lower address than the old,
-        // then that's clearly incorrect. Treat this as end-of-stack to
-        // enforce progress and avoid infinite loops.
-        if frame.context.get_stack_pointer() <= self.rsp {
-            trace!("stack pointer went backwards, assuming unwind complete");
-            return None;
-        }
-
-        // Ok, the frame now seems well and truly valid, do final cleanup.
-
-        // A caller's ip is the return address, which is the instruction
-        // *after* the CALL that caused us to arrive at the callee. Set
-        // the value to one less than that, so it points within the
-        // CALL instruction. This is important because we use this value
-        // to lookup the CFI we need to unwind the next frame.
-        let ip = frame.context.get_instruction_pointer();
-        frame.instruction = ip - 1;
-
-        Some(frame)
+    // .await doesn't like closures, so don't use Option chaining
+    let mut frame = None;
+    if frame.is_none() {
+        frame = get_caller_by_cfi(ctx, callee, grand_callee, stack, modules, syms).await;
     }
+    if frame.is_none() {
+        frame = get_caller_by_frame_pointer(ctx, callee, stack, modules, system_info, syms);
+    }
+    if frame.is_none() {
+        frame = get_caller_by_scan(ctx, callee, stack, modules, syms).await;
+    }
+    let mut frame = frame?;
+
+    // We now check the frame to see if it looks like unwinding is complete,
+    // based on the frame we computed having a nonsense value. Returning
+    // None signals to the unwinder to stop unwinding.
+
+    // if the instruction is within the first ~page of memory, it's basically
+    // null, and we can assume unwinding is complete.
+    if frame.context.get_instruction_pointer() < 4096 {
+        trace!("instruction pointer was nullish, assuming unwind complete");
+        return None;
+    }
+    // If the new stack pointer is at a lower address than the old,
+    // then that's clearly incorrect. Treat this as end-of-stack to
+    // enforce progress and avoid infinite loops.
+    if frame.context.get_stack_pointer() <= ctx.rsp {
+        trace!("stack pointer went backwards, assuming unwind complete");
+        return None;
+    }
+
+    // Ok, the frame now seems well and truly valid, do final cleanup.
+
+    // A caller's ip is the return address, which is the instruction
+    // *after* the CALL that caused us to arrive at the callee. Set
+    // the value to one less than that, so it points within the
+    // CALL instruction. This is important because we use this value
+    // to lookup the CFI we need to unwind the next frame.
+    let ip = frame.context.get_instruction_pointer();
+    frame.instruction = ip - 1;
+
+    Some(frame)
 }

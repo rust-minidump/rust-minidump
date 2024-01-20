@@ -234,86 +234,78 @@ where
     super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
-impl Unwind for MipsContext {
-    async fn get_caller_frame<P>(
-        &self,
-        callee: &StackFrame,
-        grand_callee: Option<&StackFrame>,
-        stack_memory: Option<UnifiedMemory<'_, '_>>,
-        modules: &MinidumpModuleList,
-        _system_info: &SystemInfo,
-        syms: &P,
-    ) -> Option<StackFrame>
-    where
-        P: SymbolProvider + Sync,
-    {
-        let ctx = Mips32Context::try_from(self.clone());
-        let stack = stack_memory?;
+pub async fn get_caller_frame<P>(
+    ctx: &MipsContext,
+    callee: &StackFrame,
+    grand_callee: Option<&StackFrame>,
+    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    modules: &MinidumpModuleList,
+    _system_info: &SystemInfo,
+    syms: &P,
+) -> Option<StackFrame>
+where
+    P: SymbolProvider + Sync,
+{
+    let ctx32 = Mips32Context::try_from(ctx.clone());
+    let stack = stack_memory?;
 
-        // .await doesn't like closures, so don't use Option chaining
-        let mut frame = None;
-        if frame.is_none() {
-            match &ctx {
-                Ok(mips32) => {
-                    frame =
-                        get_caller_by_cfi(mips32, callee, grand_callee, stack, modules, syms).await
-                }
-                Err(mips64) => {
-                    frame =
-                        get_caller_by_cfi(mips64, callee, grand_callee, stack, modules, syms).await
-                }
+    // .await doesn't like closures, so don't use Option chaining
+    let mut frame = None;
+    if frame.is_none() {
+        match &ctx32 {
+            Ok(mips32) => {
+                frame = get_caller_by_cfi(mips32, callee, grand_callee, stack, modules, syms).await
+            }
+            Err(mips64) => {
+                frame = get_caller_by_cfi(mips64, callee, grand_callee, stack, modules, syms).await
             }
         }
-        if frame.is_none() {
-            match &ctx {
-                Ok(mips32) => {
-                    frame = get_caller_by_scan32(mips32, callee, stack, modules, syms).await
-                }
-                Err(mips64) => {
-                    frame = get_caller_by_scan64(mips64, callee, stack, modules, syms).await
-                }
-            }
+    }
+    if frame.is_none() {
+        match &ctx32 {
+            Ok(mips32) => frame = get_caller_by_scan32(mips32, callee, stack, modules, syms).await,
+            Err(mips64) => frame = get_caller_by_scan64(mips64, callee, stack, modules, syms).await,
         }
-        let mut frame = frame?;
+    }
+    let mut frame = frame?;
 
-        // We now check the frame to see if it looks like unwinding is complete,
-        // based on the frame we computed having a nonsense value. Returning
-        // None signals to the unwinder to stop unwinding.
+    // We now check the frame to see if it looks like unwinding is complete,
+    // based on the frame we computed having a nonsense value. Returning
+    // None signals to the unwinder to stop unwinding.
 
-        // if the instruction is within the first ~page of memory, it's basically
-        // null, and we can assume unwinding is complete.
-        if frame.context.get_instruction_pointer() < 4096 {
-            trace!("instruction pointer was nullish, assuming unwind complete");
+    // if the instruction is within the first ~page of memory, it's basically
+    // null, and we can assume unwinding is complete.
+    if frame.context.get_instruction_pointer() < 4096 {
+        trace!("instruction pointer was nullish, assuming unwind complete");
+        return None;
+    }
+
+    // If the new stack pointer is at a lower address than the old,
+    // then that's clearly incorrect. Treat this as end-of-stack to
+    // enforce progress and avoid infinite loops.
+
+    let sp = frame.context.get_stack_pointer();
+    let last_sp = ctx.get_register_always(STACK_POINTER);
+    if sp <= last_sp {
+        // Mips leaf functions may not actually touch the stack (thanks
+        // to the return address register allowing you to "push" the return address
+        // to a register), so we need to permit the stack pointer to not
+        // change for the first frame of the unwind. After that we need
+        // more strict validation to avoid infinite loops.
+        let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+        if !is_leaf {
+            trace!("stack pointer went backwards, assuming unwind complete");
             return None;
         }
-
-        // If the new stack pointer is at a lower address than the old,
-        // then that's clearly incorrect. Treat this as end-of-stack to
-        // enforce progress and avoid infinite loops.
-
-        let sp = frame.context.get_stack_pointer();
-        let last_sp = self.get_register_always(STACK_POINTER);
-        if sp <= last_sp {
-            // Mips leaf functions may not actually touch the stack (thanks
-            // to the return address register allowing you to "push" the return address
-            // to a register), so we need to permit the stack pointer to not
-            // change for the first frame of the unwind. After that we need
-            // more strict validation to avoid infinite loops.
-            let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
-            if !is_leaf {
-                trace!("stack pointer went backwards, assuming unwind complete");
-                return None;
-            }
-        }
-
-        // Ok, the frame now seems well and truly valid, do final cleanup.
-
-        // The Mips `jal` instruction always sets $ra to PC + 8
-        let ip = frame.context.get_instruction_pointer();
-        frame.instruction = ip - 8;
-
-        Some(frame)
     }
+
+    // Ok, the frame now seems well and truly valid, do final cleanup.
+
+    // The Mips `jal` instruction always sets $ra to PC + 8
+    let ip = frame.context.get_instruction_pointer();
+    frame.instruction = ip - 8;
+
+    Some(frame)
 }
 
 /// This is a hack to have a different [`CpuContext`] type/impl depending on the
