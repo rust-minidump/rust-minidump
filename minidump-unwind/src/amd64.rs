@@ -417,7 +417,6 @@ fn is_non_canonical(ptr: Pointer) -> bool {
     ptr > 0x7FFFFFFFFFFF && ptr < 0xFFFF800000000000
 }
 
-#[async_trait::async_trait]
 impl Unwind for CONTEXT_AMD64 {
     async fn get_caller_frame<P>(
         &self,

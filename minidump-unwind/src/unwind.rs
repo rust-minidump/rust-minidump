@@ -5,7 +5,6 @@ use super::{StackFrame, SymbolProvider, SystemInfo};
 use minidump::{MinidumpModuleList, UnifiedMemory};
 
 /// A trait for things that can unwind to a caller.
-#[async_trait::async_trait]
 pub trait Unwind {
     /// Get the caller frame of this frame.
     async fn get_caller_frame<P>(

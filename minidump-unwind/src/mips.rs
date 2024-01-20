@@ -234,7 +234,6 @@ where
     super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
-#[async_trait::async_trait]
 impl Unwind for MipsContext {
     async fn get_caller_frame<P>(
         &self,
