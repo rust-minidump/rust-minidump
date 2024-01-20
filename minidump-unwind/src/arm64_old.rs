@@ -35,16 +35,12 @@ where
 {
     trace!("trying cfi");
 
-    let valid = &args.callee_frame.context.valid;
-    let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let module = args
-        .modules
-        .module_at_address(args.callee_frame.instruction)?;
+    let _last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
 
     args.symbol_provider
-        .walk_frame(module, &mut stack_walker)
+        .walk_frame(args.module()?, &mut stack_walker)
         .await?;
 
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
@@ -176,9 +172,8 @@ where
     // to be the correct fp of the next frame. This will effectively result in us unwinding
     // our caller instead of ourselves, causing the caller to be omitted from the backtrace
     // but otherwise perfectly syncing up for the rest of the frames.
-    let valid = &args.callee_frame.context.valid;
-    let last_fp = ctx.get_register(FRAME_POINTER, valid)?;
-    let last_sp = ctx.get_register(STACK_POINTER, valid)?;
+    let last_fp = ctx.get_register(FRAME_POINTER, args.valid())?;
+    let last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     if last_fp >= u64::MAX - POINTER_WIDTH * 2 {
         // Although this code generally works fine if the pointer math overflows,
@@ -305,8 +300,7 @@ where
     // we assume it's an pc value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // pc value.
-    let valid = &args.callee_frame.context.valid;
-    let last_sp = ctx.get_register(STACK_POINTER, valid)?;
+    let last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     // Number of pointer-sized values to scan through in our search.
     let default_scan_range = 40;
