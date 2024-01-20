@@ -442,7 +442,6 @@ fn stack_seems_valid(
 }
 */
 
-#[async_trait::async_trait]
 impl Unwind for ArmContext {
     async fn get_caller_frame<P>(
         &self,

@@ -382,7 +382,6 @@ fn stack_seems_valid(
 }
 */
 
-#[async_trait::async_trait]
 impl Unwind for CONTEXT_X86 {
     async fn get_caller_frame<P>(
         &self,
