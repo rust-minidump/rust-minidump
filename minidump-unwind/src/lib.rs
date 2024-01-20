@@ -41,11 +41,6 @@ impl<P> GetCallerFrameArgs<'_, P> {
     fn valid(&self) -> &MinidumpContextValidity {
         &self.callee_frame.context.valid
     }
-
-    fn module(&self) -> Option<&MinidumpModule> {
-        self.modules
-            .module_at_address(self.callee_frame.instruction)
-    }
 }
 
 mod impl_prelude {
@@ -566,6 +561,7 @@ struct CfiStackWalker<'a, C: CpuContext> {
     caller_ctx: C,
     caller_validity: HashSet<&'static str>,
 
+    module: &'a MinidumpModule,
     stack_memory: UnifiedMemory<'a, 'a>,
 }
 
@@ -577,12 +573,15 @@ where
         ctx: &'a C,
         args: &'a GetCallerFrameArgs<'a, P>,
         callee_forwarded_regs: R,
-    ) -> Self
+    ) -> Option<Self>
     where
         R: Fn(&MinidumpContextValidity) -> HashSet<&'static str>,
     {
+        let module = args
+            .modules
+            .module_at_address(args.callee_frame.instruction)?;
         let grand_callee = args.grand_callee_frame;
-        Self {
+        Some(Self {
             instruction: args.callee_frame.instruction,
             has_grand_callee: grand_callee.is_some(),
             grand_callee_parameter_size: grand_callee.and_then(|f| f.parameter_size).unwrap_or(0),
@@ -596,8 +595,9 @@ where
             caller_ctx: ctx.clone(),
             caller_validity: callee_forwarded_regs(args.valid()),
 
+            module,
             stack_memory: args.stack_memory,
-        }
+        })
     }
 }
 
