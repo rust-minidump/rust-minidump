@@ -2,7 +2,7 @@ use super::impl_prelude::*;
 use minidump::format::ContextFlagsCpu;
 use minidump::{
     CpuContext, Endian, MinidumpContext, MinidumpContextValidity, MinidumpModuleList,
-    MinidumpRawContext, UnifiedMemory,
+    MinidumpRawContext,
 };
 use scroll::ctx::{SizeWith, TryFromCtx};
 use std::collections::HashSet;
@@ -20,11 +20,7 @@ const CALLEE_SAVED_REGS: &[&str] = &[
 
 async fn get_caller_by_cfi<'a, C, P>(
     ctx: &'a C,
-    callee: &'a StackFrame,
-    grand_callee: Option<&'a StackFrame>,
-    stack_memory: UnifiedMemory<'a, '_>,
-    modules: &'a MinidumpModuleList,
-    symbol_provider: &'a P,
+    args: &GetCallerFrameArgs<'a, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -35,14 +31,18 @@ where
     C::Register: TryFromCtx<'a, Endian, [u8], Error = scroll::Error> + SizeWith<Endian>,
 {
     trace!("trying cfi");
-    let valid = &callee.context.valid;
+    let grand_callee = args.grand_callee_frame;
+
+    let valid = &args.callee_frame.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let module = modules.module_at_address(callee.instruction)?;
+    let module = args
+        .modules
+        .module_at_address(args.callee_frame.instruction)?;
     let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
     let has_grand_callee = grand_callee.is_some();
 
     let mut stack_walker = CfiStackWalker {
-        instruction: callee.instruction,
+        instruction: args.callee_frame.instruction,
         has_grand_callee,
         grand_callee_parameter_size,
 
@@ -55,10 +55,10 @@ where
         caller_ctx: ctx.clone(),
         caller_validity: callee_forwarded_regs(valid),
 
-        stack_memory,
+        stack_memory: args.stack_memory,
     };
 
-    symbol_provider
+    args.symbol_provider
         .walk_frame(module, &mut stack_walker)
         .await?;
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
@@ -93,10 +93,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
 
 async fn get_caller_by_scan32<P>(
     ctx: &Mips32Context,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -111,7 +108,7 @@ where
     // we assume it's a `ra` value that was saved on the stack by the callee in
     // its function prologue, following a `jal` (call) instruction of the caller.
     // The next frame is then assumed to end just before that `ra` value.
-    let valid = &callee.context.valid;
+    let valid = &args.callee_frame.context.valid;
     let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
@@ -121,16 +118,18 @@ where
     // for all frames except the topmost one.
     // There is no way of knowing if topmost frame belongs to a leaf or
     // a non-leaf function.
-    if callee.trust != FrameTrust::Context {
+    if args.callee_frame.trust != FrameTrust::Context {
         last_sp = last_sp.checked_add(MIN_ARGS * POINTER_WIDTH)?;
         count -= MIN_ARGS;
     }
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc: u32 = stack_memory.get_memory_at_address(address_of_pc as u64)?;
+        let caller_pc: u32 = args
+            .stack_memory
+            .get_memory_at_address(address_of_pc as u64)?;
         //trace!("unwind: trying addr 0x{address_of_pc:08x}: 0x{caller_pc:08x}");
-        if instruction_seems_valid(caller_pc as u64, modules, symbol_provider).await {
+        if instruction_seems_valid(caller_pc as u64, args.modules, args.symbol_provider).await {
             // `ra` is usually saved directly at the bottom of the frame,
             // so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
@@ -163,10 +162,7 @@ where
 
 async fn get_caller_by_scan64<P>(
     ctx: &MipsContext,
-    callee: &StackFrame,
-    stack_memory: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    symbol_provider: &P,
+    args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -180,15 +176,15 @@ where
     // we assume it's a `ra` value that was saved on the stack by the callee in
     // its function prologue, following a `jal` (call) instruction of the caller.
     // The next frame is then assumed to end just before that `ra` value.
-    let valid = &callee.context.valid;
+    let valid = &args.callee_frame.context.valid;
     let last_sp = ctx.get_register(STACK_POINTER, valid)?;
 
     let count = MAX_STACK_SIZE / POINTER_WIDTH;
 
     for i in 0..count {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
-        let caller_pc = stack_memory.get_memory_at_address(address_of_pc)?;
-        if instruction_seems_valid(caller_pc, modules, symbol_provider).await {
+        let caller_pc = args.stack_memory.get_memory_at_address(address_of_pc)?;
+        if instruction_seems_valid(caller_pc, args.modules, args.symbol_provider).await {
             // `ra` is usually saved directly at the bottom of the frame,
             // so sp is just address_of_pc + ptr
             let caller_sp = address_of_pc.checked_add(POINTER_WIDTH)?;
@@ -241,32 +237,20 @@ pub async fn get_caller_frame<P>(
 where
     P: SymbolProvider + Sync,
 {
-    let GetCallerFrameArgs {
-        callee_frame: callee,
-        grand_callee_frame: grand_callee,
-        stack_memory: stack,
-        modules,
-        symbol_provider: syms,
-        ..
-    } = *args;
     let ctx32 = Mips32Context::try_from(ctx.clone());
 
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {
         match &ctx32 {
-            Ok(mips32) => {
-                frame = get_caller_by_cfi(mips32, callee, grand_callee, stack, modules, syms).await
-            }
-            Err(mips64) => {
-                frame = get_caller_by_cfi(mips64, callee, grand_callee, stack, modules, syms).await
-            }
+            Ok(mips32) => frame = get_caller_by_cfi(mips32, args).await,
+            Err(mips64) => frame = get_caller_by_cfi(mips64, args).await,
         }
     }
     if frame.is_none() {
         match &ctx32 {
-            Ok(mips32) => frame = get_caller_by_scan32(mips32, callee, stack, modules, syms).await,
-            Err(mips64) => frame = get_caller_by_scan64(mips64, callee, stack, modules, syms).await,
+            Ok(mips32) => frame = get_caller_by_scan32(mips32, args).await,
+            Err(mips64) => frame = get_caller_by_scan64(mips64, args).await,
         }
     }
     let mut frame = frame?;
@@ -294,7 +278,7 @@ where
         // to a register), so we need to permit the stack pointer to not
         // change for the first frame of the unwind. After that we need
         // more strict validation to avoid infinite loops.
-        let is_leaf = callee.trust == FrameTrust::Context && sp == last_sp;
+        let is_leaf = args.callee_frame.trust == FrameTrust::Context && sp == last_sp;
         if !is_leaf {
             trace!("stack pointer went backwards, assuming unwind complete");
             return None;

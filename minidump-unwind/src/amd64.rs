@@ -220,14 +220,14 @@ where
 {
     trace!("trying scan");
     let stack_memory = args.stack_memory;
-    let callee = args.callee_frame;
+
     // Stack scanning is just walking from the end of the frame until we encounter
     // a value on the stack that looks like a pointer into some code (it's an address
     // in a range covered by one of our modules). If we find such an instruction,
     // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
-    let last_bp = match callee.context.valid {
+    let last_bp = match args.callee_frame.context.valid {
         MinidumpContextValidity::All => Some(ctx.rbp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {
@@ -249,7 +249,7 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = callee.trust {
+    let scan_range = if let FrameTrust::Context = args.callee_frame.trust {
         extended_scan_range
     } else {
         default_scan_range
