@@ -37,6 +37,17 @@ struct GetCallerFrameArgs<'a, P> {
     symbol_provider: &'a P,
 }
 
+impl<P> GetCallerFrameArgs<'_, P> {
+    fn valid(&self) -> &MinidumpContextValidity {
+        &self.callee_frame.context.valid
+    }
+
+    fn module(&self) -> Option<&MinidumpModule> {
+        self.modules
+            .module_at_address(self.callee_frame.instruction)
+    }
+}
+
 mod impl_prelude {
     pub(crate) use super::{
         CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider,
@@ -570,7 +581,6 @@ where
     where
         R: Fn(&MinidumpContextValidity) -> HashSet<&'static str>,
     {
-        let valid = &args.callee_frame.context.valid;
         let grand_callee = args.grand_callee_frame;
         Self {
             instruction: args.callee_frame.instruction,
@@ -578,13 +588,13 @@ where
             grand_callee_parameter_size: grand_callee.and_then(|f| f.parameter_size).unwrap_or(0),
 
             callee_ctx: ctx,
-            callee_validity: valid,
+            callee_validity: args.valid(),
 
             // Default to forwarding all callee-saved regs verbatim.
             // The CFI evaluator may clear or overwrite these values.
             // The stack pointer and instruction pointer are not included.
             caller_ctx: ctx.clone(),
-            caller_validity: callee_forwarded_regs(valid),
+            caller_validity: callee_forwarded_regs(args.valid()),
 
             stack_memory: args.stack_memory,
         }

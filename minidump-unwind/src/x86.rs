@@ -28,21 +28,16 @@ where
 {
     trace!("trying cfi");
 
-    let valid = &args.callee_frame.context.valid;
-    if let MinidumpContextValidity::Some(ref which) = valid {
+    if let MinidumpContextValidity::Some(ref which) = args.valid() {
         if !which.contains(STACK_POINTER_REGISTER) {
             return None;
         }
     }
 
-    let module = args
-        .modules
-        .module_at_address(args.callee_frame.instruction)?;
-
     let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
 
     args.symbol_provider
-        .walk_frame(module, &mut stack_walker)
+        .walk_frame(args.module()?, &mut stack_walker)
         .await?;
     let caller_ip = stack_walker.caller_ctx.eip;
     let caller_sp = stack_walker.caller_ctx.esp;
@@ -99,7 +94,7 @@ where
     P: SymbolProvider + Sync,
 {
     trace!("trying frame pointer");
-    if let MinidumpContextValidity::Some(ref which) = args.callee_frame.context.valid {
+    if let MinidumpContextValidity::Some(ref which) = args.valid() {
         if !which.contains(FRAME_POINTER_REGISTER) {
             return None;
         }
@@ -184,7 +179,7 @@ where
     // we assume it's an ip value that was pushed by the CALL instruction that created
     // the current frame. The next frame is then assumed to end just before that
     // ip value.
-    let last_bp = match args.callee_frame.context.valid {
+    let last_bp = match args.valid() {
         MinidumpContextValidity::All => Some(ctx.ebp),
         MinidumpContextValidity::Some(ref which) => {
             if !which.contains(STACK_POINTER_REGISTER) {

@@ -32,16 +32,12 @@ where
 {
     trace!("trying cfi");
 
-    let valid = &args.callee_frame.context.valid;
-    let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let module = args
-        .modules
-        .module_at_address(args.callee_frame.instruction)?;
+    let _last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
 
     args.symbol_provider
-        .walk_frame(module, &mut stack_walker)
+        .walk_frame(args.module()?, &mut stack_walker)
         .await?;
     let caller_pc = stack_walker.caller_ctx.get_register_always(PROGRAM_COUNTER);
     let caller_sp = stack_walker.caller_ctx.get_register_always(STACK_POINTER);
@@ -90,8 +86,7 @@ where
     // we assume it's a `ra` value that was saved on the stack by the callee in
     // its function prologue, following a `jal` (call) instruction of the caller.
     // The next frame is then assumed to end just before that `ra` value.
-    let valid = &args.callee_frame.context.valid;
-    let mut last_sp = ctx.get_register(STACK_POINTER, valid)?;
+    let mut last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     let mut count = MAX_STACK_SIZE / POINTER_WIDTH;
     // In case of mips32 ABI the stack frame of a non-leaf function
@@ -158,8 +153,7 @@ where
     // we assume it's a `ra` value that was saved on the stack by the callee in
     // its function prologue, following a `jal` (call) instruction of the caller.
     // The next frame is then assumed to end just before that `ra` value.
-    let valid = &args.callee_frame.context.valid;
-    let last_sp = ctx.get_register(STACK_POINTER, valid)?;
+    let last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     let count = MAX_STACK_SIZE / POINTER_WIDTH;
 
