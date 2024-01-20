@@ -421,7 +421,7 @@ pub async fn get_caller_frame<P>(
     ctx: &CONTEXT_AMD64,
     callee: &StackFrame,
     grand_callee: Option<&StackFrame>,
-    stack_memory: Option<UnifiedMemory<'_, '_>>,
+    stack: UnifiedMemory<'_, '_>,
     modules: &MinidumpModuleList,
     system_info: &SystemInfo,
     syms: &P,
@@ -429,8 +429,6 @@ pub async fn get_caller_frame<P>(
 where
     P: SymbolProvider + Sync,
 {
-    let stack = stack_memory?;
-
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {

@@ -609,6 +609,8 @@ async fn get_caller_frame<P>(
 where
     P: SymbolProvider + Sync,
 {
+    let stack_memory = stack_memory?;
+
     match callee_frame.context.raw {
         /*
         MinidumpRawContext::PPC(ctx) => ctx.get_caller_frame(stack_memory),
