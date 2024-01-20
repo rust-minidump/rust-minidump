@@ -384,16 +384,19 @@ fn stack_seems_valid(
 
 pub async fn get_caller_frame<P>(
     ctx: &CONTEXT_X86,
-    callee: &StackFrame,
-    grand_callee: Option<&StackFrame>,
-    stack: UnifiedMemory<'_, '_>,
-    modules: &MinidumpModuleList,
-    _system_info: &SystemInfo,
-    syms: &P,
+    args: GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
 {
+    let GetCallerFrameArgs {
+        callee_frame: callee,
+        grand_callee_frame: grand_callee,
+        stack_memory: stack,
+        modules,
+        symbol_provider: syms,
+        ..
+    } = args;
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
     if frame.is_none() {
