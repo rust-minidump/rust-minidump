@@ -38,10 +38,10 @@ where
         }
     }
 
-    let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
+    let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs)?;
 
     args.symbol_provider
-        .walk_frame(args.module()?, &mut stack_walker)
+        .walk_frame(stack_walker.module, &mut stack_walker)
         .await?;
     let caller_ip = stack_walker.caller_ctx.rip;
     let caller_sp = stack_walker.caller_ctx.rsp;
