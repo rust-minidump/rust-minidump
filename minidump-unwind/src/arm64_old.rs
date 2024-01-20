@@ -34,31 +34,14 @@ where
     P: SymbolProvider + Sync,
 {
     trace!("trying cfi");
-    let grand_callee = args.grand_callee_frame;
-    let modules = args.modules;
 
     let valid = &args.callee_frame.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
-    let module = modules.module_at_address(args.callee_frame.instruction)?;
-    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
-    let has_grand_callee = grand_callee.is_some();
+    let module = args
+        .modules
+        .module_at_address(args.callee_frame.instruction)?;
 
-    let mut stack_walker = CfiStackWalker {
-        instruction: args.callee_frame.instruction,
-        has_grand_callee,
-        grand_callee_parameter_size,
-
-        callee_ctx: ctx,
-        callee_validity: valid,
-
-        // Default to forwarding all callee-saved regs verbatim.
-        // The CFI evaluator may clear or overwrite these values.
-        // The stack pointer and instruction pointer are not included.
-        caller_ctx: *ctx,
-        caller_validity: callee_forwarded_regs(valid),
-
-        stack_memory: args.stack_memory,
-    };
+    let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
 
     args.symbol_provider
         .walk_frame(module, &mut stack_walker)
@@ -69,7 +52,7 @@ where
     let new_valid = MinidumpContextValidity::Some(stack_walker.caller_validity);
 
     // Apply ptr auth stripping
-    let caller_pc = ptr_auth_strip(modules, caller_pc);
+    let caller_pc = ptr_auth_strip(args.modules, caller_pc);
     stack_walker
         .caller_ctx
         .set_register(PROGRAM_COUNTER, caller_pc);
@@ -80,7 +63,7 @@ where
     {
         stack_walker
             .caller_ctx
-            .set_register(LINK_REGISTER, ptr_auth_strip(modules, lr));
+            .set_register(LINK_REGISTER, ptr_auth_strip(args.modules, lr));
     }
     if let Some(fp) = stack_walker
         .caller_ctx
@@ -88,7 +71,7 @@ where
     {
         stack_walker
             .caller_ctx
-            .set_register(FRAME_POINTER, ptr_auth_strip(modules, fp));
+            .set_register(FRAME_POINTER, ptr_auth_strip(args.modules, fp));
     }
 
     trace!(

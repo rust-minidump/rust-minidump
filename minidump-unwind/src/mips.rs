@@ -20,7 +20,7 @@ const CALLEE_SAVED_REGS: &[&str] = &[
 
 async fn get_caller_by_cfi<'a, C, P>(
     ctx: &'a C,
-    args: &GetCallerFrameArgs<'a, P>,
+    args: &'a GetCallerFrameArgs<'a, P>,
 ) -> Option<StackFrame>
 where
     P: SymbolProvider + Sync,
@@ -31,32 +31,14 @@ where
     C::Register: TryFromCtx<'a, Endian, [u8], Error = scroll::Error> + SizeWith<Endian>,
 {
     trace!("trying cfi");
-    let grand_callee = args.grand_callee_frame;
 
     let valid = &args.callee_frame.context.valid;
     let _last_sp = ctx.get_register(STACK_POINTER, valid)?;
     let module = args
         .modules
         .module_at_address(args.callee_frame.instruction)?;
-    let grand_callee_parameter_size = grand_callee.and_then(|f| f.parameter_size).unwrap_or(0);
-    let has_grand_callee = grand_callee.is_some();
 
-    let mut stack_walker = CfiStackWalker {
-        instruction: args.callee_frame.instruction,
-        has_grand_callee,
-        grand_callee_parameter_size,
-
-        callee_ctx: ctx,
-        callee_validity: valid,
-
-        // Default to forwarding all callee-saved regs verbatim.
-        // The CFI evaluator may clear or overwrite these values.
-        // The stack pointer and instruction pointer are not included.
-        caller_ctx: ctx.clone(),
-        caller_validity: callee_forwarded_regs(valid),
-
-        stack_memory: args.stack_memory,
-    };
+    let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs);
 
     args.symbol_provider
         .walk_frame(module, &mut stack_walker)
