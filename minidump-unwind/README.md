@@ -24,7 +24,7 @@ use minidump_unwind::{CallStack, http_symbol_supplier, Symbolizer, SystemInfo, w
 async fn main() {
     // Read the minidump
     let dump = Minidump::read_path("../testdata/test.dmp").unwrap();
- 
+
     // Configure the symbolizer and processor
     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
     let symbols_paths = vec![];
@@ -56,6 +56,7 @@ async fn main() {
     let mut stack = CallStack::with_context(exception_context.into_owned());
 
     walk_stack(
+        0,
         (),
         &mut stack,
         stack_memory,
@@ -71,7 +72,7 @@ async fn main() {
         },
         &provider,
     ).await;
- 
+
     for frame in stack.frames {
         println!("{:?}", frame);
     }

@@ -86,6 +86,7 @@ impl TestFixture {
         let mut stack = CallStack::with_context(context);
 
         walk_stack(
+            0,
             (),
             &mut stack,
             Some(UnifiedMemory::Memory(&stack_memory)),

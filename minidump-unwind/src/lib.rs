@@ -736,8 +736,9 @@ impl<'a, F: FnMut(usize, &StackFrame) + Send + 'a> From<F> for OnWalkedFrame<'a>
     }
 }
 
-#[tracing::instrument(name = "unwind_thread", level = "trace", skip_all, fields(tid = stack.thread_id, tname = stack.thread_name.as_deref().unwrap_or("")))]
+#[tracing::instrument(name = "unwind_thread", level = "trace", skip_all, fields(idx = _thread_idx, tid = stack.thread_id, tname = stack.thread_name.as_deref().unwrap_or("")))]
 pub async fn walk_stack<P>(
+    _thread_idx: usize,
     on_walked_frame: impl Into<OnWalkedFrame<'_>>,
     stack: &mut CallStack,
     stack_memory: Option<UnifiedMemory<'_, '_>>,

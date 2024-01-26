@@ -960,6 +960,7 @@ impl<'a> MinidumpInfo<'a> {
                         }
 
                         walk_stack(
+                            i,
                             |frame_idx: usize, frame: &StackFrame| {
                                 if let Some(reporter) = options.stat_reporter {
                                     reporter.add_walked_frame(i, frame_idx, frame);
