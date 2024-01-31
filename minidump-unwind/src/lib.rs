@@ -739,6 +739,13 @@ pub async fn walk_stack<P>(
         stack.thread_id,
         stack.thread_name.as_deref().unwrap_or(""),
     );
+
+    // All the unwinder code down below in `get_caller_frame` requires a valid `stack_memory`,
+    // where _valid_ means that we can actually read something from it. A call to `memory_range` will validate that,
+    // as it will reject empty stack memory or one with an overflowing `size`.
+    let stack_memory =
+        stack_memory.and_then(|stack_memory| stack_memory.memory_range().map(|_| stack_memory));
+
     // Begin with the context frame, and keep getting callers until there are no more.
     let mut has_new_frame = !stack.frames.is_empty();
     let mut on_walked_frame = on_walked_frame.into();
