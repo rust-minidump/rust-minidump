@@ -1,7 +1,14 @@
 # Unreleased
 
-Nothing Yet!
-
+* Fixed several issues when printing error codes on Windows, Linux and macOS
+* Fixed the debug id of modules looked up via code info, these now report the
+  correct debug id for the module
+* The `dump_syms` option was removed, support for stack-walking and
+  symbolication using native debug information is mature enough that we don't
+  need it anymore
+* The minidump crate doesn't force its dependents to use the same version of
+  memmap2 that it's using
+* Updated several dependencies to remove old crates and duplications
 
 # Version 0.19.1 (2023-11-02)
 
@@ -9,7 +16,6 @@ Nothing Yet!
   generating a new release.
 * Updated all dependencies to address some mild security issues in some of the
   dependent crates.
-
 
 # Version 0.19.0 (2023-11-02)
 
