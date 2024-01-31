@@ -1998,9 +1998,6 @@ impl<'a, Descriptor> MinidumpMemoryBase<'a, Descriptor> {
     where
         T: TryFromCtx<'a, scroll::Endian, [u8], Error = scroll::Error>,
     {
-        // XXX: Instead of checking the base+size validity on each access, maybe
-        // move this check to a different place?
-        let _end = self.base_address.checked_add(self.size)?;
         let start = addr.checked_sub(self.base_address)? as usize;
 
         self.bytes.pread_with::<T>(start, self.endian).ok()
@@ -2132,7 +2129,7 @@ impl<'mdmp, Descriptor> MinidumpMemoryListBase<'mdmp, Descriptor> {
     ) -> Option<&MinidumpMemoryBase<'mdmp, Descriptor>> {
         self.regions_by_addr
             .get(address)
-            .map(|&index| &self.regions[index])
+            .and_then(|&index| self.regions.get(index))
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
@@ -6334,9 +6331,10 @@ mod test {
         let dump = SynthMinidump::with_endian(Endian::Little).add_memory(memory1);
         let dump = read_synth_dump(dump).unwrap();
         let memory_list = dump.get_stream::<MinidumpMemoryList<'_>>().unwrap();
-        let regions = memory_list.iter().collect::<Vec<_>>();
-        assert_eq!(regions.len(), 1);
-        assert!(regions[0].get_memory_at_address::<u8>(u64::MAX).is_none());
+
+        assert!(memory_list.memory_at_address(u64::MAX).is_none());
+        assert_eq!(memory_list.regions.len(), 1);
+        assert!(memory_list.regions[0].memory_range().is_none());
     }
 
     #[test]
