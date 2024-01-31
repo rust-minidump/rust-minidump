@@ -1,7 +1,7 @@
 [package]
 name = "breakpad-symbols"
 description = "A library for working with Google Breakpad's text-format symbol files."
-version = "0.19.1"
+version = "0.20.0"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
 license = "MIT"
 readme = "README.md"
@@ -28,7 +28,7 @@ circular = "0.3.0"
 debugid = "0.8.0"
 futures-util = "0.3"
 tracing = { version = "0.1.34", features = ["log"] }
-minidump-common = { version = "0.19.1", path = "../minidump-common" }
+minidump-common = { version = "0.20.0", path = "../minidump-common" }
 nom = "7"
 range-map = "0.2"
 reqwest = { version = "0.11.6", default-features = false, features = [

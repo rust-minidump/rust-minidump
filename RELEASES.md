@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.20.0 (2024-01-31)
+
 * Fixed several issues when printing error codes on Windows, Linux and macOS
 * Fixed the debug id of modules looked up via code info, these now report the
   correct debug id for the module
