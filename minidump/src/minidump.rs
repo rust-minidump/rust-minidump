@@ -3060,6 +3060,12 @@ impl MinidumpThreadInfo {
     }
 }
 
+impl Default for MinidumpThreadInfoList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MinidumpThreadInfoList {
     /// Return an empty `MinidumpThreadInfoList`.
     pub fn new() -> MinidumpThreadInfoList {
