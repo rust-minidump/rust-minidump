@@ -361,6 +361,7 @@
 //!   filed names and a trailing `u32` member reserved for future use (entries
 //!   are [`MINIDUMP_HANDLE_DESCRIPTOR`][format::MINIDUMP_HANDLE_DESCRIPTOR] and
 //!   [`MINIDUMP_HANDLE_DESCRIPTOR_2`][format::MINIDUMP_HANDLE_DESCRIPTOR_2])
+//! * [`MinidumpThreadInfoList`][] (entries are [`MINIDUMP_THREAD_INFO`][format::MINIDUMP_THREAD_INFO])
 //!
 //!
 //!
