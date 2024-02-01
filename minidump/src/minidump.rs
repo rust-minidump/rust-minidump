@@ -349,6 +349,22 @@ pub struct MinidumpThreadList<'a> {
     thread_ids: HashMap<u32, usize>,
 }
 
+/// The state of a thread from the process when the minidump was written.
+#[derive(Debug)]
+pub struct MinidumpThreadInfo {
+    /// The `MINIDUMP_THREAD_INFO` direct from the minidump file.
+    pub raw: md::MINIDUMP_THREAD_INFO,
+}
+
+/// A list of `MinidumpThread`s contained in a `Minidump`.
+#[derive(Debug)]
+pub struct MinidumpThreadInfoList {
+    /// The thread info entries, in the order they were present in the `Minidump`.
+    pub thread_infos: Vec<MinidumpThreadInfo>,
+    /// A map of thread id to index in `entries`.
+    thread_ids: HashMap<u32, usize>,
+}
+
 /// Information about the system that generated the minidump.
 #[derive(Debug, Clone)]
 pub struct MinidumpSystemInfo {
@@ -3008,6 +3024,105 @@ impl<'a> MinidumpThreadList<'a> {
     }
 }
 
+// implement print for MinidumpThreadInfo
+impl MinidumpThreadInfo {
+    /// Write a human-readable description of this `MinidumpThreadInfo` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            r#"MINIDUMP_THREAD_INFO
+  thread_id                   = {:#x}
+  dump_flags                  = {:#x}
+  dump_error                  = {:#x}
+  exit_status                 = {:#x}
+  create_time                 = {:#x}
+  exit_time                   = {:#x}
+  kernel_time                 = {:#x}
+  user_time                   = {:#x}
+  start_address               = {:#x}
+  affinity                    = {:#x}
+
+  "#,
+            self.raw.thread_id,
+            self.raw.dump_flags,
+            self.raw.dump_error,
+            self.raw.exit_status,
+            self.raw.create_time,
+            self.raw.exit_time,
+            self.raw.kernel_time,
+            self.raw.user_time,
+            self.raw.start_address,
+            self.raw.affinity,
+        )?;
+        Ok(())
+    }
+}
+
+impl MinidumpThreadInfoList {
+    /// Return an empty `MinidumpThreadInfoList`.
+    pub fn new() -> MinidumpThreadInfoList {
+        MinidumpThreadInfoList {
+            thread_infos: vec![],
+            thread_ids: HashMap::new(),
+        }
+    }
+
+    /// Get the thread info with id `id` from this thread info list if it exists.
+    pub fn get_thread_info(&self, id: u32) -> Option<&MinidumpThreadInfo> {
+        self.thread_ids
+            .get(&id)
+            .map(|&index| &self.thread_infos[index])
+    }
+
+    /// Write a human-readable description of this `MinidumpModuleList` to `f`.
+    ///
+    /// This is very verbose, it is the format used by `minidump_dump`.
+    pub fn print<T: Write>(&self, f: &mut T) -> io::Result<()> {
+        write!(
+            f,
+            "MinidumpThreadInfoList
+  thread_info_count = {}
+
+",
+            self.thread_infos.len()
+        )?;
+        for (i, thread_info) in self.thread_infos.iter().enumerate() {
+            writeln!(f, "thread info[{}]", i)?;
+            thread_info.print(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpThreadInfoList {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::ThreadInfoListStream as u32;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error> {
+        let mut offset = 0;
+        let raw_thread_infos: Vec<md::MINIDUMP_THREAD_INFO> =
+            read_ex_stream_list(&mut offset, bytes, endian)?;
+
+        let mut thread_infos = Vec::with_capacity(raw_thread_infos.len());
+        let mut thread_ids = HashMap::with_capacity(raw_thread_infos.len());
+        for raw in raw_thread_infos.into_iter() {
+            thread_ids.insert(raw.thread_id, thread_infos.len());
+            thread_infos.push(MinidumpThreadInfo { raw });
+        }
+
+        Ok(MinidumpThreadInfoList {
+            thread_infos,
+            thread_ids,
+        })
+    }
+}
+
 impl<'a> MinidumpStream<'a> for MinidumpSystemInfo {
     const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::SystemInfoStream as u32;
 
@@ -5444,7 +5559,7 @@ where
     /// If there are multiple copies of the same stream type (which should not happen for
     /// well-formed Minidumps), then only one of them will be yielded, arbitrarily.
     pub fn unimplemented_streams(&self) -> impl Iterator<Item = MinidumpUnimplementedStream> + '_ {
-        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 31] = [
+        static UNIMPLEMENTED_STREAMS: [MINIDUMP_STREAM_TYPE; 30] = [
             // Presumably will never have an implementation:
             MINIDUMP_STREAM_TYPE::UnusedStream,
             MINIDUMP_STREAM_TYPE::ReservedStream0,
@@ -5455,7 +5570,6 @@ where
             MINIDUMP_STREAM_TYPE::CommentStreamA,
             MINIDUMP_STREAM_TYPE::CommentStreamW,
             MINIDUMP_STREAM_TYPE::FunctionTable,
-            MINIDUMP_STREAM_TYPE::ThreadInfoListStream,
             MINIDUMP_STREAM_TYPE::HandleOperationListStream,
             MINIDUMP_STREAM_TYPE::TokenStream,
             MINIDUMP_STREAM_TYPE::JavaScriptDataStream,
