@@ -1,4 +1,4 @@
-![Rust CI](https://github.com/rust-minidump/rust-minidump/workflows/Rust%20CI/badge.svg?branch=master)
+![Rust CI](https://github.com/rust-minidump/rust-minidump/workflows/Rust%20CI/badge.svg?branch=main)
 
 # Overview
 
@@ -7,8 +7,6 @@ This project provides type definitions, parsing, and analysis for the [minidump]
 It's fairly heavily modeled after [Google Breakpad](https://chromium.googlesource.com/breakpad/breakpad/) for historical reasons, but there is no fundamental interoperability requirement between the two beyond the fact that they fundamentally handle the same inputs.
 
 This project has no "main" crate. It is a collection of crates that are developed together. What crate you should use depends on how "low-level" in the minidump format you want to get. By default you'll probably want to use [minidump-processor](https://crates.io/crates/minidump-processor) (library) or [minidump-stackwalk](https://crates.io/crates/minidump-stackwalk) (application), which provide the richest analysis.
-
-
 
 # Examples
 
@@ -43,7 +41,6 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 ```
-
 
 Analyze a minidump with [minidump-processor](https://crates.io/crates/minidump-processor):
 
@@ -99,7 +96,6 @@ async fn main() -> Result<(), ()> {
 }
 ```
 
-
 Analyze a (Firefox) minidump with [minidump-stackwalk](https://crates.io/crates/minidump-stackwalk):
 
 ```text
@@ -143,20 +139,13 @@ Thread 0  (crashed)
  ...
 ```
 
-
-
-
 # Libraries
-
 
 ## [minidump-common](minidump-common) [![crates.io](https://img.shields.io/crates/v/minidump-common.svg)](https://crates.io/crates/minidump-common) [![](https://docs.rs/minidump-common/badge.svg)](https://docs.rs/minidump-common)
 
 Basically "minidump-sys" -- minidump types and traits that are shared among several crates.
 
 Most notably [format.rs](minidump-common/src/format.rs) is basically a giant native rust header for [minidumpapiset.h](https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/) (with extra useful things added in like error code enums and breakpad extensions).
-
-
-
 
 ## [minidump](minidump) [![crates.io](https://img.shields.io/crates/v/minidump.svg)](https://crates.io/crates/minidump) [![](https://docs.rs/minidump/badge.svg)](https://docs.rs/minidump)
 
@@ -167,9 +156,6 @@ value will from a stream will request its dependencies.
 
 If you want richer analysis of the minidump (such as stackwalking and symbolication), use minidump-processor.
 
-
-
-
 ## [minidump-processor](minidump-processor) [![crates.io](https://img.shields.io/crates/v/minidump-processor.svg)](https://crates.io/crates/minidump-processor) [![](https://docs.rs/minidump-processor/badge.svg)](https://docs.rs/minidump-processor)
 
 High-level minidump analysis.
@@ -179,10 +165,6 @@ Builds on top of the `minidump` crate to provide a complete digest of the inform
 The biggest feature of minidump-processor is that it does stackwalking (computes a backtrace for every thread). Its analysis can be enhanced by providing it with symbols (i.e. using `breakpad-symbols`), producing more precise backtraces and symbolication (function names, source lines, etc.).
 
 It also knows all of the "quirks" of minidumps, and can smooth over details that are impractical for the minidump crate to handle.
-
-
-
-
 
 ## [breakpad-symbols](breakpad-symbols) [![crates.io](https://img.shields.io/crates/v/breakpad-symbols.svg)](https://crates.io/crates/breakpad-symbols) [![](https://docs.rs/breakpad-symbols/badge.svg)](https://docs.rs/breakpad-symbols)
 
@@ -198,22 +180,13 @@ Provides an API for evaluating breakpad CFI (and WIN) expressions.
 
 This is primarily designed for use by minidump-processor.
 
-
-
-
-
 ## [minidump-synth](minidump-synth)
 
 Provides a simple interface for mocking minidumps for unit tests.
 
 This is basically an internal dev-dependency of rust-minidump that we're publishing only so that `cargo publish` doesn't complain about it. I guess you could use it but we don't recommend it?
 
-
-
-
-
 # Applications
-
 
 ## [minidump-stackwalk](minidump-stackwalk) [![crates.io](https://img.shields.io/crates/v/minidump-stackwalk.svg)](https://crates.io/crates/minidump-stackwalk) [![](https://docs.rs/minidump-stackwalk/badge.svg)](https://docs.rs/minidump-stackwalk)
 
@@ -224,19 +197,13 @@ Also includes the functionality of the old minidump_dump tool (see the --dump fl
 
 See the [README](minidump-stackwalk/README.md) for details.
 
-
-
-
-
 # License
 
 This software is provided under the MIT license. See [LICENSE](LICENSE).
 
-
 # Release Notes
 
 See [RELEASES.md](RELEASES.md) for release notes, commits, and details on the upcoming release.
-
 
 # Contributing
 
