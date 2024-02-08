@@ -779,8 +779,8 @@ bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs
     ///
     /// This applies to the [`CONTEXT_ARM`], [`CONTEXT_PPC`], [`CONTEXT_MIPS`],
-    /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`] and
-    /// [`CONTEXT_ARM64_OLD`] structs.
+    /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`]
+    /// [`CONTEXT_RISCV64`] and [`CONTEXT_ARM64_OLD`] structs.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsCpu: u32 {
         const CONTEXT_IA64 = 0x80000;
@@ -803,6 +803,7 @@ bitflags! {
         const CONTEXT_PPC64 = 0x1000000;
         const CONTEXT_SPARC = 0x10000000;
         const CONTEXT_X86 = 0x10000;
+        const CONTEXT_RISCV64 = 0x08000000;
     }
 }
 
@@ -906,6 +907,18 @@ bitflags! {
         const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits();
         const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits() | Self::CONTEXT_ARM_INTEGER.bits() | Self::CONTEXT_ARM_FLOATING_POINT.bits();
         const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits() | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits();
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_RISCV.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ContextFlagsRiscv64: u32 {
+        // Yes, breakpad never defined CONTROL for this context
+
+        const CONTEXT_RISCV64_INTEGER = 0x00000001 | ContextFlagsCpu::CONTEXT_RISCV64.bits();
+        const CONTEXT_RISCV64_FLOATING_POINT = 0x00000002 | ContextFlagsCpu::CONTEXT_RISCV64.bits();
+        const CONTEXT_RISCV64_FULL = Self::CONTEXT_RISCV64_INTEGER.bits() | Self::CONTEXT_RISCV64_FLOATING_POINT.bits();
     }
 }
 
@@ -1403,6 +1416,59 @@ pub struct CONTEXT_X86 {
     pub extended_registers: [u8; 512], // MAXIMUM_SUPPORTED_EXTENSION
 }
 
+/// RISC-V64 floating point state
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct FLOATING_SAVE_AREA_RISCV64 {
+    pub fpregs: [u64; 32],
+    pub fpcsr: u32,
+}
+
+/// A RISC-V64 CPU context
+///
+/// This is a Breakpad extension, as there is no definition of `CONTEXT` for RISC-V in WinNT.h.
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct CONTEXT_RISCV64 {
+    pub context_flags: u32,
+    pub version: u32,
+
+    pub pc: u64,
+    pub ra: u64,
+    pub sp: u64,
+    pub gp: u64,
+    pub tp: u64,
+    pub t0: u64,
+    pub t1: u64,
+    pub t2: u64,
+    pub s0: u64,
+    pub s1: u64,
+    pub a0: u64,
+    pub a1: u64,
+    pub a2: u64,
+    pub a3: u64,
+    pub a4: u64,
+    pub a5: u64,
+    pub a6: u64,
+    pub a7: u64,
+    pub s2: u64,
+    pub s3: u64,
+    pub s4: u64,
+    pub s5: u64,
+    pub s6: u64,
+    pub s7: u64,
+    pub s8: u64,
+    pub s9: u64,
+    pub s10: u64,
+    pub s11: u64,
+    pub t3: u64,
+    pub t4: u64,
+    pub t5: u64,
+    pub t6: u64,
+
+    pub float_save: FLOATING_SAVE_AREA_RISCV64,
+}
+
 /// CPU information contained within the [`MINIDUMP_SYSTEM_INFO`] struct
 ///
 /// This struct matches the definition of the `CPU_INFORMATION` union from minidumpapiset.h.
@@ -1507,6 +1573,10 @@ pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_ARM64_OLD = 0x8003,
     /// Breakpad-defined value for MIPS64
     PROCESSOR_ARCHITECTURE_MIPS64 = 0x8004,
+    /// Breakpad-defined value for RISC-V
+    PROCESSOR_ARCHITECTURE_RISCV = 0x8005,
+    /// Breakpad-defined value for RISC-V64
+    PROCESSOR_ARCHITECTURE_RISCV64 = 0x8006,
     PROCESSOR_ARCHITECTURE_UNKNOWN = 0xffff,
 }
 
