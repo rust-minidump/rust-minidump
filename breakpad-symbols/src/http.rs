@@ -1,11 +1,9 @@
 //! Contains HTTP symbol retrieval specific functionality
 
 use crate::*;
-use cachemap2::CacheMap;
 use reqwest::{redirect, Client, Url};
-use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 use tempfile::NamedTempFile;

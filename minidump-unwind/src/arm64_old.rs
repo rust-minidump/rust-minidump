@@ -5,7 +5,6 @@
 // their context types.
 
 use super::impl_prelude::*;
-use crate::SymbolProvider;
 use minidump::{
     CpuContext, MinidumpContext, MinidumpContextValidity, MinidumpModuleList, MinidumpRawContext,
     Module,

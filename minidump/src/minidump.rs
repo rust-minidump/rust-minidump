@@ -7,7 +7,7 @@ use num_traits::FromPrimitive;
 use procfs_core::prelude::*;
 use procfs_core::process::{MMPermissions, MemoryMap, MemoryMaps};
 use scroll::ctx::{SizeWith, TryFromCtx};
-use scroll::{self, Pread, BE, LE};
+use scroll::{Pread, BE, LE};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -5728,14 +5728,13 @@ mod test {
         format::{PlatformId, ProcessorArchitecture},
     };
     use minidump_synth::{
-        self, AnnotationValue, CrashpadInfo, DumpString, Exception,
+        AnnotationValue, CrashpadInfo, DumpString, Exception,
         HandleDescriptor as SynthHandleDescriptor, Memory, MemoryInfo as SynthMemoryInfo,
         MiscFieldsBuildString, MiscFieldsPowerInfo, MiscFieldsProcessTimes, MiscFieldsTimeZone,
         MiscInfo5Fields, MiscStream, Module as SynthModule, ModuleCrashpadInfo, SimpleStream,
         SynthMinidump, SystemInfo, Thread, ThreadName, UnloadedModule as SynthUnloadedModule,
         STOCK_VERSION_INFO,
     };
-    use std::mem;
     use test_assembler::*;
 
     fn read_synth_dump<'a>(dump: SynthMinidump) -> Result<Minidump<'a, Vec<u8>>, Error> {

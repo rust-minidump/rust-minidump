@@ -312,11 +312,9 @@ pub fn string_symbol_supplier(modules: HashMap<String, String>) -> impl SymbolSu
 #[cfg(feature = "debuginfo")]
 pub mod debuginfo {
     use super::*;
-    use breakpad_symbols::SymbolFile;
     use cachemap2::CacheMap;
     use futures_util::lock::Mutex;
     use memmap2::Mmap;
-    use std::collections::HashMap;
     use std::fs::File;
     use std::path::Path;
     use symbolic_cfi::CfiCache;

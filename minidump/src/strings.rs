@@ -1,7 +1,6 @@
-use std::borrow::{Borrow, Cow, ToOwned};
+use std::borrow::{Borrow, Cow};
 use std::ops::Deref;
 use std::str::Utf8Error;
-use std::vec::Vec;
 
 /// OsStr, but specifically for Linux (since we aren't always processing native dumps).
 #[derive(Debug, PartialOrd, Ord, Eq, PartialEq)]
