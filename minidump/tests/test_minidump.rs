@@ -5,7 +5,6 @@ use debugid::{CodeId, DebugId};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
 use minidump_common::format as md;
-use minidump_common::traits::Module;
 use num_traits::cast::FromPrimitive;
 use std::fs::File;
 use std::io::Read;

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use minidump::system_info::PointerWidth;
-use minidump::{self, *};
+use minidump::*;
 use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };

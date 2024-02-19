@@ -43,7 +43,6 @@ use debugid::{CodeId, DebugId};
 use futures_util::lock::Mutex as FutMutex;
 use tracing::trace;
 
-use std::boxed::Box;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -916,10 +915,9 @@ fn test_replace_or_add_extension() {
 mod test {
 
     use super::*;
-    use std::fs;
     use std::fs::File;
     use std::io::Write;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use std::str::FromStr;
 
     #[tokio::test]

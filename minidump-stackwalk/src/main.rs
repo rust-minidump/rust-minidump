@@ -5,10 +5,10 @@ use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::panic;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use std::{boxed::Box, path::PathBuf};
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use minidump::*;

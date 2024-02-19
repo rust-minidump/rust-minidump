@@ -4,7 +4,7 @@
 //! CPU contexts.
 
 use num_traits::FromPrimitive;
-use scroll::{self, Pread};
+use scroll::Pread;
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
