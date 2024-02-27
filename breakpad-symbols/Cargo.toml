@@ -23,7 +23,7 @@ mozilla_cab_symbols = ["http", "cab"]
 [dependencies]
 async-trait = "0.1.52"
 cab = { version = "0.5.0", optional = true }
-cachemap2 = "0.2.0"
+cachemap2 = "0.3.0"
 circular = "0.3.0"
 debugid = "0.8.0"
 futures-util = "0.3"
