@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.21.0 (2024-02-28)
+
 * Native debug information is now read via framehop and wholesym instead of
   symbolic, this provides significant speedups, reduced memory usage and more
   flexibility (the stack walker can be built with unwinding support while
