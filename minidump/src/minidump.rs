@@ -1136,14 +1136,26 @@ impl Module for MinidumpModule {
         if self.raw.version_info.signature == md::VS_FFI_SIGNATURE
             && self.raw.version_info.struct_version == md::VS_FFI_STRUCVERSION
         {
-            let ver = format!(
-                "{}.{}.{}.{}",
-                self.raw.version_info.file_version_hi >> 16,
-                self.raw.version_info.file_version_hi & 0xffff,
-                self.raw.version_info.file_version_lo >> 16,
-                self.raw.version_info.file_version_lo & 0xffff
-            );
-            Some(Cow::Owned(ver))
+            if matches!(self.os, Os::MacOs | Os::Ios | Os::Windows) {
+                let ver = format!(
+                    "{}.{}.{}.{}",
+                    self.raw.version_info.file_version_hi >> 16,
+                    self.raw.version_info.file_version_hi & 0xffff,
+                    self.raw.version_info.file_version_lo >> 16,
+                    self.raw.version_info.file_version_lo & 0xffff
+                );
+                Some(Cow::Owned(ver))
+            } else {
+                // Assume Elf
+                let ver = format!(
+                    "{}.{}.{}.{}",
+                    self.raw.version_info.file_version_hi,
+                    self.raw.version_info.file_version_lo,
+                    self.raw.version_info.product_version_hi,
+                    self.raw.version_info.product_version_lo
+                );
+                Some(Cow::Owned(ver))
+            }
         } else {
             None
         }
