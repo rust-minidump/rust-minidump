@@ -1,7 +1,15 @@
 # Unreleased
 
-Nothing Yet!
-
+* Native debug information is now read via framehop and wholesym instead of
+  symbolic, this provides significant speedups, reduced memory usage and more
+  flexibility (the stack walker can be built with unwinding support while
+  omitting symbolication for example)
+* Added support for the MINIDUMP_THREAD_INFO_LIST stream
+* Version numbers are now printed out for ELF files if available
+* Symbol files can be passed directly instead of relying on the Breakpad
+  directory structure, assuming they have the correct debug ID and file name
+* Removed the dependency on the chrono crate
+* Various cleanups and speed-ups to the stack walker
 
 # Version 0.20.0 (2024-01-31)
 
