@@ -1,7 +1,7 @@
 # Unreleased
 
-Nothing Yet!
-
+* Fixed a small regression in the stack walker when dealing with malformed
+  minidumps
 
 # Version 0.21.0 (2024-02-28)
 
