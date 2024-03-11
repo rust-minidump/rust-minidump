@@ -31,7 +31,7 @@ futures-util = { version = "0.3.25", optional = true }
 memmap2 = { version = "0.9", optional = true }
 minidump = { version = "0.21.1", path = "../minidump" }
 minidump-common = { version = "0.21.1", path = "../minidump-common" }
-object = { version = "0.32", optional = true }
+object = { version = "0.34", optional = true }
 scroll = "0.12.0"
 tracing = { version = "0.1.34", features = ["log"] }
 wholesym = { version = "0.4", optional = true }

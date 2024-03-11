@@ -147,7 +147,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.32.2",
  "rustc-demangle",
 ]
 
@@ -597,7 +597,7 @@ dependencies = [
  "fallible-iterator 0.3.0",
  "gimli",
  "macho-unwind-info",
- "object",
+ "object 0.32.2",
  "pe-unwind-info",
  "thiserror",
 ]
@@ -1140,7 +1140,7 @@ dependencies = [
  "memmap2",
  "minidump",
  "minidump-common",
- "object",
+ "object 0.34.0",
  "scroll 0.12.0",
  "test-assembler",
  "tokio",
@@ -1284,7 +1284,18 @@ checksum = "a6a622008b6e321afc04970976f62ee297fdbaa6f95318ca343e3eebb9648441"
 dependencies = [
  "flate2",
  "memchr",
- "ruzstd",
+ "ruzstd 0.5.0",
+]
+
+[[package]]
+name = "object"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7090bae93f8585aad99e595b7073c5de9ba89fbd6b4e9f0cdd7a10177273ac8"
+dependencies = [
+ "flate2",
+ "memchr",
+ "ruzstd 0.6.0",
 ]
 
 [[package]]
@@ -1675,6 +1686,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruzstd"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5174a470eeb535a721ae9fdd6e291c2411a906b96592182d05217591d5c5cf7b"
+dependencies = [
+ "byteorder",
+ "derive_more",
+ "twox-hash",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1699,7 +1721,7 @@ dependencies = [
  "memchr",
  "msvc-demangler",
  "nom",
- "object",
+ "object 0.32.2",
  "pdb-addr2line",
  "rangemap",
  "rustc-demangle",
