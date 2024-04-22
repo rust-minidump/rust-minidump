@@ -36,7 +36,7 @@ reqwest = { version = "0.11.6", default-features = false, features = [
     "rustls-tls",
 ], optional = true }
 tempfile = { version = "3.3.0", optional = true }
-thiserror = "1.0.37"
+thiserror = "1.0.59"
 
 [dev-dependencies]
 tempfile = "3.3.0"
