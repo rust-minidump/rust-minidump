@@ -145,6 +145,41 @@ pub trait SymbolProvider {
     }
 }
 
+#[async_trait]
+impl SymbolProvider for &(dyn SymbolProvider + Sync) {
+    async fn fill_symbol(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError> {
+        (*self).fill_symbol(module, frame).await
+    }
+
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
+        (*self).walk_frame(module, walker).await
+    }
+
+    async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        (*self).get_file_path(module, file_kind).await
+    }
+
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        (*self).stats()
+    }
+
+    fn pending_stats(&self) -> PendingSymbolStats {
+        (*self).pending_stats()
+    }
+}
+
 #[derive(Default)]
 pub struct MultiSymbolProvider {
     providers: Vec<Box<dyn SymbolProvider + Send + Sync>>,
