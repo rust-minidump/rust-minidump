@@ -861,10 +861,10 @@ impl Symbolizer {
                 let mut stats = SymbolStats::default();
                 match &result {
                     Ok(res) => {
-                        stats.symbol_url = res.symbols.url.clone();
+                        stats.symbol_url.clone_from(&res.symbols.url);
                         stats.loaded_symbols = true;
                         stats.corrupt_symbols = false;
-                        stats.extra_debug_info = res.extra_debug_info.clone();
+                        stats.extra_debug_info.clone_from(&res.extra_debug_info);
                     }
                     Err(SymbolError::NotFound) => {
                         stats.loaded_symbols = false;
