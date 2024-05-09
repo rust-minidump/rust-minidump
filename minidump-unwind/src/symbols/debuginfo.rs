@@ -164,12 +164,11 @@ mod wholesym_symbol_interface {
     use super::*;
     use futures_util::lock::Mutex;
     use std::collections::HashMap;
-    use wholesym::{SymbolManager, SymbolManagerConfig, SymbolMap};
+    use wholesym::{LookupAddress, SymbolManager, SymbolManagerConfig, SymbolMap};
 
     pub struct Impl {
         /// Indexed by module base address.
         symbols: HashMap<ModuleKey, Mutex<SymbolMap>>,
-        symbol_manager: SymbolManager,
     }
 
     impl Impl {
@@ -185,10 +184,7 @@ mod wholesym_symbol_interface {
                     symbols.insert(module.into(), Mutex::new(sm));
                 }
             }
-            Impl {
-                symbols,
-                symbol_manager,
-            }
+            Impl { symbols }
         }
     }
 
@@ -211,12 +207,11 @@ mod wholesym_symbol_interface {
                 }
             };
 
-            let (address_info, origin) = {
-                let guard = symbol_map.lock().await;
-                let address_info = guard.lookup_relative_address(addr);
-                let origin = guard.symbol_file_origin();
-                (address_info, origin)
-            };
+            let address_info = symbol_map
+                .lock()
+                .await
+                .lookup(LookupAddress::Relative(addr))
+                .await;
 
             if let Some(address_info) = address_info {
                 frame.set_function(
@@ -224,14 +219,8 @@ mod wholesym_symbol_interface {
                     module.base_address() + address_info.symbol.address as u64,
                     0,
                 );
-                use wholesym::FramesLookupResult::*;
-                let frames = match address_info.frames {
-                    Available(frames) => Some(frames),
-                    External(ext) => self.symbol_manager.lookup_external(&origin, &ext).await,
-                    Unavailable => None,
-                };
 
-                if let Some(frames) = frames {
+                if let Some(frames) = address_info.frames {
                     let mut iter = frames.into_iter().rev();
                     if let Some(f) = iter.next() {
                         if let Some(path) = f.file_path {
