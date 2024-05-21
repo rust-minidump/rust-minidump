@@ -464,6 +464,7 @@ pub struct ProcessState {
     pub unknown_streams: Vec<MinidumpUnknownStream>,
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
     pub symbol_stats: HashMap<String, SymbolStats>,
+    pub memory_map_count: usize,
 }
 
 fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
@@ -582,6 +583,8 @@ impl ProcessState {
                     writeln!(f, "No memory accessed by instruction")?;
                 }
             }
+
+            writeln!(f, "Memory Map Count: {}", self.memory_map_count)?;
 
             if !crash_info.possible_bit_flips.is_empty() {
                 writeln!(f, "Crashing address may be the result of a flipped bit:")?;
@@ -848,6 +851,7 @@ Unknown streams encountered:
                         }).collect::<Vec<_>>()
                     })
                 }),
+                "memory_map_count": self.memory_map_count,
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
