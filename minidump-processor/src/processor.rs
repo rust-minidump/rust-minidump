@@ -899,6 +899,7 @@ impl<'a> MinidumpInfo<'a> {
             None
         };
 
+        let memory_map_count = self.memory_info.iter().count();
         let mut state = ProcessState {
             process_id,
             time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
@@ -919,6 +920,7 @@ impl<'a> MinidumpInfo<'a> {
             unknown_streams,
             unimplemented_streams,
             symbol_stats,
+            memory_map_count,
         };
 
         // Report the unwalked result
