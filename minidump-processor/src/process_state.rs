@@ -584,8 +584,6 @@ impl ProcessState {
                 }
             }
 
-            writeln!(f, "Memory Map Count: {}", self.memory_map_count)?;
-
             if !crash_info.possible_bit_flips.is_empty() {
                 writeln!(f, "Crashing address may be the result of a flipped bit:")?;
                 let mut bit_flips_with_confidence = crash_info
@@ -665,6 +663,9 @@ impl ProcessState {
         } else {
             writeln!(f, "Process uptime: not available")?;
         }
+        writeln!(f)?;
+
+        writeln!(f, "Memory map count: {}", self.memory_map_count)?;
         writeln!(f)?;
 
         if let Some(requesting_thread) = self.requesting_thread {
@@ -851,7 +852,6 @@ Unknown streams encountered:
                         }).collect::<Vec<_>>()
                     })
                 }),
-                "memory_map_count": self.memory_map_count,
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
@@ -893,6 +893,8 @@ Unknown streams encountered:
             })),
             // optional
             "mac_boot_args": self.mac_boot_args.as_ref().map(|info| info.bootargs.as_ref()),
+
+            "memory_map_count": self.memory_map_count,
 
             // the first module is always the main one
             "main_module": 0,
