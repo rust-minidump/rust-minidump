@@ -16,6 +16,8 @@ Memory accessed by instruction:
      Size: 1
 Process uptime: 0 seconds
 
+Memory map count: 0
+
 Thread 0 main (crashed) - tid: 4611
  0  crash-client!core::ptr::write_volatile::<u8> [mod.rs : 1574]
     Found by: inlining

@@ -232,6 +232,8 @@ anyway.
 
 
 
+  // How many memory mappings there are
+  "memory_map_count": <u32>,
 
 
 
