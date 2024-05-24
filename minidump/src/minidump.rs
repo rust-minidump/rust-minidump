@@ -2629,7 +2629,7 @@ impl<'mdmp> MinidumpLinuxMaps<'mdmp> {
 
     // Return number of memory mappings
     pub fn memory_map_count(&self) -> usize {
-        self.regions.iter().count()
+        self.regions.len()
     }
 }
 

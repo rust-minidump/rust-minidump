@@ -27,3 +27,5 @@ Thread 0  (crashed) - tid: 3060
  3  kernel32.dll + 0x16fd6
      eip = 0x7c816fd7    esp = 0x0012ffc8    ebp = 0x0012fff0
     Found by: previous frame's frame pointer
+
+
