@@ -95,7 +95,7 @@ expression: stdout
   "mac_boot_args": null,
   "mac_crash_info": null,
   "main_module": 0,
-  "memory_map_count": 0,
+  "memory_map_count": null,
   "modules": [
     {
       "base_addr": "0x00400000",
