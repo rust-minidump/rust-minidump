@@ -899,7 +899,12 @@ impl<'a> MinidumpInfo<'a> {
             None
         };
 
-        let memory_map_count = self.memory_info.iter().count();
+        let memory_map_count = if let Some(maps) = self.memory_info.maps() {
+            Some(maps.memory_map_count())
+        } else {
+            None
+        };
+
         let mut state = ProcessState {
             process_id,
             time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),

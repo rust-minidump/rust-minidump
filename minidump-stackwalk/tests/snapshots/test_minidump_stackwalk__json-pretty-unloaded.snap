@@ -18,6 +18,7 @@ expression: json_out
   "mac_boot_args": null,
   "mac_crash_info": null,
   "main_module": 0,
+  "memory_map_count": null,
   "modules": [],
   "modules_contains_cert_info": false,
   "pid": null,

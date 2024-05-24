@@ -1,0 +1,99 @@
+---
+source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
+expression: stdout
+---
+Operating system: Linux
+                  4.9.60-linuxkit-aufs #1 SMP Mon Nov 6 16:00:12 UTC 2017
+CPU: amd64
+     family 6 model 70 stepping 1
+     4 CPUs
+Linux Ubuntu 16.04 - xenial (Ubuntu 16.04.3 LTS)
+
+Crash reason:  SIGSEGV
+Crash address: 0x0000000000000045
+Crashing instruction: `mov dword [0x45], 0x5`
+Memory accessed by instruction:
+  0. Address: 0x0000000000000045
+     Size: 4
+Crashing address may be the result of a flipped bit:
+  0. Valid address: 0x0000000000400045 (0.250)
+Process uptime: not available
+
+Memory map count: 35
+
+Thread 0  (crashed) - tid: 1304
+ 0  crash + 0x1d72
+     rax = 0xffffffffffffffff    rdx = 0x00007f5140efc000
+     rcx = 0x00007f5140521b20    rbx = 0x00007fff5ae4aa20
+     rsi = 0x0000000000000000    rdi = 0x00007fff5ae4aab0
+     rbp = 0x00007fff5ae4abb0    rsp = 0x00007fff5ae4aa20
+      r8 = 0x0000000000000000     r9 = 0x0000000000000000
+     r10 = 0x0000000000000131    r11 = 0x00007f5140aca4c0
+     r12 = 0x0000000000401dc0    r13 = 0x00007fff5ae4ac90
+     r14 = 0x00007fff5ae4aab0    r15 = 0x0000000000000000
+     rip = 0x0000000000401d72
+    Found by: given as instruction pointer in context
+ 1  libc-2.23.so + 0xf302d
+     rbp = 0x00007fff5ae4abb0    rsp = 0x00007fff5ae4aa40
+     rip = 0x00007f514025002e
+    Found by: stack scanning
+ 2  libc-2.23.so + 0x877ff
+     rbp = 0x00007fff5ae4abb0    rsp = 0x00007fff5ae4aa60
+     rip = 0x00007f51401e4800
+    Found by: stack scanning
+ 3  ld-2.23.so + 0xfac5
+     rbp = 0x00007fff5ae4abb0    rsp = 0x00007fff5ae4aab0
+     rip = 0x00007f5140cebac6
+    Found by: stack scanning
+ 4  crash + 0x1ebf
+     rbp = 0x00007fff5ae4abb0    rsp = 0x00007fff5ae4aac0
+     rip = 0x0000000000401ec0
+    Found by: stack scanning
+ 5  crash + 0x14c2f
+     rsp = 0x00007fff5ae4abb8    rip = 0x0000000000414c30
+    Found by: stack scanning
+ 6  libc-2.23.so + 0x2082f
+     rsp = 0x00007fff5ae4abc0    rip = 0x00007f514017d830
+    Found by: stack scanning
+ 7  crash + 0x1c6f
+     rsp = 0x00007fff5ae4abe0    rip = 0x0000000000401c70
+    Found by: stack scanning
+ 8  crash + 0x1dbf
+     rsp = 0x00007fff5ae4abf8    rip = 0x0000000000401dc0
+    Found by: stack scanning
+ 9  crash + 0x1c6f
+     rsp = 0x00007fff5ae4ac48    rip = 0x0000000000401c70
+    Found by: stack scanning
+10  crash + 0x14c9f
+     rsp = 0x00007fff5ae4ac50    rip = 0x0000000000414ca0
+    Found by: stack scanning
+11  crash + 0x1dbf
+     rsp = 0x00007fff5ae4ac68    rip = 0x0000000000401dc0
+    Found by: stack scanning
+12  crash + 0x1de8
+     rsp = 0x00007fff5ae4ac80    rip = 0x0000000000401de9
+    Found by: stack scanning
+13  crash + 0x3f
+     rsp = 0x00007fff5ae4ad48    rip = 0x0000000000400040
+    Found by: stack scanning
+14  crash + 0x1dbf
+     rsp = 0x00007fff5ae4ad98    rip = 0x0000000000401dc0
+    Found by: stack scanning
+
+
+Loaded modules:
+0x00400000 - 0x00419fff  crash  ???  (main)
+0x7f513fe54000 - 0x7f513ff5bfff  libm-2.23.so  ???
+0x7f514015d000 - 0x7f514031cfff  libc-2.23.so  ???
+0x7f5140527000 - 0x7f514053cfff  libgcc_s.so.1  ???
+0x7f514073d000 - 0x7f51408aefff  libstdc++.so.6.0.21  ???
+0x7f5140abf000 - 0x7f5140ad6fff  libpthread-2.23.so  ???
+0x7f5140cdc000 - 0x7f5140d01fff  ld-2.23.so  ???
+0x7fff5aef1000 - 0x7fff5aef2fff  linux-gate.so  ???
+
+Unloaded modules:
+
+Unimplemented streams encountered:
+Stream 0x47670006 LinuxCmdLine (Google Extension) @ 0x00005018
+Stream 0x47670008 LinuxAuxv (Google Extension) @ 0x00005658
+Stream 0x4767000a LinuxDsoDebug (Google Extension) @ 0x00006758
