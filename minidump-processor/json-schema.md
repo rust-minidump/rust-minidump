@@ -232,8 +232,8 @@ anyway.
 
 
 
-  // How many memory mappings there are
-  "memory_map_count": <u32>,
+  // Linux-specific, how many memory mappings there are
+  "linux_memory_map_count": <u32>,
 
 
 

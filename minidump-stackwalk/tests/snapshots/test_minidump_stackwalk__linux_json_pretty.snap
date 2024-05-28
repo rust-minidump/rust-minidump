@@ -270,6 +270,7 @@ expression: stdout
     "threads_index": 0
   },
   "handles": null,
+  "linux_memory_map_count": 35,
   "lsb_release": {
     "codename": "xenial",
     "description": "Ubuntu 16.04.3 LTS",
@@ -279,7 +280,6 @@ expression: stdout
   "mac_boot_args": null,
   "mac_crash_info": null,
   "main_module": 0,
-  "memory_map_count": 35,
   "modules": [
     {
       "base_addr": "0x0000000000400000",

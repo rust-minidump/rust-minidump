@@ -464,7 +464,7 @@ pub struct ProcessState {
     pub unknown_streams: Vec<MinidumpUnknownStream>,
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
     pub symbol_stats: HashMap<String, SymbolStats>,
-    pub memory_map_count: Option<usize>,
+    pub linux_memory_map_count: Option<usize>,
 }
 
 fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
@@ -665,8 +665,8 @@ impl ProcessState {
         }
         writeln!(f)?;
 
-        if let Some(memory_map_count) = self.memory_map_count {
-            writeln!(f, "Memory map count: {}", memory_map_count)?;
+        if let Some(linux_memory_map_count) = self.linux_memory_map_count {
+            writeln!(f, "Linux memory map count: {}", linux_memory_map_count)?;
             writeln!(f)?;
         }
 
@@ -896,8 +896,8 @@ Unknown streams encountered:
             // optional
             "mac_boot_args": self.mac_boot_args.as_ref().map(|info| info.bootargs.as_ref()),
 
-            // optional, only exists on linux systems
-            "memory_map_count": self.memory_map_count,
+            // optional
+            "linux_memory_map_count": self.linux_memory_map_count,
 
             // the first module is always the main one
             "main_module": 0,

@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 840
 expression: stdout
 ---
 Operating system: Mac OS X
@@ -764,4 +763,3 @@ Loaded modules:
 0x7fff2fd85000 - 0x7fff2fd85fff  libsystem_product_info_filter.dylib  0.8.40.1
 
 Unloaded modules:
-

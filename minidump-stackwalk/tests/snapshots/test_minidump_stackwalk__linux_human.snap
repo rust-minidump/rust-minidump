@@ -19,7 +19,7 @@ Crashing address may be the result of a flipped bit:
   0. Valid address: 0x0000000000400045 (0.250)
 Process uptime: not available
 
-Memory map count: 35
+Linux memory map count: 35
 
 Thread 0  (crashed) - tid: 1304
  0  crash + 0x1d72
