@@ -480,6 +480,7 @@ struct MinidumpInfo<'a> {
     memory_info_list: Option<MinidumpMemoryInfoList<'a>>,
     linux_maps: Option<MinidumpLinuxMaps<'a>>,
     */
+    linux_memory_map_count: Option<usize>,
     memory_info: UnifiedMemoryInfoList<'a>,
     handle_data_stream: Option<MinidumpHandleDataStream>,
     exception: Option<MinidumpException<'a>>,
@@ -584,6 +585,7 @@ impl<'a> MinidumpInfo<'a> {
         let memory_list = dump.get_memory().unwrap_or_default();
         let memory_info_list = dump.get_stream::<MinidumpMemoryInfoList>().ok();
         let linux_maps = dump.get_stream::<MinidumpLinuxMaps>().ok();
+        let linux_memory_map_count = linux_maps.clone().map(|maps| maps.memory_map_count());
         let memory_info =
             UnifiedMemoryInfoList::new(memory_info_list, linux_maps).unwrap_or_default();
         let handle_data_stream = dump.get_stream::<MinidumpHandleDataStream>().ok();
@@ -614,6 +616,7 @@ impl<'a> MinidumpInfo<'a> {
             linux_maps: Option<MinidumpLinuxMaps<'a>>,
             */
             memory_info,
+            linux_memory_map_count,
             handle_data_stream,
             exception,
             //exception_details: None,
@@ -899,8 +902,6 @@ impl<'a> MinidumpInfo<'a> {
             None
         };
 
-        let memory_map_count = self.memory_info.maps().map(|maps| maps.memory_map_count());
-
         let mut state = ProcessState {
             process_id,
             time: SystemTime::UNIX_EPOCH + Duration::from_secs(dump.header.time_date_stamp as u64),
@@ -921,7 +922,7 @@ impl<'a> MinidumpInfo<'a> {
             unknown_streams,
             unimplemented_streams,
             symbol_stats,
-            memory_map_count,
+            linux_memory_map_count: self.linux_memory_map_count,
         };
 
         // Report the unwalked result

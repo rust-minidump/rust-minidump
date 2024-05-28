@@ -223,11 +223,11 @@ expression: stdout
     "threads_index": 0
   },
   "handles": null,
+  "linux_memory_map_count": null,
   "lsb_release": null,
   "mac_boot_args": null,
   "mac_crash_info": null,
   "main_module": 0,
-  "memory_map_count": null,
   "modules": [
     {
       "base_addr": "0x0000000102a54000",
