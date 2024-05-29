@@ -24,7 +24,7 @@ http = ["minidump-unwind/http"]
 mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
-async-trait = "0.1.52"
+async-trait = "0.1.80"
 breakpad-symbols = { version = "0.21.1", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 futures-util = "0.3.25"
