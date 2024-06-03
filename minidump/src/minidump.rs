@@ -64,7 +64,7 @@ where
     data: T,
     /// The raw minidump header from the file.
     pub header: md::MINIDUMP_HEADER,
-    streams: HashMap<u32, (u32, md::MINIDUMP_DIRECTORY)>,
+    streams: BTreeMap<u32, (u32, md::MINIDUMP_DIRECTORY)>,
     system_info: Option<MinidumpSystemInfo>,
     /// The endianness of this minidump file.
     pub endian: scroll::Endian,
@@ -5388,14 +5388,7 @@ where
 
         offset = header.stream_directory_rva as usize;
 
-        let (count, _) = ensure_count_in_bound(
-            &data,
-            header.stream_count as usize,
-            <md::MINIDUMP_DIRECTORY>::size_with(&endian),
-            offset,
-        )?;
-
-        let mut streams = HashMap::with_capacity(count);
+        let mut streams = BTreeMap::new();
         for i in 0..header.stream_count {
             let dir: md::MINIDUMP_DIRECTORY = data
                 .gread_with(&mut offset, endian)
