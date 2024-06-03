@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.21.2 (2024-06-03)
+
 * Updated the wholesym and framehop crates and reduced their dependencies
 
 # Version 0.21.1 (2024-03-01)
