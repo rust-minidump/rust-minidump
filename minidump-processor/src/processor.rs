@@ -879,14 +879,8 @@ impl<'a> MinidumpInfo<'a> {
             .collect();
 
         // Collect up info on unimplemented/unknown modules
-        let mut unknown_streams = dump
-            .unknown_streams()
-            .collect::<Vec<MinidumpUnknownStream>>();
-        unknown_streams.sort_by(|a, b| (a.stream_type).cmp(&(b.stream_type)));
-        let mut unimplemented_streams = dump
-            .unimplemented_streams()
-            .collect::<Vec<MinidumpUnimplementedStream>>();
-        unimplemented_streams.sort_by(|a, b| (a.stream_type as u32).cmp(&(b.stream_type as u32)));
+        let unknown_streams = dump.unknown_streams().collect();
+        let unimplemented_streams = dump.unimplemented_streams().collect();
 
         // Get symbol stats from the symbolizer
         let symbol_stats = symbol_provider.stats();
