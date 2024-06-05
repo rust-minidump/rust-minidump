@@ -292,6 +292,62 @@ impl<T: Default> PerThread<T> {
     }
 }
 
+mod object_section_info {
+    use framehop::ModuleSectionInfo;
+    use object::read::{Object, ObjectSection, ObjectSegment};
+    use std::ops::Range;
+
+    #[repr(transparent)]
+    pub struct ObjectSectionInfo<'a, O>(pub &'a O);
+
+    impl<'a, O> std::ops::Deref for ObjectSectionInfo<'a, O> {
+        type Target = O;
+
+        fn deref(&self) -> &Self::Target {
+            self.0
+        }
+    }
+
+    impl<'data: 'file, 'file, O, D> ModuleSectionInfo<D> for ObjectSectionInfo<'file, O>
+    where
+        O: Object<'data>,
+        D: From<&'data [u8]>,
+    {
+        fn base_svma(&self) -> u64 {
+            if let Some(text_segment) = self.segments().find(|s| s.name() == Ok(Some("__TEXT"))) {
+                // This is a mach-O image. "Relative addresses" are relative to the
+                // vmaddr of the __TEXT segment.
+                return text_segment.address();
+            }
+
+            // For PE binaries, relative_address_base() returns the image base address.
+            // Otherwise it returns zero. This gives regular ELF images a base address of zero,
+            // which is what we want.
+            self.relative_address_base()
+        }
+
+        fn section_svma_range(&mut self, name: &[u8]) -> Option<Range<u64>> {
+            let section = self.section_by_name_bytes(name)?;
+            Some(section.address()..section.address() + section.size())
+        }
+
+        fn section_data(&mut self, name: &[u8]) -> Option<D> {
+            let section = self.section_by_name_bytes(name)?;
+            section.data().ok().map(|data| data.into())
+        }
+
+        fn segment_svma_range(&mut self, name: &[u8]) -> Option<Range<u64>> {
+            let segment = self.segments().find(|s| s.name_bytes() == Ok(Some(name)))?;
+            Some(segment.address()..segment.address() + segment.size())
+        }
+
+        fn segment_data(&mut self, name: &[u8]) -> Option<D> {
+            let segment = self.segments().find(|s| s.name_bytes() == Ok(Some(name)))?;
+            segment.data().ok().map(|data| data.into())
+        }
+    }
+}
+
 /// Get the file path with debug information for the given module.
 ///
 /// If `unwind_info` is true, returns the path that should contain unwind information.
@@ -358,7 +414,12 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
 
     let base = module.base_address();
     let end = base + module.size();
-    let fhmodule = framehop::Module::new(path.display().to_string(), base..end, base, &objfile);
+    let fhmodule = framehop::Module::new(
+        path.display().to_string(),
+        base..end,
+        base,
+        object_section_info::ObjectSectionInfo(&objfile),
+    );
 
     Some((mapped, fhmodule))
 }

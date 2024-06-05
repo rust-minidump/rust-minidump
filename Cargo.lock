@@ -8,8 +8,8 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e4503c46a5c0c7844e948c9a4d6acd9f50cccb4de1c48eb9e291ea17470c678"
 dependencies = [
- "fallible-iterator 0.3.0",
- "gimli",
+ "fallible-iterator",
+ "gimli 0.29.0",
 ]
 
 [[package]]
@@ -565,12 +565,6 @@ dependencies = [
 
 [[package]]
 name = "fallible-iterator"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
-
-[[package]]
-name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
@@ -608,19 +602,16 @@ dependencies = [
 
 [[package]]
 name = "framehop"
-version = "0.11.2"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1940574e932d1ed75aab25420312c0019d8dd91c6125bd51420272cd072008e"
+checksum = "0fd28d2036d4fd99e3629487baca659e5af1c5d554e320168613be79028610fc"
 dependencies = [
  "arrayvec",
  "cfg-if",
- "fallible-iterator 0.3.0",
- "gimli",
+ "fallible-iterator",
+ "gimli 0.30.0",
  "macho-unwind-info",
- "object",
  "pe-unwind-info",
- "thiserror",
- "thiserror-no-std",
 ]
 
 [[package]]
@@ -711,7 +702,17 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
 dependencies = [
- "fallible-iterator 0.3.0",
+ "fallible-iterator",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "gimli"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2e1d97fbe9722ba9bbd0c97051c2956e726562b61f86a25a4360398a40edfc9"
+dependencies = [
+ "fallible-iterator",
  "stable_deref_trait",
 ]
 
@@ -1163,7 +1164,7 @@ dependencies = [
  "num-traits",
  "procfs-core",
  "range-map",
- "scroll 0.12.0",
+ "scroll",
  "test-assembler",
  "thiserror",
  "time",
@@ -1181,7 +1182,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "range-map",
- "scroll 0.12.0",
+ "scroll",
  "smart-default",
 ]
 
@@ -1198,7 +1199,7 @@ dependencies = [
  "minidump-common",
  "minidump-synth",
  "minidump-unwind",
- "scroll 0.12.0",
+ "scroll",
  "serde",
  "serde_json",
  "test-assembler",
@@ -1231,7 +1232,7 @@ name = "minidump-synth"
 version = "0.21.2"
 dependencies = [
  "minidump-common",
- "scroll 0.12.0",
+ "scroll",
  "test-assembler",
 ]
 
@@ -1249,7 +1250,7 @@ dependencies = [
  "minidump",
  "minidump-common",
  "object",
- "scroll 0.12.0",
+ "scroll",
  "test-assembler",
  "tokio",
  "tracing",
@@ -1477,12 +1478,12 @@ dependencies = [
 
 [[package]]
 name = "pdb2"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00e30e131bcab0d41a2e471cf777ea9b1402f2a0764bcf1780251eab1b0d175d"
+checksum = "51690a9810e8a4f711186ec92e4b376089e23c53e51380c340ea197fd4f99fe5"
 dependencies = [
- "fallible-iterator 0.2.0",
- "scroll 0.11.0",
+ "fallible-iterator",
+ "scroll",
  "uuid",
 ]
 
@@ -1904,7 +1905,7 @@ dependencies = [
  "debugid",
  "elsa",
  "flate2",
- "gimli",
+ "gimli 0.29.0",
  "linux-perf-data",
  "lzma-rs",
  "macho-unwind-info",
@@ -1936,12 +1937,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scroll"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
 
 [[package]]
 name = "scroll"
@@ -2254,26 +2249,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.52",
-]
-
-[[package]]
-name = "thiserror-impl-no-std"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58e6318948b519ba6dc2b442a6d0b904ebfb8d411a3ad3e07843615a72249758"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "thiserror-no-std"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3ad459d94dd517257cc96add8a43190ee620011bb6e6cdc82dafd97dfafafea"
-dependencies = [
- "thiserror-impl-no-std",
 ]
 
 [[package]]
