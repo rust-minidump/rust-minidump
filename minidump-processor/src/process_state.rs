@@ -668,14 +668,15 @@ impl ProcessState {
             let stack = &self.threads[requesting_thread];
             writeln!(
                 f,
-                "Thread {} {} ({})",
+                "Thread {} {} ({}) - tid: {}",
                 requesting_thread,
                 stack.thread_name.as_deref().unwrap_or(""),
                 if self.crashed() {
                     "crashed"
                 } else {
                     "requested dump, did not crash"
-                }
+                },
+                stack.thread_id
             )?;
             stack.print(f)?;
             writeln!(f)?;
@@ -696,9 +697,10 @@ impl ProcessState {
             }
             writeln!(
                 f,
-                "Thread {} {}",
+                "Thread {} {} - tid: {}",
                 i,
-                stack.thread_name.as_deref().unwrap_or("")
+                stack.thread_name.as_deref().unwrap_or(""),
+                stack.thread_id
             )?;
             stack.print(f)?;
         }
@@ -949,6 +951,7 @@ Unknown streams encountered:
                 "last_error_value": thread.last_error_value.map(|error| error.to_string()),
                 // optional
                 "thread_name": thread.thread_name,
+                "thread_id" : thread.thread_id,
                 "frames": thread.frames.iter().enumerate().map(|(idx, frame)| json!({
                     "frame": idx,
                     // optional
