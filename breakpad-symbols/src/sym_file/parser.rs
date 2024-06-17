@@ -3,7 +3,7 @@
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while};
-use nom::character::complete::{hex_digit1, multispace0, space1};
+use nom::character::complete::{hex_digit1, space1};
 use nom::character::{is_digit, is_hex_digit};
 use nom::combinator::{cut, map, map_res, opt};
 use nom::error::{Error, ErrorKind, ParseError};
@@ -392,20 +392,17 @@ fn stack_cfi_init(input: &[u8]) -> IResult<&[u8], StackInfoCfi> {
 
 // Parse any of the line data that can occur in the body of a symbol file.
 fn line(input: &[u8]) -> IResult<&[u8], Line> {
-    terminated(
-        alt((
-            map(info_url, Line::Info),
-            map(info_line, |_| Line::Info(Info::Unknown)),
-            map(file_line, |(i, f)| Line::File(i, f)),
-            map(inline_origin_line, |(i, f)| Line::InlineOrigin(i, f)),
-            map(public_line, Line::Public),
-            map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
-            map(stack_win_line, Line::StackWin),
-            map(stack_cfi_init, Line::StackCfi),
-            map(module_line, |(p, a, i, f)| Line::Module(p, a, i, f)),
-        )),
-        multispace0,
-    )(input)
+    alt((
+        map(info_url, Line::Info),
+        map(info_line, |_| Line::Info(Info::Unknown)),
+        map(file_line, |(i, f)| Line::File(i, f)),
+        map(inline_origin_line, |(i, f)| Line::InlineOrigin(i, f)),
+        map(public_line, Line::Public),
+        map(func_line, |f| Line::Function(f, Vec::new(), Vec::new())),
+        map(stack_win_line, Line::StackWin),
+        map(stack_cfi_init, Line::StackCfi),
+        map(module_line, |(p, a, i, f)| Line::Module(p, a, i, f)),
+    ))(input)
 }
 
 /// A parser for SymbolFiles.
@@ -511,6 +508,13 @@ impl SymbolParser {
                 _ => {
                     // We're not parsing sublines, move on to top level parser!
                 }
+            }
+
+            // Ignore empty lines
+            if let Ok((new_input, _)) = my_eol(input) {
+                input = new_input;
+                self.lines += 1;
+                continue;
             }
 
             // Parse a top-level item, and first handle the Result
