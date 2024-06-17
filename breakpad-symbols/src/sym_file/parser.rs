@@ -1232,6 +1232,7 @@ fn test_stack_cfi_lines() {
     let data = b"STACK CFI INIT badf00d abc init rules
 STACK CFI deadf00d some rules
 STACK CFI deadbeef more rules
+
 ";
     let file = SymbolFile::from_bytes(data).expect("failed to parse!");
     let (_, cfi) = file.cfi_stack_info.ranges_values().next().unwrap();
