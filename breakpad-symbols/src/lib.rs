@@ -486,6 +486,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
         trace!("SimpleSymbolSupplier search");
         if let Some(lookup) = lookup(module, file_kind) {
             for path in self.paths.iter() {
+                trace!("SimpleSymbolSupplier looking for {}", path.display());
                 if path.is_file() && file_kind == FileKind::BreakpadSym {
                     if let Ok(sf) = SymbolFile::from_file(path) {
                         if sf.module_id == lookup.debug_id {
@@ -495,6 +496,10 @@ impl SymbolSupplier for SimpleSymbolSupplier {
                     }
                 } else if path.is_dir() {
                     let test_path = path.join(lookup.cache_rel.clone());
+                    trace!(
+                        "SimpleSymbolSupplier looking for file {}",
+                        test_path.display()
+                    );
                     if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
                         trace!("SimpleSymbolSupplier found file {}", test_path.display());
                         return Ok(test_path);
