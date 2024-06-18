@@ -403,7 +403,7 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
         // # Safety
         // We broaden the lifetime to static, but ensure that the Mmap which provides the data
         // outlives all references.
-        unsafe { std::mem::transmute::<_, &'static [u8]>(mapped.as_ref()) },
+        unsafe { std::mem::transmute::<&[u8], &'static [u8]>(mapped.as_ref()) },
     ) {
         Ok(o) => o,
         Err(e) => {
