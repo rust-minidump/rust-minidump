@@ -218,6 +218,14 @@ pub struct FileLookup {
 /// [packagesymbols]: https://gist.github.com/luser/2ad32d290f224782fcfc#file-packagesymbols-py
 pub fn breakpad_sym_lookup(module: &(dyn Module + Sync)) -> Option<FileLookup> {
     let debug_file = module.debug_file()?;
+    let debug_file = if debug_file.is_empty() {
+        // If the debug_file info is empty, fallback to the code_file.
+        // This can be the case on Windows minidumps generated for gcc MingW-w64 builds
+        // as GCC does not support PDB generation there.
+        module.code_file()
+    } else {
+        debug_file
+    };
     let debug_id = module.debug_identifier()?;
 
     let leaf = leafname(&debug_file);
