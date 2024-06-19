@@ -6,10 +6,12 @@
 use std::borrow::{Borrow, Cow};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
+use crate::memory_operation::MemoryOperation;
 use crate::op_analysis::MemoryAccess;
 use minidump::system_info::PointerWidth;
 use minidump::*;
@@ -217,12 +219,17 @@ pub struct ExceptionInfo {
     pub adjusted_address: Option<AdjustedAddress>,
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
+    /// The memory operation performed by the instruction (if available)
+    // INCOMPLETE: Not sure if this needs to be printed out
+    pub memory_operation: Option<MemoryOperation>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
     ///
     /// The original address was possibly the result of faulty hardware, alpha particles, etc.
     pub possible_bit_flips: Vec<PossibleBitFlip>,
+    /// Whether the crash reason is inconsistent with crashing instruction
+    pub crash_reason_inconsistencies: Vec<CrashReasonInconsistency>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -413,6 +420,49 @@ impl PossibleBitFlip {
         }
 
         self.confidence = Some(self.details.confidence());
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CrashReasonInconsistency {
+    // INCOMPLETE: Need a better name for this?
+    ConflictingMemoryAccessViolation,
+    ConflictingMemoryAccessAddress,
+    // INCOMPLETE: Struct fields mostly for implementing fmt::Display,
+    // not sure if they are redundant or if the other enums should have fields as well for more info
+    ConflictingMemoryOperation {
+        crash_reason_operation: MemoryOperation,
+        instruction_operation: MemoryOperation,
+    },
+}
+
+impl fmt::Display for CrashReasonInconsistency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CrashReasonInconsistency::ConflictingMemoryAccessViolation => {
+                write!(
+                    f,
+                    "Crash reason is access violation exception but access is allowed"
+                )
+            }
+            CrashReasonInconsistency::ConflictingMemoryAccessAddress => {
+                write!(
+                    f,
+                    "Crash reason address not found in memory accesses done by crashing instruction"
+                )
+            }
+            CrashReasonInconsistency::ConflictingMemoryOperation {
+                crash_reason_operation,
+                instruction_operation,
+            } => {
+                write!(
+                    f,
+                    "Crash reason is {} but instruction is {}",
+                    crash_reason_operation.to_string(),
+                    instruction_operation.to_string()
+                )
+            }
+        }
     }
 }
 
@@ -607,6 +657,12 @@ impl ProcessState {
                             Some(name) => format!("{name}="),
                         }
                     )?;
+                }
+            }
+            if !crash_info.crash_reason_inconsistencies.is_empty() {
+                writeln!(f, "Crash reason is inconsistent:")?;
+                for inconsistency in &crash_info.crash_reason_inconsistencies {
+                    writeln!(f, "  {}", inconsistency)?;
                 }
             }
         } else {
