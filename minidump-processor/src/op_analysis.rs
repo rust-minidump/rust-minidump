@@ -19,6 +19,8 @@
 use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
 use std::collections::BTreeSet;
 
+use crate::memory_operation::MemoryOperation;
+
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
 pub enum OpAnalysisError {
@@ -48,6 +50,8 @@ pub enum OpAnalysisError {
 pub struct OpAnalysis {
     /// A string representation of the instruction for humans to read
     pub instruction_str: String,
+    /// The memory operation performed by the instruction
+    pub memory_operation: MemoryOperation,
     /// A list of all the memory accesses performed by the instruction
     ///
     /// Note that an empty vector and `None` don't mean the same thing -- `None` means
@@ -154,6 +158,8 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
+        let memory_operation = MemoryOperation::from_amd64_instruction(decoded_instruction);
+
         let memory_accesses = GetMemoryAccess::new(context, memory_list, stack_memory)
             .get_instruction_memory_access(decoded_instruction)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
@@ -163,6 +169,7 @@ mod amd64 {
 
         Ok(OpAnalysis {
             instruction_str,
+            memory_operation,
             memory_accesses,
             registers,
         })
@@ -181,6 +188,29 @@ mod amd64 {
             }
         }
         ret
+    }
+
+    impl MemoryOperation {
+        fn from_amd64_instruction(i: Instruction) -> Self {
+            // TODO: Extend to other opcodes
+            // TODO: Regardless of opcode, if there is no direct or indirect acccess we can conclude that there is no operation
+            // Note: the `lea` instruction uses a memory operand without actually ever accessing memory.
+            match i.opcode() {
+                Opcode::MOV => {
+                    if i.operand_count() != 2 {
+                        tracing::warn!("mov instruction had incorrect operand count");
+                        return Self::Undetermined;
+                    }
+                    match (i.operand(0).is_memory(), i.operand(1).is_memory()) {
+                        (true, true) => Self::UnknownOperation,
+                        (false, true) => Self::Read,
+                        (true, false) => Self::Write,
+                        (false, false) => Self::NoOperation,
+                    }
+                }
+                _ => Self::Undetermined,
+            }
+        }
     }
 
     struct GetMemoryAccess<'a> {

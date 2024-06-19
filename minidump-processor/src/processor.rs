@@ -15,7 +15,9 @@ use minidump_unwind::{
 
 use crate::op_analysis::MemoryAccess;
 use crate::process_state::{LinuxStandardBase, ProcessState};
-use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcLimits, LinuxProcStatus};
+use crate::{
+    arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
+};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -453,6 +455,7 @@ where
     if let Some(details) = &mut exception_details {
         info.check_for_bitflips(details);
         info.check_for_guard_pages(details);
+        info.check_for_crash_inconsistencies(details);
     }
     info.into_process_state(dump, symbol_provider, exception_details)
         .await
@@ -667,8 +670,10 @@ impl<'a> MinidumpInfo<'a> {
                         address: address.into(),
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
+                        memory_operation: Some(op_analysis.memory_operation),
                         memory_accesses: op_analysis.memory_accesses,
                         possible_bit_flips: Default::default(),
+                        crash_reason_inconsistencies: Default::default(),
                     });
                     instruction_registers = op_analysis.registers;
                 }
@@ -683,8 +688,10 @@ impl<'a> MinidumpInfo<'a> {
             address: address.into(),
             adjusted_address: None,
             instruction_str: None,
+            memory_operation: None,
             memory_accesses: None,
             possible_bit_flips: Default::default(),
+            crash_reason_inconsistencies: Default::default(),
         });
 
         Some(ExceptionDetails {
@@ -715,6 +722,7 @@ impl<'a> MinidumpInfo<'a> {
         let info = &mut exception_details.info;
 
         use bitflip::BitRange;
+        use memory_operation::MemoryOperation;
         let bit_flip_address = match &info.adjusted_address {
             // Use the non canonical address if present.
             Some(AdjustedAddress::NonCanonical(v)) => Some((v.0, BitRange::Amd64NonCanonical)),
@@ -731,7 +739,7 @@ impl<'a> MinidumpInfo<'a> {
             )),
         };
         if let Some((address, bit_range)) = bit_flip_address {
-            let memory_op = bitflip::MemoryOperation::from_crash_reason(&info.reason);
+            let memory_op = MemoryOperation::from_crash_reason(&info.reason);
             info.possible_bit_flips = bitflip::try_bit_flips(
                 address,
                 None,
@@ -808,6 +816,54 @@ impl<'a> MinidumpInfo<'a> {
                 {
                     access.is_likely_guard_page = true;
                 }
+            }
+        }
+    }
+
+    // TODO: Should extend to handle other crash reasons (may or may not be memory related)
+    /// Check for inconsistencies between crash reason and crashing instruction
+    pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
+        use memory_operation::MemoryOperation;
+
+        let info = &mut exception_details.info;
+        let crash_address = info.address.0;
+        let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
+        // Only checking inconsistencies for memory-related crashes
+        if crash_reason_operation == MemoryOperation::Undetermined {
+            return;
+        }
+
+        // Check if crash address is actually accessed in instruction
+        if let Some(memory_accesses) = &info.memory_accesses {
+            if memory_accesses
+                .iter()
+                .filter(|access| access.address == crash_address)
+                .collect::<Vec<_>>()
+                .is_empty()
+            {
+                info.crash_reason_inconsistencies
+                    .push(CrashReasonInconsistency::CrashAddressNotFoundInMemoryAccesses);
+            }
+        }
+
+        // Check if crash_reason_operation is actually a violation
+        if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
+            if crash_reason_operation.is_definitely_allowed_for(&mi) {
+                info.crash_reason_inconsistencies
+                    .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
+            }
+        }
+
+        // Check if crash_reason_operation is consistent with crashing instruction
+        if let Some(instruction_operation) = info.memory_operation {
+            if !MemoryOperation::consistent_operation(crash_reason_operation, instruction_operation)
+            {
+                info.crash_reason_inconsistencies.push(
+                    CrashReasonInconsistency::InconsistentMemoryOperation {
+                        crash_reason_operation,
+                        instruction_operation,
+                    },
+                );
             }
         }
     }
@@ -1148,44 +1204,117 @@ fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>)
     None
 }
 
-/// Bit-flip detection.
-mod bitflip {
+pub mod memory_operation {
     use super::*;
-    use crate::PossibleBitFlip;
 
     /// The memory operation occurring when a crash occurred.
-    #[derive(Default, PartialEq, Eq, Clone, Copy)]
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     pub enum MemoryOperation {
         #[default]
-        Unknown,
+        Undetermined,
+        NoOperation,
         Read,
         Write,
         Execute,
+        UnknownOperation,
+    }
+
+    impl std::fmt::Display for MemoryOperation {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                Self::Undetermined => "Undetermined",
+                Self::NoOperation => "No Operation",
+                Self::Read => "Read",
+                Self::Write => "Write",
+                Self::Execute => "Execute",
+                Self::UnknownOperation => "Unknown",
+            })
+        }
     }
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            // TODO: it may be possible to derive the read/write/exec when disassembling the faulting
-            // instruction, though this may be fairly verbose to implement.
+            use minidump_common::errors::ExceptionCodeLinux as LinuxGeneral;
+            use minidump_common::errors::ExceptionCodeMac as MacGeneral;
+            use minidump_common::errors::ExceptionCodeWindows as WindowsGeneral;
             use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+
             match reason {
-                CrashReason::WindowsAccessViolation(WinAccess::READ) => MemoryOperation::Read,
-                CrashReason::WindowsAccessViolation(WinAccess::WRITE) => MemoryOperation::Write,
-                CrashReason::WindowsAccessViolation(WinAccess::EXEC) => MemoryOperation::Execute,
+                CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
+                CrashReason::WindowsAccessViolation(WinAccess::WRITE) => Self::Write,
+                CrashReason::WindowsAccessViolation(WinAccess::EXEC) => Self::Execute,
+                CrashReason::MacGeneral(MacGeneral::EXC_BAD_ACCESS, _)
+                | CrashReason::MacBadAccessKern(_)
+                | CrashReason::MacBadAccessArm(_)
+                | CrashReason::MacBadAccessPpc(_)
+                | CrashReason::MacBadAccessX86(_)
+                | CrashReason::LinuxGeneral(LinuxGeneral::SIGSEGV, _)
+                | CrashReason::LinuxSigsegv(_)
+                | CrashReason::WindowsGeneral(WindowsGeneral::EXCEPTION_ACCESS_VIOLATION) => {
+                    Self::UnknownOperation
+                }
                 _ => Self::default(),
             }
         }
 
-        /// Return whether this memory operation is allowed in the given memory region.
-        pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+        /// Return whether this memory operation is possibily allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns true.
+        /// If operation is `UnknownOperation`, this method returns true if the given memory region
+        /// allows any operation, and returns false otherwise.
+        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
-                Self::Unknown => true,
+                Self::Undetermined => true,
+                Self::NoOperation => true,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
+                Self::UnknownOperation => {
+                    memory_info.is_readable()
+                        || memory_info.is_writable()
+                        || memory_info.is_executable()
+                }
+            }
+        }
+
+        /// Return whether this memory operation is definitely allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns false.
+        /// If operation is `UnknownOperation`, this method returns true if the given memory region
+        /// allows all operations, and returns false otherwise.
+        pub fn is_definitely_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+            match self {
+                Self::Undetermined => false,
+                Self::NoOperation => true,
+                Self::Read => memory_info.is_readable(),
+                Self::Write => memory_info.is_writable(),
+                Self::Execute => memory_info.is_executable(),
+                Self::UnknownOperation => {
+                    memory_info.is_readable()
+                        && memory_info.is_writable()
+                        && memory_info.is_executable()
+                }
+            }
+        }
+
+        pub fn consistent_operation(
+            operation1: MemoryOperation,
+            operation2: MemoryOperation,
+        ) -> bool {
+            match (operation1, operation2) {
+                (operation1, operation2) if operation1 == operation2 => true,
+                (Self::Undetermined, _) | (_, Self::Undetermined) => true,
+                (Self::NoOperation, _) | (_, Self::NoOperation) => false,
+                (Self::UnknownOperation, _) | (_, Self::UnknownOperation) => true,
+                _ => false,
             }
         }
     }
+}
+
+/// Bit-flip detection.
+mod bitflip {
+    use super::*;
+    use crate::memory_operation::MemoryOperation;
+    use crate::PossibleBitFlip;
 
     /// The bit range over which to check bit flips.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1221,7 +1350,7 @@ mod bitflip {
         let mut addresses = Vec::new();
         // If the address maps to valid memory, don't do anything else.
         if let Some(mi) = memory_info.memory_info_at_address(address) {
-            if memory_operation.allowed_for(&mi) {
+            if memory_operation.is_possibly_allowed_for(&mi) {
                 return addresses;
             }
         }
@@ -1244,8 +1373,8 @@ mod bitflip {
                 addresses.push(create_possible_address(possible_address));
             }
             if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if memory_operation.allowed_for(&mi) {
-                    addresses.push(create_possible_address(possible_address));
+                if memory_operation.is_possibly_allowed_for(&mi) {
+                    addresses.push(create_possible_address(possible_address))
                 }
             }
         }
