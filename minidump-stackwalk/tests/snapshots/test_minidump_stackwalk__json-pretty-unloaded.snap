@@ -67,6 +67,7 @@ expression: json_out
         }
       ],
       "last_error_value": null,
+      "thread_id": 4660,
       "thread_name": null
     }
   ],
