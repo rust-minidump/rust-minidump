@@ -1,6 +1,5 @@
 ---
 source: minidump-stackwalk/tests/test-minidump-stackwalk.rs
-assertion_line: 840
 expression: stdout
 ---
 Operating system: Mac OS X
@@ -17,7 +16,7 @@ Memory accessed by instruction:
      Size: 1
 Process uptime: 0 seconds
 
-Thread 0 main (crashed)
+Thread 0 main (crashed) - tid: 4611
  0  crash-client!core::ptr::write_volatile::<u8> [mod.rs : 1574]
     Found by: inlining
  1  crash-client!sadness_generator::raise_segfault [lib.rs : 133 + 0x0]
@@ -93,7 +92,7 @@ Thread 0 main (crashed)
      rsp = 0x00007ffeed1ab188    rip = 0x00007fff20329f3d
     Found by: stack scanning
 
-Thread 1 
+Thread 1  - tid: 5379
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700007c6fe58    rbx = 0x0000000000000000
@@ -155,7 +154,7 @@ Thread 1
      rbp = 0x0000700007c6fff0    rsp = 0x0000700007c6ffe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 2 
+Thread 2  - tid: 5635
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700007e72e58    rbx = 0x0000000000000000
@@ -217,7 +216,7 @@ Thread 2
      rbp = 0x0000700007e72ff0    rsp = 0x0000700007e72fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 3 
+Thread 3  - tid: 10499
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008075e58    rbx = 0x0000000000000000
@@ -279,7 +278,7 @@ Thread 3
      rbp = 0x0000700008075ff0    rsp = 0x0000700008075fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 4 
+Thread 4  - tid: 10243
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008278e58    rbx = 0x0000000000000000
@@ -341,7 +340,7 @@ Thread 4
      rbp = 0x0000700008278ff0    rsp = 0x0000700008278fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 5 
+Thread 5  - tid: 9987
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x000070000847be58    rbx = 0x0000000000000000
@@ -403,7 +402,7 @@ Thread 5
      rbp = 0x000070000847bff0    rsp = 0x000070000847bfe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 6 
+Thread 6  - tid: 9731
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x000070000867ee58    rbx = 0x0000000000000000
@@ -465,7 +464,7 @@ Thread 6
      rbp = 0x000070000867eff0    rsp = 0x000070000867efe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 7 
+Thread 7  - tid: 5891
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008881e58    rbx = 0x0000000000000000
@@ -527,7 +526,7 @@ Thread 7
      rbp = 0x0000700008881ff0    rsp = 0x0000700008881fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 8 
+Thread 8  - tid: 9475
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008a84e58    rbx = 0x0000000000000000
@@ -589,7 +588,7 @@ Thread 8
      rbp = 0x0000700008a84ff0    rsp = 0x0000700008a84fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 9 
+Thread 9  - tid: 9219
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008c87e58    rbx = 0x0000000000000000
@@ -651,7 +650,7 @@ Thread 9
      rbp = 0x0000700008c87ff0    rsp = 0x0000700008c87fe0
      rip = 0x00007fff2030a443
     Found by: previous frame's frame pointer
-Thread 10 
+Thread 10  - tid: 8963
  0  libsystem_kernel.dylib + 0x3ba2
      rax = 0x000000000200014e    rdx = 0x0000000000000001
      rcx = 0x0000700008e8ae58    rbx = 0x0000000000000000
@@ -764,4 +763,3 @@ Loaded modules:
 0x7fff2fd85000 - 0x7fff2fd85fff  libsystem_product_info_filter.dylib  0.8.40.1
 
 Unloaded modules:
-
