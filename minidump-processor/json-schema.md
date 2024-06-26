@@ -244,6 +244,9 @@ anyway.
       // Name of the the thread.
       "thread_name": <string>,
 
+      // Thread id of the thread given by the OS.
+      "thread_id": <u32>,
+
       // The windows GetLastError() value for this thread.
       //
       // This roughly contains the status of the last system API call this
