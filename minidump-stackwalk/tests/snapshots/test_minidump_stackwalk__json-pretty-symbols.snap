@@ -86,6 +86,7 @@ expression: stdout
       }
     ],
     "last_error_value": null,
+    "thread_id": 3060,
     "thread_name": null,
     "threads_index": 0
   },
@@ -353,12 +354,14 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 3060,
       "thread_name": null
     },
     {
       "frame_count": 0,
       "frames": [],
       "last_error_value": null,
+      "thread_id": 4544,
       "thread_name": null
     }
   ],

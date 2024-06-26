@@ -12,7 +12,7 @@ Crash reason:  EXCEPTION_ACCESS_VIOLATION_WRITE
 Crash address: 0x00000045
 Process uptime: 0 seconds
 
-Thread 0  (crashed)
+Thread 0  (crashed) - tid: 3060
  0  test_app.exe!`anonymous namespace'::CrashFunction [test_app.cc : 58 + 0x3]
      eip = 0x0040429e    esp = 0x0012fe84    ebp = 0x0012fe88    ebx = 0x7c80abc1
      esi = 0x00000002    edi = 0x00000a28    eax = 0x00000045    ecx = 0x0012fe94
@@ -51,4 +51,3 @@ Unloaded modules:
 
 Unimplemented streams encountered:
 Stream 0x00000000 UnusedStream (Official) @ 0x00000000
-

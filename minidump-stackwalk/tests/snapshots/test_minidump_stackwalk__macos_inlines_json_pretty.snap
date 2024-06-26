@@ -218,6 +218,7 @@ expression: stdout
       }
     ],
     "last_error_value": null,
+    "thread_id": 4611,
     "thread_name": "main",
     "threads_index": 0
   },
@@ -1081,6 +1082,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 4611,
       "thread_name": "main"
     },
     {
@@ -1240,6 +1242,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 5379,
       "thread_name": ""
     },
     {
@@ -1399,6 +1402,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 5635,
       "thread_name": ""
     },
     {
@@ -1558,6 +1562,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 10499,
       "thread_name": ""
     },
     {
@@ -1717,6 +1722,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 10243,
       "thread_name": ""
     },
     {
@@ -1876,6 +1882,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 9987,
       "thread_name": ""
     },
     {
@@ -2035,6 +2042,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 9731,
       "thread_name": ""
     },
     {
@@ -2194,6 +2202,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 5891,
       "thread_name": ""
     },
     {
@@ -2353,6 +2362,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 9475,
       "thread_name": ""
     },
     {
@@ -2512,6 +2522,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 9219,
       "thread_name": ""
     },
     {
@@ -2671,6 +2682,7 @@ expression: stdout
         }
       ],
       "last_error_value": null,
+      "thread_id": 8963,
       "thread_name": ""
     }
   ],

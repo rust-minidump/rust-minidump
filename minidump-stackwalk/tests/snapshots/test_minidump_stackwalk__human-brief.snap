@@ -12,7 +12,7 @@ Crash reason:  EXCEPTION_ACCESS_VIOLATION_WRITE
 Crash address: 0x00000045
 Process uptime: 0 seconds
 
-Thread 0  (crashed)
+Thread 0  (crashed) - tid: 3060
  0  test_app.exe + 0x429e
      eip = 0x0040429e    esp = 0x0012fe84    ebp = 0x0012fe88    ebx = 0x7c80abc1
      esi = 0x00000002    edi = 0x00000a28    eax = 0x00000045    ecx = 0x0012fe94
@@ -27,5 +27,3 @@ Thread 0  (crashed)
  3  kernel32.dll + 0x16fd6
      eip = 0x7c816fd7    esp = 0x0012ffc8    ebp = 0x0012fff0
     Found by: previous frame's frame pointer
-
-
