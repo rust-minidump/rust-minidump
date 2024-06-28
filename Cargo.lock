@@ -1977,9 +1977,9 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
 name = "samply-symbols"
-version = "0.22.1"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19ecacf3d8b59b82f46cd3cb4553e53e5f3be526c10cad318d0500f6d4ddd969"
+checksum = "bbcdc8625b92ae1b981f37d435599effed5464dd1f37c01f88ccf83c0e90b54d"
 dependencies = [
  "addr2line 0.23.0",
  "bitflags 2.5.0",
@@ -2742,9 +2742,9 @@ dependencies = [
 
 [[package]]
 name = "wholesym"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54ac4155291cc5d102d0678fbd6bd9d669eea08289111d955dcab1de6a818568"
+checksum = "0c9d822684c5f5eb54218ff1d70fa8d436f194b3459fb619af23ddaf40aa7edc"
 dependencies = [
  "bytes",
  "core-foundation",
