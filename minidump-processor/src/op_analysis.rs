@@ -19,6 +19,8 @@
 use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
 use std::collections::BTreeSet;
 
+use crate::memory_operation::MemoryOperation;
+
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
 pub enum OpAnalysisError {
@@ -54,6 +56,9 @@ pub struct OpAnalysis {
     /// that access could not be determined, `Some(Vec<len==0>)` means it was successfully
     /// determined that the instruction doesn't access memory.
     pub memory_accesses: Option<Vec<MemoryAccess>>,
+    /// INCOMPLETE:
+    /// The memory operation performed by the instruction
+    pub memory_operation: MemoryOperation,
     /// A list of all registers which were used by this instruction.
     pub registers: BTreeSet<&'static str>,
 }
@@ -159,11 +164,14 @@ mod amd64 {
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
+        let memory_operation = MemoryOperation::from_instruction(decoded_instruction);
+
         let registers = get_registers(decoded_instruction);
 
         Ok(OpAnalysis {
             instruction_str,
             memory_accesses,
+            memory_operation,
             registers,
         })
     }
@@ -181,6 +189,30 @@ mod amd64 {
             }
         }
         ret
+    }
+
+    impl MemoryOperation {
+        fn from_instruction(i: Instruction) -> Self {
+            // INCOMPLETE: Only MOV for now
+            // Note: the `lea` instruction uses a memory operand without actually ever accessing memory.
+            use crate::memory_operation::OperationType;
+            match i.opcode() {
+                Opcode::MOV => {
+                    if i.operand_count() != 2 {
+                        tracing::warn!("mov instruction had incorrect operand count");
+                        return MemoryOperation::Undetermined;
+                    }
+                    // INCOMPLETE: Weird cases where !operand(0).is_memory() == true because it is an immediate?
+                    match (i.operand(0).is_memory(), i.operand(1).is_memory()) {
+                        (true, true) => MemoryOperation::SomeOperation(OperationType::Unknown),
+                        (false, true) => MemoryOperation::SomeOperation(OperationType::Read),
+                        (true, false) => MemoryOperation::SomeOperation(OperationType::Write),
+                        (false, false) => MemoryOperation::NoOperation,
+                    }
+                }
+                _ => MemoryOperation::SomeOperation(OperationType::Unknown),
+            }
+        }
     }
 
     struct GetMemoryAccess<'a> {
