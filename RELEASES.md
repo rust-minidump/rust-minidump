@@ -2,6 +2,11 @@
 
 Nothing Yet!
 
+
+# Version 0.22.0 (2024-07-03)
+
+Nothing Yet!
+
 * Added a count of mapped memory regions to the output for Linux minidumps
 * Added native thread IDs to the output both in JSON and human-readable form
 * Fixed parsing .sym files with several adjacent empty lines
