@@ -158,12 +158,15 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
-        let memory_operation = MemoryOperation::from_amd64_instruction(decoded_instruction);
-
         let memory_accesses = GetMemoryAccess::new(context, memory_list, stack_memory)
             .get_instruction_memory_access(decoded_instruction)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
+
+        let memory_operation = match &memory_accesses {
+            Some(accesses) if accesses.is_empty() => MemoryOperation::NoOperation,
+            _ => MemoryOperation::from_amd64_instruction(decoded_instruction),
+        };
 
         let registers = get_registers(decoded_instruction);
 
@@ -193,10 +196,42 @@ mod amd64 {
     impl MemoryOperation {
         fn from_amd64_instruction(i: Instruction) -> Self {
             // TODO: Extend to other opcodes
-            // TODO: Regardless of opcode, if there is no direct or indirect acccess we can conclude that there is no operation
-            // Note: the `lea` instruction uses a memory operand without actually ever accessing memory.
             match i.opcode() {
-                Opcode::MOV => {
+                Opcode::LEA => Self::NoOperation,
+                Opcode::MOV
+                | Opcode::MOVAPD
+                | Opcode::MOVAPS
+                | Opcode::MOVBE
+                | Opcode::MOVD
+                | Opcode::MOVQ
+                | Opcode::MOVDDUP
+                | Opcode::MOVDQ2Q
+                | Opcode::MOVDQA
+                | Opcode::MOVDQU
+                | Opcode::MOVHLPS
+                | Opcode::MOVHPD
+                | Opcode::MOVHPS
+                | Opcode::MOVLHPS
+                | Opcode::MOVLPD
+                | Opcode::MOVLPS
+                | Opcode::MOVMSKPD
+                | Opcode::MOVMSKPS
+                | Opcode::MOVNTDQ
+                | Opcode::MOVNTI
+                | Opcode::MOVNTPD
+                | Opcode::MOVNTPS
+                | Opcode::MOVNTQ
+                | Opcode::MOVQ2DQ
+                | Opcode::MOVS
+                | Opcode::MOVSD
+                | Opcode::MOVSHDUP
+                | Opcode::MOVSLDUP
+                | Opcode::MOVSS
+                | Opcode::MOVSX
+                | Opcode::MOVSXD
+                | Opcode::MOVUPD
+                | Opcode::MOVUPS
+                | Opcode::MOVZX => {
                     if i.operand_count() != 2 {
                         tracing::warn!("mov instruction had incorrect operand count");
                         return Self::Undetermined;
@@ -208,6 +243,16 @@ mod amd64 {
                         (false, false) => Self::NoOperation,
                     }
                 }
+                Opcode::CALL
+                | Opcode::CALLF
+                | Opcode::JMP
+                | Opcode::JMPF
+                | Opcode::JMPE
+                | Opcode::RETURN
+                | Opcode::RETF
+                | Opcode::IRET
+                | Opcode::IRETD
+                | Opcode::IRETQ => Self::Execute,
                 _ => Self::Undetermined,
             }
         }
