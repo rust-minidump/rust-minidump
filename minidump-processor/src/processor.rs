@@ -820,26 +820,56 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    // TODO: Should extend to handle other crash reasons (may or may not be memory related)
+    // TODO: Extend to handle other crash reasons (may or may not be memory related)
     /// Check for inconsistencies between crash reason and crashing instruction
     pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
-        use memory_operation::MemoryOperation;
+        use minidump_common::errors::ExceptionCodeLinux as LinuxGeneral;
+        use minidump_common::errors::ExceptionCodeMac as MacGeneral;
+        use minidump_common::errors::ExceptionCodeWindows as WindowsGeneral;
+        use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
 
+        match exception_details.info.reason {
+            CrashReason::WindowsAccessViolation(WinAccess::READ)
+            | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
+            | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
+            | CrashReason::MacGeneral(MacGeneral::EXC_BAD_ACCESS, _)
+            | CrashReason::MacBadAccessKern(_)
+            | CrashReason::MacBadAccessArm(_)
+            | CrashReason::MacBadAccessPpc(_)
+            | CrashReason::MacBadAccessX86(_)
+            | CrashReason::LinuxGeneral(LinuxGeneral::SIGSEGV, _)
+            | CrashReason::LinuxSigsegv(_)
+            | CrashReason::WindowsGeneral(WindowsGeneral::EXCEPTION_ACCESS_VIOLATION) => {
+                self.check_for_memory_crash_inconsistencies(exception_details);
+            }
+            _ => (),
+        }
+    }
+
+    fn check_for_memory_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
         let info = &mut exception_details.info;
+
+        use memory_operation::MemoryOperation;
         let crash_address = info.address.0;
         let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
-        // Only checking inconsistencies for memory-related crashes
+        // Only checking memory-related crash inconsistencies
         if crash_reason_operation == MemoryOperation::Undetermined {
             return;
         }
 
-        // Check if crash address is actually accessed in instruction
+        // TODO: relative offsets & absolute values for "indirect" access are not in memory_accesses
+        // TODO: `lea` will cause an entry in memory_accesses despite not being an access
+        // Check if crash address is actually accessed in instruction or instruction pointer
         if let Some(memory_accesses) = &info.memory_accesses {
             if memory_accesses
                 .iter()
                 .filter(|access| access.address == crash_address)
                 .collect::<Vec<_>>()
                 .is_empty()
+                && exception_details
+                    .context
+                    .as_ref()
+                    .is_some_and(|context| context.get_instruction_pointer() != crash_address)
             {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::CrashAddressNotFoundInMemoryAccesses);
@@ -854,6 +884,8 @@ impl<'a> MinidumpInfo<'a> {
             }
         }
 
+        // TODO: The memory operations of crash reasons and instructions are not as symmetric as thought
+        //       Should consider putting this information in memory_accesses instead
         // Check if crash_reason_operation is consistent with crashing instruction
         if let Some(instruction_operation) = info.memory_operation {
             if !MemoryOperation::consistent_operation(crash_reason_operation, instruction_operation)
@@ -1295,13 +1327,17 @@ pub mod memory_operation {
             }
         }
 
+        // TODO: some opcodes can be both read & write
         pub fn consistent_operation(
             operation1: MemoryOperation,
             operation2: MemoryOperation,
         ) -> bool {
             match (operation1, operation2) {
                 (operation1, operation2) if operation1 == operation2 => true,
-                (Self::Undetermined, _) | (_, Self::Undetermined) => true,
+                (Self::Undetermined, _)
+                | (_, Self::Undetermined)
+                | (Self::Execute, _)
+                | (_, Self::Execute) => true,
                 (Self::NoOperation, _) | (_, Self::NoOperation) => false,
                 (Self::UnknownOperation, _) | (_, Self::UnknownOperation) => true,
                 _ => false,
