@@ -164,6 +164,7 @@ mod amd64 {
             .ok();
 
         let memory_operation = match &memory_accesses {
+            // TODO: Wrong assumption, memory_accesses currently does not contain indirect access to imm & disp
             Some(accesses) if accesses.is_empty() => MemoryOperation::NoOperation,
             _ => MemoryOperation::from_amd64_instruction(decoded_instruction),
         };
@@ -243,16 +244,6 @@ mod amd64 {
                         (false, false) => Self::NoOperation,
                     }
                 }
-                Opcode::CALL
-                | Opcode::CALLF
-                | Opcode::JMP
-                | Opcode::JMPF
-                | Opcode::JMPE
-                | Opcode::RETURN
-                | Opcode::RETF
-                | Opcode::IRET
-                | Opcode::IRETD
-                | Opcode::IRETQ => Self::Execute,
                 _ => Self::Undetermined,
             }
         }
