@@ -823,25 +823,74 @@ impl<'a> MinidumpInfo<'a> {
     // TODO: Extend to handle other crash reasons (may or may not be memory related)
     /// Check for inconsistencies between crash reason and crashing instruction
     pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
-        use minidump_common::errors::ExceptionCodeLinux as LinuxGeneral;
-        use minidump_common::errors::ExceptionCodeMac as MacGeneral;
-        use minidump_common::errors::ExceptionCodeWindows as WindowsGeneral;
+        // use minidump_common::errors::ExceptionCodeMac;
+        use minidump_common::errors::ExceptionCodeMacArithmeticArmType as MacArithArm;
+        use minidump_common::errors::ExceptionCodeMacArithmeticPpcType as MacArithPpc;
+        use minidump_common::errors::ExceptionCodeMacArithmeticX86Type as MacArithX86;
+
+        // use minidump_common::errors::ExceptionCodeLinux;
+        use minidump_common::errors::ExceptionCodeLinuxSigfpeKind as LinuxSigfpe;
+
+        use minidump_common::errors::ExceptionCodeWindows;
         use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+        use minidump_common::errors::NtStatusWindows;
+        use minidump_common::errors::WinErrorWindows;
 
         match exception_details.info.reason {
+            // TODO: Separate into int zero divide and flt zero divide?
+            CrashReason::MacArithmeticArm(MacArithArm::EXC_ARM_FP_DZ)
+            | CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
+            | CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_FLT_ZERO_DIVIDE)
+            | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
+            | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
+            | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_FLTDIV)
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO)
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_FLT_DIVIDE_BY_ZERO) => {
+                // TODO: Check for instruction's possibility for division by zero exception
+                //       Check if the instruction is a division
+                //       Check if the divisor operand is zero
+            }
+
+            // TODO: These crash reasons can be caused by stack overflow / access violation
+            // Note that when Linux stack overflows, it's crash address is rsp before the overflow
+            // CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
+            // | CrashReason::MacBadAccessKern(_)
+            // | CrashReason::MacBadAccessArm(_)
+            // | CrashReason::MacBadAccessPpc(_)
+            // | CrashReason::MacBadAccessX86(_)
+            // | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
+            // | CrashReason::LinuxSigsegv(_)
+
+            // TODO: What about Stack Buffer Overrun?
+            // Windows stack overflow crashes
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
+            // TODO: These are also Stack overflow exceptions?
+            // | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW_READ)
+            // | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW)
+            // | CrashReason::WindowsWinErrorWithFacility(_, WinErrorWindows::ERROR_STACK_OVERFLOW)
+            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW) 
+            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW_READ) 
+            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ACPI_STACK_OVERFLOW) 
+            => {
+                // TODO: Check for stack overflow
+                //       Should be an operation that pushes the stack?
+                //       Crash address should be rip?
+                
+            }
+
+            // Windows memory crashes
             CrashReason::WindowsAccessViolation(WinAccess::READ)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
             | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
-            | CrashReason::MacGeneral(MacGeneral::EXC_BAD_ACCESS, _)
-            | CrashReason::MacBadAccessKern(_)
-            | CrashReason::MacBadAccessArm(_)
-            | CrashReason::MacBadAccessPpc(_)
-            | CrashReason::MacBadAccessX86(_)
-            | CrashReason::LinuxGeneral(LinuxGeneral::SIGSEGV, _)
-            | CrashReason::LinuxSigsegv(_)
-            | CrashReason::WindowsGeneral(WindowsGeneral::EXCEPTION_ACCESS_VIOLATION) => {
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
                 self.check_for_memory_crash_inconsistencies(exception_details);
             }
+            
+            // TODO: Illegal instruction crashes
+            // TODO: Datatype misalignment crashes
+            // TODO: Privileged Instruction crashes
+            // TODO: Single Step crashes
+            
             _ => (),
         }
     }
@@ -1266,23 +1315,23 @@ pub mod memory_operation {
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            use minidump_common::errors::ExceptionCodeLinux as LinuxGeneral;
-            use minidump_common::errors::ExceptionCodeMac as MacGeneral;
-            use minidump_common::errors::ExceptionCodeWindows as WindowsGeneral;
+            use minidump_common::errors::ExceptionCodeLinux;
+            use minidump_common::errors::ExceptionCodeMac;
+            use minidump_common::errors::ExceptionCodeWindows;
             use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
 
             match reason {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
                 CrashReason::WindowsAccessViolation(WinAccess::WRITE) => Self::Write,
                 CrashReason::WindowsAccessViolation(WinAccess::EXEC) => Self::Execute,
-                CrashReason::MacGeneral(MacGeneral::EXC_BAD_ACCESS, _)
+                CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
                 | CrashReason::MacBadAccessKern(_)
                 | CrashReason::MacBadAccessArm(_)
                 | CrashReason::MacBadAccessPpc(_)
                 | CrashReason::MacBadAccessX86(_)
-                | CrashReason::LinuxGeneral(LinuxGeneral::SIGSEGV, _)
+                | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
                 | CrashReason::LinuxSigsegv(_)
-                | CrashReason::WindowsGeneral(WindowsGeneral::EXCEPTION_ACCESS_VIOLATION) => {
+                | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
                     Self::UnknownOperation
                 }
                 _ => Self::default(),
