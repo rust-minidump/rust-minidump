@@ -196,7 +196,8 @@ mod amd64 {
 
     impl MemoryOperation {
         fn from_amd64_instruction(i: Instruction) -> Self {
-            // TODO: Extend to other opcodes
+            // TODO: yaxpeax can provide better information on the "direction" and privilege levels
+            //       of instructions in the future
             match i.opcode() {
                 Opcode::LEA => Self::NoOperation,
                 Opcode::MOV
