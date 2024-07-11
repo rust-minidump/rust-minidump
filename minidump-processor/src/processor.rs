@@ -910,11 +910,9 @@ impl<'a> MinidumpInfo<'a> {
         // TODO: `lea` will cause an entry in memory_accesses despite not being an access
         // Check if crash address is actually accessed in instruction or instruction pointer
         if let Some(memory_accesses) = &info.memory_accesses {
-            if memory_accesses
+            if !memory_accesses
                 .iter()
-                .filter(|access| access.address == crash_address)
-                .collect::<Vec<_>>()
-                .is_empty()
+                .any(|access| access.address == crash_address)
                 && exception_details
                     .context
                     .as_ref()
@@ -927,7 +925,7 @@ impl<'a> MinidumpInfo<'a> {
 
         // Check if crash_reason_operation is actually a violation
         if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
-            if crash_reason_operation.is_definitely_allowed_for(&mi) {
+            if crash_reason_operation.is_allowed_for(&mi) {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
             }
@@ -1361,7 +1359,7 @@ pub mod memory_operation {
         /// If operation is `Undetermined`, this method returns false.
         /// If operation is `UnknownOperation`, this method returns true if the given memory region
         /// allows all operations, and returns false otherwise.
-        pub fn is_definitely_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+        pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => false,
                 Self::NoOperation => true,
@@ -1377,6 +1375,9 @@ pub mod memory_operation {
         }
 
         // TODO: some opcodes can be both read & write
+        /// Return whether two memory operations are "consistent"
+        /// Two operations are "consistent" if the corresponding sources of information on the memory operation
+        /// (eg. crash reason and crashing instruction) are not conflicting
         pub fn consistent_operation(
             operation1: MemoryOperation,
             operation2: MemoryOperation,
