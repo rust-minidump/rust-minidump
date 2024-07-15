@@ -670,7 +670,7 @@ impl<'a> MinidumpInfo<'a> {
                         address: address.into(),
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
-                        memory_operation: Some(op_analysis.memory_operation),
+                        possible_crash_types: Some(op_analysis.possible_crash_types),
                         memory_accesses: op_analysis.memory_accesses,
                         possible_bit_flips: Default::default(),
                         crash_reason_inconsistencies: Default::default(),
@@ -688,7 +688,7 @@ impl<'a> MinidumpInfo<'a> {
             address: address.into(),
             adjusted_address: None,
             instruction_str: None,
-            memory_operation: None,
+            possible_crash_types: None,
             memory_accesses: None,
             possible_bit_flips: Default::default(),
             crash_reason_inconsistencies: Default::default(),
@@ -833,8 +833,8 @@ impl<'a> MinidumpInfo<'a> {
 
         use minidump_common::errors::ExceptionCodeWindows;
         use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
-        use minidump_common::errors::NtStatusWindows;
-        use minidump_common::errors::WinErrorWindows;
+        // use minidump_common::errors::NtStatusWindows;
+        // use minidump_common::errors::WinErrorWindows;
 
         match exception_details.info.reason {
             // TODO: Separate into int zero divide and flt zero divide?
@@ -850,18 +850,22 @@ impl<'a> MinidumpInfo<'a> {
                 //       Check if the instruction is a division
                 //       Check if the divisor operand is zero
             }
-
-            // TODO: These crash reasons can be caused by stack overflow / access violation
-            // Note that when Linux stack overflows, it's crash address is rsp before the overflow
-            // CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
-            // | CrashReason::MacBadAccessKern(_)
-            // | CrashReason::MacBadAccessArm(_)
-            // | CrashReason::MacBadAccessPpc(_)
-            // | CrashReason::MacBadAccessX86(_)
-            // | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
-            // | CrashReason::LinuxSigsegv(_)
+            
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ILLEGAL_INSTRUCTION) 
+            // TODO: Mac & Linux's version of Illegal instructions?
+            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ILLEGAL_INSTRUCTION)
+            => {
+                // TODO: Not sure how to check for illegal instruction
+            }
+            
+            // TODO: Datatype misalignment crashes
+            
+            // TODO: Privileged Instruction crashes
+            
+            // TODO: Single Step crashes (not in PossibleCrashTypes)
 
             // TODO: What about Stack Buffer Overrun?
+            
             // Windows stack overflow crashes
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
             // TODO: These are also Stack overflow exceptions?
@@ -875,7 +879,6 @@ impl<'a> MinidumpInfo<'a> {
                 // TODO: Check for stack overflow
                 //       Should be an operation that pushes the stack?
                 //       Crash address should be rip?
-                
             }
 
             // Windows memory crashes
@@ -886,19 +889,26 @@ impl<'a> MinidumpInfo<'a> {
                 self.check_for_memory_crash_inconsistencies(exception_details);
             }
             
-            // TODO: Illegal instruction crashes
-            // TODO: Datatype misalignment crashes
-            // TODO: Privileged Instruction crashes
-            // TODO: Single Step crashes
+            // TODO: These crash reasons can be caused by stack overflow / access violation
+            // Note that when Linux stack overflows, its crash address is rsp before the overflow
+            // CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
+            // | CrashReason::MacBadAccessKern(_)
+            // | CrashReason::MacBadAccessArm(_)
+            // | CrashReason::MacBadAccessPpc(_)
+            // | CrashReason::MacBadAccessX86(_)
+            // | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
+            // | CrashReason::LinuxSigsegv(_)
+
             
             _ => (),
         }
     }
 
     fn check_for_memory_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
-        let info = &mut exception_details.info;
-
+        use crate::op_analysis::MemoryAccessType;
         use memory_operation::MemoryOperation;
+        
+        let info = &mut exception_details.info;
         let crash_address = info.address.0;
         let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
         // Only checking memory-related crash inconsistencies
@@ -909,18 +919,46 @@ impl<'a> MinidumpInfo<'a> {
         // TODO: relative offsets & absolute values for "indirect" access are not in memory_accesses
         // TODO: `lea` will cause an entry in memory_accesses despite not being an access
         // Check if crash address is actually accessed in instruction or instruction pointer
+
         if let Some(memory_accesses) = &info.memory_accesses {
-            if !memory_accesses
-                .iter()
-                .any(|access| access.address == crash_address)
-                && exception_details
-                    .context
-                    .as_ref()
-                    .is_some_and(|context| context.get_instruction_pointer() != crash_address)
-            {
-                info.crash_reason_inconsistencies
-                    .push(CrashReasonInconsistency::CrashAddressNotFoundInMemoryAccesses);
+
+            match crash_reason_operation {
+                MemoryOperation::Undetermined => return,
+                MemoryOperation::NoOperation => return, 
+                MemoryOperation::Read => {
+                    if !memory_accesses
+                        .iter()
+                        .any(|access| access.address == crash_address && 
+                            (access.access_type == MemoryAccessType::Read || access.access_type == MemoryAccessType::ReadWrite)) {
+                    info.crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                    }
+                }
+                MemoryOperation::Write => {
+                    if !memory_accesses
+                        .iter()
+                        .any(|access| access.address == crash_address && 
+                            (access.access_type == MemoryAccessType::Write || access.access_type == MemoryAccessType::ReadWrite)) {
+                    info.crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                    }
+                }
+
+                MemoryOperation::Execute =>  {
+                    if exception_details
+                        .context
+                        .as_ref()
+                        .is_some_and(|context| context.get_instruction_pointer() != crash_address) {
+                        info.crash_reason_inconsistencies
+                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                        
+                    }
+                }
+                MemoryOperation::UnknownOperation => {
+                    // TODO: This is the non-Windows case. Maybe still check if the crash address is any of the accesses?
+                }
             }
+            
         }
 
         // Check if crash_reason_operation is actually a violation
@@ -928,21 +966,6 @@ impl<'a> MinidumpInfo<'a> {
             if crash_reason_operation.is_allowed_for(&mi) {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
-            }
-        }
-
-        // TODO: The memory operations of crash reasons and instructions are not as symmetric as thought
-        //       Should consider putting this information in memory_accesses instead
-        // Check if crash_reason_operation is consistent with crashing instruction
-        if let Some(instruction_operation) = info.memory_operation {
-            if !MemoryOperation::consistent_operation(crash_reason_operation, instruction_operation)
-            {
-                info.crash_reason_inconsistencies.push(
-                    CrashReasonInconsistency::InconsistentMemoryOperation {
-                        crash_reason_operation,
-                        instruction_operation,
-                    },
-                );
             }
         }
     }
@@ -1291,6 +1314,7 @@ pub mod memory_operation {
     pub enum MemoryOperation {
         #[default]
         Undetermined,
+        // TODO: NoOperation is not useful anymore as we won't get it from exceptions
         NoOperation,
         Read,
         Write,
@@ -1371,26 +1395,6 @@ pub mod memory_operation {
                         && memory_info.is_writable()
                         && memory_info.is_executable()
                 }
-            }
-        }
-
-        // TODO: some opcodes can be both read & write
-        /// Return whether two memory operations are "consistent"
-        /// Two operations are "consistent" if the corresponding sources of information on the memory operation
-        /// (eg. crash reason and crashing instruction) are not conflicting
-        pub fn consistent_operation(
-            operation1: MemoryOperation,
-            operation2: MemoryOperation,
-        ) -> bool {
-            match (operation1, operation2) {
-                (operation1, operation2) if operation1 == operation2 => true,
-                (Self::Undetermined, _)
-                | (_, Self::Undetermined)
-                | (Self::Execute, _)
-                | (_, Self::Execute) => true,
-                (Self::NoOperation, _) | (_, Self::NoOperation) => false,
-                (Self::UnknownOperation, _) | (_, Self::UnknownOperation) => true,
-                _ => false,
             }
         }
     }
