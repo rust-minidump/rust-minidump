@@ -19,8 +19,6 @@
 use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
 use std::collections::BTreeSet;
 
-use crate::memory_operation::MemoryOperation;
-
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
 pub enum OpAnalysisError {
@@ -50,8 +48,9 @@ pub enum OpAnalysisError {
 pub struct OpAnalysis {
     /// A string representation of the instruction for humans to read
     pub instruction_str: String,
-    /// The memory operation performed by the instruction
-    pub memory_operation: MemoryOperation,
+    /// A list of booleans representing whether this instruction could have caused
+    /// a particular type of crash
+    pub possible_crash_types: PossibleCrashTypes,
     /// A list of all the memory accesses performed by the instruction
     ///
     /// Note that an empty vector and `None` don't mean the same thing -- `None` means
@@ -76,6 +75,31 @@ pub struct MemoryAccess {
     /// Note that this is optional, as there are weird instructions that do not know the size
     /// of their memory accesses without more complex context.
     pub size: Option<u8>,
+    /// The type of the memory access
+    pub access_type: MemoryAccessType,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum MemoryAccessType {
+    Read,
+    Write,
+    ReadWrite,
+
+    // TODO: Not sure if `Unknown` is necessary, used as place holder for now
+    Unknown,
+}
+
+/// A list of booleans representing whether this instruction could have caused
+/// a particular type of crash
+/// Note that memory access crashses are not included, as they are checked through
+/// `memory_accesses` instead
+#[derive(Clone, Debug)]
+pub struct PossibleCrashTypes {
+    pub flt_division_by_zero: bool,
+    pub int_division_by_zero: bool,
+    pub datatype_misalignment: bool,
+    pub priv_instruction: bool,
+    pub stack_overflow: bool,
 }
 
 /// Analyze the instructions being run by the given thread
@@ -163,17 +187,13 @@ mod amd64 {
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
-        let memory_operation = match &memory_accesses {
-            // TODO: Wrong assumption, memory_accesses currently does not contain indirect access to imm & disp
-            Some(accesses) if accesses.is_empty() => MemoryOperation::NoOperation,
-            _ => MemoryOperation::from_amd64_instruction(decoded_instruction),
-        };
+        let possible_crash_types = PossibleCrashTypes::from_amd64_instruction(decoded_instruction);
 
         let registers = get_registers(decoded_instruction);
 
         Ok(OpAnalysis {
             instruction_str,
-            memory_operation,
+            possible_crash_types,
             memory_accesses,
             registers,
         })
@@ -194,59 +214,22 @@ mod amd64 {
         ret
     }
 
-    impl MemoryOperation {
-        fn from_amd64_instruction(i: Instruction) -> Self {
-            // TODO: yaxpeax can provide better information on the "direction" and privilege levels
-            //       of instructions in the future
-            match i.opcode() {
-                Opcode::LEA => Self::NoOperation,
-                Opcode::MOV
-                | Opcode::MOVAPD
-                | Opcode::MOVAPS
-                | Opcode::MOVBE
-                | Opcode::MOVD
-                | Opcode::MOVQ
-                | Opcode::MOVDDUP
-                | Opcode::MOVDQ2Q
-                | Opcode::MOVDQA
-                | Opcode::MOVDQU
-                | Opcode::MOVHLPS
-                | Opcode::MOVHPD
-                | Opcode::MOVHPS
-                | Opcode::MOVLHPS
-                | Opcode::MOVLPD
-                | Opcode::MOVLPS
-                | Opcode::MOVMSKPD
-                | Opcode::MOVMSKPS
-                | Opcode::MOVNTDQ
-                | Opcode::MOVNTI
-                | Opcode::MOVNTPD
-                | Opcode::MOVNTPS
-                | Opcode::MOVNTQ
-                | Opcode::MOVQ2DQ
-                | Opcode::MOVS
-                | Opcode::MOVSD
-                | Opcode::MOVSHDUP
-                | Opcode::MOVSLDUP
-                | Opcode::MOVSS
-                | Opcode::MOVSX
-                | Opcode::MOVSXD
-                | Opcode::MOVUPD
-                | Opcode::MOVUPS
-                | Opcode::MOVZX => {
-                    if i.operand_count() != 2 {
-                        tracing::warn!("mov instruction had incorrect operand count");
-                        return Self::Undetermined;
-                    }
-                    match (i.operand(0).is_memory(), i.operand(1).is_memory()) {
-                        (true, true) => Self::UnknownOperation,
-                        (false, true) => Self::Read,
-                        (true, false) => Self::Write,
-                        (false, false) => Self::NoOperation,
-                    }
-                }
-                _ => Self::Undetermined,
-            }
+    impl PossibleCrashTypes {
+        fn from_amd64_instruction(_instruction: Instruction) -> Self {
+            let possible_crash_types = PossibleCrashTypes {
+                flt_division_by_zero: false,
+                int_division_by_zero: false,
+                datatype_misalignment: false,
+                priv_instruction: false,
+                stack_overflow: false,
+            };
+
+            // TODO: Check if flt_division_by_zero is possible from given instruction
+            // TODO: Check if int_division_by_zero is possible from given instruction
+            // TODO: Check if datatype_misalignment is possible from given instruction
+            // TODO: Check if priv_instruction is possible from given instruction
+            // TODO: Check if stack_overflow is possible from given instruction
+            possible_crash_types
         }
     }
 
@@ -373,12 +356,14 @@ mod amd64 {
                         is_likely_null_pointer_dereference: false,
                         is_likely_guard_page: false,
                         size: mem_size,
+                        access_type: MemoryAccessType::Unknown, // TODO: Derive access_type from `yaxpeax`
                     }),
                     Operand::DisplacementU64(disp) => Some(MemoryAccess {
                         address: disp,
                         is_likely_null_pointer_dereference: false,
                         is_likely_guard_page: false,
                         size: mem_size,
+                        access_type: MemoryAccessType::Unknown, // TODO: Derive access_type from `yaxpeax`
                     }),
                     other_operand => {
                         if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
@@ -409,6 +394,7 @@ mod amd64 {
                     is_likely_null_pointer_dereference: address == 0,
                     is_likely_guard_page: false,
                     size: Some(1),
+                    access_type: MemoryAccessType::Unknown, // TODO: Derive access_type from `yaxpeax`
                 });
             };
 
@@ -468,6 +454,7 @@ mod amd64 {
                 is_likely_null_pointer_dereference: false,
                 is_likely_guard_page: false,
                 size: access_size,
+                access_type: MemoryAccessType::Unknown, // TODO: Derive access_type from `yaxpeax`
             };
 
             if let Some(reg) = register_operand_info.base_reg {
