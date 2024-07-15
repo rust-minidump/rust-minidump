@@ -10,8 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::memory_operation::MemoryOperation;
-use crate::op_analysis::MemoryAccess;
+use crate::op_analysis::{MemoryAccess, PossibleCrashTypes};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -218,8 +217,8 @@ pub struct ExceptionInfo {
     pub adjusted_address: Option<AdjustedAddress>,
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
-    /// The memory operation performed by the instruction (if available)
-    pub memory_operation: Option<MemoryOperation>,
+    /// A list of possible crashes derived from the instruction
+    pub possible_crash_types: Option<PossibleCrashTypes>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
@@ -424,11 +423,7 @@ impl PossibleBitFlip {
 #[derive(Debug, Clone)]
 pub enum CrashReasonInconsistency {
     AccessViolationWhenAccessAllowed,
-    CrashAddressNotFoundInMemoryAccesses,
-    InconsistentMemoryOperation {
-        crash_reason_operation: MemoryOperation,
-        instruction_operation: MemoryOperation,
-    },
+    CrashingAccessNotFoundInMemoryAccesses,
 }
 
 impl std::fmt::Display for CrashReasonInconsistency {
@@ -440,20 +435,10 @@ impl std::fmt::Display for CrashReasonInconsistency {
                     "Crash reason is access violation exception but access is allowed"
                 )
             }
-            CrashReasonInconsistency::CrashAddressNotFoundInMemoryAccesses => {
+            CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => {
                 write!(
                     f,
-                    "Crash reason address not found in memory accesses done by crashing instruction"
-                )
-            }
-            CrashReasonInconsistency::InconsistentMemoryOperation {
-                crash_reason_operation,
-                instruction_operation,
-            } => {
-                write!(
-                    f,
-                    "Crash reason is {} but instruction is {}",
-                    crash_reason_operation, instruction_operation
+                    "Memory access of crash reason not found in memory accesses done by crashing instruction"
                 )
             }
         }
@@ -609,12 +594,7 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            if let Some(memory_operation) = crash_info.memory_operation {
-                writeln!(
-                    f,
-                    "Memory operation done by instruction: {memory_operation}"
-                )?;
-            }
+            // TODO: output possible crash types
 
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
                 if !memory_accesses.is_empty() {
