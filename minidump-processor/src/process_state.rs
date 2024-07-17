@@ -422,6 +422,9 @@ impl PossibleBitFlip {
 
 #[derive(Debug, Clone)]
 pub enum CrashReasonInconsistency {
+    IntDivByZeroNotPossible,
+    DatatypeMisalignmentNotPossible,
+    PrivInstructionCrashWithoutPrivInstruction,
     AccessViolationWhenAccessAllowed,
     CrashingAccessNotFoundInMemoryAccesses,
 }
@@ -429,6 +432,24 @@ pub enum CrashReasonInconsistency {
 impl std::fmt::Display for CrashReasonInconsistency {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            CrashReasonInconsistency::IntDivByZeroNotPossible => {
+                write!(
+                    f,
+                    "Crash reason is integer division by zero but disassembled instruction is not"
+                )
+            }
+            CrashReasonInconsistency::DatatypeMisalignmentNotPossible => {
+                write!(
+                    f,
+                    "Crash reason is datatype misalignment but disassembled instruction is not"
+                )
+            }
+            CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
+                write!(
+                    f,
+                    "Crash reason is priveleged instruction but disassembled instruction is not"
+                )
+            }
             CrashReasonInconsistency::AccessViolationWhenAccessAllowed => {
                 write!(
                     f,
@@ -438,7 +459,7 @@ impl std::fmt::Display for CrashReasonInconsistency {
             CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => {
                 write!(
                     f,
-                    "Memory access of crash reason not found in memory accesses done by crashing instruction"
+                    "Memory access of crash reason not found in memory accesses done by disassembled instruction"
                 )
             }
         }
@@ -594,7 +615,7 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            // TODO: output possible crash types
+            // TODO: output possible crash types?
 
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
                 if !memory_accesses.is_empty() {

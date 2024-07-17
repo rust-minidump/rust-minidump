@@ -823,83 +823,91 @@ impl<'a> MinidumpInfo<'a> {
     // TODO: Extend to handle other crash reasons (may or may not be memory related)
     /// Check for inconsistencies between crash reason and crashing instruction
     pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
-        // use minidump_common::errors::ExceptionCodeMac;
-        use minidump_common::errors::ExceptionCodeMacArithmeticArmType as MacArithArm;
         use minidump_common::errors::ExceptionCodeMacArithmeticPpcType as MacArithPpc;
         use minidump_common::errors::ExceptionCodeMacArithmeticX86Type as MacArithX86;
 
-        // use minidump_common::errors::ExceptionCodeLinux;
         use minidump_common::errors::ExceptionCodeLinuxSigfpeKind as LinuxSigfpe;
 
         use minidump_common::errors::ExceptionCodeWindows;
         use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
-        // use minidump_common::errors::NtStatusWindows;
-        // use minidump_common::errors::WinErrorWindows;
+        use minidump_common::errors::NtStatusWindows;
+        use minidump_common::errors::WinErrorWindows;
 
         match exception_details.info.reason {
-            // TODO: Separate into int zero divide and flt zero divide?
-            CrashReason::MacArithmeticArm(MacArithArm::EXC_ARM_FP_DZ)
-            | CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
-            | CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_FLT_ZERO_DIVIDE)
+            // Int division by zero
+            CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
             | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
             | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
-            | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_FLTDIV)
-            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO)
-            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_FLT_DIVIDE_BY_ZERO) => {
-                // TODO: Check for instruction's possibility for division by zero exception
-                //       Check if the instruction is a division
-                //       Check if the divisor operand is zero
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO) => {
+                if !exception_details
+                    .info
+                    .possible_crash_types
+                    .as_ref()
+                    .is_some_and(|p| p.int_division_by_zero)
+                {
+                    exception_details
+                        .info
+                        .crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::IntDivByZeroNotPossible);
+                }
             }
-            
-            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ILLEGAL_INSTRUCTION) 
-            // TODO: Mac & Linux's version of Illegal instructions?
-            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ILLEGAL_INSTRUCTION)
-            => {
-                // TODO: Not sure how to check for illegal instruction
-            }
-            
-            // TODO: Datatype misalignment crashes
-            
-            // TODO: Privileged Instruction crashes
-            
-            // TODO: Single Step crashes (not in PossibleCrashTypes)
 
-            // TODO: What about Stack Buffer Overrun?
-            
-            // Windows stack overflow crashes
+            // Datatype misalignment
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_DATATYPE_MISALIGNMENT)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_DATATYPE_MISALIGNMENT)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_DATATYPE_MISALIGNMENT_ERROR) => {
+                if !exception_details
+                    .info
+                    .possible_crash_types
+                    .as_ref()
+                    .is_some_and(|p| p.datatype_misalignment)
+                {
+                    exception_details
+                        .info
+                        .crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::DatatypeMisalignmentNotPossible);
+                }
+            }
+
+            // Privileged Instruction
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_PRIV_INSTRUCTION)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
+                if !exception_details
+                    .info
+                    .possible_crash_types
+                    .as_ref()
+                    .is_some_and(|p| p.priv_instruction)
+                {
+                    exception_details
+                        .info
+                        .crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction);
+                }
+            }
+
+            // Windows stack overflow and access violation
+            // We can't determine whether a memory access is for the stack or not
+            // So we treat stack overflow like an access violation with unknown operation
+            // i.e. It is only considered inconsistent if the instruction has no memory access
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
-            // TODO: These are also Stack overflow exceptions?
-            // | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW_READ)
-            // | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW)
-            // | CrashReason::WindowsWinErrorWithFacility(_, WinErrorWindows::ERROR_STACK_OVERFLOW)
-            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW) 
-            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW_READ) 
-            // | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ACPI_STACK_OVERFLOW) 
-            => {
-                // TODO: Check for stack overflow
-                //       Should be an operation that pushes the stack?
-                //       Crash address should be rip?
-            }
-
-            // Windows memory crashes
-            CrashReason::WindowsAccessViolation(WinAccess::READ)
+            | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW_READ)
+            | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW)
+            | CrashReason::WindowsWinErrorWithFacility(_, WinErrorWindows::ERROR_STACK_OVERFLOW)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW_READ)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ACPI_STACK_OVERFLOW)
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION)
+            | CrashReason::WindowsAccessViolation(WinAccess::READ)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
-            | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
-            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
+            | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
+                // 0xffffffffffffffff as crash address (eg. due to calling non-canonical address) is
+                // an edge case we don't handle.
+                if exception_details.info.address.0 == 0xffffffffffffffff {
+                    return;
+                }
                 self.check_for_memory_crash_inconsistencies(exception_details);
             }
-            
-            // TODO: These crash reasons can be caused by stack overflow / access violation
-            // Note that when Linux stack overflows, its crash address is rsp before the overflow
-            // CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
-            // | CrashReason::MacBadAccessKern(_)
-            // | CrashReason::MacBadAccessArm(_)
-            // | CrashReason::MacBadAccessPpc(_)
-            // | CrashReason::MacBadAccessX86(_)
-            // | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
-            // | CrashReason::LinuxSigsegv(_)
 
-            
             _ => (),
         }
     }
@@ -907,7 +915,7 @@ impl<'a> MinidumpInfo<'a> {
     fn check_for_memory_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
         use crate::op_analysis::MemoryAccessType;
         use memory_operation::MemoryOperation;
-        
+
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
         let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
@@ -916,49 +924,49 @@ impl<'a> MinidumpInfo<'a> {
             return;
         }
 
-        // TODO: relative offsets & absolute values for "indirect" access are not in memory_accesses
         // TODO: `lea` will cause an entry in memory_accesses despite not being an access
-        // Check if crash address is actually accessed in instruction or instruction pointer
-
+        // Check if crash address is actually accessed as crash reason claimed
         if let Some(memory_accesses) = &info.memory_accesses {
-
             match crash_reason_operation {
                 MemoryOperation::Undetermined => return,
-                MemoryOperation::NoOperation => return, 
                 MemoryOperation::Read => {
-                    if !memory_accesses
-                        .iter()
-                        .any(|access| access.address == crash_address && 
-                            (access.access_type == MemoryAccessType::Read || access.access_type == MemoryAccessType::ReadWrite)) {
-                    info.crash_reason_inconsistencies
-                        .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                    if !memory_accesses.iter().any(|access| {
+                        access.address == crash_address
+                            && (access.access_type == MemoryAccessType::Read
+                                || access.access_type == MemoryAccessType::ReadWrite)
+                    }) {
+                        info.crash_reason_inconsistencies
+                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
                     }
                 }
                 MemoryOperation::Write => {
-                    if !memory_accesses
-                        .iter()
-                        .any(|access| access.address == crash_address && 
-                            (access.access_type == MemoryAccessType::Write || access.access_type == MemoryAccessType::ReadWrite)) {
-                    info.crash_reason_inconsistencies
-                        .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                    if !memory_accesses.iter().any(|access| {
+                        access.address == crash_address
+                            && (access.access_type == MemoryAccessType::Write
+                                || access.access_type == MemoryAccessType::ReadWrite)
+                    }) {
+                        info.crash_reason_inconsistencies
+                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
                     }
                 }
 
-                MemoryOperation::Execute =>  {
+                MemoryOperation::Execute => {
                     if exception_details
                         .context
                         .as_ref()
-                        .is_some_and(|context| context.get_instruction_pointer() != crash_address) {
+                        .is_some_and(|context| context.get_instruction_pointer() != crash_address)
+                    {
                         info.crash_reason_inconsistencies
                             .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
-                        
                     }
                 }
+
+                // Crashes caused by unknown operations, such as stack overflow
+                // No assumptions made about the crash address
                 MemoryOperation::UnknownOperation => {
-                    // TODO: This is the non-Windows case. Maybe still check if the crash address is any of the accesses?
+                    // TODO: Check there is any memory_access
                 }
             }
-            
         }
 
         // Check if crash_reason_operation is actually a violation
@@ -1314,8 +1322,6 @@ pub mod memory_operation {
     pub enum MemoryOperation {
         #[default]
         Undetermined,
-        // TODO: NoOperation is not useful anymore as we won't get it from exceptions
-        NoOperation,
         Read,
         Write,
         Execute,
@@ -1326,7 +1332,6 @@ pub mod memory_operation {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(match self {
                 Self::Undetermined => "Undetermined",
-                Self::NoOperation => "No Operation",
                 Self::Read => "Read",
                 Self::Write => "Write",
                 Self::Execute => "Execute",
@@ -1367,7 +1372,6 @@ pub mod memory_operation {
         pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => true,
-                Self::NoOperation => true,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
@@ -1386,7 +1390,6 @@ pub mod memory_operation {
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => false,
-                Self::NoOperation => true,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
