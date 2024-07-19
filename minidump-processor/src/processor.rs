@@ -670,7 +670,7 @@ impl<'a> MinidumpInfo<'a> {
                         address: address.into(),
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
-                        possible_crash_types: Some(op_analysis.possible_crash_types),
+                        possible_crash_info: Some(op_analysis.possible_crash_info),
                         memory_accesses: op_analysis.memory_accesses,
                         possible_bit_flips: Default::default(),
                         crash_reason_inconsistencies: Default::default(),
@@ -688,7 +688,7 @@ impl<'a> MinidumpInfo<'a> {
             address: address.into(),
             adjusted_address: None,
             instruction_str: None,
-            possible_crash_types: None,
+            possible_crash_info: None,
             memory_accesses: None,
             possible_bit_flips: Default::default(),
             crash_reason_inconsistencies: Default::default(),
@@ -831,7 +831,6 @@ impl<'a> MinidumpInfo<'a> {
         use minidump_common::errors::ExceptionCodeWindows;
         use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
         use minidump_common::errors::NtStatusWindows;
-        use minidump_common::errors::WinErrorWindows;
 
         match exception_details.info.reason {
             // Int division by zero
@@ -839,11 +838,11 @@ impl<'a> MinidumpInfo<'a> {
             | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
             | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
             | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO) => {
-                if !exception_details
+                if exception_details
                     .info
-                    .possible_crash_types
+                    .possible_crash_info
                     .as_ref()
-                    .is_some_and(|p| p.int_division_by_zero)
+                    .is_some_and(|p| !p.int_division_by_zero)
                 {
                     exception_details
                         .info
@@ -852,31 +851,14 @@ impl<'a> MinidumpInfo<'a> {
                 }
             }
 
-            // Datatype misalignment
-            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_DATATYPE_MISALIGNMENT)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_DATATYPE_MISALIGNMENT)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_DATATYPE_MISALIGNMENT_ERROR) => {
-                if !exception_details
-                    .info
-                    .possible_crash_types
-                    .as_ref()
-                    .is_some_and(|p| p.datatype_misalignment)
-                {
-                    exception_details
-                        .info
-                        .crash_reason_inconsistencies
-                        .push(CrashReasonInconsistency::DatatypeMisalignmentNotPossible);
-                }
-            }
-
             // Privileged Instruction
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_PRIV_INSTRUCTION)
             | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
-                if !exception_details
+                if exception_details
                     .info
-                    .possible_crash_types
+                    .possible_crash_info
                     .as_ref()
-                    .is_some_and(|p| p.priv_instruction)
+                    .is_some_and(|p| !p.priv_instruction)
                 {
                     exception_details
                         .info
@@ -886,17 +868,9 @@ impl<'a> MinidumpInfo<'a> {
             }
 
             // Windows stack overflow and access violation
-            // We can't determine whether a memory access is for the stack or not
-            // So we treat stack overflow like an access violation with unknown operation
-            // i.e. It is only considered inconsistent if the instruction has no memory access
+            // We treat stack overflow like an access violation with unknown operation
+            // i.e. It is considered inconsistent if the instruction has no memory access
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
-            | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW_READ)
-            | CrashReason::WindowsWinError(WinErrorWindows::ERROR_STACK_OVERFLOW)
-            | CrashReason::WindowsWinErrorWithFacility(_, WinErrorWindows::ERROR_STACK_OVERFLOW)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_STACK_OVERFLOW_READ)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_ACPI_STACK_OVERFLOW)
-            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION)
             | CrashReason::WindowsAccessViolation(WinAccess::READ)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
             | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
@@ -905,67 +879,62 @@ impl<'a> MinidumpInfo<'a> {
                 if exception_details.info.address.0 == 0xffffffffffffffff {
                     return;
                 }
-                self.check_for_memory_crash_inconsistencies(exception_details);
+                self.check_for_memory_access_inconsistencies(exception_details);
             }
 
             _ => (),
         }
     }
 
-    fn check_for_memory_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
+    fn check_for_memory_access_inconsistencies(
+        &self,
+        exception_details: &mut ExceptionDetails<'a>,
+    ) {
         use crate::op_analysis::MemoryAccessType;
         use memory_operation::MemoryOperation;
 
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
         let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
-        // Only checking memory-related crash inconsistencies
-        if crash_reason_operation == MemoryOperation::Undetermined {
-            return;
-        }
+        let is_common_read_write_instruction = info
+            .possible_crash_info
+            .as_ref()
+            .is_some_and(|p| p.is_common_memory_crash_instruction);
 
         // TODO: `lea` will cause an entry in memory_accesses despite not being an access
         // Check if crash address is actually accessed as crash reason claimed
         if let Some(memory_accesses) = &info.memory_accesses {
-            match crash_reason_operation {
-                MemoryOperation::Undetermined => return,
+            let is_inconsistent = match crash_reason_operation {
+                MemoryOperation::Undetermined => false,
                 MemoryOperation::Read => {
-                    if !memory_accesses.iter().any(|access| {
-                        access.address == crash_address
-                            && (access.access_type == MemoryAccessType::Read
-                                || access.access_type == MemoryAccessType::ReadWrite)
-                    }) {
-                        info.crash_reason_inconsistencies
-                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
-                    }
+                    is_common_read_write_instruction
+                        && !memory_accesses.iter().any(|access| {
+                            access.address == crash_address
+                                && (access.access_type == Some(MemoryAccessType::Read)
+                                    || access.access_type == Some(MemoryAccessType::ReadWrite))
+                        })
                 }
                 MemoryOperation::Write => {
-                    if !memory_accesses.iter().any(|access| {
-                        access.address == crash_address
-                            && (access.access_type == MemoryAccessType::Write
-                                || access.access_type == MemoryAccessType::ReadWrite)
-                    }) {
-                        info.crash_reason_inconsistencies
-                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
-                    }
+                    is_common_read_write_instruction
+                        && !memory_accesses.iter().any(|access| {
+                            access.address == crash_address
+                                && (access.access_type == Some(MemoryAccessType::Write)
+                                    || access.access_type == Some(MemoryAccessType::ReadWrite))
+                        })
                 }
+                MemoryOperation::Execute => exception_details
+                    .context
+                    .as_ref()
+                    .is_some_and(|context| context.get_instruction_pointer() != crash_address),
 
-                MemoryOperation::Execute => {
-                    if exception_details
-                        .context
-                        .as_ref()
-                        .is_some_and(|context| context.get_instruction_pointer() != crash_address)
-                    {
-                        info.crash_reason_inconsistencies
-                            .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
-                    }
+                // Crashes such as stack overflow, no assumptions made about the crash address
+                MemoryOperation::UnknownReadWrite => {
+                    is_common_read_write_instruction && !(memory_accesses.iter().count() > 0)
                 }
-
-                // Crashes caused by unknown operations, such as stack overflow
-                // No assumptions made about the crash address
-                MemoryOperation::UnknownOperation => {
-                    // TODO: Check there is any memory_access
-                }
+            };
+            if is_inconsistent {
+                info.crash_reason_inconsistencies
+                    .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
             }
         }
 
@@ -1325,7 +1294,7 @@ pub mod memory_operation {
         Read,
         Write,
         Execute,
-        UnknownOperation,
+        UnknownReadWrite,
     }
 
     impl std::fmt::Display for MemoryOperation {
@@ -1335,15 +1304,13 @@ pub mod memory_operation {
                 Self::Read => "Read",
                 Self::Write => "Write",
                 Self::Execute => "Execute",
-                Self::UnknownOperation => "Unknown",
+                Self::UnknownReadWrite => "Unknown Read or Write",
             })
         }
     }
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            use minidump_common::errors::ExceptionCodeLinux;
-            use minidump_common::errors::ExceptionCodeMac;
             use minidump_common::errors::ExceptionCodeWindows;
             use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
 
@@ -1351,15 +1318,8 @@ pub mod memory_operation {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
                 CrashReason::WindowsAccessViolation(WinAccess::WRITE) => Self::Write,
                 CrashReason::WindowsAccessViolation(WinAccess::EXEC) => Self::Execute,
-                CrashReason::MacGeneral(ExceptionCodeMac::EXC_BAD_ACCESS, _)
-                | CrashReason::MacBadAccessKern(_)
-                | CrashReason::MacBadAccessArm(_)
-                | CrashReason::MacBadAccessPpc(_)
-                | CrashReason::MacBadAccessX86(_)
-                | CrashReason::LinuxGeneral(ExceptionCodeLinux::SIGSEGV, _)
-                | CrashReason::LinuxSigsegv(_)
-                | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
-                    Self::UnknownOperation
+                CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW) => {
+                    Self::UnknownReadWrite
                 }
                 _ => Self::default(),
             }
@@ -1367,37 +1327,29 @@ pub mod memory_operation {
 
         /// Return whether this memory operation is possibily allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns true.
-        /// If operation is `UnknownOperation`, this method returns true if the given memory region
-        /// allows any operation, and returns false otherwise.
+        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
+        /// allows either read or write, and returns false otherwise.
         pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => true,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-                Self::UnknownOperation => {
-                    memory_info.is_readable()
-                        || memory_info.is_writable()
-                        || memory_info.is_executable()
-                }
+                Self::UnknownReadWrite => memory_info.is_readable() || memory_info.is_writable(),
             }
         }
 
         /// Return whether this memory operation is definitely allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns false.
         /// If operation is `UnknownOperation`, this method returns true if the given memory region
-        /// allows all operations, and returns false otherwise.
+        /// allows both read and write, and returns false otherwise.
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => false,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-                Self::UnknownOperation => {
-                    memory_info.is_readable()
-                        && memory_info.is_writable()
-                        && memory_info.is_executable()
-                }
+                Self::UnknownReadWrite => memory_info.is_readable() && memory_info.is_writable(),
             }
         }
     }

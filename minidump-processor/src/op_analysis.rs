@@ -50,7 +50,7 @@ pub struct OpAnalysis {
     pub instruction_str: String,
     /// A list of booleans representing whether this instruction could have caused
     /// a particular type of crash
-    pub possible_crash_types: PossibleCrashTypes,
+    pub possible_crash_info: PossibleCrashInfo,
     /// A list of all the memory accesses performed by the instruction
     ///
     /// Note that an empty vector and `None` don't mean the same thing -- `None` means
@@ -75,8 +75,15 @@ pub struct MemoryAccess {
     /// Note that this is optional, as there are weird instructions that do not know the size
     /// of their memory accesses without more complex context.
     pub size: Option<u8>,
+    // TODO:
+    // `access_type` don't have to `Option` once `yaxpeax` provides dirivation for operands
+    // of all instructions,
     /// The type of the memory access
-    pub access_type: MemoryAccessType,
+    ///
+    /// `None` can be any access done by an instruction that is not common for memory crash
+    // TODO:
+    /// or indirect access?
+    pub access_type: Option<MemoryAccessType>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -84,20 +91,17 @@ pub enum MemoryAccessType {
     Read,
     Write,
     ReadWrite,
-    // TODO: Remove this once `yaxpeax` provides access types for operands of all instructions
-    // Since we are deriving access type by enumerating common instruuctions
-    // `Unknown` is for any instruction that are not supported
-    Unknown,
 }
 
 /// A list of booleans representing whether this instruction could have caused
 /// a particular type of crash
-/// Note that memory access crashses are not included, as they are checked through
-/// `memory_accesses` instead
+/// Note that memory access crashses are checked through `memory_accesses`
+/// TODO: remove `is_common_memory_crash_instruction` field once `yaxpeax` provides access types
+/// for operands of all instructions
 #[derive(Clone, Debug)]
-pub struct PossibleCrashTypes {
+pub struct PossibleCrashInfo {
+    pub is_common_memory_crash_instruction: bool,
     pub int_division_by_zero: bool,
-    pub datatype_misalignment: bool,
     pub priv_instruction: bool,
 }
 
@@ -186,13 +190,13 @@ mod amd64 {
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
-        let possible_crash_types = PossibleCrashTypes::from_amd64_instruction(decoded_instruction);
+        let possible_crash_types = PossibleCrashInfo::from_amd64_instruction(decoded_instruction);
 
         let registers = get_registers(decoded_instruction);
 
         Ok(OpAnalysis {
             instruction_str,
-            possible_crash_types,
+            possible_crash_info: possible_crash_types,
             memory_accesses,
             registers,
         })
@@ -213,19 +217,16 @@ mod amd64 {
         ret
     }
 
-    impl PossibleCrashTypes {
+    impl PossibleCrashInfo {
         fn from_amd64_instruction(instruction: Instruction) -> Self {
-            // TODO: Use `yaxpeax` to check for possible crash types
-            // TODO: Currently determined by enumerating
+            // TODO: Use `yaxpeax` to check for possible crash types instead of enumeration
             // The enumerations are not exhaustive and may have missed some possibilities
-            PossibleCrashTypes {
-                int_division_by_zero: PossibleCrashTypes::int_division_by_zero_possible(
+            PossibleCrashInfo {
+                is_common_memory_crash_instruction: MemoryAccessType::can_derive_access_type(
                     instruction,
                 ),
-                datatype_misalignment: PossibleCrashTypes::datatype_misalignment_possible(
-                    instruction,
-                ),
-                priv_instruction: PossibleCrashTypes::priv_instruction_possible(instruction),
+                int_division_by_zero: PossibleCrashInfo::int_division_by_zero_possible(instruction),
+                priv_instruction: PossibleCrashInfo::priv_instruction_possible(instruction),
             }
         }
 
@@ -234,15 +235,6 @@ mod amd64 {
                 // TODO: We can look into memory and check if the operand is actually 0
                 Opcode::DIV | Opcode::IDIV => true,
                 _ => false,
-            }
-        }
-
-        fn datatype_misalignment_possible(instruction: Instruction) -> bool {
-            match instruction.opcode() {
-                // TODO: We can look at the operand values and check if they are actually aligned
-                // TODO: Not sure which opcodes require alignment, true as placeholder for now
-                // Most datatype misalignment crashes happen on a `mov` instruction
-                _ => true,
             }
         }
 
@@ -302,9 +294,12 @@ mod amd64 {
     }
 
     impl MemoryAccessType {
+        fn can_derive_access_type(instruction: Instruction) -> bool {
+            Self::operand_memory_access_type(&instruction, 0).is_some()
+        }
+
         // TODO: Derive memory access type using `yaxpeax` instead
-        // The explicit memory access type of operand inferred from instruction, assuming it is an access
-        fn operand_memory_access_type(instruction: &Instruction, index: u8) -> Self {
+        fn operand_memory_access_type(instruction: &Instruction, index: u8) -> Option<Self> {
             match instruction.opcode() {
                 Opcode::MOV
                 | Opcode::MOVAPD
@@ -341,14 +336,14 @@ mod amd64 {
                 | Opcode::MOVUPS
                 | Opcode::MOVZX => {
                     if index == 0 {
-                        Self::Write
+                        Some(Self::Write)
                     } else if index == 1 {
-                        Self::Read
+                        Some(Self::Read)
                     } else {
-                        Self::Unknown
+                        None
                     }
                 }
-                _ => Self::Unknown,
+                _ => None,
             }
         }
     }
@@ -524,7 +519,7 @@ mod amd64 {
                     is_likely_null_pointer_dereference: address == 0,
                     is_likely_guard_page: false,
                     size: Some(1),
-                    access_type: MemoryAccessType::Unknown, // TODO: Technically no memory access in `indirect`
+                    access_type: None,
                 });
             };
 
@@ -585,7 +580,7 @@ mod amd64 {
                 is_likely_guard_page: false,
                 size: access_size,
                 // TODO: Use MemoryAccessType::operand_memory_access_type
-                access_type: MemoryAccessType::Unknown,
+                access_type: None,
             };
 
             if let Some(reg) = register_operand_info.base_reg {
