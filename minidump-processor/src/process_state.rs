@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::op_analysis::{MemoryAccess, PossibleCrashTypes};
+use crate::op_analysis::{MemoryAccess, PossibleCrashInfo};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -218,7 +218,7 @@ pub struct ExceptionInfo {
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
     /// A list of possible crashes derived from the instruction
-    pub possible_crash_types: Option<PossibleCrashTypes>,
+    pub possible_crash_info: Option<PossibleCrashInfo>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_accesses: Option<Vec<MemoryAccess>>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
@@ -423,7 +423,6 @@ impl PossibleBitFlip {
 #[derive(Debug, Clone)]
 pub enum CrashReasonInconsistency {
     IntDivByZeroNotPossible,
-    DatatypeMisalignmentNotPossible,
     PrivInstructionCrashWithoutPrivInstruction,
     AccessViolationWhenAccessAllowed,
     CrashingAccessNotFoundInMemoryAccesses,
@@ -436,12 +435,6 @@ impl std::fmt::Display for CrashReasonInconsistency {
                 write!(
                     f,
                     "Crash reason is integer division by zero but disassembled instruction is not"
-                )
-            }
-            CrashReasonInconsistency::DatatypeMisalignmentNotPossible => {
-                write!(
-                    f,
-                    "Crash reason is datatype misalignment but disassembled instruction is not"
                 )
             }
             CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
