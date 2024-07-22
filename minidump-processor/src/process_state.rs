@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::op_analysis::{MemoryAccess, PossibleCrashInfo};
+use crate::op_analysis::{MemoryAddressInfo, PossibleCrashInfo};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -220,7 +220,9 @@ pub struct ExceptionInfo {
     /// A list of possible crashes derived from the instruction
     pub possible_crash_info: Option<PossibleCrashInfo>,
     /// A list of memory accesses performed by crashing instruction (if available)
-    pub memory_accesses: Option<Vec<MemoryAccess>>,
+    pub memory_accesses: Option<Vec<MemoryAddressInfo>>,
+    /// Whether the instructino pointer is updated by crashing instruction
+    pub instruction_pointer_update: Option<MemoryAddressInfo>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
     ///
     /// The original address was possibly the result of faulty hardware, alpha particles, etc.
@@ -608,7 +610,7 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            // TODO: output possible crash types?
+            // TODO: output possible crash types
 
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
                 if !memory_accesses.is_empty() {
@@ -626,6 +628,19 @@ impl ProcessState {
                     }
                 } else {
                     writeln!(f, "No memory accessed by instruction")?;
+                }
+            }
+
+            if let Some(ref rip_update) = crash_info.instruction_pointer_update {
+                writeln!(f, "Instruction pointer update done by instruction:")?;
+                writeln!(f, "  Address: {}", Address(rip_update.address))?;
+                if let Some(size) = rip_update.size {
+                    writeln!(f, "     Size: {size}")?;
+                } else {
+                    writeln!(f, "     Size: Unknown")?;
+                }
+                if rip_update.is_likely_guard_page {
+                    writeln!(f, "     This address falls in a likely guard page.")?;
                 }
             }
 

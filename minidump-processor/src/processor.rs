@@ -13,7 +13,7 @@ use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };
 
-use crate::op_analysis::MemoryAccess;
+use crate::op_analysis::MemoryAddressInfo;
 use crate::process_state::{LinuxStandardBase, ProcessState};
 use crate::{
     arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
@@ -651,19 +651,32 @@ impl<'a> MinidumpInfo<'a> {
                 stack_memory_ref,
             ) {
                 Ok(op_analysis) => {
-                    let memory_accesses = op_analysis.memory_accesses.as_deref();
+                    let memory_accesses_and_rip_update = match (
+                        op_analysis.memory_accesses.clone(),
+                        op_analysis.instruction_pointer_update,
+                    ) {
+                        (Some(mut accesses), Some(rip_update)) => {
+                            accesses.push(rip_update);
+                            Some(accesses)
+                        }
+                        (accesses @ Some(_), None) => accesses,
+                        (None, Some(rip_update)) => Some(vec![rip_update]),
+                        (None, None) => None,
+                    };
+                    let memory_accesses_and_rip_update = memory_accesses_and_rip_update.as_deref();
 
-                    let adjusted_address = try_detect_null_pointer_in_disguise(memory_accesses)
-                        .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
-                        .or_else(|| {
-                            try_get_non_canonical_crash_address(
-                                &self.system_info,
-                                memory_accesses,
-                                reason,
-                                address,
-                            )
-                            .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
-                        });
+                    let adjusted_address =
+                        try_detect_null_pointer_in_disguise(memory_accesses_and_rip_update)
+                            .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
+                            .or_else(|| {
+                                try_get_non_canonical_crash_address(
+                                    &self.system_info,
+                                    memory_accesses_and_rip_update,
+                                    reason,
+                                    address,
+                                )
+                                .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
+                            });
 
                     exception_info = Some(crate::ExceptionInfo {
                         reason,
@@ -672,6 +685,7 @@ impl<'a> MinidumpInfo<'a> {
                         instruction_str: Some(op_analysis.instruction_str),
                         possible_crash_info: Some(op_analysis.possible_crash_info),
                         memory_accesses: op_analysis.memory_accesses,
+                        instruction_pointer_update: op_analysis.instruction_pointer_update,
                         possible_bit_flips: Default::default(),
                         crash_reason_inconsistencies: Default::default(),
                     });
@@ -690,6 +704,7 @@ impl<'a> MinidumpInfo<'a> {
             instruction_str: None,
             possible_crash_info: None,
             memory_accesses: None,
+            instruction_pointer_update: None,
             possible_bit_flips: Default::default(),
             crash_reason_inconsistencies: Default::default(),
         });
@@ -910,16 +925,16 @@ impl<'a> MinidumpInfo<'a> {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access_type == Some(MemoryAccessType::Read)
-                                    || access.access_type == Some(MemoryAccessType::ReadWrite))
+                                && (access.access == Some(MemoryAccessType::Read)
+                                    || access.access == Some(MemoryAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access_type == Some(MemoryAccessType::Write)
-                                    || access.access_type == Some(MemoryAccessType::ReadWrite))
+                                && (access.access == Some(MemoryAccessType::Write)
+                                    || access.access == Some(MemoryAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Execute => exception_details
@@ -929,7 +944,7 @@ impl<'a> MinidumpInfo<'a> {
 
                 // Crashes such as stack overflow, no assumptions made about the crash address
                 MemoryOperation::UnknownReadWrite => {
-                    is_common_read_write_instruction && !(memory_accesses.iter().count() > 0)
+                    is_common_read_write_instruction && memory_accesses.is_empty()
                 }
             };
             if is_inconsistent {
@@ -1178,7 +1193,7 @@ struct ExceptionDetails<'a> {
 /// determined, `None` otherwise
 fn try_get_non_canonical_crash_address(
     system_info: &SystemInfo,
-    memory_accesses: Option<&[MemoryAccess]>,
+    memory_accesses: Option<&[MemoryAddressInfo]>,
     reason: CrashReason,
     address: u64,
 ) -> Option<u64> {
@@ -1272,7 +1287,9 @@ fn is_non_canonical_exception(os: system_info::Os, reason: CrashReason, address:
 /// This function will search though all the memory accessses for the instruction and see if any
 /// of them were flagged by `op_analysis` as being a disguised nullptr. If so, we return that
 /// address as an "offset" from the null pointer value
-fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>) -> Option<u64> {
+fn try_detect_null_pointer_in_disguise(
+    memory_accesses: Option<&[MemoryAddressInfo]>,
+) -> Option<u64> {
     if let Some(memory_accesses) = memory_accesses {
         for access in memory_accesses.iter() {
             if access.is_likely_null_pointer_dereference {
