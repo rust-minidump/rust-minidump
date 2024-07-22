@@ -78,14 +78,19 @@ pub struct MemoryAddressInfo {
     /// of their memory accesses without more complex context.
     pub size: Option<u8>,
     /// The type of the memory access
-    pub access: Option<MemoryAccessType>,
+    ///
+    /// `None` represents no access is done towards this address
+    pub access: Option<OperandAccessType>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum MemoryAccessType {
+pub enum OperandAccessType {
     Read,
     Write,
     ReadWrite,
+
+    // TODO: Remove this variant once `yaxpeax` is used to derive access type of every operand
+    UncommonInstructionAccess,
 }
 
 /// A list of booleans representing whether this instruction could have caused
@@ -225,9 +230,7 @@ mod amd64 {
     impl PossibleCrashInfo {
         fn from_amd64_instruction(instruction: Instruction) -> Self {
             PossibleCrashInfo {
-                is_common_memory_crash_instruction: MemoryAccessType::can_derive_access_type(
-                    instruction,
-                ),
+                is_common_memory_crash_instruction: CommonOpcode::is_common(instruction.opcode()),
                 int_division_by_zero: PossibleCrashInfo::int_division_by_zero_possible(instruction),
                 priv_instruction: PossibleCrashInfo::priv_instruction_possible(instruction),
             }
@@ -245,7 +248,6 @@ mod amd64 {
         fn priv_instruction_possible(instruction: Instruction) -> bool {
             match instruction.opcode() {
                 // TODO: Some opcodes (eg. `mov`) reqeuire privilege only with specific operands
-                // Source: rl column on the coder64 site
                 Opcode::CLI
                 | Opcode::CLTS
                 | Opcode::HLT
@@ -297,57 +299,75 @@ mod amd64 {
         }
     }
 
-    impl MemoryAccessType {
-        fn can_derive_access_type(instruction: Instruction) -> bool {
-            Self::operand_memory_access_type(instruction, 0).is_some()
+    enum CommonOpcode {
+        CALL,
+        DEC,
+        INC,
+        JMP,
+        MOV,
+        MOVAPS,
+        MOVUPS,
+        POP,
+        PUSH,
+        RETURN,
+    }
+
+    impl CommonOpcode {
+        fn from_amd64_opcode(opcode: Opcode) -> Option<Self> {
+            match opcode {
+                Opcode::CALL => Some(Self::CALL),
+                Opcode::DEC => Some(Self::DEC),
+                Opcode::INC => Some(Self::INC),
+                Opcode::JMP => Some(Self::JMP),
+                Opcode::MOV => Some(Self::MOV),
+                Opcode::MOVAPS => Some(Self::MOVAPS),
+                Opcode::MOVUPS => Some(Self::MOVUPS),
+                Opcode::POP => Some(Self::POP),
+                Opcode::PUSH => Some(Self::PUSH),
+                Opcode::RETURN => Some(Self::RETURN),
+                _ => None,
+            }
         }
 
-        // TODO: Derive memory access type using `yaxpeax` instead
-        fn operand_memory_access_type(instruction: Instruction, index: u8) -> Option<Self> {
-            match instruction.opcode() {
-                Opcode::MOV
-                | Opcode::MOVAPD
-                | Opcode::MOVAPS
-                | Opcode::MOVBE
-                | Opcode::MOVD
-                | Opcode::MOVQ
-                | Opcode::MOVDDUP
-                | Opcode::MOVDQ2Q
-                | Opcode::MOVDQA
-                | Opcode::MOVDQU
-                | Opcode::MOVHLPS
-                | Opcode::MOVHPD
-                | Opcode::MOVHPS
-                | Opcode::MOVLHPS
-                | Opcode::MOVLPD
-                | Opcode::MOVLPS
-                | Opcode::MOVMSKPD
-                | Opcode::MOVMSKPS
-                | Opcode::MOVNTDQ
-                | Opcode::MOVNTI
-                | Opcode::MOVNTPD
-                | Opcode::MOVNTPS
-                | Opcode::MOVNTQ
-                | Opcode::MOVQ2DQ
-                | Opcode::MOVS
-                | Opcode::MOVSD
-                | Opcode::MOVSHDUP
-                | Opcode::MOVSLDUP
-                | Opcode::MOVSS
-                | Opcode::MOVSX
-                | Opcode::MOVSXD
-                | Opcode::MOVUPD
-                | Opcode::MOVUPS
-                | Opcode::MOVZX => {
+        fn is_common(opcode: Opcode) -> bool {
+            Self::from_amd64_opcode(opcode).is_some()
+        }
+    }
+
+    impl OperandAccessType {
+        // TODO: Derive access type using `yaxpeax` instead
+        fn explicit_from_instruction(instruction: Instruction, index: u8) -> Option<Self> {
+            let Some(opcode) = CommonOpcode::from_amd64_opcode(instruction.opcode()) else {
+                return Some(Self::UncommonInstructionAccess);
+            };
+            match opcode {
+                CommonOpcode::CALL | CommonOpcode::JMP | CommonOpcode::PUSH => {
+                    if index == 0 {
+                        Some(Self::Read)
+                    } else {
+                        tracing::warn!("call/jmp instruction had incorrect operand count");
+                        None
+                    }
+                }
+                CommonOpcode::DEC | CommonOpcode::INC => {
+                    if index == 0 {
+                        Some(Self::ReadWrite)
+                    } else {
+                        tracing::warn!("inc/dec instruction had incorrect operand count");
+                        None
+                    }
+                }
+                CommonOpcode::MOV | CommonOpcode::MOVAPS | CommonOpcode::MOVUPS => {
                     if index == 0 {
                         Some(Self::Write)
                     } else if index == 1 {
                         Some(Self::Read)
                     } else {
+                        tracing::warn!("mov instruction had incorrect operand count");
                         None
                     }
                 }
-                _ => None,
+                CommonOpcode::POP | CommonOpcode::RETURN => None,
             }
         }
     }
@@ -420,7 +440,7 @@ mod amd64 {
         fn memory_address_from_reg_operand(
             register_operand_info: RegOperandInfo,
             size: Option<u8>,
-            access: Option<MemoryAccessType>,
+            access: Option<OperandAccessType>,
             context: &MinidumpContext,
         ) -> Result<MemoryAddressInfo, OpAnalysisError> {
             let mut address_info = MemoryAddressInfo {
@@ -481,18 +501,26 @@ mod amd64 {
             &self,
             decoded_instruction: Instruction,
         ) -> Result<Vec<MemoryAddressInfo>, OpAnalysisError> {
-            // TODO: Derive implicit memory accesses performed by instructions
-            // eg. `inc`, `push`
             let mut accesses = Vec::new();
+            self.explicit_accesses(&mut accesses, decoded_instruction)?;
+            self.implicit_accesses(&mut accesses, decoded_instruction)?;
+            Ok(accesses)
+        }
+
+        fn explicit_accesses(
+            &self,
+            accesses: &mut Vec<MemoryAddressInfo>,
+            decoded_instruction: Instruction,
+        ) -> Result<(), OpAnalysisError> {
             // Shortcut -- If the instruction doesn't access memory, just return an empty list
             let mem_size = match decoded_instruction.mem_size() {
                 Some(access) => access.bytes_size(),
-                None => return Ok(accesses),
+                None => return Ok(()),
             };
 
             for idx in 0..decoded_instruction.operand_count() {
                 let operand = decoded_instruction.operand(idx);
-                let access = MemoryAccessType::operand_memory_access_type(decoded_instruction, idx);
+                let access = OperandAccessType::explicit_from_instruction(decoded_instruction, idx);
 
                 let maybe_access = match operand {
                     Operand::DisplacementU32(disp) => Some(MemoryAddressInfo {
@@ -528,7 +556,41 @@ mod amd64 {
                 }
             }
 
-            Ok(accesses)
+            Ok(())
+        }
+
+        fn implicit_accesses(
+            &self,
+            accesses: &mut Vec<MemoryAddressInfo>,
+            decoded_instruction: Instruction,
+        ) -> Result<(), OpAnalysisError> {
+            let mut push_implicit_access = |address, access| {
+                accesses.push(MemoryAddressInfo {
+                    address,
+                    is_likely_null_pointer_dereference: address == 0,
+                    is_likely_guard_page: false,
+                    size: Some(1), // TODO: correct size is 4?
+                    access,
+                });
+            };
+
+            let Some(opcode) = CommonOpcode::from_amd64_opcode(decoded_instruction.opcode()) else {
+                return Ok(());
+            };
+            match opcode {
+                CommonOpcode::CALL | CommonOpcode::PUSH => {
+                    if let Ok(rsp) = self.context.get_regspec(RegSpec::rsp()) {
+                        push_implicit_access(rsp, Some(OperandAccessType::Write));
+                    }
+                }
+                CommonOpcode::POP | CommonOpcode::RETURN => {
+                    if let Ok(rsp) = self.context.get_regspec(RegSpec::rsp()) {
+                        push_implicit_access(rsp, Some(OperandAccessType::Read));
+                    }
+                }
+                _ => (),
+            }
+            Ok(())
         }
     }
 

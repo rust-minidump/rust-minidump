@@ -612,6 +612,7 @@ impl ProcessState {
 
             // TODO: output possible crash types
 
+            // TODO: output access type
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
                 if !memory_accesses.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
