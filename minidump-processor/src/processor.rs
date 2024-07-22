@@ -905,7 +905,7 @@ impl<'a> MinidumpInfo<'a> {
         &self,
         exception_details: &mut ExceptionDetails<'a>,
     ) {
-        use crate::op_analysis::MemoryAccessType;
+        use crate::op_analysis::OperandAccessType;
         use memory_operation::MemoryOperation;
 
         let info = &mut exception_details.info;
@@ -925,16 +925,16 @@ impl<'a> MinidumpInfo<'a> {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access == Some(MemoryAccessType::Read)
-                                    || access.access == Some(MemoryAccessType::ReadWrite))
+                                && (access.access == Some(OperandAccessType::Read)
+                                    || access.access == Some(OperandAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access == Some(MemoryAccessType::Write)
-                                    || access.access == Some(MemoryAccessType::ReadWrite))
+                                && (access.access == Some(OperandAccessType::Write)
+                                    || access.access == Some(OperandAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Execute => exception_details
@@ -1358,7 +1358,7 @@ pub mod memory_operation {
 
         /// Return whether this memory operation is definitely allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns false.
-        /// If operation is `UnknownOperation`, this method returns true if the given memory region
+        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
         /// allows both read and write, and returns false otherwise.
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
