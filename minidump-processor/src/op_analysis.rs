@@ -80,7 +80,7 @@ pub struct MemoryAddressInfo {
     /// The type of the memory access
     ///
     /// `None` represents no access is done towards this address
-    pub access: Option<OperandAccessType>,
+    pub access_type: Option<OperandAccessType>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -335,6 +335,12 @@ mod amd64 {
     }
 
     impl OperandAccessType {
+        pub fn is_common(&self) -> bool {
+            match self {
+                Self::UncommonInstructionAccess => false,
+                _ => true,
+            }
+        }
         // TODO: Derive access type using `yaxpeax` instead
         fn explicit_from_instruction(instruction: Instruction, index: u8) -> Option<Self> {
             let Some(opcode) = CommonOpcode::from_amd64_opcode(instruction.opcode()) else {
@@ -368,6 +374,17 @@ mod amd64 {
                     }
                 }
                 CommonOpcode::POP | CommonOpcode::RETURN => None,
+            }
+        }
+    }
+
+    impl std::fmt::Display for OperandAccessType {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Read => f.write_str("Read"),
+                Self::Write => f.write_str("Write"),
+                Self::ReadWrite => f.write_str("ReadWrite"),
+                Self::UncommonInstructionAccess => f.write_str("Uncommon Instruction Access"),
             }
         }
     }
@@ -440,7 +457,7 @@ mod amd64 {
         fn memory_address_from_reg_operand(
             register_operand_info: RegOperandInfo,
             size: Option<u8>,
-            access: Option<OperandAccessType>,
+            access_type: Option<OperandAccessType>,
             context: &MinidumpContext,
         ) -> Result<MemoryAddressInfo, OpAnalysisError> {
             let mut address_info = MemoryAddressInfo {
@@ -448,7 +465,7 @@ mod amd64 {
                 is_likely_null_pointer_dereference: false,
                 is_likely_guard_page: false,
                 size,
-                access,
+                access_type,
             };
 
             if let Some(reg) = register_operand_info.base_reg {
@@ -520,7 +537,8 @@ mod amd64 {
 
             for idx in 0..decoded_instruction.operand_count() {
                 let operand = decoded_instruction.operand(idx);
-                let access = OperandAccessType::explicit_from_instruction(decoded_instruction, idx);
+                let access_type =
+                    OperandAccessType::explicit_from_instruction(decoded_instruction, idx);
 
                 let maybe_access = match operand {
                     Operand::DisplacementU32(disp) => Some(MemoryAddressInfo {
@@ -528,21 +546,21 @@ mod amd64 {
                         is_likely_null_pointer_dereference: false,
                         is_likely_guard_page: false,
                         size: mem_size,
-                        access,
+                        access_type,
                     }),
                     Operand::DisplacementU64(disp) => Some(MemoryAddressInfo {
                         address: disp,
                         is_likely_null_pointer_dereference: false,
                         is_likely_guard_page: false,
                         size: mem_size,
-                        access,
+                        access_type,
                     }),
                     other_operand => {
                         if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
                             Some(MemoryAddressInfo::memory_address_from_reg_operand(
                                 op_info,
                                 mem_size,
-                                access,
+                                access_type,
                                 self.context,
                             )?)
                         } else {
@@ -564,13 +582,13 @@ mod amd64 {
             accesses: &mut Vec<MemoryAddressInfo>,
             decoded_instruction: Instruction,
         ) -> Result<(), OpAnalysisError> {
-            let mut push_implicit_access = |address, access| {
+            let mut push_implicit_access = |address, access_type| {
                 accesses.push(MemoryAddressInfo {
                     address,
                     is_likely_null_pointer_dereference: address == 0,
                     is_likely_guard_page: false,
                     size: Some(1), // TODO: correct size is 4?
-                    access,
+                    access_type,
                 });
             };
 
@@ -619,7 +637,7 @@ mod amd64 {
                     is_likely_null_pointer_dereference: address == 0,
                     is_likely_guard_page: false,
                     size: Some(1),
-                    access: None,
+                    access_type: None,
                 })
             };
 

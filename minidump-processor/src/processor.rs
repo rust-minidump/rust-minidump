@@ -925,16 +925,16 @@ impl<'a> MinidumpInfo<'a> {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access == Some(OperandAccessType::Read)
-                                    || access.access == Some(OperandAccessType::ReadWrite))
+                                && (access.access_type == Some(OperandAccessType::Read)
+                                    || access.access_type == Some(OperandAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
                             access.address == crash_address
-                                && (access.access == Some(OperandAccessType::Write)
-                                    || access.access == Some(OperandAccessType::ReadWrite))
+                                && (access.access_type == Some(OperandAccessType::Write)
+                                    || access.access_type == Some(OperandAccessType::ReadWrite))
                         })
                 }
                 MemoryOperation::Execute => exception_details
