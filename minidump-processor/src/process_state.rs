@@ -434,29 +434,17 @@ impl std::fmt::Display for CrashReasonInconsistency {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CrashReasonInconsistency::IntDivByZeroNotPossible => {
-                write!(
-                    f,
-                    "Crash reason is integer division by zero but disassembled instruction is not"
-                )
+                f.write_str("Crash reason is integer division by zero but instruction is not")
             }
             CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
-                write!(
-                    f,
-                    "Crash reason is priveleged instruction but disassembled instruction is not"
-                )
+                f.write_str("Crash reason is priveleged instruction but instruction is not")
             }
             CrashReasonInconsistency::AccessViolationWhenAccessAllowed => {
-                write!(
-                    f,
-                    "Crash reason is access violation exception but access is allowed"
-                )
+                f.write_str("Crash reason is access violation exception but access is allowed")
             }
-            CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => {
-                write!(
-                    f,
-                    "Memory access of crash reason not found in memory accesses done by disassembled instruction"
-                )
-            }
+            CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => f.write_str(
+                "Memory access of crash reason not found in memory accesses done by instruction",
+            ),
         }
     }
 }
@@ -610,9 +598,8 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            // TODO: output possible crash types
+            // TODO: output possible crash info?
 
-            // TODO: output access type
             if let Some(ref memory_accesses) = crash_info.memory_accesses {
                 if !memory_accesses.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
@@ -625,6 +612,11 @@ impl ProcessState {
                         }
                         if access.is_likely_guard_page {
                             writeln!(f, "     This address falls in a likely guard page.")?;
+                        }
+                        if let Some(access_type) = access.access_type {
+                            if access_type.is_common() {
+                                writeln!(f, "     Access type: {}", access_type)?;
+                            }
                         }
                     }
                 } else {
@@ -917,12 +909,37 @@ Unknown streams encountered:
                             if access.is_likely_guard_page {
                                 map["is_likely_guard_page"] = true.into();
                             }
+                            if let Some(access_type) = access.access_type {
+                                if access_type.is_common() {
+                                    map["access_type"] = access_type.to_string().into();
+                                }
+                            }
                             map
                         }).collect::<Vec<_>>()
                     })
                 }),
+                "instruction_pointer_update": self.exception_info.as_ref().and_then(|info| {
+                    info.instruction_pointer_update.as_ref().map(|update| {
+                        let mut map = json!({
+                            "address": json_hex(update.address),
+                            "size": update.size,
+                        });
+                        if update.is_likely_guard_page {
+                            map["is_likely_guard_page"] = true.into();
+                        }
+                        map
+                    })
+                }),
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
+                }),
+                "crash_reason_inconsistencies": self.exception_info.as_ref().map(|info| {
+                    info.crash_reason_inconsistencies.iter().map(|inconsistency| {
+                        json!({
+                            // TODO: Proper json output format for inconsistency
+                            "inconsistency": format!("{:?}", inconsistency),
+                        })
+                    }).collect::<Vec<_>>()
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
