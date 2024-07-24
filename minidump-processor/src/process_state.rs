@@ -426,6 +426,7 @@ impl PossibleBitFlip {
 pub enum CrashReasonInconsistency {
     IntDivByZeroNotPossible,
     PrivInstructionCrashWithoutPrivInstruction,
+    NonCanonicalAddressFalselyReported,
     AccessViolationWhenAccessAllowed,
     CrashingAccessNotFoundInMemoryAccesses,
 }
@@ -438,6 +439,9 @@ impl std::fmt::Display for CrashReasonInconsistency {
             }
             CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
                 f.write_str("Crash reason is priveleged instruction but instruction is not")
+            }
+            CrashReasonInconsistency::NonCanonicalAddressFalselyReported => {
+                f.write_str("Crash reason is non-canonical address access but instruction is not")
             }
             CrashReasonInconsistency::AccessViolationWhenAccessAllowed => {
                 f.write_str("Crash reason is access violation exception but access is allowed")

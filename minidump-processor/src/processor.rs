@@ -847,6 +847,7 @@ impl<'a> MinidumpInfo<'a> {
         use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
         use minidump_common::errors::NtStatusWindows;
 
+        let inconsistencies = &mut exception_details.info.crash_reason_inconsistencies;
         match exception_details.info.reason {
             // Int division by zero
             CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
@@ -859,10 +860,7 @@ impl<'a> MinidumpInfo<'a> {
                     .as_ref()
                     .is_some_and(|p| !p.int_division_by_zero)
                 {
-                    exception_details
-                        .info
-                        .crash_reason_inconsistencies
-                        .push(CrashReasonInconsistency::IntDivByZeroNotPossible);
+                    inconsistencies.push(CrashReasonInconsistency::IntDivByZeroNotPossible);
                 }
             }
 
@@ -875,9 +873,7 @@ impl<'a> MinidumpInfo<'a> {
                     .as_ref()
                     .is_some_and(|p| !p.priv_instruction)
                 {
-                    exception_details
-                        .info
-                        .crash_reason_inconsistencies
+                    inconsistencies
                         .push(CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction);
                 }
             }
@@ -885,15 +881,23 @@ impl<'a> MinidumpInfo<'a> {
             // Windows stack overflow and access violation
             // We treat stack overflow like an access violation with unknown operation
             // i.e. It is considered inconsistent if the instruction has no memory access
+            CrashReason::WindowsAccessViolation(WinAccess::READ) => {
+                // Access of non-canonical address
+                if exception_details.info.address.0 == 0xffffffffffffffff {
+                    match exception_details.info.adjusted_address {
+                        Some(AdjustedAddress::NonCanonical(_)) => (),
+                        _ => {
+                            inconsistencies
+                                .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
+                        }
+                    }
+                } else {
+                    self.check_for_memory_access_inconsistencies(exception_details);
+                }
+            }
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
-            | CrashReason::WindowsAccessViolation(WinAccess::READ)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
             | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
-                // 0xffffffffffffffff as crash address (eg. due to calling non-canonical address) is
-                // an edge case we don't handle.
-                if exception_details.info.address.0 == 0xffffffffffffffff {
-                    return;
-                }
                 self.check_for_memory_access_inconsistencies(exception_details);
             }
 
@@ -953,6 +957,8 @@ impl<'a> MinidumpInfo<'a> {
             }
         }
 
+        // TODO: Can do the other way around:
+        //       go through all accesses and check if any can cause a violation
         // Check if crash_reason_operation is actually a violation
         if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
             if crash_reason_operation.is_allowed_for(&mi) {
@@ -1399,7 +1405,7 @@ mod bitflip {
     /// Try to determine whether an address was the result of a flipped bit.
     ///
     /// `memory_operation` represents the memory operation that was occurring at the crashing address
-    /// (read/write/exec). If left as `Unknown`, all memory operations are considered allowed.
+    /// (read/write/exec). If left as `Undetermined`, all memory operations are considered allowed.
     /// Otherwise, specify one of the operations that was occurring.
     pub fn try_bit_flips(
         address: u64,
