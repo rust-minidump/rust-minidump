@@ -467,6 +467,8 @@ mod amd64 {
             };
 
             if let Some(reg) = register_operand_info.base_reg {
+                println!("before ger_regspec 1");
+
                 let base = context.get_regspec(reg)?;
                 address_info.address = base;
                 // If the base contains zero, this is very likely a dereference of a null pointer
