@@ -299,6 +299,7 @@ mod amd64 {
         }
     }
 
+    #[allow(clippy::upper_case_acronyms)]
     enum CommonOpcode {
         CALL,
         DEC,
@@ -335,11 +336,8 @@ mod amd64 {
     }
 
     impl OperandAccessType {
-        pub fn is_common(&self) -> bool {
-            match self {
-                Self::UncommonInstructionAccess => false,
-                _ => true,
-            }
+        pub fn is_read_or_write(&self) -> bool {
+            !matches!(self, Self::UncommonInstructionAccess)
         }
         // TODO: Derive access type using `yaxpeax` instead
         fn explicit_from_instruction(instruction: Instruction, index: u8) -> Option<Self> {

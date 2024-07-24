@@ -613,7 +613,7 @@ impl ProcessState {
                             writeln!(f, "     This address falls in a likely guard page.")?;
                         }
                         if let Some(access_type) = access.access_type {
-                            if access_type.is_common() {
+                            if access_type.is_read_or_write() {
                                 writeln!(f, "     Access type: {}", access_type)?;
                             }
                         }
@@ -902,7 +902,7 @@ Unknown streams encountered:
                                 map["is_likely_guard_page"] = true.into();
                             }
                             if let Some(access_type) = access.access_type {
-                                if access_type.is_common() {
+                                if access_type.is_read_or_write() {
                                     map["access_type"] = access_type.to_string().into();
                                 }
                             }
