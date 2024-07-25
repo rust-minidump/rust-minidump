@@ -301,31 +301,46 @@ mod amd64 {
 
     #[allow(clippy::upper_case_acronyms)]
     enum CommonOpcode {
+        ADD,
         CALL,
+        CMP,
         DEC,
+        IRET,
+        IRETD,
+        IRETQ,
         INC,
         JMP,
+        JMPF,
         MOV,
         MOVAPS,
         MOVUPS,
         POP,
         PUSH,
+        RETF,
         RETURN,
+        SUB,
     }
 
     impl CommonOpcode {
         fn from_amd64_opcode(opcode: Opcode) -> Option<Self> {
             match opcode {
+                Opcode::ADD => Some(Self::ADD),
                 Opcode::CALL => Some(Self::CALL),
                 Opcode::DEC => Some(Self::DEC),
+                Opcode::IRET => Some(Self::IRET),
+                Opcode::IRETD => Some(Self::IRETD),
+                Opcode::IRETQ => Some(Self::IRETQ),
                 Opcode::INC => Some(Self::INC),
                 Opcode::JMP => Some(Self::JMP),
+                Opcode::JMPF => Some(Self::JMPF),
                 Opcode::MOV => Some(Self::MOV),
                 Opcode::MOVAPS => Some(Self::MOVAPS),
                 Opcode::MOVUPS => Some(Self::MOVUPS),
                 Opcode::POP => Some(Self::POP),
                 Opcode::PUSH => Some(Self::PUSH),
+                Opcode::RETF => Some(Self::RETF),
                 Opcode::RETURN => Some(Self::RETURN),
+                Opcode::SUB => Some(Self::SUB),
                 _ => None,
             }
         }
@@ -345,11 +360,32 @@ mod amd64 {
                 return Some(Self::UncommonInstructionAccess);
             };
             match opcode {
-                CommonOpcode::CALL | CommonOpcode::JMP | CommonOpcode::PUSH => {
+                CommonOpcode::ADD | CommonOpcode::SUB => {
+                    if index == 0 {
+                        Some(Self::ReadWrite)
+                    } else if index == 1 {
+                        Some(Self::Read)
+                    } else {
+                        tracing::warn!("add/sub instruction had incorrect operand count");
+                        None
+                    }
+                }
+                CommonOpcode::CALL
+                | CommonOpcode::JMP
+                | CommonOpcode::JMPF
+                | CommonOpcode::PUSH => {
                     if index == 0 {
                         Some(Self::Read)
                     } else {
                         tracing::warn!("call/jmp instruction had incorrect operand count");
+                        None
+                    }
+                }
+                CommonOpcode::CMP => {
+                    if index == 0 || index == 1 {
+                        Some(Self::Read)
+                    } else {
+                        tracing::warn!("cmp instruction had incorrect operand count");
                         None
                     }
                 }
@@ -371,7 +407,12 @@ mod amd64 {
                         None
                     }
                 }
-                CommonOpcode::POP | CommonOpcode::RETURN => None,
+                CommonOpcode::IRET
+                | CommonOpcode::IRETD
+                | CommonOpcode::IRETQ
+                | CommonOpcode::POP
+                | CommonOpcode::RETF
+                | CommonOpcode::RETURN => None,
             }
         }
     }
@@ -467,8 +508,6 @@ mod amd64 {
             };
 
             if let Some(reg) = register_operand_info.base_reg {
-                println!("before ger_regspec 1");
-
                 let base = context.get_regspec(reg)?;
                 address_info.address = base;
                 // If the base contains zero, this is very likely a dereference of a null pointer
@@ -535,6 +574,11 @@ mod amd64 {
                 None => return Ok(()),
             };
 
+            // Edge case -- `lea` does not access memory despite having memory operands
+            if matches!(decoded_instruction.opcode(), Opcode::LEA) {
+                return Ok(());
+            }
+
             for idx in 0..decoded_instruction.operand_count() {
                 let operand = decoded_instruction.operand(idx);
                 let access_type =
@@ -587,7 +631,7 @@ mod amd64 {
                     address,
                     is_likely_null_pointer_dereference: address == 0,
                     is_likely_guard_page: false,
-                    size: Some(1), // TODO: correct size is 4?
+                    size: Some(1), // TODO: correct size?
                     access_type,
                 });
             };
@@ -601,12 +645,26 @@ mod amd64 {
                         push_implicit_access(rsp, Some(OperandAccessType::Write));
                     }
                 }
-                CommonOpcode::POP | CommonOpcode::RETURN => {
+                CommonOpcode::IRET
+                | CommonOpcode::IRETD
+                | CommonOpcode::IRETQ
+                | CommonOpcode::POP
+                | CommonOpcode::RETF
+                | CommonOpcode::RETURN => {
                     if let Ok(rsp) = self.context.get_regspec(RegSpec::rsp()) {
                         push_implicit_access(rsp, Some(OperandAccessType::Read));
                     }
                 }
-                _ => (),
+                CommonOpcode::ADD
+                | CommonOpcode::CMP
+                | CommonOpcode::DEC
+                | CommonOpcode::INC
+                | CommonOpcode::JMP
+                | CommonOpcode::JMPF
+                | CommonOpcode::MOV
+                | CommonOpcode::MOVAPS
+                | CommonOpcode::MOVUPS
+                | CommonOpcode::SUB => (),
             }
             Ok(())
         }
