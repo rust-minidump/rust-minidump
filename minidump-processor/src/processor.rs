@@ -835,7 +835,6 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    // TODO: Extend to handle other crash reasons (may or may not be memory related)
     /// Check for inconsistencies between crash reason and crashing instruction
     pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
         use minidump_common::errors::ExceptionCodeMacArithmeticPpcType as MacArithPpc;
@@ -920,7 +919,6 @@ impl<'a> MinidumpInfo<'a> {
             .as_ref()
             .is_some_and(|p| p.is_common_memory_crash_instruction);
 
-        // TODO: `lea` will cause an entry in memory_accesses despite not being an access
         // Check if crash address is actually accessed as crash reason claimed
         if let Some(memory_accesses) = &info.memory_accesses {
             let is_inconsistent = match crash_reason_operation {
