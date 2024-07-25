@@ -326,6 +326,7 @@ mod amd64 {
             match opcode {
                 Opcode::ADD => Some(Self::ADD),
                 Opcode::CALL => Some(Self::CALL),
+                Opcode::CMP => Some(Self::CMP),
                 Opcode::DEC => Some(Self::DEC),
                 Opcode::IRET => Some(Self::IRET),
                 Opcode::IRETD => Some(Self::IRETD),
