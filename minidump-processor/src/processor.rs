@@ -837,14 +837,12 @@ impl<'a> MinidumpInfo<'a> {
 
     /// Check for inconsistencies between crash reason and crashing instruction
     pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
-        use minidump_common::errors::ExceptionCodeMacArithmeticPpcType as MacArithPpc;
-        use minidump_common::errors::ExceptionCodeMacArithmeticX86Type as MacArithX86;
-
-        use minidump_common::errors::ExceptionCodeLinuxSigfpeKind as LinuxSigfpe;
-
-        use minidump_common::errors::ExceptionCodeWindows;
-        use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
-        use minidump_common::errors::NtStatusWindows;
+        use minidump_common::errors::{
+            ExceptionCodeLinuxSigfpeKind as LinuxSigfpe,
+            ExceptionCodeMacArithmeticPpcType as MacArithPpc,
+            ExceptionCodeMacArithmeticX86Type as MacArithX86, ExceptionCodeWindows,
+            ExceptionCodeWindowsAccessType as WinAccess, NtStatusWindows,
+        };
 
         let inconsistencies = &mut exception_details.info.crash_reason_inconsistencies;
         match exception_details.info.reason {
