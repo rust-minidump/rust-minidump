@@ -185,7 +185,7 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
-        let possible_crash_info = PossibleCrashInfo::from_amd64_instruction(decoded_instruction);
+        let possible_crash_info = PossibleCrashInfo::from_instruction(decoded_instruction);
 
         let memory_accesses = GetMemoryAccess::new(context)
             .get_memory_accesses_from_instruction(decoded_instruction)
@@ -212,23 +212,24 @@ mod amd64 {
         })
     }
 
-    fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
-        let mut ret = BTreeSet::new();
-        for op in 0..i.operand_count() {
-            if let Some(reginfo) = RegOperandInfo::try_from_operand(i.operand(op)) {
-                if let Some(reg) = reginfo.base_reg {
-                    ret.insert(reg.name());
-                }
-                if let Some(reg) = reginfo.index_reg {
-                    ret.insert(reg.name());
-                }
-            }
-        }
-        ret
+    /// Decode the given Amd64 instruction using yaxpeax-x86
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the instruction could not be decoded (possibly because the
+    /// given bytes represent an invalid x86 instruction), or because the given byte buffer is
+    /// not long enough and the given instruction is therefore truncated.
+    fn decode_instruction(bytes: &[u8]) -> Result<Instruction, OpAnalysisError> {
+        use yaxpeax_x86::amd64::{DecodeError, InstDecoder};
+        let decoder = InstDecoder::default();
+        decoder.decode_slice(bytes).map_err(|error| match error {
+            DecodeError::ExhaustedInput => OpAnalysisError::InstructionTruncated,
+            e => OpAnalysisError::DecodeFailed(e.into()),
+        })
     }
 
     impl PossibleCrashInfo {
-        fn from_amd64_instruction(instruction: Instruction) -> Self {
+        fn from_instruction(instruction: Instruction) -> Self {
             PossibleCrashInfo {
                 is_common_memory_crash_instruction: CommonOpcode::is_common(instruction.opcode()),
                 int_division_by_zero: PossibleCrashInfo::int_division_by_zero_possible(instruction),
@@ -237,65 +238,60 @@ mod amd64 {
         }
 
         fn int_division_by_zero_possible(instruction: Instruction) -> bool {
-            match instruction.opcode() {
-                // TODO: We can look into memory and check if the operand is actually 0
-                Opcode::DIV | Opcode::IDIV => true,
-                _ => false,
-            }
+            matches!(instruction.opcode(), Opcode::DIV | Opcode::IDIV)
         }
 
         // TODO: Use `yaxpeax` to check for all possible privileged instructions
         fn priv_instruction_possible(instruction: Instruction) -> bool {
-            match instruction.opcode() {
-                // TODO: Some opcodes (eg. `mov`) reqeuire privilege only with specific operands
+            matches!(
+                instruction.opcode(),
                 Opcode::CLI
-                | Opcode::CLTS
-                | Opcode::HLT
-                | Opcode::IN
-                | Opcode::INS
-                | Opcode::INT
-                | Opcode::INTO
-                | Opcode::INVD
-                | Opcode::INVEPT
-                | Opcode::INVLPG
-                | Opcode::INVVPID
-                | Opcode::IRET
-                | Opcode::IRETD
-                | Opcode::IRETQ
-                | Opcode::LGDT
-                | Opcode::LIDT
-                | Opcode::LLDT
-                | Opcode::LMSW
-                | Opcode::LTR
-                | Opcode::MONITOR
-                | Opcode::MOV
-                | Opcode::MWAIT
-                | Opcode::OUT
-                | Opcode::OUTS
-                | Opcode::RDMSR
-                | Opcode::RDPMC
-                | Opcode::RDTSC
-                | Opcode::RDTSCP
-                | Opcode::RETF
-                | Opcode::STI
-                | Opcode::SWAPGS
-                | Opcode::SYSEXIT
-                | Opcode::SYSRET
-                | Opcode::VMCALL
-                | Opcode::VMCLEAR
-                | Opcode::VMLAUNCH
-                | Opcode::VMPTRLD
-                | Opcode::VMPTRST
-                | Opcode::VMREAD
-                | Opcode::VMRESUME
-                | Opcode::VMWRITE
-                | Opcode::VMXOFF
-                | Opcode::VMXON
-                | Opcode::WBINVD
-                | Opcode::WRMSR
-                | Opcode::XSETBV => true,
-                _ => false,
-            }
+                    | Opcode::CLTS
+                    | Opcode::HLT
+                    | Opcode::IN
+                    | Opcode::INS
+                    | Opcode::INT
+                    | Opcode::INTO
+                    | Opcode::INVD
+                    | Opcode::INVEPT
+                    | Opcode::INVLPG
+                    | Opcode::INVVPID
+                    | Opcode::IRET
+                    | Opcode::IRETD
+                    | Opcode::IRETQ
+                    | Opcode::LGDT
+                    | Opcode::LIDT
+                    | Opcode::LLDT
+                    | Opcode::LMSW
+                    | Opcode::LTR
+                    | Opcode::MONITOR
+                    | Opcode::MOV
+                    | Opcode::MWAIT
+                    | Opcode::OUT
+                    | Opcode::OUTS
+                    | Opcode::RDMSR
+                    | Opcode::RDPMC
+                    | Opcode::RDTSC
+                    | Opcode::RDTSCP
+                    | Opcode::RETF
+                    | Opcode::STI
+                    | Opcode::SWAPGS
+                    | Opcode::SYSEXIT
+                    | Opcode::SYSRET
+                    | Opcode::VMCALL
+                    | Opcode::VMCLEAR
+                    | Opcode::VMLAUNCH
+                    | Opcode::VMPTRLD
+                    | Opcode::VMPTRST
+                    | Opcode::VMREAD
+                    | Opcode::VMRESUME
+                    | Opcode::VMWRITE
+                    | Opcode::VMXOFF
+                    | Opcode::VMXON
+                    | Opcode::WBINVD
+                    | Opcode::WRMSR
+                    | Opcode::XSETBV
+            )
         }
     }
 
@@ -494,7 +490,7 @@ mod amd64 {
     }
 
     impl MemoryAddressInfo {
-        fn memory_address_from_reg_operand(
+        fn from_reg_operand_info(
             register_operand_info: RegOperandInfo,
             size: Option<u8>,
             access_type: Option<OperandAccessType>,
@@ -602,7 +598,7 @@ mod amd64 {
                     }),
                     other_operand => {
                         if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
-                            Some(MemoryAddressInfo::memory_address_from_reg_operand(
+                            Some(MemoryAddressInfo::from_reg_operand_info(
                                 op_info,
                                 mem_size,
                                 access_type,
@@ -716,14 +712,13 @@ mod amd64 {
                             // If the operand was some sort of register dereference, try to get the
                             // _actual_ address from the memory list.
                             if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
-                                let memory_address =
-                                    MemoryAddressInfo::memory_address_from_reg_operand(
-                                        op_info,
-                                        None,
-                                        None,
-                                        self.context,
-                                    )?
-                                    .address;
+                                let memory_address = MemoryAddressInfo::from_reg_operand_info(
+                                    op_info,
+                                    None,
+                                    None,
+                                    self.context,
+                                )?
+                                .address;
                                 if let Some(address) = self
                                     .memory_list
                                     .and_then(|ml| ml.memory_at_address(memory_address))
@@ -753,20 +748,19 @@ mod amd64 {
         }
     }
 
-    /// Decode the given Amd64 instruction using yaxpeax-x86
-    ///
-    /// # Errors
-    ///
-    /// Will return an error if the instruction could not be decoded (possibly because the
-    /// given bytes represent an invalid x86 instruction), or because the given byte buffer is
-    /// not long enough and the given instruction is therefore truncated.
-    fn decode_instruction(bytes: &[u8]) -> Result<Instruction, OpAnalysisError> {
-        use yaxpeax_x86::amd64::{DecodeError, InstDecoder};
-        let decoder = InstDecoder::default();
-        decoder.decode_slice(bytes).map_err(|error| match error {
-            DecodeError::ExhaustedInput => OpAnalysisError::InstructionTruncated,
-            e => OpAnalysisError::DecodeFailed(e.into()),
-        })
+    fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
+        let mut ret = BTreeSet::new();
+        for op in 0..i.operand_count() {
+            if let Some(reginfo) = RegOperandInfo::try_from_operand(i.operand(op)) {
+                if let Some(reg) = reginfo.base_reg {
+                    ret.insert(reg.name());
+                }
+                if let Some(reg) = reginfo.index_reg {
+                    ret.insert(reg.name());
+                }
+            }
+        }
+        ret
     }
 }
 
