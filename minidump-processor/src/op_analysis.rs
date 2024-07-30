@@ -56,35 +56,60 @@ pub struct OpAnalysis {
     /// Note that an empty vector and `None` don't mean the same thing -- `None` means
     /// that access could not be determined, `Some(Vec<len==0>)` means it was successfully
     /// determined that the instruction doesn't access memory.
-    pub memory_accesses: Option<Vec<MemoryAddressInfo>>,
+    pub memory_accesses: Option<Vec<MemoryAccess>>,
     /// Whether the instruction pointer is being updated by the instruction
-    pub instruction_pointer_update: Option<MemoryAddressInfo>,
+    pub instruction_pointer_update: Option<InstructionPointerUpdate>,
     /// A list of all registers which were used by this instruction.
     pub registers: BTreeSet<&'static str>,
 }
 
+/// A list of booleans representing whether this instruction could have caused
+/// a particular type of crash
+/// Note that memory access crashses are checked through `memory_accesses`
+// TODO: remove `is_common_memory_crash_instruction` field once `yaxpeax` provides access types
+// for operands of all instructions
+#[derive(Clone, Debug)]
+pub struct PossibleCrashInfo {
+    pub is_common_memory_crash_instruction: bool,
+    pub int_division_by_zero: bool,
+    pub priv_instruction: bool,
+}
+
 /// Details about a memory access performed by an instruction
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct MemoryAddressInfo {
-    /// The address of the memory access
-    pub address: u64,
-    /// Whether or not this memory access is likely the result of a null-pointer dereference
-    pub is_likely_null_pointer_dereference: bool,
-    /// Whether or not this memory access was part of a likely guard page.
-    pub is_likely_guard_page: bool,
+pub struct MemoryAccess {
+    // Information
+    pub address_info: MemoryAddressInfo,
     /// The size of the memory access
     ///
     /// Note that this is optional, as there are weird instructions that do not know the size
     /// of their memory accesses without more complex context.
     pub size: Option<u8>,
     /// The type of the memory access
-    ///
-    /// `None` represents no access is done towards this address
-    pub access_type: Option<OperandAccessType>,
+    pub access_type: MemoryAccessType,
 }
 
+/// Details about update of instruction pointer performed by an instruction
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum OperandAccessType {
+pub struct InstructionPointerUpdate {
+    /// Information about the address that instruciton pointer is being updated to
+    pub address_info: MemoryAddressInfo,
+}
+
+/// Details about a memory address of a memory access or an instruction pointer update
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MemoryAddressInfo {
+    /// The address
+    pub address: u64,
+    /// Whether or not this memory address is likely the result of a null-pointer dereference
+    pub is_likely_null_pointer_dereference: bool,
+    /// Whether or not this memory address was part of a likely guard page.
+    pub is_likely_guard_page: bool,
+}
+
+/// The direction of a memory access
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum MemoryAccessType {
     Read,
     Write,
     ReadWrite,
@@ -93,16 +118,21 @@ pub enum OperandAccessType {
     UncommonInstructionAccess,
 }
 
-/// A list of booleans representing whether this instruction could have caused
-/// a particular type of crash
-/// Note that memory access crashses are checked through `memory_accesses`
-/// TODO: remove `is_common_memory_crash_instruction` field once `yaxpeax` provides access types
-/// for operands of all instructions
-#[derive(Clone, Debug)]
-pub struct PossibleCrashInfo {
-    pub is_common_memory_crash_instruction: bool,
-    pub int_division_by_zero: bool,
-    pub priv_instruction: bool,
+impl MemoryAccessType {
+    pub fn is_read_or_write(&self) -> bool {
+        !matches!(self, Self::UncommonInstructionAccess)
+    }
+}
+
+impl std::fmt::Display for MemoryAccessType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read => f.write_str("Read"),
+            Self::Write => f.write_str("Write"),
+            Self::ReadWrite => f.write_str("ReadWrite"),
+            Self::UncommonInstructionAccess => f.write_str("Uncommon Instruction Access"),
+        }
+    }
 }
 
 /// Analyze the instructions being run by the given thread
@@ -187,19 +217,19 @@ mod amd64 {
 
         let possible_crash_info = PossibleCrashInfo::from_instruction(decoded_instruction);
 
-        let memory_accesses = GetMemoryAccess::new(context)
-            .get_memory_accesses_from_instruction(decoded_instruction)
+        let memory_accesses = MemoryAccess::from_instruction(decoded_instruction, context)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
             .ok();
 
-        let instruction_pointer_update =
-            GetInstructionPointerUpdate::new(context, memory_list, stack_memory)
-                .get_rip_update_from_instruction(decoded_instruction)
-                .map_err(|e| {
-                    tracing::warn!("failed to determine instruction pointer updates: {}", e)
-                })
-                .ok()
-                .flatten();
+        let instruction_pointer_update = InstructionPointerUpdate::from_instruction(
+            decoded_instruction,
+            context,
+            memory_list,
+            stack_memory,
+        )
+        .map_err(|e| tracing::warn!("failed to determine instruction pointer updates: {}", e))
+        .ok()
+        .flatten();
 
         let registers = get_registers(decoded_instruction);
 
@@ -238,6 +268,7 @@ mod amd64 {
         }
 
         fn int_division_by_zero_possible(instruction: Instruction) -> bool {
+            // TODO: check if the divisor is zero
             matches!(instruction.opcode(), Opcode::DIV | Opcode::IDIV)
         }
 
@@ -295,6 +326,252 @@ mod amd64 {
         }
     }
 
+    impl MemoryAccess {
+        /// Determine the memory accesses implied by the given instruction and context
+        ///
+        /// # Errors
+        ///
+        /// The most likely cause of an error is that a register named by the given instruction
+        /// is invalid.
+        fn from_instruction(
+            instruction: Instruction,
+            context: &MinidumpContext,
+        ) -> Result<Vec<Self>, OpAnalysisError> {
+            let mut accesses = Vec::new();
+            if let Some(opcode) = CommonOpcode::from_amd64_opcode(instruction.opcode()) {
+                Self::add_common_opcode_accesses(&mut accesses, opcode, instruction, context)?;
+            } else {
+                Self::add_uncommon_opcode_accesses(&mut accesses, instruction, context)?;
+            }
+            Ok(accesses)
+        }
+
+        fn add_common_opcode_accesses(
+            accesses: &mut Vec<MemoryAccess>,
+            opcode: CommonOpcode,
+            instruction: Instruction,
+            context: &MinidumpContext,
+        ) -> Result<(), OpAnalysisError> {
+            // Shortcut -- If the instruction doesn't access memory, just return
+            let mem_size = match instruction.mem_size() {
+                Some(access) => access.bytes_size(),
+                None => return Ok(()),
+            };
+
+            for idx in 0..instruction.operand_count() {
+                Self::add_common_opcode_explicit_access(
+                    accesses,
+                    opcode,
+                    instruction.operand(idx),
+                    idx,
+                    mem_size,
+                    context,
+                )?;
+            }
+
+            Self::add_common_opcode_implicit_access(accesses, opcode, mem_size, context)?;
+            Ok(())
+        }
+
+        fn add_common_opcode_explicit_access(
+            accesses: &mut Vec<MemoryAccess>,
+            opcode: CommonOpcode,
+            operand: Operand,
+            idx: u8,
+            mem_size: Option<u8>,
+            context: &MinidumpContext,
+        ) -> Result<(), OpAnalysisError> {
+            if !operand.is_memory() {
+                return Ok(());
+            }
+
+            let access_type = match (opcode, idx) {
+                (CommonOpcode::ADD | CommonOpcode::SUB, 0) => MemoryAccessType::ReadWrite,
+                (CommonOpcode::ADD | CommonOpcode::SUB, 1) => MemoryAccessType::ReadWrite,
+                (
+                    CommonOpcode::CALL
+                    | CommonOpcode::JMP
+                    | CommonOpcode::JMPF
+                    | CommonOpcode::PUSH,
+                    0,
+                ) => MemoryAccessType::Read,
+                (CommonOpcode::CMP, 0 | 1) => MemoryAccessType::Read,
+                (CommonOpcode::DEC | CommonOpcode::INC, 0) => MemoryAccessType::ReadWrite,
+                (CommonOpcode::MOV | CommonOpcode::MOVAPS | CommonOpcode::MOVUPS, 0) => {
+                    MemoryAccessType::Write
+                }
+                (CommonOpcode::MOV | CommonOpcode::MOVAPS | CommonOpcode::MOVUPS, 1) => {
+                    MemoryAccessType::Read
+                }
+                (CommonOpcode::LEA, 0 | 1) => return Ok(()),
+                _ => {
+                    tracing::warn!("instruction had unexpected memory operand");
+                    return Ok(());
+                }
+            };
+
+            if let Some(op_info) = MemoryOperandInfo::try_from_operand(operand) {
+                let address_info = MemoryAddressInfo::from_memory_operand_info(op_info, context)?;
+                accesses.push(MemoryAccess {
+                    address_info,
+                    size: mem_size,
+                    access_type,
+                });
+            }
+
+            Ok(())
+        }
+
+        fn add_common_opcode_implicit_access(
+            accesses: &mut Vec<MemoryAccess>,
+            opcode: CommonOpcode,
+            mem_size: Option<u8>,
+            context: &MinidumpContext,
+        ) -> Result<(), OpAnalysisError> {
+            let mut push_implicit_access = |address, access_type| {
+                let address_info = MemoryAddressInfo {
+                    address,
+                    is_likely_null_pointer_dereference: address == 0,
+                    is_likely_guard_page: false,
+                };
+                accesses.push(MemoryAccess {
+                    address_info,
+                    size: mem_size,
+                    access_type,
+                });
+            };
+
+            match opcode {
+                CommonOpcode::CALL | CommonOpcode::PUSH => {
+                    if let Ok(rsp) = context.get_regspec(RegSpec::rsp()) {
+                        push_implicit_access(rsp, MemoryAccessType::Write);
+                    }
+                }
+                CommonOpcode::IRET
+                | CommonOpcode::IRETD
+                | CommonOpcode::IRETQ
+                | CommonOpcode::POP
+                | CommonOpcode::RETF
+                | CommonOpcode::RETURN => {
+                    if let Ok(rsp) = context.get_regspec(RegSpec::rsp()) {
+                        push_implicit_access(rsp, MemoryAccessType::Read);
+                    }
+                }
+                _ => (),
+            }
+            Ok(())
+        }
+
+        fn add_uncommon_opcode_accesses(
+            accesses: &mut Vec<MemoryAccess>,
+            instruction: Instruction,
+            context: &MinidumpContext,
+        ) -> Result<(), OpAnalysisError> {
+            // Shortcut -- If the instruction doesn't access memory, just return
+            let mem_size = match instruction.mem_size() {
+                Some(access) => access.bytes_size(),
+                None => return Ok(()),
+            };
+
+            for idx in 0..instruction.operand_count() {
+                Self::add_uncommon_opcode_explicit_access(
+                    accesses,
+                    instruction.operand(idx),
+                    mem_size,
+                    context,
+                )?;
+            }
+
+            Ok(())
+        }
+        fn add_uncommon_opcode_explicit_access(
+            accesses: &mut Vec<MemoryAccess>,
+            operand: Operand,
+            mem_size: Option<u8>,
+            context: &MinidumpContext,
+        ) -> Result<(), OpAnalysisError> {
+            if !operand.is_memory() {
+                return Ok(());
+            }
+
+            if let Some(op_info) = MemoryOperandInfo::try_from_operand(operand) {
+                let address_info = MemoryAddressInfo::from_memory_operand_info(op_info, context)?;
+                accesses.push(MemoryAccess {
+                    address_info,
+                    size: mem_size,
+                    access_type: MemoryAccessType::UncommonInstructionAccess,
+                });
+            }
+
+            Ok(())
+        }
+    }
+
+    impl InstructionPointerUpdate {
+        fn from_instruction(
+            instruction: Instruction,
+            context: &MinidumpContext,
+            memory_list: Option<&minidump::UnifiedMemoryList>,
+            stack_memory: Option<minidump::UnifiedMemory>,
+        ) -> Result<Option<Self>, OpAnalysisError> {
+            let rip_update = |address| {
+                Some(InstructionPointerUpdate {
+                    address_info: MemoryAddressInfo {
+                        address,
+                        is_likely_null_pointer_dereference: address == 0,
+                        is_likely_guard_page: false,
+                    },
+                })
+            };
+
+            match instruction.opcode() {
+                Opcode::CALL | Opcode::CALLF | Opcode::JMP | Opcode::JMPF | Opcode::JMPE => {
+                    if instruction.operand_count() != 1 {
+                        tracing::warn!("call/jmp instruction had incorrect operand count");
+                        return Ok(None);
+                    }
+                    // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
+                    // JMPF) will be valid, so we don't check immediate operands, only registers.
+                    match instruction.operand(0) {
+                        Operand::Register(reg) => return Ok(rip_update(context.get_regspec(reg)?)),
+                        other_operand => {
+                            // If the operand was some sort of register dereference, try to get the
+                            // _actual_ address from the memory list.
+                            if let Some(op_info) =
+                                MemoryOperandInfo::try_from_operand(other_operand)
+                            {
+                                let memory_address =
+                                    MemoryAddressInfo::from_memory_operand_info(op_info, context)?
+                                        .address;
+                                if let Some(address) = memory_list
+                                    .and_then(|ml| ml.memory_at_address(memory_address))
+                                    .and_then(|mem| {
+                                        mem.get_memory_at_address::<u64>(memory_address)
+                                    })
+                                {
+                                    return Ok(rip_update(address));
+                                }
+                            }
+                        }
+                    }
+                }
+                Opcode::RETURN | Opcode::RETF | Opcode::IRET | Opcode::IRETD | Opcode::IRETQ => {
+                    // Use the return address (from the stack)
+                    if let (Ok(rsp), Some(stack)) =
+                        (context.get_regspec(RegSpec::rsp()), &stack_memory)
+                    {
+                        if let Some(address) = stack.get_memory_at_address::<u64>(rsp) {
+                            return Ok(rip_update(address));
+                        }
+                    }
+                }
+                _ => (),
+            }
+            Ok(None)
+        }
+    }
+
+    #[derive(Copy, Clone)]
     #[allow(clippy::upper_case_acronyms)]
     enum CommonOpcode {
         ADD,
@@ -307,6 +584,7 @@ mod amd64 {
         INC,
         JMP,
         JMPF,
+        LEA,
         MOV,
         MOVAPS,
         MOVUPS,
@@ -330,6 +608,7 @@ mod amd64 {
                 Opcode::INC => Some(Self::INC),
                 Opcode::JMP => Some(Self::JMP),
                 Opcode::JMPF => Some(Self::JMPF),
+                Opcode::LEA => Some(Self::LEA),
                 Opcode::MOV => Some(Self::MOV),
                 Opcode::MOVAPS => Some(Self::MOVAPS),
                 Opcode::MOVUPS => Some(Self::MOVUPS),
@@ -347,112 +626,27 @@ mod amd64 {
         }
     }
 
-    impl OperandAccessType {
-        pub fn is_read_or_write(&self) -> bool {
-            !matches!(self, Self::UncommonInstructionAccess)
-        }
-        // TODO: Derive access type using `yaxpeax` instead
-        fn explicit_from_instruction(instruction: Instruction, index: u8) -> Option<Self> {
-            let Some(opcode) = CommonOpcode::from_amd64_opcode(instruction.opcode()) else {
-                return Some(Self::UncommonInstructionAccess);
-            };
-            match opcode {
-                CommonOpcode::ADD | CommonOpcode::SUB => {
-                    if index == 0 {
-                        Some(Self::ReadWrite)
-                    } else if index == 1 {
-                        Some(Self::Read)
-                    } else {
-                        tracing::warn!("add/sub instruction had incorrect operand count");
-                        None
-                    }
-                }
-                CommonOpcode::CALL
-                | CommonOpcode::JMP
-                | CommonOpcode::JMPF
-                | CommonOpcode::PUSH => {
-                    if index == 0 {
-                        Some(Self::Read)
-                    } else {
-                        tracing::warn!("call/jmp instruction had incorrect operand count");
-                        None
-                    }
-                }
-                CommonOpcode::CMP => {
-                    if index == 0 || index == 1 {
-                        Some(Self::Read)
-                    } else {
-                        tracing::warn!("cmp instruction had incorrect operand count");
-                        None
-                    }
-                }
-                CommonOpcode::DEC | CommonOpcode::INC => {
-                    if index == 0 {
-                        Some(Self::ReadWrite)
-                    } else {
-                        tracing::warn!("inc/dec instruction had incorrect operand count");
-                        None
-                    }
-                }
-                CommonOpcode::MOV | CommonOpcode::MOVAPS | CommonOpcode::MOVUPS => {
-                    if index == 0 {
-                        Some(Self::Write)
-                    } else if index == 1 {
-                        Some(Self::Read)
-                    } else {
-                        tracing::warn!("mov instruction had incorrect operand count");
-                        None
-                    }
-                }
-                CommonOpcode::IRET
-                | CommonOpcode::IRETD
-                | CommonOpcode::IRETQ
-                | CommonOpcode::POP
-                | CommonOpcode::RETF
-                | CommonOpcode::RETURN => None,
-            }
-        }
-    }
-
-    impl std::fmt::Display for OperandAccessType {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                Self::Read => f.write_str("Read"),
-                Self::Write => f.write_str("Write"),
-                Self::ReadWrite => f.write_str("ReadWrite"),
-                Self::UncommonInstructionAccess => f.write_str("Uncommon Instruction Access"),
-            }
-        }
-    }
-
-    struct GetMemoryAccess<'a> {
-        context: &'a MinidumpContext,
-    }
-
-    struct GetInstructionPointerUpdate<'a> {
-        context: &'a MinidumpContext,
-        memory_list: Option<&'a minidump::UnifiedMemoryList<'a>>,
-        stack_memory: Option<minidump::UnifiedMemory<'a, 'a>>,
-    }
-
     #[derive(Default)]
-    struct RegOperandInfo {
+    struct MemoryOperandInfo {
         pub base_reg: Option<RegSpec>,
         pub index_reg: Option<RegSpec>,
         pub scale: Option<u8>,
-        pub disp: Option<i32>,
+        // Reg operands disp are i32, Displacement operands are i64
+        pub disp: Option<i64>,
     }
 
-    impl RegOperandInfo {
+    impl MemoryOperandInfo {
         pub fn try_from_operand(op: Operand) -> Option<Self> {
-            let mut info = RegOperandInfo::default();
+            let mut info = MemoryOperandInfo::default();
             match op {
+                Operand::DisplacementU32(disp) => info.disp = Some(disp as i32 as i64),
+                Operand::DisplacementU64(disp) => info.disp = Some(disp as i64),
                 Operand::RegDeref(base) => {
                     info.base_reg = Some(base);
                 }
                 Operand::RegDisp(base, disp) => {
                     info.base_reg = Some(base);
-                    info.disp = Some(disp);
+                    info.disp = Some(disp.into());
                 }
                 Operand::RegScale(index, scale) => {
                     info.index_reg = Some(index);
@@ -465,12 +659,12 @@ mod amd64 {
                 Operand::RegIndexBaseDisp(base, index, disp) => {
                     info.base_reg = Some(base);
                     info.index_reg = Some(index);
-                    info.disp = Some(disp);
+                    info.disp = Some(disp.into());
                 }
                 Operand::RegScaleDisp(index, scale, disp) => {
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
-                    info.disp = Some(disp);
+                    info.disp = Some(disp.into());
                 }
                 Operand::RegIndexBaseScale(base, index, scale) => {
                     info.base_reg = Some(base);
@@ -481,7 +675,7 @@ mod amd64 {
                     info.base_reg = Some(base);
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
-                    info.disp = Some(disp);
+                    info.disp = Some(disp.into());
                 }
                 _ => return None,
             }
@@ -490,18 +684,14 @@ mod amd64 {
     }
 
     impl MemoryAddressInfo {
-        fn from_reg_operand_info(
-            register_operand_info: RegOperandInfo,
-            size: Option<u8>,
-            access_type: Option<OperandAccessType>,
+        fn from_memory_operand_info(
+            register_operand_info: MemoryOperandInfo,
             context: &MinidumpContext,
         ) -> Result<MemoryAddressInfo, OpAnalysisError> {
             let mut address_info = MemoryAddressInfo {
                 address: 0,
                 is_likely_null_pointer_dereference: false,
                 is_likely_guard_page: false,
-                size,
-                access_type,
             };
 
             if let Some(reg) = register_operand_info.base_reg {
@@ -521,7 +711,7 @@ mod amd64 {
                 address_info.address = address_info.address.wrapping_add(scaled_index);
             }
 
-            let disp = i64::from(register_operand_info.disp.unwrap_or(0)) as u64;
+            let disp = register_operand_info.disp.unwrap_or(0) as u64;
             address_info.address = address_info.address.wrapping_add(disp);
 
             Ok(address_info)
@@ -539,219 +729,10 @@ mod amd64 {
         }
     }
 
-    impl<'a> GetMemoryAccess<'a> {
-        pub fn new(context: &'a MinidumpContext) -> Self {
-            GetMemoryAccess { context }
-        }
-
-        /// Determine the memory accesses implied by the given instruction and context
-        ///
-        /// # Errors
-        ///
-        /// The most likely cause of an error is that a register named by the given instruction
-        /// is invalid.
-        pub fn get_memory_accesses_from_instruction(
-            &self,
-            decoded_instruction: Instruction,
-        ) -> Result<Vec<MemoryAddressInfo>, OpAnalysisError> {
-            let mut accesses = Vec::new();
-            self.explicit_accesses(&mut accesses, decoded_instruction)?;
-            self.implicit_accesses(&mut accesses, decoded_instruction)?;
-            Ok(accesses)
-        }
-
-        fn explicit_accesses(
-            &self,
-            accesses: &mut Vec<MemoryAddressInfo>,
-            decoded_instruction: Instruction,
-        ) -> Result<(), OpAnalysisError> {
-            // Shortcut -- If the instruction doesn't access memory, just return an empty list
-            let mem_size = match decoded_instruction.mem_size() {
-                Some(access) => access.bytes_size(),
-                None => return Ok(()),
-            };
-
-            // Edge case -- `lea` does not access memory despite having memory operands
-            if matches!(decoded_instruction.opcode(), Opcode::LEA) {
-                return Ok(());
-            }
-
-            for idx in 0..decoded_instruction.operand_count() {
-                let operand = decoded_instruction.operand(idx);
-                let access_type =
-                    OperandAccessType::explicit_from_instruction(decoded_instruction, idx);
-
-                let maybe_access = match operand {
-                    Operand::DisplacementU32(disp) => Some(MemoryAddressInfo {
-                        address: disp.into(),
-                        is_likely_null_pointer_dereference: false,
-                        is_likely_guard_page: false,
-                        size: mem_size,
-                        access_type,
-                    }),
-                    Operand::DisplacementU64(disp) => Some(MemoryAddressInfo {
-                        address: disp,
-                        is_likely_null_pointer_dereference: false,
-                        is_likely_guard_page: false,
-                        size: mem_size,
-                        access_type,
-                    }),
-                    other_operand => {
-                        if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
-                            Some(MemoryAddressInfo::from_reg_operand_info(
-                                op_info,
-                                mem_size,
-                                access_type,
-                                self.context,
-                            )?)
-                        } else {
-                            None
-                        }
-                    }
-                };
-
-                if let Some(access) = maybe_access {
-                    accesses.push(access);
-                }
-            }
-
-            Ok(())
-        }
-
-        fn implicit_accesses(
-            &self,
-            accesses: &mut Vec<MemoryAddressInfo>,
-            decoded_instruction: Instruction,
-        ) -> Result<(), OpAnalysisError> {
-            let mut push_implicit_access = |address, access_type| {
-                accesses.push(MemoryAddressInfo {
-                    address,
-                    is_likely_null_pointer_dereference: address == 0,
-                    is_likely_guard_page: false,
-                    size: Some(1), // TODO: correct size?
-                    access_type,
-                });
-            };
-
-            let Some(opcode) = CommonOpcode::from_amd64_opcode(decoded_instruction.opcode()) else {
-                return Ok(());
-            };
-            match opcode {
-                CommonOpcode::CALL | CommonOpcode::PUSH => {
-                    if let Ok(rsp) = self.context.get_regspec(RegSpec::rsp()) {
-                        push_implicit_access(rsp, Some(OperandAccessType::Write));
-                    }
-                }
-                CommonOpcode::IRET
-                | CommonOpcode::IRETD
-                | CommonOpcode::IRETQ
-                | CommonOpcode::POP
-                | CommonOpcode::RETF
-                | CommonOpcode::RETURN => {
-                    if let Ok(rsp) = self.context.get_regspec(RegSpec::rsp()) {
-                        push_implicit_access(rsp, Some(OperandAccessType::Read));
-                    }
-                }
-                CommonOpcode::ADD
-                | CommonOpcode::CMP
-                | CommonOpcode::DEC
-                | CommonOpcode::INC
-                | CommonOpcode::JMP
-                | CommonOpcode::JMPF
-                | CommonOpcode::MOV
-                | CommonOpcode::MOVAPS
-                | CommonOpcode::MOVUPS
-                | CommonOpcode::SUB => (),
-            }
-            Ok(())
-        }
-    }
-
-    impl<'a> GetInstructionPointerUpdate<'a> {
-        pub fn new(
-            context: &'a MinidumpContext,
-            memory_list: Option<&'a minidump::UnifiedMemoryList<'a>>,
-            stack_memory: Option<minidump::UnifiedMemory<'a, 'a>>,
-        ) -> Self {
-            GetInstructionPointerUpdate {
-                context,
-                memory_list,
-                stack_memory,
-            }
-        }
-
-        /// Determine the update to instruction pointer implied by the given instruction, context
-        /// and memory
-        pub fn get_rip_update_from_instruction(
-            self,
-            decoded_instruction: Instruction,
-        ) -> Result<Option<MemoryAddressInfo>, OpAnalysisError> {
-            let rip_update = |address| {
-                Some(MemoryAddressInfo {
-                    address,
-                    is_likely_null_pointer_dereference: address == 0,
-                    is_likely_guard_page: false,
-                    size: Some(1),
-                    access_type: None,
-                })
-            };
-
-            match decoded_instruction.opcode() {
-                Opcode::CALL | Opcode::CALLF | Opcode::JMP | Opcode::JMPF | Opcode::JMPE => {
-                    if decoded_instruction.operand_count() != 1 {
-                        tracing::warn!("call/jmp instruction had incorrect operand count");
-                        return Ok(None);
-                    }
-                    // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
-                    // JMPF) will be valid, so we don't check immediate operands, only registers.
-                    match decoded_instruction.operand(0) {
-                        Operand::Register(reg) => {
-                            return Ok(rip_update(self.context.get_regspec(reg)?))
-                        }
-                        other_operand => {
-                            // If the operand was some sort of register dereference, try to get the
-                            // _actual_ address from the memory list.
-                            if let Some(op_info) = RegOperandInfo::try_from_operand(other_operand) {
-                                let memory_address = MemoryAddressInfo::from_reg_operand_info(
-                                    op_info,
-                                    None,
-                                    None,
-                                    self.context,
-                                )?
-                                .address;
-                                if let Some(address) = self
-                                    .memory_list
-                                    .and_then(|ml| ml.memory_at_address(memory_address))
-                                    .and_then(|mem| {
-                                        mem.get_memory_at_address::<u64>(memory_address)
-                                    })
-                                {
-                                    return Ok(rip_update(address));
-                                }
-                            }
-                        }
-                    }
-                }
-                Opcode::RETURN | Opcode::RETF | Opcode::IRET | Opcode::IRETD | Opcode::IRETQ => {
-                    // Use the return address (from the stack)
-                    if let (Ok(rsp), Some(stack)) =
-                        (self.context.get_regspec(RegSpec::rsp()), &self.stack_memory)
-                    {
-                        if let Some(address) = stack.get_memory_at_address::<u64>(rsp) {
-                            return Ok(rip_update(address));
-                        }
-                    }
-                }
-                _ => (),
-            }
-            Ok(None)
-        }
-    }
-
     fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
         let mut ret = BTreeSet::new();
         for op in 0..i.operand_count() {
-            if let Some(reginfo) = RegOperandInfo::try_from_operand(i.operand(op)) {
+            if let Some(reginfo) = MemoryOperandInfo::try_from_operand(i.operand(op)) {
                 if let Some(reg) = reginfo.base_reg {
                     ret.insert(reg.name());
                 }
@@ -804,10 +785,10 @@ mod tests {
                         access.size.unwrap()
                     );
                 }
-                if !expected_set.remove(&access.address) {
+                if !expected_set.remove(&access.address_info.address) {
                     panic!(
                         "unexpected memory address found in instruction:\n{}\nexpected:\n{:?}\n",
-                        access.address, expected_set
+                        access.address_info.address, expected_set
                     );
                 }
             }
