@@ -651,32 +651,35 @@ impl<'a> MinidumpInfo<'a> {
                 stack_memory_ref,
             ) {
                 Ok(op_analysis) => {
-                    let memory_accesses_and_rip_update = match (
-                        op_analysis.memory_accesses.clone(),
-                        op_analysis.instruction_pointer_update,
-                    ) {
+                    let access_addresses = op_analysis.memory_accesses.clone().map(|accesses| {
+                        accesses
+                            .iter()
+                            .map(|access| access.address_info)
+                            .collect::<Vec<MemoryAddressInfo>>()
+                    });
+                    let addresses = match (access_addresses, op_analysis.instruction_pointer_update)
+                    {
                         (Some(mut accesses), Some(rip_update)) => {
-                            accesses.push(rip_update);
+                            accesses.push(rip_update.address_info);
                             Some(accesses)
                         }
                         (accesses @ Some(_), None) => accesses,
-                        (None, Some(rip_update)) => Some(vec![rip_update]),
+                        (None, Some(rip_update)) => Some(vec![rip_update.address_info]),
                         (None, None) => None,
                     };
-                    let memory_accesses_and_rip_update = memory_accesses_and_rip_update.as_deref();
+                    let addresses = addresses.as_deref();
 
-                    let adjusted_address =
-                        try_detect_null_pointer_in_disguise(memory_accesses_and_rip_update)
-                            .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
-                            .or_else(|| {
-                                try_get_non_canonical_crash_address(
-                                    &self.system_info,
-                                    memory_accesses_and_rip_update,
-                                    reason,
-                                    address,
-                                )
-                                .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
-                            });
+                    let adjusted_address = try_detect_null_pointer_in_disguise(addresses)
+                        .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
+                        .or_else(|| {
+                            try_get_non_canonical_crash_address(
+                                &self.system_info,
+                                addresses,
+                                reason,
+                                address,
+                            )
+                            .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
+                        });
 
                     exception_info = Some(crate::ExceptionInfo {
                         reason,
@@ -793,7 +796,10 @@ impl<'a> MinidumpInfo<'a> {
 
         if let Some(accesses) = &mut exception_details.info.memory_accesses {
             for access in accesses {
-                let Some(info) = self.memory_info.memory_info_at_address(access.address) else {
+                let Some(info) = self
+                    .memory_info
+                    .memory_info_at_address(access.address_info.address)
+                else {
                     continue;
                 };
                 let Some(range) = info.memory_range() else {
@@ -829,7 +835,7 @@ impl<'a> MinidumpInfo<'a> {
                     && range.end - range.start < GUARD_MEMORY_MAX_SIZE
                     && is_adjacent_to_accessible_memory()
                 {
-                    access.is_likely_guard_page = true;
+                    access.address_info.is_likely_guard_page = true;
                 }
             }
         }
@@ -906,7 +912,7 @@ impl<'a> MinidumpInfo<'a> {
         &self,
         exception_details: &mut ExceptionDetails<'a>,
     ) {
-        use crate::op_analysis::OperandAccessType;
+        use crate::op_analysis::MemoryAccessType;
         use memory_operation::MemoryOperation;
 
         let info = &mut exception_details.info;
@@ -924,17 +930,21 @@ impl<'a> MinidumpInfo<'a> {
                 MemoryOperation::Read => {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
-                            access.address == crash_address
-                                && (access.access_type == Some(OperandAccessType::Read)
-                                    || access.access_type == Some(OperandAccessType::ReadWrite))
+                            access.address_info.address == crash_address
+                                && (matches!(
+                                    access.access_type,
+                                    MemoryAccessType::Read | MemoryAccessType::ReadWrite
+                                ))
                         })
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
                         && !memory_accesses.iter().any(|access| {
-                            access.address == crash_address
-                                && (access.access_type == Some(OperandAccessType::Write)
-                                    || access.access_type == Some(OperandAccessType::ReadWrite))
+                            access.address_info.address == crash_address
+                                && (matches!(
+                                    access.access_type,
+                                    MemoryAccessType::Write | MemoryAccessType::ReadWrite
+                                ))
                         })
                 }
                 MemoryOperation::Execute => exception_details

@@ -505,6 +505,6 @@ async fn test_guard_pages() {
         .expect("no memory accesses");
 
     assert_eq!(accesses.len(), 1);
-    assert_eq!(accesses[0].address, 0x81000);
-    assert!(accesses[0].is_likely_guard_page);
+    assert_eq!(accesses[0].address_info.address, 0x81000);
+    assert!(accesses[0].address_info.is_likely_guard_page);
 }
