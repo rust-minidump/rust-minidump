@@ -13,7 +13,7 @@ use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };
 
-use crate::op_analysis::MemoryAddressInfo;
+use crate::op_analysis::{MemoryAccessVecExt, MemoryAddressInfo};
 use crate::process_state::{LinuxStandardBase, ProcessState};
 use crate::{
     arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
@@ -885,11 +885,22 @@ impl<'a> MinidumpInfo<'a> {
             // We treat stack overflow like an access violation with unknown operation
             // i.e. It is considered inconsistent if the instruction has no memory access
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
+                let crash_reason = exception_details.info.reason;
+                let crash_address = exception_details.info.address.0;
                 // Access of non-canonical address
-                if exception_details.info.address.0 == 0xffffffffffffffff {
-                    match exception_details.info.adjusted_address {
-                        Some(AdjustedAddress::NonCanonical(_)) => (),
-                        _ => {
+                // `adjusted_address` might not be show that it is non-canonical if it is
+                // also a disguised null pointer, so check `memory_accesses` directly
+                if is_non_canonical_exception(self.system_info.os, crash_reason, crash_address) {
+                    use crate::op_analysis::MemoryAccessType;
+                    const NON_CANONICAL_RANGE: RangeInclusive<u64> =
+                        0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
+                    if let Some(accesses) = &exception_details.info.memory_accesses {
+                        if !accesses.contains_access(crash_address, MemoryAccessType::Read)
+                            && !accesses.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                            && !accesses.iter().any(|access| {
+                                NON_CANONICAL_RANGE.contains(&access.address_info.address)
+                            })
+                        {
                             inconsistencies
                                 .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
                         }
@@ -929,23 +940,15 @@ impl<'a> MinidumpInfo<'a> {
                 MemoryOperation::Undetermined => false,
                 MemoryOperation::Read => {
                     is_common_read_write_instruction
-                        && !memory_accesses.iter().any(|access| {
-                            access.address_info.address == crash_address
-                                && (matches!(
-                                    access.access_type,
-                                    MemoryAccessType::Read | MemoryAccessType::ReadWrite
-                                ))
-                        })
+                        && memory_accesses.contains_access(crash_address, MemoryAccessType::Read)
+                        && memory_accesses
+                            .contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
-                        && !memory_accesses.iter().any(|access| {
-                            access.address_info.address == crash_address
-                                && (matches!(
-                                    access.access_type,
-                                    MemoryAccessType::Write | MemoryAccessType::ReadWrite
-                                ))
-                        })
+                        && memory_accesses.contains_access(crash_address, MemoryAccessType::Write)
+                        && memory_accesses
+                            .contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
                 MemoryOperation::Execute => exception_details
                     .context
