@@ -118,6 +118,25 @@ pub enum MemoryAccessType {
     UncommonInstructionAccess,
 }
 
+pub trait MemoryAccessVecExt {
+    fn contains_access(&self, address: u64, access_type: MemoryAccessType) -> bool;
+}
+
+impl MemoryAccessVecExt for Vec<MemoryAccess> {
+    fn contains_access(&self, address: u64, access_type: MemoryAccessType) -> bool {
+        self.iter().any(|access| {
+            let size = access.size.unwrap_or(64) as u64;
+            let lower_bound = access.address_info.address;
+            let (upper_bound, overflowed) = access.address_info.address.overflowing_add(size);
+            access.access_type == access_type
+                && match overflowed {
+                    true => lower_bound <= address || address < upper_bound,
+                    false => lower_bound <= address && address < upper_bound,
+                }
+        })
+    }
+}
+
 impl MemoryAccessType {
     pub fn is_read_or_write(&self) -> bool {
         !matches!(self, Self::UncommonInstructionAccess)
