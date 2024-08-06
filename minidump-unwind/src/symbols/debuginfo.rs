@@ -5,6 +5,7 @@ use cachemap2::CacheMap;
 use framehop::Unwinder;
 use memmap2::Mmap;
 use minidump::{MinidumpModuleList, MinidumpSystemInfo, Module};
+use object::read::{macho::FatArch, Architecture};
 use std::cell::UnsafeCell;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -380,7 +381,10 @@ fn effective_debug_file(module: &dyn Module, unwind_info: bool) -> PathBuf {
     code_file_path.to_owned()
 }
 
-fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<ModuleData>)> {
+fn load_unwind_module(
+    module: &dyn Module,
+    arch: Architecture,
+) -> Option<(Mmap, framehop::Module<ModuleData>)> {
     let path = effective_debug_file(module, true);
     let file = match File::open(&path) {
         Ok(file) => file,
@@ -399,12 +403,33 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
         }
     };
 
-    let objfile = match object::read::File::parse(
-        // # Safety
-        // We broaden the lifetime to static, but ensure that the Mmap which provides the data
-        // outlives all references.
-        unsafe { std::mem::transmute::<&[u8], &'static [u8]>(mapped.as_ref()) },
-    ) {
+    // # Safety
+    // We broaden the lifetime to static, but ensure that the Mmap which provides the data
+    // outlives all references.
+    let data = unsafe { std::mem::transmute::<&[u8], &'static [u8]>(mapped.as_ref()) };
+
+    let object_data = match object::read::FileKind::parse(data) {
+        Err(e) => {
+            // If FileKind parsing fails, File parsing will fail too, so bail out.
+            tracing::error!("failed to parse file kind for {}: {e}", path.display());
+            return None;
+        }
+        Ok(object::read::FileKind::MachOFat64) => get_fat_macho_data(
+            &path,
+            data,
+            object::read::macho::MachOFatFile64::parse(data),
+            arch,
+        )?,
+        Ok(object::read::FileKind::MachOFat32) => get_fat_macho_data(
+            &path,
+            data,
+            object::read::macho::MachOFatFile32::parse(data),
+            arch,
+        )?,
+        _ => data,
+    };
+
+    let objfile = match object::read::File::parse(object_data) {
         Ok(o) => o,
         Err(e) => {
             tracing::error!("failed to parse object file {}: {e}", path.display());
@@ -422,6 +447,39 @@ fn load_unwind_module(module: &dyn Module) -> Option<(Mmap, framehop::Module<Mod
     );
 
     Some((mapped, fhmodule))
+}
+
+fn get_fat_macho_data<'data, Fat: FatArch>(
+    path: &Path,
+    fatfile_data: &'data [u8],
+    result: object::read::Result<object::read::macho::MachOFatFile<'data, Fat>>,
+    arch: Architecture,
+) -> Option<&'data [u8]> {
+    match result {
+        Err(e) => {
+            tracing::error!("failed to parse fat macho file {}: {e}", path.display());
+            None
+        }
+        Ok(fatfile) => {
+            let Some(arch) = fatfile.arches().iter().find(|a| a.architecture() == arch) else {
+                tracing::error!(
+                    "failed to find object file for {arch:?} architecture in fat macho file {}",
+                    path.display()
+                );
+                return None;
+            };
+            arch.data(fatfile_data).map_or_else(
+                |e| {
+                    tracing::error!(
+                        "failed to read data from fat macho file {}: {e}",
+                        path.display()
+                    );
+                    None
+                },
+                Some,
+            )
+        }
+    }
 }
 
 impl Default for DebugInfoSymbolProviderBuilder {
@@ -460,9 +518,9 @@ impl DebugInfoSymbolProviderBuilder {
     ) -> DebugInfoSymbolProvider {
         let mut mapped_modules = Vec::new();
         use minidump::system_info::Cpu;
-        let mut unwinder = match system_info.cpu {
-            Cpu::X86_64 => UnwinderImpl::x86_64(),
-            Cpu::Arm64 => UnwinderImpl::aarch64(),
+        let (arch, mut unwinder) = match system_info.cpu {
+            Cpu::X86_64 => (Architecture::X86_64, UnwinderImpl::x86_64()),
+            Cpu::Arm64 => (Architecture::Aarch64, UnwinderImpl::aarch64()),
             _ => unimplemented!(),
         };
 
@@ -477,7 +535,7 @@ impl DebugInfoSymbolProviderBuilder {
         };
 
         for module in modules.iter() {
-            if let Some((mapped, fhmodule)) = load_unwind_module(module) {
+            if let Some((mapped, fhmodule)) = load_unwind_module(module, arch) {
                 mapped_modules.push(mapped);
                 unwinder.add_module(fhmodule);
             }
