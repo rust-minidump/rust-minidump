@@ -13,7 +13,7 @@ use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };
 
-use crate::op_analysis::{MemoryAccessVecExt, MemoryAddressInfo};
+use crate::op_analysis::MemoryAddressInfo;
 use crate::process_state::{LinuxStandardBase, ProcessState};
 use crate::{
     arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
@@ -628,6 +628,8 @@ impl<'a> MinidumpInfo<'a> {
 
     /// Get details about the minidump exception, if available.
     pub fn get_exception_details(&self) -> Option<ExceptionDetails<'a>> {
+        use crate::op_analysis::InstructionPointerUpdate;
+
         let exception = self.exception.as_ref()?;
 
         let reason = exception.get_crash_reason(self.system_info.os, self.system_info.cpu);
@@ -651,22 +653,24 @@ impl<'a> MinidumpInfo<'a> {
                 stack_memory_ref,
             ) {
                 Ok(op_analysis) => {
-                    let access_addresses = op_analysis.memory_accesses.clone().map(|accesses| {
-                        accesses
-                            .iter()
-                            .map(|access| access.address_info)
-                            .collect::<Vec<MemoryAddressInfo>>()
-                    });
-                    let addresses = match (access_addresses, op_analysis.instruction_pointer_update)
-                    {
-                        (Some(mut accesses), Some(rip_update)) => {
-                            accesses.push(rip_update.address_info);
-                            Some(accesses)
+                    let access_addresses =
+                        op_analysis.memory_access_list.clone().map(|access_list| {
+                            access_list
+                                .iter()
+                                .map(|access| access.address_info)
+                                .collect::<Vec<MemoryAddressInfo>>()
+                        });
+                    // If `access_addresses` is `None`, instruction analysis failed
+                    // so we don't expect `instruction_pointer_update` to be meaningful
+                    let addresses = access_addresses.map(|mut accesses| {
+                        match op_analysis.instruction_pointer_update {
+                            Some(InstructionPointerUpdate::Update { address_info }) => {
+                                accesses.push(address_info);
+                                accesses
+                            }
+                            _ => accesses,
                         }
-                        (accesses @ Some(_), None) => accesses,
-                        (None, Some(rip_update)) => Some(vec![rip_update.address_info]),
-                        (None, None) => None,
-                    };
+                    });
                     let addresses = addresses.as_deref();
 
                     let adjusted_address = try_detect_null_pointer_in_disguise(addresses)
@@ -687,7 +691,7 @@ impl<'a> MinidumpInfo<'a> {
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
                         possible_crash_info: Some(op_analysis.possible_crash_info),
-                        memory_accesses: op_analysis.memory_accesses,
+                        memory_access_list: op_analysis.memory_access_list,
                         instruction_pointer_update: op_analysis.instruction_pointer_update,
                         possible_bit_flips: Default::default(),
                         crash_reason_inconsistencies: Default::default(),
@@ -706,7 +710,7 @@ impl<'a> MinidumpInfo<'a> {
             adjusted_address: None,
             instruction_str: None,
             possible_crash_info: None,
-            memory_accesses: None,
+            memory_access_list: None,
             instruction_pointer_update: None,
             possible_bit_flips: Default::default(),
             crash_reason_inconsistencies: Default::default(),
@@ -794,8 +798,8 @@ impl<'a> MinidumpInfo<'a> {
     pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
         const GUARD_MEMORY_MAX_SIZE: u64 = 2 << 14;
 
-        if let Some(accesses) = &mut exception_details.info.memory_accesses {
-            for access in accesses {
+        if let Some(access_list) = &mut exception_details.info.memory_access_list {
+            for access in &mut access_list.accesses {
                 let Some(info) = self
                     .memory_info
                     .memory_info_at_address(access.address_info.address)
@@ -906,26 +910,32 @@ impl<'a> MinidumpInfo<'a> {
     }
 
     // `adjusted_address` might not be show that it is non-canonical if it is
-    // also a disguised null pointer, so check `memory_accesses` directly
+    // also a disguised null pointer, so check `memory_access_list` directly
     fn check_for_non_canonical_address_inconsistencies(
         &self,
         exception_details: &mut ExceptionDetails<'a>,
     ) {
+        use crate::op_analysis::InstructionPointerUpdate;
         use crate::op_analysis::MemoryAccessType;
         const NON_CANONICAL_RANGE: RangeInclusive<u64> =
             0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
-        if info.memory_accesses.as_ref().is_some_and(|accesses| {
-            !accesses.contains_access(crash_address, MemoryAccessType::Read)
-                && !accesses.contains_access(crash_address, MemoryAccessType::ReadWrite)
-                && !accesses
+        if info.memory_access_list.as_ref().is_some_and(|access_list| {
+            !access_list.contains_access(crash_address, MemoryAccessType::Read)
+                && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                && !access_list
                     .iter()
                     .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
         }) && info
             .instruction_pointer_update
             .as_ref()
-            .is_some_and(|update| !NON_CANONICAL_RANGE.contains(&update.address_info.address))
+            .is_some_and(|update| match update {
+                InstructionPointerUpdate::Update { address_info } => {
+                    !NON_CANONICAL_RANGE.contains(&address_info.address)
+                }
+                InstructionPointerUpdate::NoUpdate => false,
+            })
         {
             info.crash_reason_inconsistencies
                 .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
@@ -948,20 +958,18 @@ impl<'a> MinidumpInfo<'a> {
             .is_some_and(|p| p.is_common_memory_crash_instruction);
 
         // Check if crash address is actually accessed as crash reason claimed
-        if let Some(memory_accesses) = &info.memory_accesses {
+        if let Some(access_list) = &info.memory_access_list {
             let is_inconsistent = match crash_reason_operation {
                 MemoryOperation::Undetermined => false,
                 MemoryOperation::Read => {
                     is_common_read_write_instruction
-                        && !memory_accesses.contains_access(crash_address, MemoryAccessType::Read)
-                        && !memory_accesses
-                            .contains_access(crash_address, MemoryAccessType::ReadWrite)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::Read)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
                 MemoryOperation::Write => {
                     is_common_read_write_instruction
-                        && !memory_accesses.contains_access(crash_address, MemoryAccessType::Write)
-                        && !memory_accesses
-                            .contains_access(crash_address, MemoryAccessType::ReadWrite)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::Write)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
                 MemoryOperation::Execute => exception_details
                     .context
@@ -970,7 +978,7 @@ impl<'a> MinidumpInfo<'a> {
 
                 // Crashes such as stack overflow, no assumptions made about the crash address
                 MemoryOperation::UnknownReadWrite => {
-                    is_common_read_write_instruction && memory_accesses.is_empty()
+                    is_common_read_write_instruction && access_list.is_empty()
                 }
             };
             if is_inconsistent {
@@ -1221,7 +1229,7 @@ struct ExceptionDetails<'a> {
 /// determined, `None` otherwise
 fn try_get_non_canonical_crash_address(
     system_info: &SystemInfo,
-    memory_accesses: Option<&[MemoryAddressInfo]>,
+    memory_addresses: Option<&[MemoryAddressInfo]>,
     reason: CrashReason,
     address: u64,
 ) -> Option<u64> {
@@ -1241,7 +1249,7 @@ fn try_get_non_canonical_crash_address(
     }
 
     // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
-    if memory_accesses.is_none() {
+    if memory_addresses.is_none() {
         tracing::warn!(
             "lack of instruction analysis prevented determination of non-canonical address"
         );
@@ -1249,7 +1257,7 @@ fn try_get_non_canonical_crash_address(
     }
 
     // If any of the instructions operands were within the non-canonical range, we have our culprit
-    for access in memory_accesses.unwrap().iter() {
+    for access in memory_addresses.unwrap().iter() {
         if NON_CANONICAL_RANGE.contains(&access.address) {
             return Some(access.address);
         }
@@ -1316,10 +1324,10 @@ fn is_non_canonical_exception(os: system_info::Os, reason: CrashReason, address:
 /// of them were flagged by `op_analysis` as being a disguised nullptr. If so, we return that
 /// address as an "offset" from the null pointer value
 fn try_detect_null_pointer_in_disguise(
-    memory_accesses: Option<&[MemoryAddressInfo]>,
+    memory_addresses: Option<&[MemoryAddressInfo]>,
 ) -> Option<u64> {
-    if let Some(memory_accesses) = memory_accesses {
-        for access in memory_accesses.iter() {
+    if let Some(memory_addresses) = memory_addresses {
+        for access in memory_addresses.iter() {
             if access.is_likely_null_pointer_dereference {
                 return Some(access.address);
             }
