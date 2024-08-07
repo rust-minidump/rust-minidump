@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::op_analysis::{InstructionPointerUpdate, MemoryAccess, PossibleCrashInfo};
+use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessList, PossibleCrashInfo};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -220,7 +220,7 @@ pub struct ExceptionInfo {
     /// A list of possible crashes derived from the instruction
     pub possible_crash_info: Option<PossibleCrashInfo>,
     /// A list of memory accesses performed by crashing instruction (if available)
-    pub memory_accesses: Option<Vec<MemoryAccess>>,
+    pub memory_access_list: Option<MemoryAccessList>,
     /// Whether the instructino pointer is updated by crashing instruction
     pub instruction_pointer_update: Option<InstructionPointerUpdate>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
@@ -604,10 +604,10 @@ impl ProcessState {
 
             // TODO: output possible crash info?
 
-            if let Some(ref memory_accesses) = crash_info.memory_accesses {
-                if !memory_accesses.is_empty() {
+            if let Some(ref access_list) = crash_info.memory_access_list {
+                if !access_list.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
-                    for (idx, access) in memory_accesses.iter().enumerate() {
+                    for (idx, access) in access_list.iter().enumerate() {
                         writeln!(
                             f,
                             "  {idx}. Address: {}",
@@ -631,10 +631,17 @@ impl ProcessState {
             }
 
             if let Some(ref rip_update) = crash_info.instruction_pointer_update {
-                writeln!(f, "Instruction pointer update done by instruction:")?;
-                writeln!(f, "  Address: {}", Address(rip_update.address_info.address))?;
-                if rip_update.address_info.is_likely_guard_page {
-                    writeln!(f, "     This address falls in a likely guard page.")?;
+                match rip_update {
+                    InstructionPointerUpdate::Update { address_info } => {
+                        writeln!(f, "Instruction pointer update done by instruction:")?;
+                        writeln!(f, "  Address: {}", Address(address_info.address))?;
+                        if address_info.is_likely_guard_page {
+                            writeln!(f, "     This address falls in a likely guard page.")?;
+                        }
+                    }
+                    InstructionPointerUpdate::NoUpdate => {
+                        writeln!(f, "No instruction pointer update by instruction")?;
+                    }
                 }
             }
 
@@ -900,8 +907,8 @@ Unknown streams encountered:
                 }),
                 "instruction": self.exception_info.as_ref().map(|info| info.instruction_str.as_ref()),
                 "memory_accesses": self.exception_info.as_ref().and_then(|info| {
-                    info.memory_accesses.as_ref().map(|accesses| {
-                        accesses.iter().map(|access| {
+                    info.memory_access_list.as_ref().map(|access_list| {
+                        access_list.iter().map(|access| {
                             let mut map = json!({
                                 "address": json_hex(access.address_info.address),
                                 "size": access.size,
@@ -919,13 +926,20 @@ Unknown streams encountered:
                 }),
                 "instruction_pointer_update": self.exception_info.as_ref().and_then(|info| {
                     info.instruction_pointer_update.as_ref().map(|update| {
-                        let mut map = json!({
-                            "address": json_hex(update.address_info.address),
-                        });
-                        if update.address_info.is_likely_guard_page {
-                            map["is_likely_guard_page"] = true.into();
+                        match update {
+                            InstructionPointerUpdate::Update { address_info } => {
+                                let mut map = json!({
+                                    "address": json_hex(address_info.address),
+                                });
+                                if address_info.is_likely_guard_page {
+                                    map["is_likely_guard_page"] = true.into();
+                                }
+                                map
+                            }
+                            InstructionPointerUpdate::NoUpdate => {
+                                json!(null)
+                            }
                         }
-                        map
                     })
                 }),
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
