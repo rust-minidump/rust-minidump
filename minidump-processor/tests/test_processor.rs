@@ -498,13 +498,13 @@ async fn test_guard_pages() {
 
     let state = read_synth_dump(dump).await;
 
-    let accesses = state
+    let access_list = state
         .exception_info
         .expect("missing exception info")
-        .memory_accesses
+        .memory_access_list
         .expect("no memory accesses");
 
-    assert_eq!(accesses.len(), 1);
-    assert_eq!(accesses[0].address_info.address, 0x81000);
-    assert!(accesses[0].address_info.is_likely_guard_page);
+    assert_eq!(access_list.accesses.len(), 1);
+    assert_eq!(access_list.accesses[0].address_info.address, 0x81000);
+    assert!(access_list.accesses[0].address_info.is_likely_guard_page);
 }
