@@ -221,7 +221,7 @@ pub struct ExceptionInfo {
     pub possible_crash_info: Option<PossibleCrashInfo>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_access_list: Option<MemoryAccessList>,
-    /// Whether the instructino pointer is updated by crashing instruction
+    /// Whether the instruction pointer is updated by crashing instruction (if available)
     pub instruction_pointer_update: Option<InstructionPointerUpdate>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
     ///
