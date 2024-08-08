@@ -660,8 +660,6 @@ impl<'a> MinidumpInfo<'a> {
                                 .map(|access| access.address_info)
                                 .collect::<Vec<MemoryAddressInfo>>()
                         });
-                    // If `access_addresses` is `None`, instruction analysis failed
-                    // so we don't expect `instruction_pointer_update` to be meaningful
                     let addresses = access_addresses.map(|mut accesses| {
                         match op_analysis.instruction_pointer_update {
                             Some(InstructionPointerUpdate::Update { address_info }) => {
@@ -909,14 +907,13 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    // `adjusted_address` might not be show that it is non-canonical if it is
-    // also a disguised null pointer, so check `memory_access_list` directly
+    // `adjusted_address` might not show that there is non-canonical address if there is
+    // also a disguised null pointer, so we check `memory_access_list` directly
     fn check_for_non_canonical_address_inconsistencies(
         &self,
         exception_details: &mut ExceptionDetails<'a>,
     ) {
-        use crate::op_analysis::InstructionPointerUpdate;
-        use crate::op_analysis::MemoryAccessType;
+        use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessType};
         const NON_CANONICAL_RANGE: RangeInclusive<u64> =
             0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
         let info = &mut exception_details.info;
@@ -934,7 +931,7 @@ impl<'a> MinidumpInfo<'a> {
                 InstructionPointerUpdate::Update { address_info } => {
                     !NON_CANONICAL_RANGE.contains(&address_info.address)
                 }
-                InstructionPointerUpdate::NoUpdate => false,
+                InstructionPointerUpdate::NoUpdate => true,
             })
         {
             info.crash_reason_inconsistencies
@@ -959,7 +956,7 @@ impl<'a> MinidumpInfo<'a> {
 
         // Check if crash address is actually accessed as crash reason claimed
         if let Some(access_list) = &info.memory_access_list {
-            let is_inconsistent = match crash_reason_operation {
+            if match crash_reason_operation {
                 MemoryOperation::Undetermined => false,
                 MemoryOperation::Read => {
                     is_common_read_write_instruction
@@ -980,16 +977,15 @@ impl<'a> MinidumpInfo<'a> {
                 MemoryOperation::UnknownReadWrite => {
                     is_common_read_write_instruction && access_list.is_empty()
                 }
-            };
-            if is_inconsistent {
+            } {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
             }
         }
 
-        // TODO: Can do the other way around:
-        //       go through all accesses and check if any can cause a violation
         // Check if crash_reason_operation is actually a violation
+        // We can also go through all accesses and check if any can cause the given violation
+        // but this is more straight forward
         if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
             if crash_reason_operation.is_allowed_for(&mi) {
                 info.crash_reason_inconsistencies
@@ -1364,8 +1360,9 @@ pub mod memory_operation {
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            use minidump_common::errors::ExceptionCodeWindows;
-            use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+            use minidump_common::errors::{
+                ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
+            };
 
             match reason {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
