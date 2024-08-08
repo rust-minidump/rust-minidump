@@ -58,6 +58,10 @@ pub struct OpAnalysis {
     /// determined that the instruction doesn't access memory.
     pub memory_access_list: Option<MemoryAccessList>,
     /// Whether the instruction pointer is being updated by the instruction
+    ///
+    /// Note that similar to `memory_access_list`, `None` means that whether there is update
+    /// could not be determined, while `Some(NoUpdate)` means it was successfully determined
+    /// that the instruction doesn't update instruction pointer
     pub instruction_pointer_update: Option<InstructionPointerUpdate>,
     /// A list of all registers which were used by this instruction.
     pub registers: BTreeSet<&'static str>,
@@ -533,6 +537,7 @@ mod amd64 {
 
             Ok(())
         }
+
         fn add_uncommon_opcode_explicit_access(
             &mut self,
             operand: Operand,
