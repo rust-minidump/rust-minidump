@@ -13,9 +13,11 @@ use minidump_unwind::{
     walk_stack, CallStack, CallStackInfo, FrameTrust, StackFrame, SymbolProvider, SystemInfo,
 };
 
-use crate::op_analysis::MemoryAccess;
+use crate::op_analysis::MemoryAddressInfo;
 use crate::process_state::{LinuxStandardBase, ProcessState};
-use crate::{arg_recovery, evil, AdjustedAddress, LinuxProcLimits, LinuxProcStatus};
+use crate::{
+    arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
+};
 
 /// Configuration of the processor's exact behaviour.
 ///
@@ -453,6 +455,7 @@ where
     if let Some(details) = &mut exception_details {
         info.check_for_bitflips(details);
         info.check_for_guard_pages(details);
+        info.check_for_crash_inconsistencies(details);
     }
     info.into_process_state(dump, symbol_provider, exception_details)
         .await
@@ -625,6 +628,8 @@ impl<'a> MinidumpInfo<'a> {
 
     /// Get details about the minidump exception, if available.
     pub fn get_exception_details(&self) -> Option<ExceptionDetails<'a>> {
+        use crate::op_analysis::InstructionPointerUpdate;
+
         let exception = self.exception.as_ref()?;
 
         let reason = exception.get_crash_reason(self.system_info.os, self.system_info.cpu);
@@ -648,14 +653,30 @@ impl<'a> MinidumpInfo<'a> {
                 stack_memory_ref,
             ) {
                 Ok(op_analysis) => {
-                    let memory_accesses = op_analysis.memory_accesses.as_deref();
+                    let access_addresses =
+                        op_analysis.memory_access_list.clone().map(|access_list| {
+                            access_list
+                                .iter()
+                                .map(|access| access.address_info)
+                                .collect::<Vec<MemoryAddressInfo>>()
+                        });
+                    let addresses = access_addresses.map(|mut accesses| {
+                        match op_analysis.instruction_pointer_update {
+                            Some(InstructionPointerUpdate::Update { address_info }) => {
+                                accesses.push(address_info);
+                                accesses
+                            }
+                            _ => accesses,
+                        }
+                    });
+                    let addresses = addresses.as_deref();
 
-                    let adjusted_address = try_detect_null_pointer_in_disguise(memory_accesses)
+                    let adjusted_address = try_detect_null_pointer_in_disguise(addresses)
                         .map(|offset| AdjustedAddress::NullPointerWithOffset(offset.into()))
                         .or_else(|| {
                             try_get_non_canonical_crash_address(
                                 &self.system_info,
-                                memory_accesses,
+                                addresses,
                                 reason,
                                 address,
                             )
@@ -667,8 +688,11 @@ impl<'a> MinidumpInfo<'a> {
                         address: address.into(),
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
-                        memory_accesses: op_analysis.memory_accesses,
+                        possible_crash_info: Some(op_analysis.possible_crash_info),
+                        memory_access_list: op_analysis.memory_access_list,
+                        instruction_pointer_update: op_analysis.instruction_pointer_update,
                         possible_bit_flips: Default::default(),
+                        crash_reason_inconsistencies: Default::default(),
                     });
                     instruction_registers = op_analysis.registers;
                 }
@@ -683,8 +707,11 @@ impl<'a> MinidumpInfo<'a> {
             address: address.into(),
             adjusted_address: None,
             instruction_str: None,
-            memory_accesses: None,
+            possible_crash_info: None,
+            memory_access_list: None,
+            instruction_pointer_update: None,
             possible_bit_flips: Default::default(),
+            crash_reason_inconsistencies: Default::default(),
         });
 
         Some(ExceptionDetails {
@@ -715,6 +742,7 @@ impl<'a> MinidumpInfo<'a> {
         let info = &mut exception_details.info;
 
         use bitflip::BitRange;
+        use memory_operation::MemoryOperation;
         let bit_flip_address = match &info.adjusted_address {
             // Use the non canonical address if present.
             Some(AdjustedAddress::NonCanonical(v)) => Some((v.0, BitRange::Amd64NonCanonical)),
@@ -731,7 +759,7 @@ impl<'a> MinidumpInfo<'a> {
             )),
         };
         if let Some((address, bit_range)) = bit_flip_address {
-            let memory_op = bitflip::MemoryOperation::from_crash_reason(&info.reason);
+            let memory_op = MemoryOperation::from_crash_reason(&info.reason);
             info.possible_bit_flips = bitflip::try_bit_flips(
                 address,
                 None,
@@ -768,9 +796,12 @@ impl<'a> MinidumpInfo<'a> {
     pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
         const GUARD_MEMORY_MAX_SIZE: u64 = 2 << 14;
 
-        if let Some(accesses) = &mut exception_details.info.memory_accesses {
-            for access in accesses {
-                let Some(info) = self.memory_info.memory_info_at_address(access.address) else {
+        if let Some(access_list) = &mut exception_details.info.memory_access_list {
+            for access in &mut access_list.accesses {
+                let Some(info) = self
+                    .memory_info
+                    .memory_info_at_address(access.address_info.address)
+                else {
                     continue;
                 };
                 let Some(range) = info.memory_range() else {
@@ -806,8 +837,163 @@ impl<'a> MinidumpInfo<'a> {
                     && range.end - range.start < GUARD_MEMORY_MAX_SIZE
                     && is_adjacent_to_accessible_memory()
                 {
-                    access.is_likely_guard_page = true;
+                    access.address_info.is_likely_guard_page = true;
                 }
+            }
+        }
+    }
+
+    /// Check for inconsistencies between crash reason and crashing instruction
+    pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
+        use minidump_common::errors::{
+            ExceptionCodeLinuxSigfpeKind as LinuxSigfpe,
+            ExceptionCodeMacArithmeticPpcType as MacArithPpc,
+            ExceptionCodeMacArithmeticX86Type as MacArithX86, ExceptionCodeWindows,
+            ExceptionCodeWindowsAccessType as WinAccess, NtStatusWindows,
+        };
+
+        let inconsistencies = &mut exception_details.info.crash_reason_inconsistencies;
+        match exception_details.info.reason {
+            // Int division by zero
+            CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
+            | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
+            | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO) => {
+                if exception_details
+                    .info
+                    .possible_crash_info
+                    .as_ref()
+                    .is_some_and(|p| !p.int_division_by_zero)
+                {
+                    inconsistencies.push(CrashReasonInconsistency::IntDivByZeroNotPossible);
+                }
+            }
+
+            // Privileged Instruction
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_PRIV_INSTRUCTION)
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
+                if exception_details
+                    .info
+                    .possible_crash_info
+                    .as_ref()
+                    .is_some_and(|p| !p.priv_instruction)
+                {
+                    inconsistencies
+                        .push(CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction);
+                }
+            }
+
+            // Windows stack overflow and access violation
+            // We treat stack overflow like an access violation with unknown operation
+            // i.e. It is considered inconsistent if the instruction has no memory access
+            CrashReason::WindowsAccessViolation(WinAccess::READ) => {
+                if is_non_canonical_exception(
+                    self.system_info.os,
+                    exception_details.info.reason,
+                    exception_details.info.address.0,
+                ) {
+                    self.check_for_non_canonical_address_inconsistencies(exception_details);
+                } else {
+                    self.check_for_memory_access_inconsistencies(exception_details);
+                }
+            }
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
+            | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
+            | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
+                self.check_for_memory_access_inconsistencies(exception_details);
+            }
+
+            _ => (),
+        }
+    }
+
+    // `adjusted_address` might not show that there is non-canonical address if there is
+    // also a disguised null pointer, so we check `memory_access_list` directly
+    fn check_for_non_canonical_address_inconsistencies(
+        &self,
+        exception_details: &mut ExceptionDetails<'a>,
+    ) {
+        use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessType};
+        const NON_CANONICAL_RANGE: RangeInclusive<u64> =
+            0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
+        let info = &mut exception_details.info;
+        let crash_address = info.address.0;
+        if info.memory_access_list.as_ref().is_some_and(|access_list| {
+            !access_list.contains_access(crash_address, MemoryAccessType::Read)
+                && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                && !access_list
+                    .iter()
+                    .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
+        }) && info
+            .instruction_pointer_update
+            .as_ref()
+            .is_some_and(|update| match update {
+                InstructionPointerUpdate::Update { address_info } => {
+                    !NON_CANONICAL_RANGE.contains(&address_info.address)
+                }
+                InstructionPointerUpdate::NoUpdate => true,
+            })
+        {
+            info.crash_reason_inconsistencies
+                .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
+        }
+    }
+
+    fn check_for_memory_access_inconsistencies(
+        &self,
+        exception_details: &mut ExceptionDetails<'a>,
+    ) {
+        use crate::op_analysis::MemoryAccessType;
+        use memory_operation::MemoryOperation;
+
+        let info = &mut exception_details.info;
+        let crash_address = info.address.0;
+        let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
+        let is_common_read_write_instruction = info
+            .possible_crash_info
+            .as_ref()
+            .is_some_and(|p| p.is_common_memory_crash_instruction);
+
+        // Check if crash address is actually accessed as crash reason claimed
+        if let Some(access_list) = &info.memory_access_list {
+            if match crash_reason_operation {
+                MemoryOperation::Undetermined => false,
+                MemoryOperation::Read => {
+                    is_common_read_write_instruction
+                        && !access_list.contains_access(crash_address, MemoryAccessType::Read)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                }
+                MemoryOperation::Write => {
+                    is_common_read_write_instruction
+                        && !access_list.contains_access(crash_address, MemoryAccessType::Write)
+                        && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                }
+                MemoryOperation::Execute => exception_details
+                    .context
+                    .as_ref()
+                    .is_some_and(|context| context.get_instruction_pointer() != crash_address),
+
+                // Crashes such as stack overflow, no assumptions made about the crash address
+                MemoryOperation::UnknownReadWrite => {
+                    is_common_read_write_instruction && access_list.is_empty()
+                }
+            } {
+                info.crash_reason_inconsistencies
+                    .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+            }
+        }
+
+        // Check if crash_reason_operation is actually a violation
+        // We can also go through all accesses and check if any can cause the given violation
+        // but this is more straight forward
+        if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
+            // No assumptions made about the crash address for `UnknownReadWrte`
+            if matches!(crash_reason_operation, MemoryOperation::UnknownReadWrite) {
+                return;
+            }
+            if crash_reason_operation.is_allowed_for(&mi) {
+                info.crash_reason_inconsistencies
+                    .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
             }
         }
     }
@@ -1043,7 +1229,7 @@ struct ExceptionDetails<'a> {
 /// determined, `None` otherwise
 fn try_get_non_canonical_crash_address(
     system_info: &SystemInfo,
-    memory_accesses: Option<&[MemoryAccess]>,
+    memory_addresses: Option<&[MemoryAddressInfo]>,
     reason: CrashReason,
     address: u64,
 ) -> Option<u64> {
@@ -1063,7 +1249,7 @@ fn try_get_non_canonical_crash_address(
     }
 
     // If we weren't able to determine the memory accessed by the instruction, we can't do this analysis
-    if memory_accesses.is_none() {
+    if memory_addresses.is_none() {
         tracing::warn!(
             "lack of instruction analysis prevented determination of non-canonical address"
         );
@@ -1071,7 +1257,7 @@ fn try_get_non_canonical_crash_address(
     }
 
     // If any of the instructions operands were within the non-canonical range, we have our culprit
-    for access in memory_accesses.unwrap().iter() {
+    for access in memory_addresses.unwrap().iter() {
         if NON_CANONICAL_RANGE.contains(&access.address) {
             return Some(access.address);
         }
@@ -1137,9 +1323,11 @@ fn is_non_canonical_exception(os: system_info::Os, reason: CrashReason, address:
 /// This function will search though all the memory accessses for the instruction and see if any
 /// of them were flagged by `op_analysis` as being a disguised nullptr. If so, we return that
 /// address as an "offset" from the null pointer value
-fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>) -> Option<u64> {
-    if let Some(memory_accesses) = memory_accesses {
-        for access in memory_accesses.iter() {
+fn try_detect_null_pointer_in_disguise(
+    memory_addresses: Option<&[MemoryAddressInfo]>,
+) -> Option<u64> {
+    if let Some(memory_addresses) = memory_addresses {
+        for access in memory_addresses.iter() {
             if access.is_likely_null_pointer_dereference {
                 return Some(access.address);
             }
@@ -1148,44 +1336,84 @@ fn try_detect_null_pointer_in_disguise(memory_accesses: Option<&[MemoryAccess]>)
     None
 }
 
-/// Bit-flip detection.
-mod bitflip {
+pub mod memory_operation {
     use super::*;
-    use crate::PossibleBitFlip;
 
     /// The memory operation occurring when a crash occurred.
-    #[derive(Default, PartialEq, Eq, Clone, Copy)]
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     pub enum MemoryOperation {
         #[default]
-        Unknown,
+        Undetermined,
         Read,
         Write,
         Execute,
+        UnknownReadWrite,
+    }
+
+    impl std::fmt::Display for MemoryOperation {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                Self::Undetermined => "Undetermined",
+                Self::Read => "Read",
+                Self::Write => "Write",
+                Self::Execute => "Execute",
+                Self::UnknownReadWrite => "Unknown Read or Write",
+            })
+        }
     }
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            // TODO: it may be possible to derive the read/write/exec when disassembling the faulting
-            // instruction, though this may be fairly verbose to implement.
-            use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+            use minidump_common::errors::{
+                ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
+            };
+
             match reason {
-                CrashReason::WindowsAccessViolation(WinAccess::READ) => MemoryOperation::Read,
-                CrashReason::WindowsAccessViolation(WinAccess::WRITE) => MemoryOperation::Write,
-                CrashReason::WindowsAccessViolation(WinAccess::EXEC) => MemoryOperation::Execute,
+                CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
+                CrashReason::WindowsAccessViolation(WinAccess::WRITE) => Self::Write,
+                CrashReason::WindowsAccessViolation(WinAccess::EXEC) => Self::Execute,
+                CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW) => {
+                    Self::UnknownReadWrite
+                }
                 _ => Self::default(),
             }
         }
 
-        /// Return whether this memory operation is allowed in the given memory region.
-        pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+        /// Return whether this memory operation is possibily allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns true.
+        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
+        /// allows either read or write, and returns false otherwise.
+        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
-                Self::Unknown => true,
+                Self::Undetermined => true,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
+                Self::UnknownReadWrite => memory_info.is_readable() || memory_info.is_writable(),
+            }
+        }
+
+        /// Return whether this memory operation is definitely allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns false.
+        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
+        /// allows both read and write, and returns false otherwise.
+        pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+            match self {
+                Self::Undetermined => false,
+                Self::Read => memory_info.is_readable(),
+                Self::Write => memory_info.is_writable(),
+                Self::Execute => memory_info.is_executable(),
+                Self::UnknownReadWrite => memory_info.is_readable() && memory_info.is_writable(),
             }
         }
     }
+}
+
+/// Bit-flip detection.
+mod bitflip {
+    use super::*;
+    use crate::memory_operation::MemoryOperation;
+    use crate::PossibleBitFlip;
 
     /// The bit range over which to check bit flips.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1208,7 +1436,7 @@ mod bitflip {
     /// Try to determine whether an address was the result of a flipped bit.
     ///
     /// `memory_operation` represents the memory operation that was occurring at the crashing address
-    /// (read/write/exec). If left as `Unknown`, all memory operations are considered allowed.
+    /// (read/write/exec). If left as `Undetermined`, all memory operations are considered allowed.
     /// Otherwise, specify one of the operations that was occurring.
     pub fn try_bit_flips(
         address: u64,
@@ -1221,7 +1449,7 @@ mod bitflip {
         let mut addresses = Vec::new();
         // If the address maps to valid memory, don't do anything else.
         if let Some(mi) = memory_info.memory_info_at_address(address) {
-            if memory_operation.allowed_for(&mi) {
+            if memory_operation.is_possibly_allowed_for(&mi) {
                 return addresses;
             }
         }
@@ -1244,8 +1472,8 @@ mod bitflip {
                 addresses.push(create_possible_address(possible_address));
             }
             if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if memory_operation.allowed_for(&mi) {
-                    addresses.push(create_possible_address(possible_address));
+                if memory_operation.is_possibly_allowed_for(&mi) {
+                    addresses.push(create_possible_address(possible_address))
                 }
             }
         }

@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::op_analysis::MemoryAccess;
+use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessList, PossibleCrashInfo};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -217,12 +217,18 @@ pub struct ExceptionInfo {
     pub adjusted_address: Option<AdjustedAddress>,
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
+    /// A list of possible crashes derived from the instruction
+    pub possible_crash_info: Option<PossibleCrashInfo>,
     /// A list of memory accesses performed by crashing instruction (if available)
-    pub memory_accesses: Option<Vec<MemoryAccess>>,
+    pub memory_access_list: Option<MemoryAccessList>,
+    /// Whether the instruction pointer is updated by crashing instruction (if available)
+    pub instruction_pointer_update: Option<InstructionPointerUpdate>,
     /// Possible valid addresses which are one flipped bit away from the crashing address or adjusted address.
     ///
     /// The original address was possibly the result of faulty hardware, alpha particles, etc.
     pub possible_bit_flips: Vec<PossibleBitFlip>,
+    /// Whether the crash reason is inconsistent with crashing instruction
+    pub crash_reason_inconsistencies: Vec<CrashReasonInconsistency>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -416,6 +422,37 @@ impl PossibleBitFlip {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CrashReasonInconsistency {
+    IntDivByZeroNotPossible,
+    PrivInstructionCrashWithoutPrivInstruction,
+    NonCanonicalAddressFalselyReported,
+    AccessViolationWhenAccessAllowed,
+    CrashingAccessNotFoundInMemoryAccesses,
+}
+
+impl std::fmt::Display for CrashReasonInconsistency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CrashReasonInconsistency::IntDivByZeroNotPossible => {
+                f.write_str("Crash reason is integer division by zero but instruction is not")
+            }
+            CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
+                f.write_str("Crash reason is priveleged instruction but instruction is not")
+            }
+            CrashReasonInconsistency::NonCanonicalAddressFalselyReported => {
+                f.write_str("Crash reason is non-canonical address access but instruction is not")
+            }
+            CrashReasonInconsistency::AccessViolationWhenAccessAllowed => {
+                f.write_str("Crash reason is access violation exception but access is allowed")
+            }
+            CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => f.write_str(
+                "Memory access of crash reason not found in memory accesses done by instruction",
+            ),
+        }
+    }
+}
+
 /// The state of a process as recorded by a `Minidump`.
 #[derive(Debug, Clone)]
 pub struct ProcessState {
@@ -565,22 +602,46 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            if let Some(ref memory_accesses) = crash_info.memory_accesses {
-                if !memory_accesses.is_empty() {
+            // TODO: output possible crash info?
+
+            if let Some(ref access_list) = crash_info.memory_access_list {
+                if !access_list.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
-                    for (idx, access) in memory_accesses.iter().enumerate() {
-                        writeln!(f, "  {idx}. Address: {}", Address(access.address))?;
+                    for (idx, access) in access_list.iter().enumerate() {
+                        writeln!(
+                            f,
+                            "  {idx}. Address: {}",
+                            Address(access.address_info.address)
+                        )?;
                         if let Some(size) = access.size {
                             writeln!(f, "     Size: {size}")?;
                         } else {
                             writeln!(f, "     Size: Unknown")?;
                         }
-                        if access.is_likely_guard_page {
+                        if access.address_info.is_likely_guard_page {
                             writeln!(f, "     This address falls in a likely guard page.")?;
+                        }
+                        if access.access_type.is_read_or_write() {
+                            writeln!(f, "     Access type: {}", access.access_type)?;
                         }
                     }
                 } else {
                     writeln!(f, "No memory accessed by instruction")?;
+                }
+            }
+
+            if let Some(ref rip_update) = crash_info.instruction_pointer_update {
+                match rip_update {
+                    InstructionPointerUpdate::Update { address_info } => {
+                        writeln!(f, "Instruction pointer update done by instruction:")?;
+                        writeln!(f, "  Address: {}", Address(address_info.address))?;
+                        if address_info.is_likely_guard_page {
+                            writeln!(f, "     This address falls in a likely guard page.")?;
+                        }
+                    }
+                    InstructionPointerUpdate::NoUpdate => {
+                        writeln!(f, "No instruction pointer update by instruction")?;
+                    }
                 }
             }
 
@@ -608,6 +669,12 @@ impl ProcessState {
                             Some(name) => format!("{name}="),
                         }
                     )?;
+                }
+            }
+            if !crash_info.crash_reason_inconsistencies.is_empty() {
+                writeln!(f, "Crash reason is inconsistent:")?;
+                for inconsistency in &crash_info.crash_reason_inconsistencies {
+                    writeln!(f, "  {}", inconsistency)?;
                 }
             }
         } else {
@@ -840,22 +907,51 @@ Unknown streams encountered:
                 }),
                 "instruction": self.exception_info.as_ref().map(|info| info.instruction_str.as_ref()),
                 "memory_accesses": self.exception_info.as_ref().and_then(|info| {
-                    info.memory_accesses.as_ref().map(|accesses| {
-                        accesses.iter().map(|access| {
+                    info.memory_access_list.as_ref().map(|access_list| {
+                        access_list.iter().map(|access| {
                             let mut map = json!({
-                                "address": json_hex(access.address),
+                                "address": json_hex(access.address_info.address),
                                 "size": access.size,
                             });
                             // Only add the `is_likely_guard_page` field when it is affirmative.
-                            if access.is_likely_guard_page {
+                            if access.address_info.is_likely_guard_page {
                                 map["is_likely_guard_page"] = true.into();
+                            }
+                            if access.access_type.is_read_or_write() {
+                                map["access_type"] = access.access_type.to_string().into();
                             }
                             map
                         }).collect::<Vec<_>>()
                     })
                 }),
+                "instruction_pointer_update": self.exception_info.as_ref().and_then(|info| {
+                    info.instruction_pointer_update.as_ref().map(|update| {
+                        match update {
+                            InstructionPointerUpdate::Update { address_info } => {
+                                let mut map = json!({
+                                    "address": json_hex(address_info.address),
+                                });
+                                if address_info.is_likely_guard_page {
+                                    map["is_likely_guard_page"] = true.into();
+                                }
+                                map
+                            }
+                            InstructionPointerUpdate::NoUpdate => {
+                                json!(null)
+                            }
+                        }
+                    })
+                }),
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
+                }),
+                "crash_reason_inconsistencies": self.exception_info.as_ref().map(|info| {
+                    info.crash_reason_inconsistencies.iter().map(|inconsistency| {
+                        json!({
+                            // TODO: Proper json output format for inconsistency
+                            "inconsistency": format!("{:?}", inconsistency),
+                        })
+                    }).collect::<Vec<_>>()
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
