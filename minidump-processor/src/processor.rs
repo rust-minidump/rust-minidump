@@ -987,6 +987,10 @@ impl<'a> MinidumpInfo<'a> {
         // We can also go through all accesses and check if any can cause the given violation
         // but this is more straight forward
         if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
+            // No assumptions made about the crash address for `UnknownReadWrte`
+            if matches!(crash_reason_operation, MemoryOperation::UnknownReadWrite) {
+                return;
+            }
             if crash_reason_operation.is_allowed_for(&mi) {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
