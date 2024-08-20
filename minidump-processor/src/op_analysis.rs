@@ -48,9 +48,8 @@ pub enum OpAnalysisError {
 pub struct OpAnalysis {
     /// A string representation of the instruction for humans to read
     pub instruction_str: String,
-    /// A list of booleans representing whether this instruction could have caused
-    /// a particular type of crash
-    pub possible_crash_info: PossibleCrashInfo,
+    /// A list of booleans representing properties of instructions related to possible crash reasons
+    pub instruction_properties: InstructionProperties,
     /// A list of all the memory accesses performed by the instruction
     ///
     /// Note that an empty vector and `None` don't mean the same thing -- `None` means
@@ -67,16 +66,15 @@ pub struct OpAnalysis {
     pub registers: BTreeSet<&'static str>,
 }
 
-/// A list of booleans representing whether this instruction could have caused
-/// a particular type of crash
-/// Note that memory access crashses are checked through `memory_accesses`
-// TODO: remove `is_common_memory_crash_instruction` field once `yaxpeax` provides access types
-// for operands of all instructions
+/// A list of booleans representing properties of instructions related to possible crash reasons
 #[derive(Clone, Debug)]
-pub struct PossibleCrashInfo {
-    pub is_common_memory_crash_instruction: bool,
-    pub int_division_by_zero: bool,
-    pub priv_instruction: bool,
+pub struct InstructionProperties {
+    // TODO: remove `is_access_derivable` field once `yaxpeax` provides preicise behaviour for
+    //  for all instructions
+    /// Currently only support deriving memory access behaviour of a subset of all instructions
+    pub is_access_derivable: bool,
+    pub is_division: bool,
+    pub is_privileged: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -127,12 +125,12 @@ pub enum MemoryAccessType {
     ReadWrite,
 
     // TODO: Remove this variant once `yaxpeax` is used to derive access type of every operand
-    UncommonInstructionAccess,
+    UnderivableInstructionAccess,
 }
 
 impl MemoryAccessType {
     pub fn is_read_or_write(&self) -> bool {
-        !matches!(self, Self::UncommonInstructionAccess)
+        !matches!(self, Self::UnderivableInstructionAccess)
     }
 }
 
@@ -142,7 +140,7 @@ impl std::fmt::Display for MemoryAccessType {
             Self::Read => f.write_str("Read"),
             Self::Write => f.write_str("Write"),
             Self::ReadWrite => f.write_str("ReadWrite"),
-            Self::UncommonInstructionAccess => f.write_str("Uncommon Instruction Access"),
+            Self::UnderivableInstructionAccess => f.write_str("Underivable Instruction Access"),
         }
     }
 }
@@ -227,7 +225,7 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
-        let possible_crash_info = PossibleCrashInfo::from_instruction(decoded_instruction);
+        let possible_crash_info = InstructionProperties::from_instruction(decoded_instruction);
 
         let memory_access_list = MemoryAccessList::from_instruction(decoded_instruction, context)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
@@ -247,7 +245,7 @@ mod amd64 {
 
         Ok(OpAnalysis {
             instruction_str,
-            possible_crash_info,
+            instruction_properties: possible_crash_info,
             memory_access_list,
             instruction_pointer_update,
             registers,
@@ -270,26 +268,26 @@ mod amd64 {
         })
     }
 
-    fn is_common_opcode(opcode: Opcode) -> bool {
-        CommonOpcode::from_opcode(opcode).is_some()
+    fn is_access_derivable(opcode: Opcode) -> bool {
+        AccessDerivableOpcode::from_opcode(opcode).is_some()
     }
 
-    impl PossibleCrashInfo {
+    impl InstructionProperties {
         fn from_instruction(instruction: Instruction) -> Self {
-            PossibleCrashInfo {
-                is_common_memory_crash_instruction: is_common_opcode(instruction.opcode()),
-                int_division_by_zero: PossibleCrashInfo::int_division_by_zero_possible(instruction),
-                priv_instruction: PossibleCrashInfo::priv_instruction_possible(instruction),
+            InstructionProperties {
+                is_access_derivable: is_access_derivable(instruction.opcode()),
+                is_division: InstructionProperties::is_division(instruction),
+                is_privileged: InstructionProperties::is_privileged(instruction),
             }
         }
 
-        fn int_division_by_zero_possible(instruction: Instruction) -> bool {
+        fn is_division(instruction: Instruction) -> bool {
             // TODO: check if the divisor is zero
             matches!(instruction.opcode(), Opcode::DIV | Opcode::IDIV)
         }
 
         // TODO: Use `yaxpeax` to check for all possible privileged instructions
-        fn priv_instruction_possible(instruction: Instruction) -> bool {
+        fn is_privileged(instruction: Instruction) -> bool {
             matches!(
                 instruction.opcode(),
                 Opcode::CLI
@@ -356,10 +354,10 @@ mod amd64 {
             let mut access_list = Self {
                 accesses: Vec::new(),
             };
-            if let Some(opcode) = CommonOpcode::from_opcode(instruction.opcode()) {
-                access_list.add_common_opcode_accesses(opcode, instruction, context)?;
+            if let Some(opcode) = AccessDerivableOpcode::from_opcode(instruction.opcode()) {
+                access_list.add_derivable_opcode_accesses(opcode, instruction, context)?;
             } else {
-                access_list.add_uncommon_opcode_accesses(instruction, context)?;
+                access_list.add_underivable_opcode_accesses(instruction, context)?;
             }
             Ok(access_list)
         }
@@ -392,9 +390,9 @@ mod amd64 {
             self.accesses.is_empty()
         }
 
-        fn add_common_opcode_accesses(
+        fn add_derivable_opcode_accesses(
             &mut self,
-            opcode: CommonOpcode,
+            opcode: AccessDerivableOpcode,
             instruction: Instruction,
             context: &MinidumpContext,
         ) -> Result<(), OpAnalysisError> {
@@ -405,7 +403,7 @@ mod amd64 {
             };
 
             for idx in 0..instruction.operand_count() {
-                self.add_common_opcode_explicit_access(
+                self.add_derivable_opcode_explicit_access(
                     opcode,
                     instruction.operand(idx),
                     idx,
@@ -414,13 +412,13 @@ mod amd64 {
                 )?;
             }
 
-            self.add_common_opcode_implicit_access(opcode, mem_size, context)?;
+            self.add_derivable_opcode_implicit_access(opcode, mem_size, context)?;
             Ok(())
         }
 
-        fn add_common_opcode_explicit_access(
+        fn add_derivable_opcode_explicit_access(
             &mut self,
-            opcode: CommonOpcode,
+            opcode: AccessDerivableOpcode,
             operand: Operand,
             idx: u8,
             mem_size: Option<u8>,
@@ -431,41 +429,61 @@ mod amd64 {
             }
 
             let access_type = match opcode {
-                CommonOpcode::ADD | CommonOpcode::SUB => match idx {
+                AccessDerivableOpcode::ADD | AccessDerivableOpcode::SUB => match idx {
                     0 => MemoryAccessType::ReadWrite,
                     1 => MemoryAccessType::Read,
                     _ => panic!("add/sub instruction had unexpected memory operand"),
                 },
-                CommonOpcode::CALL
-                | CommonOpcode::JMP
-                | CommonOpcode::JMPF
-                | CommonOpcode::PUSH => match idx {
+                AccessDerivableOpcode::CALL
+                | AccessDerivableOpcode::JMP
+                | AccessDerivableOpcode::JMPF
+                | AccessDerivableOpcode::PUSH => match idx {
                     0 => MemoryAccessType::Read,
                     _ => panic!("call/jmp/push instruction had unexpected memory operand"),
                 },
-                CommonOpcode::CMP => match idx {
+                AccessDerivableOpcode::CMP | AccessDerivableOpcode::UCOMSISS => match idx {
                     0 | 1 => MemoryAccessType::Read,
                     _ => panic!("cmp instruction had unexpected memory operand"),
                 },
-                CommonOpcode::DEC | CommonOpcode::INC => match idx {
+                AccessDerivableOpcode::DEC | AccessDerivableOpcode::INC => match idx {
                     0 => MemoryAccessType::ReadWrite,
                     _ => panic!("dec/inc instruction had unexpected memory operand"),
                 },
-                CommonOpcode::POP => match idx {
+                AccessDerivableOpcode::POP => match idx {
                     0 => MemoryAccessType::Write,
                     _ => panic!("pop instruction had unexpected memory operand"),
                 },
-                CommonOpcode::MOV | CommonOpcode::MOVAPS | CommonOpcode::MOVUPS => match idx {
+                AccessDerivableOpcode::MOV
+                | AccessDerivableOpcode::MOVAPS
+                | AccessDerivableOpcode::MOVUPS => match idx {
                     0 => MemoryAccessType::Write,
                     1 => MemoryAccessType::Read,
                     _ => panic!("mov/movaps/movups instruction had unexpected memory operand"),
                 },
-                CommonOpcode::LEA => match idx {
+                AccessDerivableOpcode::LEA => match idx {
                     0 | 1 => return Ok(()),
                     _ => panic!("lea instruction had unexpected memory operand"),
                 },
-                CommonOpcode::RETURN | CommonOpcode::RETF => {
+                AccessDerivableOpcode::RETURN | AccessDerivableOpcode::RETF => {
                     panic!("ret/iret instruction had unexpected memory operand")
+                }
+                AccessDerivableOpcode::JO
+                | AccessDerivableOpcode::JNO
+                | AccessDerivableOpcode::JB
+                | AccessDerivableOpcode::JNB
+                | AccessDerivableOpcode::JZ
+                | AccessDerivableOpcode::JNZ
+                | AccessDerivableOpcode::JA
+                | AccessDerivableOpcode::JNA
+                | AccessDerivableOpcode::JS
+                | AccessDerivableOpcode::JNS
+                | AccessDerivableOpcode::JP
+                | AccessDerivableOpcode::JNP
+                | AccessDerivableOpcode::JL
+                | AccessDerivableOpcode::JGE
+                | AccessDerivableOpcode::JG
+                | AccessDerivableOpcode::JLE => {
+                    panic!("jcc instruction had unexpected memory operand")
                 }
             };
 
@@ -480,9 +498,9 @@ mod amd64 {
             Ok(())
         }
 
-        fn add_common_opcode_implicit_access(
+        fn add_derivable_opcode_implicit_access(
             &mut self,
-            opcode: CommonOpcode,
+            opcode: AccessDerivableOpcode,
             mem_size: Option<u8>,
             context: &MinidumpContext,
         ) -> Result<(), OpAnalysisError> {
@@ -500,13 +518,15 @@ mod amd64 {
             };
 
             match opcode {
-                CommonOpcode::CALL | CommonOpcode::PUSH => {
+                AccessDerivableOpcode::CALL | AccessDerivableOpcode::PUSH => {
                     if let Ok(rsp) = context.get_regspec(RegSpec::rsp()) {
                         // For unknown reasons, rsp is off by 8 if crash on `call` or `push`
                         push_implicit_access(rsp - 8, MemoryAccessType::Write);
                     }
                 }
-                CommonOpcode::POP | CommonOpcode::RETF | CommonOpcode::RETURN => {
+                AccessDerivableOpcode::POP
+                | AccessDerivableOpcode::RETF
+                | AccessDerivableOpcode::RETURN => {
                     if let Ok(rsp) = context.get_regspec(RegSpec::rsp()) {
                         push_implicit_access(rsp, MemoryAccessType::Read);
                     }
@@ -516,7 +536,7 @@ mod amd64 {
             Ok(())
         }
 
-        fn add_uncommon_opcode_accesses(
+        fn add_underivable_opcode_accesses(
             &mut self,
             instruction: Instruction,
             context: &MinidumpContext,
@@ -528,7 +548,7 @@ mod amd64 {
             };
 
             for idx in 0..instruction.operand_count() {
-                self.add_uncommon_opcode_explicit_access(
+                self.add_underivable_opcode_explicit_access(
                     instruction.operand(idx),
                     mem_size,
                     context,
@@ -538,7 +558,7 @@ mod amd64 {
             Ok(())
         }
 
-        fn add_uncommon_opcode_explicit_access(
+        fn add_underivable_opcode_explicit_access(
             &mut self,
             operand: Operand,
             mem_size: Option<u8>,
@@ -552,7 +572,7 @@ mod amd64 {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
-                    access_type: MemoryAccessType::UncommonInstructionAccess,
+                    access_type: MemoryAccessType::UnderivableInstructionAccess,
                 });
             }
 
@@ -616,15 +636,37 @@ mod amd64 {
                         }
                     }
                 }
+
+                // For `jcc` opcodes, rip update is left undetermined as it is cumbersome to determine
+                Opcode::JO
+                | Opcode::JNO
+                | Opcode::JB
+                | Opcode::JNB
+                | Opcode::JZ
+                | Opcode::JNZ
+                | Opcode::JA
+                | Opcode::JNA
+                | Opcode::JS
+                | Opcode::JNS
+                | Opcode::JP
+                | Opcode::JNP
+                | Opcode::JL
+                | Opcode::JGE
+                | Opcode::JG
+                | Opcode::JLE => return Ok(None),
+
                 _ => return Ok(Some(InstructionPointerUpdate::NoUpdate)),
             }
             Ok(None)
         }
     }
 
+    /// A subset of opcodes that we support for deriving precise memory access behaviour
+    /// They are either commonly seen in crashes,
+    /// or known to appear in specific inconsistent crashes
     #[derive(Copy, Clone)]
     #[allow(clippy::upper_case_acronyms)]
-    enum CommonOpcode {
+    enum AccessDerivableOpcode {
         ADD,
         CALL,
         CMP,
@@ -632,6 +674,22 @@ mod amd64 {
         INC,
         JMP,
         JMPF,
+        JO,
+        JNO,
+        JB,
+        JNB,
+        JZ,
+        JNZ,
+        JA,
+        JNA,
+        JS,
+        JNS,
+        JP,
+        JNP,
+        JL,
+        JGE,
+        JG,
+        JLE,
         LEA,
         MOV,
         MOVAPS,
@@ -641,9 +699,11 @@ mod amd64 {
         RETF,
         RETURN,
         SUB,
+        /// See https://bugzilla.mozilla.org/show_bug.cgi?id=1831370
+        UCOMSISS,
     }
 
-    impl CommonOpcode {
+    impl AccessDerivableOpcode {
         fn from_opcode(opcode: Opcode) -> Option<Self> {
             match opcode {
                 Opcode::ADD => Some(Self::ADD),
@@ -653,6 +713,22 @@ mod amd64 {
                 Opcode::INC => Some(Self::INC),
                 Opcode::JMP => Some(Self::JMP),
                 Opcode::JMPF => Some(Self::JMPF),
+                Opcode::JO => Some(Self::JO),
+                Opcode::JNO => Some(Self::JNO),
+                Opcode::JB => Some(Self::JB),
+                Opcode::JNB => Some(Self::JNB),
+                Opcode::JZ => Some(Self::JZ),
+                Opcode::JNZ => Some(Self::JNZ),
+                Opcode::JA => Some(Self::JA),
+                Opcode::JNA => Some(Self::JNA),
+                Opcode::JS => Some(Self::JS),
+                Opcode::JNS => Some(Self::JNS),
+                Opcode::JP => Some(Self::JP),
+                Opcode::JNP => Some(Self::JNP),
+                Opcode::JL => Some(Self::JL),
+                Opcode::JGE => Some(Self::JGE),
+                Opcode::JG => Some(Self::JG),
+                Opcode::JLE => Some(Self::JLE),
                 Opcode::LEA => Some(Self::LEA),
                 Opcode::MOV => Some(Self::MOV),
                 Opcode::MOVAPS => Some(Self::MOVAPS),
@@ -662,6 +738,7 @@ mod amd64 {
                 Opcode::RETF => Some(Self::RETF),
                 Opcode::RETURN => Some(Self::RETURN),
                 Opcode::SUB => Some(Self::SUB),
+                Opcode::UCOMISS => Some(Self::UCOMSISS),
                 _ => None,
             }
         }
