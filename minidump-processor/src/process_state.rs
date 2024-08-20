@@ -602,8 +602,6 @@ impl ProcessState {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
 
-            // TODO: output possible crash info?
-
             if let Some(ref access_list) = crash_info.memory_access_list {
                 if !access_list.is_empty() {
                     writeln!(f, "Memory accessed by instruction:")?;
@@ -948,7 +946,6 @@ Unknown streams encountered:
                 "crash_reason_inconsistencies": self.exception_info.as_ref().map(|info| {
                     info.crash_reason_inconsistencies.iter().map(|inconsistency| {
                         json!({
-                            // TODO: Proper json output format for inconsistency
                             "inconsistency": format!("{:?}", inconsistency),
                         })
                     }).collect::<Vec<_>>()
