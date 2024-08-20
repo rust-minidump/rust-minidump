@@ -10,7 +10,7 @@ use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
 
-use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessList, PossibleCrashInfo};
+use crate::op_analysis::{InstructionPointerUpdate, InstructionProperties, MemoryAccessList};
 use minidump::system_info::PointerWidth;
 use minidump::*;
 use minidump_common::utils::basename;
@@ -217,8 +217,8 @@ pub struct ExceptionInfo {
     pub adjusted_address: Option<AdjustedAddress>,
     /// A string representing the crashing instruction (if available)
     pub instruction_str: Option<String>,
-    /// A list of possible crashes derived from the instruction
-    pub possible_crash_info: Option<PossibleCrashInfo>,
+    /// A list of booleans representing properties of crashing instruction (if availaable)
+    pub instruction_properties: Option<InstructionProperties>,
     /// A list of memory accesses performed by crashing instruction (if available)
     pub memory_access_list: Option<MemoryAccessList>,
     /// Whether the instruction pointer is updated by crashing instruction (if available)

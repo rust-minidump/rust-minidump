@@ -688,7 +688,7 @@ impl<'a> MinidumpInfo<'a> {
                         address: address.into(),
                         adjusted_address,
                         instruction_str: Some(op_analysis.instruction_str),
-                        possible_crash_info: Some(op_analysis.possible_crash_info),
+                        instruction_properties: Some(op_analysis.instruction_properties),
                         memory_access_list: op_analysis.memory_access_list,
                         instruction_pointer_update: op_analysis.instruction_pointer_update,
                         possible_bit_flips: Default::default(),
@@ -707,7 +707,7 @@ impl<'a> MinidumpInfo<'a> {
             address: address.into(),
             adjusted_address: None,
             instruction_str: None,
-            possible_crash_info: None,
+            instruction_properties: None,
             memory_access_list: None,
             instruction_pointer_update: None,
             possible_bit_flips: Default::default(),
@@ -861,9 +861,9 @@ impl<'a> MinidumpInfo<'a> {
             | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO) => {
                 if exception_details
                     .info
-                    .possible_crash_info
+                    .instruction_properties
                     .as_ref()
-                    .is_some_and(|p| !p.int_division_by_zero)
+                    .is_some_and(|p| !p.is_division)
                 {
                     inconsistencies.push(CrashReasonInconsistency::IntDivByZeroNotPossible);
                 }
@@ -874,9 +874,9 @@ impl<'a> MinidumpInfo<'a> {
             | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
                 if exception_details
                     .info
-                    .possible_crash_info
+                    .instruction_properties
                     .as_ref()
-                    .is_some_and(|p| !p.priv_instruction)
+                    .is_some_and(|p| !p.is_privileged)
                 {
                     inconsistencies
                         .push(CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction);
@@ -918,21 +918,26 @@ impl<'a> MinidumpInfo<'a> {
             0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
-        if info.memory_access_list.as_ref().is_some_and(|access_list| {
-            !access_list.contains_access(crash_address, MemoryAccessType::Read)
-                && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
-                && !access_list
-                    .iter()
-                    .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
-        }) && info
-            .instruction_pointer_update
+        if info
+            .instruction_properties
             .as_ref()
-            .is_some_and(|update| match update {
-                InstructionPointerUpdate::Update { address_info } => {
-                    !NON_CANONICAL_RANGE.contains(&address_info.address)
-                }
-                InstructionPointerUpdate::NoUpdate => true,
+            .is_some_and(|properties| properties.is_access_derivable)
+            && info.memory_access_list.as_ref().is_some_and(|access_list| {
+                !access_list.contains_access(crash_address, MemoryAccessType::Read)
+                    && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
+                    && !access_list
+                        .iter()
+                        .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
             })
+            && info
+                .instruction_pointer_update
+                .as_ref()
+                .is_some_and(|update| match update {
+                    InstructionPointerUpdate::Update { address_info } => {
+                        !NON_CANONICAL_RANGE.contains(&address_info.address)
+                    }
+                    InstructionPointerUpdate::NoUpdate => true,
+                })
         {
             info.crash_reason_inconsistencies
                 .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
@@ -945,38 +950,38 @@ impl<'a> MinidumpInfo<'a> {
     ) {
         use crate::op_analysis::MemoryAccessType;
         use memory_operation::MemoryOperation;
+        use minidump_common::errors::{
+            ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
+        };
 
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
-        let crash_reason_operation = MemoryOperation::from_crash_reason(&info.reason);
-        let is_common_read_write_instruction = info
-            .possible_crash_info
+        let has_access_derivable_instruction = info
+            .instruction_properties
             .as_ref()
-            .is_some_and(|p| p.is_common_memory_crash_instruction);
+            .is_some_and(|p| p.is_access_derivable);
 
         // Check if crash address is actually accessed as crash reason claimed
         if let Some(access_list) = &info.memory_access_list {
-            if match crash_reason_operation {
-                MemoryOperation::Undetermined => false,
-                MemoryOperation::Read => {
-                    is_common_read_write_instruction
+            if match info.reason {
+                CrashReason::WindowsAccessViolation(WinAccess::READ) => {
+                    has_access_derivable_instruction
                         && !access_list.contains_access(crash_address, MemoryAccessType::Read)
                         && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
-                MemoryOperation::Write => {
-                    is_common_read_write_instruction
+                CrashReason::WindowsAccessViolation(WinAccess::WRITE) => {
+                    has_access_derivable_instruction
                         && !access_list.contains_access(crash_address, MemoryAccessType::Write)
                         && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
                 }
-                MemoryOperation::Execute => exception_details
+                CrashReason::WindowsAccessViolation(WinAccess::EXEC) => exception_details
                     .context
                     .as_ref()
                     .is_some_and(|context| context.get_instruction_pointer() != crash_address),
-
-                // Crashes such as stack overflow, no assumptions made about the crash address
-                MemoryOperation::UnknownReadWrite => {
-                    is_common_read_write_instruction && access_list.is_empty()
+                CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW) => {
+                    has_access_derivable_instruction && access_list.is_empty()
                 }
+                _ => false,
             } {
                 info.crash_reason_inconsistencies
                     .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
@@ -984,16 +989,17 @@ impl<'a> MinidumpInfo<'a> {
         }
 
         // Check if crash_reason_operation is actually a violation
-        // We can also go through all accesses and check if any can cause the given violation
-        // but this is more straight forward
         if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
-            // No assumptions made about the crash address for `UnknownReadWrte`
-            if matches!(crash_reason_operation, MemoryOperation::UnknownReadWrite) {
-                return;
-            }
-            if crash_reason_operation.is_allowed_for(&mi) {
-                info.crash_reason_inconsistencies
-                    .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
+            if matches!(
+                info.reason,
+                CrashReason::WindowsAccessViolation(WinAccess::READ)
+                    | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
+                    | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
+            ) {
+                if MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi) {
+                    info.crash_reason_inconsistencies
+                        .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
+                }
             }
         }
     }
@@ -1347,7 +1353,6 @@ pub mod memory_operation {
         Read,
         Write,
         Execute,
-        UnknownReadWrite,
     }
 
     impl std::fmt::Display for MemoryOperation {
@@ -1357,24 +1362,18 @@ pub mod memory_operation {
                 Self::Read => "Read",
                 Self::Write => "Write",
                 Self::Execute => "Execute",
-                Self::UnknownReadWrite => "Unknown Read or Write",
             })
         }
     }
 
     impl MemoryOperation {
         pub fn from_crash_reason(reason: &CrashReason) -> Self {
-            use minidump_common::errors::{
-                ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
-            };
+            use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
 
             match reason {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => Self::Read,
                 CrashReason::WindowsAccessViolation(WinAccess::WRITE) => Self::Write,
                 CrashReason::WindowsAccessViolation(WinAccess::EXEC) => Self::Execute,
-                CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW) => {
-                    Self::UnknownReadWrite
-                }
                 _ => Self::default(),
             }
         }
@@ -1389,7 +1388,6 @@ pub mod memory_operation {
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-                Self::UnknownReadWrite => memory_info.is_readable() || memory_info.is_writable(),
             }
         }
 
@@ -1403,7 +1401,6 @@ pub mod memory_operation {
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-                Self::UnknownReadWrite => memory_info.is_readable() && memory_info.is_writable(),
             }
         }
     }
