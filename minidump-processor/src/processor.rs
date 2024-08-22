@@ -16,7 +16,7 @@ use minidump_unwind::{
 use crate::op_analysis::MemoryAddressInfo;
 use crate::process_state::{LinuxStandardBase, ProcessState};
 use crate::{
-    arg_recovery, evil, AdjustedAddress, CrashReasonInconsistency, LinuxProcLimits, LinuxProcStatus,
+    arg_recovery, evil, AdjustedAddress, CrashInconsistency, LinuxProcLimits, LinuxProcStatus,
 };
 
 /// Configuration of the processor's exact behaviour.
@@ -683,18 +683,13 @@ impl<'a> MinidumpInfo<'a> {
                             .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
                         });
 
-                    exception_info = Some(crate::ExceptionInfo {
+                    instruction_registers = op_analysis.registers.clone();
+                    exception_info = Some(crate::ExceptionInfo::with_op_analysis(
                         reason,
-                        address: address.into(),
+                        address.into(),
                         adjusted_address,
-                        instruction_str: Some(op_analysis.instruction_str),
-                        instruction_properties: Some(op_analysis.instruction_properties),
-                        memory_access_list: op_analysis.memory_access_list,
-                        instruction_pointer_update: op_analysis.instruction_pointer_update,
-                        possible_bit_flips: Default::default(),
-                        crash_reason_inconsistencies: Default::default(),
-                    });
-                    instruction_registers = op_analysis.registers;
+                        op_analysis,
+                    ));
                 }
                 Err(e) => {
                     tracing::warn!("failed to analyze the thread context: {e}");
@@ -702,17 +697,8 @@ impl<'a> MinidumpInfo<'a> {
             }
         }
 
-        let info = exception_info.unwrap_or_else(|| crate::ExceptionInfo {
-            reason,
-            address: address.into(),
-            adjusted_address: None,
-            instruction_str: None,
-            instruction_properties: None,
-            memory_access_list: None,
-            instruction_pointer_update: None,
-            possible_bit_flips: Default::default(),
-            crash_reason_inconsistencies: Default::default(),
-        });
+        let info =
+            exception_info.unwrap_or_else(|| crate::ExceptionInfo::new(reason, address.into()));
 
         Some(ExceptionDetails {
             info,
@@ -844,7 +830,7 @@ impl<'a> MinidumpInfo<'a> {
     }
 
     /// Check for inconsistencies between crash reason and crashing instruction
-    pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails<'a>) {
+    pub fn check_for_crash_inconsistencies(&self, exception_details: &mut ExceptionDetails) {
         use minidump_common::errors::{
             ExceptionCodeLinuxSigfpeKind as LinuxSigfpe,
             ExceptionCodeMacArithmeticPpcType as MacArithPpc,
@@ -852,9 +838,8 @@ impl<'a> MinidumpInfo<'a> {
             ExceptionCodeWindowsAccessType as WinAccess, NtStatusWindows,
         };
 
-        let inconsistencies = &mut exception_details.info.crash_reason_inconsistencies;
+        let inconsistencies = &mut exception_details.info.inconsistencies;
         match exception_details.info.reason {
-            // Int division by zero
             CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
             | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
             | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
@@ -865,11 +850,10 @@ impl<'a> MinidumpInfo<'a> {
                     .as_ref()
                     .is_some_and(|p| !p.is_division)
                 {
-                    inconsistencies.push(CrashReasonInconsistency::IntDivByZeroNotPossible);
+                    inconsistencies.push(CrashInconsistency::IntDivByZeroNotPossible);
                 }
             }
 
-            // Privileged Instruction
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_PRIV_INSTRUCTION)
             | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
                 if exception_details
@@ -879,11 +863,10 @@ impl<'a> MinidumpInfo<'a> {
                     .is_some_and(|p| !p.is_privileged)
                 {
                     inconsistencies
-                        .push(CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction);
+                        .push(CrashInconsistency::PrivInstructionCrashWithoutPrivInstruction);
                 }
             }
 
-            // Windows stack overflow and access violation
             // We treat stack overflow like an access violation with unknown operation
             // i.e. It is considered inconsistent if the instruction has no memory access
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
@@ -911,7 +894,7 @@ impl<'a> MinidumpInfo<'a> {
     // also a disguised null pointer, so we check `memory_access_list` directly
     fn check_for_non_canonical_address_inconsistencies(
         &self,
-        exception_details: &mut ExceptionDetails<'a>,
+        exception_details: &mut ExceptionDetails,
     ) {
         use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessType};
         const NON_CANONICAL_RANGE: RangeInclusive<u64> =
@@ -939,17 +922,18 @@ impl<'a> MinidumpInfo<'a> {
                     InstructionPointerUpdate::NoUpdate => true,
                 })
         {
-            info.crash_reason_inconsistencies
-                .push(CrashReasonInconsistency::NonCanonicalAddressFalselyReported);
+            info.inconsistencies
+                .push(CrashInconsistency::NonCanonicalAddressFalselyReported);
         }
     }
 
-    fn check_for_memory_access_inconsistencies(
-        &self,
-        exception_details: &mut ExceptionDetails<'a>,
-    ) {
+    fn check_for_memory_access_inconsistencies(&self, exception_details: &mut ExceptionDetails) {
+        self.check_if_crashing_access_is_among_accesses(exception_details);
+        self.check_if_access_violation_is_allowed(exception_details);
+    }
+
+    fn check_if_crashing_access_is_among_accesses(&self, exception_details: &mut ExceptionDetails) {
         use crate::op_analysis::MemoryAccessType;
-        use memory_operation::MemoryOperation;
         use minidump_common::errors::{
             ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
         };
@@ -961,7 +945,6 @@ impl<'a> MinidumpInfo<'a> {
             .as_ref()
             .is_some_and(|p| p.is_access_derivable);
 
-        // Check if crash address is actually accessed as crash reason claimed
         if let Some(access_list) = &info.memory_access_list {
             if match info.reason {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => {
@@ -983,22 +966,31 @@ impl<'a> MinidumpInfo<'a> {
                 }
                 _ => false,
             } {
-                info.crash_reason_inconsistencies
-                    .push(CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                info.inconsistencies
+                    .push(CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses);
             }
         }
+    }
 
-        // Check if crash_reason_operation is actually a violation
-        if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
-            if matches!(
-                info.reason,
-                CrashReason::WindowsAccessViolation(WinAccess::READ)
-                    | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
-                    | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
-            ) {
-                if MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi) {
-                    info.crash_reason_inconsistencies
-                        .push(CrashReasonInconsistency::AccessViolationWhenAccessAllowed);
+    fn check_if_access_violation_is_allowed(&self, exception_details: &mut ExceptionDetails) {
+        {
+            use memory_operation::MemoryOperation;
+            use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
+
+            let info = &mut exception_details.info;
+            let crash_address = info.address.0;
+
+            if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
+                if matches!(
+                    info.reason,
+                    CrashReason::WindowsAccessViolation(WinAccess::READ)
+                        | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
+                        | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
+                ) {
+                    if MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi) {
+                        info.inconsistencies
+                            .push(CrashInconsistency::AccessViolationWhenAccessAllowed);
+                    }
                 }
             }
         }
@@ -1209,6 +1201,41 @@ impl<'a> MinidumpInfo<'a> {
         state.symbol_stats = symbol_stats;
 
         Ok(state)
+    }
+}
+
+impl crate::ExceptionInfo {
+    fn new(reason: CrashReason, address: crate::Address) -> Self {
+        Self {
+            reason,
+            address,
+            adjusted_address: None,
+            instruction_str: None,
+            instruction_properties: None,
+            memory_access_list: None,
+            instruction_pointer_update: None,
+            possible_bit_flips: Default::default(),
+            inconsistencies: Default::default(),
+        }
+    }
+
+    fn with_op_analysis(
+        reason: CrashReason,
+        address: crate::Address,
+        adjusted_address: Option<AdjustedAddress>,
+        op_analysis: crate::op_analysis::OpAnalysis,
+    ) -> Self {
+        Self {
+            reason,
+            address: address.into(),
+            adjusted_address,
+            instruction_str: Some(op_analysis.instruction_str),
+            instruction_properties: Some(op_analysis.instruction_properties),
+            memory_access_list: op_analysis.memory_access_list,
+            instruction_pointer_update: op_analysis.instruction_pointer_update,
+            possible_bit_flips: Default::default(),
+            inconsistencies: Default::default(),
+        }
     }
 }
 

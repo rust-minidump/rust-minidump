@@ -227,8 +227,8 @@ pub struct ExceptionInfo {
     ///
     /// The original address was possibly the result of faulty hardware, alpha particles, etc.
     pub possible_bit_flips: Vec<PossibleBitFlip>,
-    /// Whether the crash reason is inconsistent with crashing instruction
-    pub crash_reason_inconsistencies: Vec<CrashReasonInconsistency>,
+    /// Whether the crash reason/address is inconsistent with crashing instruction and memory info
+    pub inconsistencies: Vec<CrashInconsistency>,
 }
 
 /// Info about a memory address that was adjusted from its reported value
@@ -423,7 +423,7 @@ impl PossibleBitFlip {
 }
 
 #[derive(Debug, Clone)]
-pub enum CrashReasonInconsistency {
+pub enum CrashInconsistency {
     IntDivByZeroNotPossible,
     PrivInstructionCrashWithoutPrivInstruction,
     NonCanonicalAddressFalselyReported,
@@ -431,24 +431,49 @@ pub enum CrashReasonInconsistency {
     CrashingAccessNotFoundInMemoryAccesses,
 }
 
-impl std::fmt::Display for CrashReasonInconsistency {
+impl std::fmt::Display for CrashInconsistency {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CrashReasonInconsistency::IntDivByZeroNotPossible => {
-                f.write_str("Crash reason is integer division by zero but instruction is not")
+            CrashInconsistency::IntDivByZeroNotPossible => {
+                f.write_str("Crash reason is an integer division by zero but the crashing instruction is not a division")
             }
-            CrashReasonInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
-                f.write_str("Crash reason is priveleged instruction but instruction is not")
+            CrashInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
+                f.write_str("Crash reason is a privileged instruction but crashing instruction is not a privileged one")
             }
-            CrashReasonInconsistency::NonCanonicalAddressFalselyReported => {
-                f.write_str("Crash reason is non-canonical address access but instruction is not")
+            CrashInconsistency::NonCanonicalAddressFalselyReported => {
+                f.write_str("Crash address is reported as a non-canonical x86-64 address but the actual address is a canonical one")
             }
-            CrashReasonInconsistency::AccessViolationWhenAccessAllowed => {
+            CrashInconsistency::AccessViolationWhenAccessAllowed => {
                 f.write_str("Crash reason is access violation exception but access is allowed")
             }
-            CrashReasonInconsistency::CrashingAccessNotFoundInMemoryAccesses => f.write_str(
-                "Memory access of crash reason not found in memory accesses done by instruction",
+            CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses => f.write_str(
+                "Crash address not found among the memory accesses of the crashing instruction",
             ),
+        }
+    }
+}
+
+impl serde::Serialize for CrashInconsistency {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            CrashInconsistency::IntDivByZeroNotPossible => {
+                serializer.serialize_str("int_div_by_zero_not_possible")
+            }
+            CrashInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
+                serializer.serialize_str("priv_instruction_crash_without_priv_instruction")
+            }
+            CrashInconsistency::NonCanonicalAddressFalselyReported => {
+                serializer.serialize_str("non_canonical_address_falsely_reported")
+            }
+            CrashInconsistency::AccessViolationWhenAccessAllowed => {
+                serializer.serialize_str("access_violation_when_access_allowed")
+            }
+            CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses => {
+                serializer.serialize_str("crashing_access_not_found_in_memory_accesses")
+            }
         }
     }
 }
@@ -669,9 +694,9 @@ impl ProcessState {
                     )?;
                 }
             }
-            if !crash_info.crash_reason_inconsistencies.is_empty() {
-                writeln!(f, "Crash reason is inconsistent:")?;
-                for inconsistency in &crash_info.crash_reason_inconsistencies {
+            if !crash_info.inconsistencies.is_empty() {
+                writeln!(f, "Crash is inconsistent:")?;
+                for inconsistency in &crash_info.inconsistencies {
                     writeln!(f, "  {}", inconsistency)?;
                 }
             }
@@ -916,7 +941,7 @@ Unknown streams encountered:
                                 map["is_likely_guard_page"] = true.into();
                             }
                             if access.access_type.is_read_or_write() {
-                                map["access_type"] = access.access_type.to_string().into();
+                                map["access_type"] = access.access_type.to_string().to_lowercase().into();
                             }
                             map
                         }).collect::<Vec<_>>()
@@ -943,10 +968,10 @@ Unknown streams encountered:
                 "possible_bit_flips": self.exception_info.as_ref().and_then(|info| {
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
-                "crash_reason_inconsistencies": self.exception_info.as_ref().map(|info| {
-                    info.crash_reason_inconsistencies.iter().map(|inconsistency| {
+                "crash_inconsistencies": self.exception_info.as_ref().map(|info| {
+                    info.inconsistencies.iter().map(|inconsistency| {
                         json!({
-                            "inconsistency": format!("{:?}", inconsistency),
+                            "inconsistency": inconsistency,
                         })
                     }).collect::<Vec<_>>()
                 }),
