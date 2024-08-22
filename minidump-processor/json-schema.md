@@ -144,8 +144,17 @@ anyway.
         /// Whether the address falls in a likely guard page (typically indicating buffer overflow).
         /// This field may only be present when the value is `true`.
         "is_likely_guard_page": <bool>
+        "access_type": "read" | "write" | "readwrite"
       }
     ],
+
+    /// The update to instruction pointer performed by crash instruction (if available)
+    "instruction_pointer_update": {
+      "address": <hexstring>,
+      /// Whether the address falls in a likely guard page (typically indicating buffer overflow).
+      /// This field may only be present when the value is `true`.
+      "is_likely_guard_page": <bool>
+    },
 
     /// A list of addresses that could have been the actual address the program
     /// wanted to access, but which were changed by a bit-flip.
@@ -177,6 +186,19 @@ anyway.
         "source_register": <string>
       }
     ],
+    
+    /// A list of inconsistencies detected by comparing crash reason/crash address with 
+    /// crashing instruction and memory information
+    "crash_inconsistencies": [
+      {
+        "inconsistency": "int_div_by_zero_not_possible"
+          | "priv_instruction_crash_without_priv_instruction"
+          | "non_canonical_address_falsely_reported"
+          | "access_violation_when_access_allowed"
+          | "crashing_access_not_found_in_memory_accesses"
+      }
+    ],
+
 
     // The thread id of the thread that caused the crash (or requested the minidump).
     "crashing_thread": <u32>,
