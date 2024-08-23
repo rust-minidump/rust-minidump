@@ -683,7 +683,7 @@ impl<'a> MinidumpInfo<'a> {
                             .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
                         });
 
-                    instruction_registers = op_analysis.registers.clone();
+                    instruction_registers.clone_from(&op_analysis.registers);
                     exception_info = Some(crate::ExceptionInfo::with_op_analysis(
                         reason,
                         address.into(),
@@ -986,11 +986,10 @@ impl<'a> MinidumpInfo<'a> {
                     CrashReason::WindowsAccessViolation(WinAccess::READ)
                         | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
                         | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
-                ) {
-                    if MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi) {
-                        info.inconsistencies
-                            .push(CrashInconsistency::AccessViolationWhenAccessAllowed);
-                    }
+                ) && MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi)
+                {
+                    info.inconsistencies
+                        .push(CrashInconsistency::AccessViolationWhenAccessAllowed);
                 }
             }
         }
@@ -1227,7 +1226,7 @@ impl crate::ExceptionInfo {
     ) -> Self {
         Self {
             reason,
-            address: address.into(),
+            address,
             adjusted_address,
             instruction_str: Some(op_analysis.instruction_str),
             instruction_properties: Some(op_analysis.instruction_properties),
