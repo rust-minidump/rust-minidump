@@ -422,7 +422,8 @@ impl PossibleBitFlip {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
 pub enum CrashInconsistency {
     IntDivByZeroNotPossible,
     PrivInstructionCrashWithoutPrivInstruction,
@@ -449,31 +450,6 @@ impl std::fmt::Display for CrashInconsistency {
             CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses => f.write_str(
                 "Crash address not found among the memory accesses of the crashing instruction",
             ),
-        }
-    }
-}
-
-impl serde::Serialize for CrashInconsistency {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            CrashInconsistency::IntDivByZeroNotPossible => {
-                serializer.serialize_str("int_div_by_zero_not_possible")
-            }
-            CrashInconsistency::PrivInstructionCrashWithoutPrivInstruction => {
-                serializer.serialize_str("priv_instruction_crash_without_priv_instruction")
-            }
-            CrashInconsistency::NonCanonicalAddressFalselyReported => {
-                serializer.serialize_str("non_canonical_address_falsely_reported")
-            }
-            CrashInconsistency::AccessViolationWhenAccessAllowed => {
-                serializer.serialize_str("access_violation_when_access_allowed")
-            }
-            CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses => {
-                serializer.serialize_str("crashing_access_not_found_in_memory_accesses")
-            }
         }
     }
 }
@@ -969,11 +945,7 @@ Unknown streams encountered:
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
                 "crash_inconsistencies": self.exception_info.as_ref().map(|info| {
-                    info.inconsistencies.iter().map(|inconsistency| {
-                        json!({
-                            "inconsistency": inconsistency,
-                        })
-                    }).collect::<Vec<_>>()
+                    json!(info.inconsistencies)
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
