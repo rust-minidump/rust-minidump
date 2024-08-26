@@ -441,7 +441,7 @@ mod amd64 {
                     0 => MemoryAccessType::Read,
                     _ => panic!("call/jmp/push instruction had unexpected memory operand"),
                 },
-                AccessDerivableOpcode::CMP | AccessDerivableOpcode::UCOMSISS => match idx {
+                AccessDerivableOpcode::CMP | AccessDerivableOpcode::UCOMISS => match idx {
                     0 | 1 => MemoryAccessType::Read,
                     _ => panic!("cmp instruction had unexpected memory operand"),
                 },
@@ -700,47 +700,24 @@ mod amd64 {
         RETURN,
         SUB,
         /// See https://bugzilla.mozilla.org/show_bug.cgi?id=1831370
-        UCOMSISS,
+        UCOMISS,
     }
 
     impl AccessDerivableOpcode {
         fn from_opcode(opcode: Opcode) -> Option<Self> {
-            match opcode {
-                Opcode::ADD => Some(Self::ADD),
-                Opcode::CALL => Some(Self::CALL),
-                Opcode::CMP => Some(Self::CMP),
-                Opcode::DEC => Some(Self::DEC),
-                Opcode::INC => Some(Self::INC),
-                Opcode::JMP => Some(Self::JMP),
-                Opcode::JMPF => Some(Self::JMPF),
-                Opcode::JO => Some(Self::JO),
-                Opcode::JNO => Some(Self::JNO),
-                Opcode::JB => Some(Self::JB),
-                Opcode::JNB => Some(Self::JNB),
-                Opcode::JZ => Some(Self::JZ),
-                Opcode::JNZ => Some(Self::JNZ),
-                Opcode::JA => Some(Self::JA),
-                Opcode::JNA => Some(Self::JNA),
-                Opcode::JS => Some(Self::JS),
-                Opcode::JNS => Some(Self::JNS),
-                Opcode::JP => Some(Self::JP),
-                Opcode::JNP => Some(Self::JNP),
-                Opcode::JL => Some(Self::JL),
-                Opcode::JGE => Some(Self::JGE),
-                Opcode::JG => Some(Self::JG),
-                Opcode::JLE => Some(Self::JLE),
-                Opcode::LEA => Some(Self::LEA),
-                Opcode::MOV => Some(Self::MOV),
-                Opcode::MOVAPS => Some(Self::MOVAPS),
-                Opcode::MOVUPS => Some(Self::MOVUPS),
-                Opcode::POP => Some(Self::POP),
-                Opcode::PUSH => Some(Self::PUSH),
-                Opcode::RETF => Some(Self::RETF),
-                Opcode::RETURN => Some(Self::RETURN),
-                Opcode::SUB => Some(Self::SUB),
-                Opcode::UCOMISS => Some(Self::UCOMSISS),
-                _ => None,
+            macro_rules! convert {
+                ( $($name:ident),* ) => {
+                    match opcode {
+                        $(Opcode::$name => Some(Self::$name),)*
+                        _ => None
+                    }
+                }
             }
+            convert![
+                ADD, CALL, CMP, DEC, INC, JMP, JMPF, JO, JNO, JB, JNB, JZ, JNZ, JA, JNA, JS, JNS,
+                JP, JNP, JL, JGE, JG, JLE, LEA, MOV, MOVAPS, MOVUPS, POP, PUSH, RETF, RETURN, SUB,
+                UCOMISS
+            ]
         }
     }
 

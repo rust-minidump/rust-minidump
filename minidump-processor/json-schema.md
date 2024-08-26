@@ -190,13 +190,11 @@ anyway.
     /// A list of inconsistencies detected by comparing crash reason/crash address with 
     /// crashing instruction and memory information
     "crash_inconsistencies": [
-      {
-        "inconsistency": "int_div_by_zero_not_possible"
-          | "priv_instruction_crash_without_priv_instruction"
-          | "non_canonical_address_falsely_reported"
-          | "access_violation_when_access_allowed"
-          | "crashing_access_not_found_in_memory_accesses"
-      }
+      "int_div_by_zero_not_possible"
+        | "priv_instruction_crash_without_priv_instruction"
+        | "non_canonical_address_falsely_reported"
+        | "access_violation_when_access_allowed"
+        | "crashing_access_not_found_in_memory_accesses"
     ],
 
 
