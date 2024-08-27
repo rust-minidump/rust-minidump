@@ -125,12 +125,12 @@ pub enum MemoryAccessType {
     ReadWrite,
 
     // TODO: Remove this variant once `yaxpeax` is used to derive access type of every operand
-    UnderivableInstructionAccess,
+    Underivable,
 }
 
 impl MemoryAccessType {
     pub fn is_read_or_write(&self) -> bool {
-        !matches!(self, Self::UnderivableInstructionAccess)
+        !matches!(self, Self::Underivable)
     }
 }
 
@@ -140,7 +140,7 @@ impl std::fmt::Display for MemoryAccessType {
             Self::Read => f.write_str("Read"),
             Self::Write => f.write_str("Write"),
             Self::ReadWrite => f.write_str("ReadWrite"),
-            Self::UnderivableInstructionAccess => f.write_str("Underivable Instruction Access"),
+            Self::Underivable => f.write_str("Underivable"),
         }
     }
 }
@@ -225,7 +225,7 @@ mod amd64 {
 
         let instruction_str = decoded_instruction.to_string();
 
-        let possible_crash_info = InstructionProperties::from_instruction(decoded_instruction);
+        let instruction_properties = InstructionProperties::from_instruction(decoded_instruction);
 
         let memory_access_list = MemoryAccessList::from_instruction(decoded_instruction, context)
             .map_err(|e| tracing::warn!("failed to determine instruction memory access: {}", e))
@@ -245,7 +245,7 @@ mod amd64 {
 
         Ok(OpAnalysis {
             instruction_str,
-            instruction_properties: possible_crash_info,
+            instruction_properties,
             memory_access_list,
             instruction_pointer_update,
             registers,
@@ -572,7 +572,7 @@ mod amd64 {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
-                    access_type: MemoryAccessType::UnderivableInstructionAccess,
+                    access_type: MemoryAccessType::Underivable,
                 });
             }
 

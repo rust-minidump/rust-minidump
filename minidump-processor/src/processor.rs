@@ -867,8 +867,6 @@ impl<'a> MinidumpInfo<'a> {
                 }
             }
 
-            // We treat stack overflow like an access violation with unknown operation
-            // i.e. It is considered inconsistent if the instruction has no memory access
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
                 if is_non_canonical_exception(
                     self.system_info.os,
@@ -880,6 +878,8 @@ impl<'a> MinidumpInfo<'a> {
                     self.check_for_memory_access_inconsistencies(exception_details);
                 }
             }
+            // We treat stack overflow like an access violation with unknown operation
+            // i.e. It is considered inconsistent if the instruction has no memory access
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
             | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
@@ -1406,8 +1406,6 @@ pub mod memory_operation {
 
         /// Return whether this memory operation is possibily allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns true.
-        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
-        /// allows either read or write, and returns false otherwise.
         pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => true,
@@ -1419,8 +1417,6 @@ pub mod memory_operation {
 
         /// Return whether this memory operation is definitely allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns false.
-        /// If operation is `UnknownReadWrite`, this method returns true if the given memory region
-        /// allows both read and write, and returns false otherwise.
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
             match self {
                 Self::Undetermined => false,

@@ -945,7 +945,7 @@ Unknown streams encountered:
                     (!info.possible_bit_flips.is_empty()).then_some(&info.possible_bit_flips)
                 }),
                 "crash_inconsistencies": self.exception_info.as_ref().map(|info| {
-                    json!(info.inconsistencies)
+                    &info.inconsistencies
                 }),
                 // thread index | null
                 "crashing_thread": self.requesting_thread,
