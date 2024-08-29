@@ -7,11 +7,14 @@ expression: stdout
     "address": "0xffffffff80000042",
     "adjusted_address": null,
     "assertion": null,
+    "crash_inconsistencies": [],
     "crashing_thread": 0,
     "instruction": "mov byte [0x80000042], 0x1",
+    "instruction_pointer_update": null,
     "memory_accesses": [
       {
-        "address": "0x0000000080000042",
+        "access_type": "write",
+        "address": "0xffffffff80000042",
         "size": 1
       }
     ],

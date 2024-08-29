@@ -7,8 +7,10 @@ expression: json_out
     "address": null,
     "adjusted_address": null,
     "assertion": null,
+    "crash_inconsistencies": null,
     "crashing_thread": null,
     "instruction": null,
+    "instruction_pointer_update": null,
     "memory_accesses": null,
     "possible_bit_flips": null,
     "type": null

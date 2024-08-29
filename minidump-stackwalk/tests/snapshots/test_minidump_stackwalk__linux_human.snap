@@ -15,6 +15,8 @@ Crashing instruction: `mov dword [0x45], 0x5`
 Memory accessed by instruction:
   0. Address: 0x0000000000000045
      Size: 4
+     Access type: Write
+No instruction pointer update by instruction
 Crashing address may be the result of a flipped bit:
   0. Valid address: 0x0000000000400045 (0.250)
 Process uptime: not available
