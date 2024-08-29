@@ -12,8 +12,10 @@ Crash reason:  EXC_BAD_ACCESS / KERN_INVALID_ADDRESS
 Crash address: 0xffffffff80000042
 Crashing instruction: `mov byte [0x80000042], 0x1`
 Memory accessed by instruction:
-  0. Address: 0x0000000080000042
+  0. Address: 0xffffffff80000042
      Size: 1
+     Access type: Write
+No instruction pointer update by instruction
 Process uptime: 0 seconds
 
 Thread 0 main (crashed) - tid: 4611

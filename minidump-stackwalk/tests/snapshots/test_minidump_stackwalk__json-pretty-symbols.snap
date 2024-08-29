@@ -7,8 +7,10 @@ expression: stdout
     "address": "0x00000045",
     "adjusted_address": null,
     "assertion": null,
+    "crash_inconsistencies": [],
     "crashing_thread": 0,
     "instruction": null,
+    "instruction_pointer_update": null,
     "memory_accesses": null,
     "possible_bit_flips": null,
     "type": "EXCEPTION_ACCESS_VIOLATION_WRITE"

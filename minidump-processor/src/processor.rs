@@ -890,8 +890,6 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    // `adjusted_address` might not show that there is non-canonical address if there is
-    // also a disguised null pointer, so we check `memory_access_list` directly
     fn check_for_non_canonical_address_inconsistencies(
         &self,
         exception_details: &mut ExceptionDetails,
@@ -901,6 +899,8 @@ impl<'a> MinidumpInfo<'a> {
             0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
         let info = &mut exception_details.info;
         let crash_address = info.address.0;
+        // `adjusted_address` might not show that there is non-canonical address if there is
+        // also a disguised null pointer, so we check `memory_access_list` directly
         if info
             .instruction_properties
             .as_ref()
