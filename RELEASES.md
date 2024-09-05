@@ -1,5 +1,10 @@
 # Unreleased
 
+Nothing Yet!
+
+
+# Version 0.22.1 (2024-09-05)
+
 * Added support for fat Mach-O files in minidump-unwind
 
 # Version 0.22.0 (2024-07-03)
