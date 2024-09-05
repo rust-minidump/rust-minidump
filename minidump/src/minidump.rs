@@ -1795,7 +1795,11 @@ struct HandleDescriptorContext<'a> {
 }
 
 impl<'a> HandleDescriptorContext<'a> {
-    fn new(bytes: &'a [u8], fieldsize: u32, endianess: scroll::Endian) -> HandleDescriptorContext {
+    fn new(
+        bytes: &'a [u8],
+        fieldsize: u32,
+        endianess: scroll::Endian,
+    ) -> HandleDescriptorContext<'a> {
         HandleDescriptorContext {
             bytes,
             fieldsize,
