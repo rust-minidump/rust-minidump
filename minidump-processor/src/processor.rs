@@ -869,7 +869,7 @@ impl<'a> MinidumpInfo<'a> {
 
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
                 // To conclude with certainty that it is a non-canonical access exception,
-                // need to check if is crashing access (READ 0xffffffffffffffff) is actually not among accesses
+                // need to check if crashing access (READ 0xffffffffffffffff) is actually not among accesses
                 let is_non_canonical_exception = represents_non_canonical_access(
                     self.system_info.os,
                     exception_details.info.reason,
