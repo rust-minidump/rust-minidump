@@ -654,7 +654,7 @@ impl<'a> MinidumpInfo<'a> {
             ) {
                 Ok(op_analysis) => {
                     let access_addresses =
-                        op_analysis.memory_access_list.clone().map(|access_list| {
+                        op_analysis.memory_access_list.as_ref().map(|access_list| {
                             access_list
                                 .iter()
                                 .map(|access| access.address_info)
@@ -837,8 +837,9 @@ impl<'a> MinidumpInfo<'a> {
             ExceptionCodeMacArithmeticX86Type as MacArithX86, ExceptionCodeWindows,
             ExceptionCodeWindowsAccessType as WinAccess, NtStatusWindows,
         };
+        use CrashInconsistency as Inconsistency;
 
-        let inconsistencies = &mut exception_details.info.inconsistencies;
+        let mut inconsistencies = Vec::new();
         match exception_details.info.reason {
             CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
             | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
@@ -850,7 +851,7 @@ impl<'a> MinidumpInfo<'a> {
                     .as_ref()
                     .is_some_and(|p| !p.is_division)
                 {
-                    inconsistencies.push(CrashInconsistency::IntDivByZeroNotPossible);
+                    inconsistencies.push(Inconsistency::IntDivByZeroNotPossible);
                 }
             }
 
@@ -862,20 +863,30 @@ impl<'a> MinidumpInfo<'a> {
                     .as_ref()
                     .is_some_and(|p| !p.is_privileged)
                 {
-                    inconsistencies
-                        .push(CrashInconsistency::PrivInstructionCrashWithoutPrivInstruction);
+                    inconsistencies.push(Inconsistency::PrivInstructionCrashWithoutPrivInstruction);
                 }
             }
 
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
-                if is_non_canonical_exception(
+                // To conclude with certainty that it is a non-canonical access exception,
+                // need to check if is crashing access (READ 0xffffffffffffffff) is actually not among accesses
+                let is_non_canonical_exception = represents_non_canonical_access(
                     self.system_info.os,
                     exception_details.info.reason,
                     exception_details.info.address.0,
-                ) {
-                    self.check_for_non_canonical_address_inconsistencies(exception_details);
+                ) && self
+                    .crashing_access_is_not_among_accesses(exception_details);
+                if is_non_canonical_exception {
+                    if self.non_canonical_address_is_not_among_accesses(exception_details) {
+                        inconsistencies.push(Inconsistency::NonCanonicalAddressFalselyReported);
+                    }
                 } else {
-                    self.check_for_memory_access_inconsistencies(exception_details);
+                    if self.crashing_access_is_not_among_accesses(exception_details) {
+                        inconsistencies.push(Inconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                    }
+                    if self.access_is_not_violation(exception_details) {
+                        inconsistencies.push(Inconsistency::AccessViolationWhenAccessAllowed);
+                    }
                 }
             }
             // We treat stack overflow like an access violation with unknown operation
@@ -883,34 +894,38 @@ impl<'a> MinidumpInfo<'a> {
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_STACK_OVERFLOW)
             | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
             | CrashReason::WindowsAccessViolation(WinAccess::EXEC) => {
-                self.check_for_memory_access_inconsistencies(exception_details);
+                if self.crashing_access_is_not_among_accesses(exception_details) {
+                    inconsistencies.push(Inconsistency::CrashingAccessNotFoundInMemoryAccesses);
+                }
+                if self.access_is_not_violation(exception_details) {
+                    inconsistencies.push(Inconsistency::AccessViolationWhenAccessAllowed);
+                }
             }
 
             _ => (),
         }
+        exception_details.info.inconsistencies = inconsistencies;
     }
 
-    fn check_for_non_canonical_address_inconsistencies(
+    /// Returns whether non-canonical address is not used in accesses of crashing instruction
+    /// Returns false if there is insufficient information to determine
+    fn non_canonical_address_is_not_among_accesses(
         &self,
-        exception_details: &mut ExceptionDetails,
-    ) {
-        use crate::op_analysis::{InstructionPointerUpdate, MemoryAccessType};
+        exception_details: &ExceptionDetails,
+    ) -> bool {
+        use crate::op_analysis::InstructionPointerUpdate;
         const NON_CANONICAL_RANGE: RangeInclusive<u64> =
             0x0000_8000_0000_0000..=0xffff_7fff_ffff_ffff;
-        let info = &mut exception_details.info;
-        let crash_address = info.address.0;
+        let info = &exception_details.info;
         // `adjusted_address` might not show that there is non-canonical address if there is
         // also a disguised null pointer, so we check `memory_access_list` directly
-        if info
-            .instruction_properties
+        info.instruction_properties
             .as_ref()
             .is_some_and(|properties| properties.is_access_derivable)
             && info.memory_access_list.as_ref().is_some_and(|access_list| {
-                !access_list.contains_access(crash_address, MemoryAccessType::Read)
-                    && !access_list.contains_access(crash_address, MemoryAccessType::ReadWrite)
-                    && !access_list
-                        .iter()
-                        .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
+                !access_list
+                    .iter()
+                    .any(|access| NON_CANONICAL_RANGE.contains(&access.address_info.address))
             })
             && info
                 .instruction_pointer_update
@@ -921,24 +936,17 @@ impl<'a> MinidumpInfo<'a> {
                     }
                     InstructionPointerUpdate::NoUpdate => true,
                 })
-        {
-            info.inconsistencies
-                .push(CrashInconsistency::NonCanonicalAddressFalselyReported);
-        }
     }
 
-    fn check_for_memory_access_inconsistencies(&self, exception_details: &mut ExceptionDetails) {
-        self.check_if_crashing_access_is_among_accesses(exception_details);
-        self.check_if_access_violation_is_allowed(exception_details);
-    }
-
-    fn check_if_crashing_access_is_among_accesses(&self, exception_details: &mut ExceptionDetails) {
+    /// Returns whether crashing access is not found in accesses of crashing instruction
+    /// Returns false if there is insufficient information to determine
+    fn crashing_access_is_not_among_accesses(&self, exception_details: &ExceptionDetails) -> bool {
         use crate::op_analysis::MemoryAccessType;
         use minidump_common::errors::{
             ExceptionCodeWindows, ExceptionCodeWindowsAccessType as WinAccess,
         };
 
-        let info = &mut exception_details.info;
+        let info = &exception_details.info;
         let crash_address = info.address.0;
         let has_access_derivable_instruction = info
             .instruction_properties
@@ -946,7 +954,7 @@ impl<'a> MinidumpInfo<'a> {
             .is_some_and(|p| p.is_access_derivable);
 
         if let Some(access_list) = &info.memory_access_list {
-            if match info.reason {
+            match info.reason {
                 CrashReason::WindowsAccessViolation(WinAccess::READ) => {
                     has_access_derivable_instruction
                         && !access_list.contains_access(crash_address, MemoryAccessType::Read)
@@ -965,32 +973,31 @@ impl<'a> MinidumpInfo<'a> {
                     has_access_derivable_instruction && access_list.is_empty()
                 }
                 _ => false,
-            } {
-                info.inconsistencies
-                    .push(CrashInconsistency::CrashingAccessNotFoundInMemoryAccesses);
             }
+        } else {
+            false
         }
     }
 
-    fn check_if_access_violation_is_allowed(&self, exception_details: &mut ExceptionDetails) {
+    /// Returns whether crashing access is allowed by the memory info
+    /// Returns false if there is insufficient information to determine
+    fn access_is_not_violation(&self, exception_details: &ExceptionDetails) -> bool {
         {
             use memory_operation::MemoryOperation;
             use minidump_common::errors::ExceptionCodeWindowsAccessType as WinAccess;
 
-            let info = &mut exception_details.info;
+            let info = &exception_details.info;
             let crash_address = info.address.0;
 
             if let Some(mi) = self.memory_info.memory_info_at_address(crash_address) {
-                if matches!(
+                matches!(
                     info.reason,
                     CrashReason::WindowsAccessViolation(WinAccess::READ)
                         | CrashReason::WindowsAccessViolation(WinAccess::WRITE)
                         | CrashReason::WindowsAccessViolation(WinAccess::EXEC)
                 ) && MemoryOperation::from_crash_reason(&info.reason).is_allowed_for(&mi)
-                {
-                    info.inconsistencies
-                        .push(CrashInconsistency::AccessViolationWhenAccessAllowed);
-                }
+            } else {
+                false
             }
         }
     }
@@ -1276,7 +1283,7 @@ fn try_get_non_canonical_crash_address(
         return None;
     }
 
-    if !is_non_canonical_exception(system_info.os, reason, address) {
+    if !represents_non_canonical_access(system_info.os, reason, address) {
         return None;
     }
 
@@ -1305,7 +1312,7 @@ fn try_get_non_canonical_crash_address(
 /// Different operating systems have different ways of reporting non-canonical address accesses
 /// This function will return whether the given `exception_info` object represents such an access
 /// on the given OS
-fn is_non_canonical_exception(os: system_info::Os, reason: CrashReason, address: u64) -> bool {
+fn represents_non_canonical_access(os: system_info::Os, reason: CrashReason, address: u64) -> bool {
     use minidump_common::errors as minidump_errors;
     use system_info::Os;
 
