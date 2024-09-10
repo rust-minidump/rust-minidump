@@ -18,17 +18,15 @@ pub(crate) struct Evil {
 pub(crate) fn handle_evil(evil_path: &Path) -> Option<Evil> {
     // Get the evil json
     let evil_json = File::open(evil_path)
-        .map_err(|e| {
+        .inspect_err(|_e| {
             error!("Could not load Extra JSON at {:?}", evil_path);
-            e
         })
         .ok()?;
 
     let buf = BufReader::new(evil_json);
     let mut json: Map<String, Value> = serde_json::from_reader(buf)
-        .map_err(|e| {
+        .inspect_err(|_e| {
             error!("Could not parse Extra JSON (was not valid JSON)");
-            e
         })
         .ok()?;
 

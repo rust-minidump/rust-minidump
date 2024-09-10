@@ -171,9 +171,7 @@ impl Module for SimpleModule {
 
 /// Like `PathBuf::file_name`, but try to work on Windows or POSIX-style paths.
 fn leafname(path: &str) -> &str {
-    path.rsplit(|c| c == '/' || c == '\\')
-        .next()
-        .unwrap_or(path)
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
 /// If `filename` ends with `match_extension`, remove it. Append `new_extension` to the result.
