@@ -870,14 +870,21 @@ impl<'a> MinidumpInfo<'a> {
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
                 // To conclude with certainty that it is a non-canonical access exception,
                 // need to check if crashing access (READ 0xffffffffffffffff) is actually not among accesses
-                let is_non_canonical_exception = represents_non_canonical_access(
+                let is_gpf = represents_general_protection_fault(
                     self.system_info.os,
                     exception_details.info.reason,
                     exception_details.info.address.0,
-                ) && self
-                    .crashing_access_is_not_among_accesses(exception_details);
-                if is_non_canonical_exception {
-                    if self.non_canonical_address_is_not_among_accesses(exception_details) {
+                ) && self.crashing_access_is_not_among_accesses(exception_details);
+                let gpf_implies_non_canonical = exception_details
+                    .info
+                    .instruction_properties
+                    .as_ref()
+                    .is_some_and(|p| p.is_only_gpf_when_non_canonical);
+
+                if is_gpf {
+                    if gpf_implies_non_canonical
+                        && self.non_canonical_address_is_not_among_accesses(exception_details)
+                    {
                         inconsistencies.push(Inconsistency::NonCanonicalAddressFalselyReported);
                     }
                 } else {
@@ -1283,7 +1290,7 @@ fn try_get_non_canonical_crash_address(
         return None;
     }
 
-    if !represents_non_canonical_access(system_info.os, reason, address) {
+    if !represents_general_protection_fault(system_info.os, reason, address) {
         return None;
     }
 
@@ -1302,17 +1309,29 @@ fn try_get_non_canonical_crash_address(
         }
     }
 
-    tracing::warn!("somehow got a non-canonical address exception in an instruction that doesn't appear to access one");
+    tracing::warn!(
+        r#"somehow got a general protection fault in an instruction 
+        that doesn't appear to access a non-canonical address"#
+    );
 
     None
 }
 
-/// Report whether the given exception represents a non-canonical access on the given OS
+/// Report whether the given exception represents a general protection fault (GPF) on the given OS
 ///
-/// Different operating systems have different ways of reporting non-canonical address accesses
-/// This function will return whether the given `exception_info` object represents such an access
-/// on the given OS
-fn represents_non_canonical_access(os: system_info::Os, reason: CrashReason, address: u64) -> bool {
+/// Different operating systems have different ways of reporting GPF, this function will return
+/// whether the given `exception_info` object represents that on the given OS
+///
+/// Note it is possible that the crashing instruction is performing an access to 0xffffffffffffffff
+/// or 0x00000000000000000, and the crash is actually not caused by GPF
+///
+/// The most likely cause of GPF is the use of non-canonical address but there are other possibilities,
+/// such as misaligned accesses
+fn represents_general_protection_fault(
+    os: system_info::Os,
+    reason: CrashReason,
+    address: u64,
+) -> bool {
     use minidump_common::errors as minidump_errors;
     use system_info::Os;
 

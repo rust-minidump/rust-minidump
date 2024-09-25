@@ -75,6 +75,14 @@ pub struct InstructionProperties {
     pub is_access_derivable: bool,
     pub is_division: bool,
     pub is_privileged: bool,
+
+    // TODO: remove this field once we properly account for other causes of GPF (eg. unaligned access)
+    /// This field is used to support detecting inconsistencies in non-canonical crashes
+    /// True means that the instruction only gives General Protection Fault when non-canonical address is used
+    /// False means that GPF can be caused by other cases, or that it is undetermined
+    /// Since we only detect inconsistencies in non-canonical crashes if it is an `AccessDerivableOpcode`
+    /// This field is false for opcodes that are not `AccessDerivableOpcode`
+    pub is_only_gpf_when_non_canonical: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -278,6 +286,8 @@ mod amd64 {
                 is_access_derivable: is_access_derivable(instruction.opcode()),
                 is_division: InstructionProperties::is_division(instruction),
                 is_privileged: InstructionProperties::is_privileged(instruction),
+                is_only_gpf_when_non_canonical:
+                    InstructionProperties::is_only_gpf_when_non_canonical(instruction),
             }
         }
 
@@ -336,6 +346,18 @@ mod amd64 {
                     | Opcode::WBINVD
                     | Opcode::WRMSR
                     | Opcode::XSETBV
+            )
+        }
+
+        /// Since we only detect inconsistencies in non-canonical crashes if we can derive all its access,
+        /// this function always return false for opcodes that are not `AccessDerivableOpcode`
+        fn is_only_gpf_when_non_canonical(instruction: Instruction) -> bool {
+            let Some(opcode) = AccessDerivableOpcode::from_opcode(instruction.opcode()) else {
+                return false;
+            };
+            !matches!(
+                opcode,
+                AccessDerivableOpcode::MOVAPS | AccessDerivableOpcode::UCOMISS
             )
         }
     }
