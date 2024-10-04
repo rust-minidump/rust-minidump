@@ -60,14 +60,14 @@ If you ever introduce a new stream, you should consider adjusting the following.
 Core Functionality / Testing:
 
 * [minidump's stream fuzzing tests](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/fuzz/fuzz_targets/parse.rs#L13)
-* [minidump-synth's stream generator](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-synth/src/lib.rs#L31) (make it so that we can test the stream)
+* [synth-minidump's stream generator](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/synth-minidump/src/lib.rs#L17) (make it so that we can test the stream)
     * This will require filling in quite a bit of code!
-* [minidump-stackwalk's raw stream dumper](https://github.com/rust-minidump/rust-minidump/blob/master/minidump-stackwalk/src/main.rs#L516) (make it so we can debug the stream)
+* [minidump-stackwalk's raw stream dumper](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump-stackwalk/src/main.rs#L516) (make it so we can debug the stream)
     * This generally requires implementing a "print" function for it
 
 Documentation / Reporting:
 
-* [unimplemented_streams](https://github.com/rust-minidump/rust-minidump/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/master/minidump/src/minidump.rs#L4582) (remove it)
+* [unimplemented_streams](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4582) (remove it)
 * [stream_vendor](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4726) (if this stream has a new custom vendor)
 * [get_stream's listing of implemented streams](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/minidump.rs#L4520)
 * [minidump's listing of implemented streams](https://github.com/rust-minidump/rust-minidump/blob/2001547fcf4aa0f28f52b8b1ab5da9bd99c8ac87/minidump/src/lib.rs#L71)
