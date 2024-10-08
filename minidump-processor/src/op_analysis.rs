@@ -355,10 +355,7 @@ mod amd64 {
             let Some(opcode) = AccessDerivableOpcode::from_opcode(instruction.opcode()) else {
                 return false;
             };
-            !matches!(
-                opcode,
-                AccessDerivableOpcode::MOVAPS | AccessDerivableOpcode::UCOMISS
-            )
+            !matches!(opcode, AccessDerivableOpcode::MOVAPS)
         }
     }
 
