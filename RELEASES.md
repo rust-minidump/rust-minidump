@@ -1,7 +1,9 @@
 # Unreleased
 
-Nothing Yet!
-
+* Added inconsisten crash detection. Impossible crashes such as those caused by
+  CPU bugs are now flagged with a list describing why they shouldn't represent.
+  For example, an access fault caused by an instruction that is not accessing
+  memory.
 
 # Version 0.22.1 (2024-09-05)
 
