@@ -626,7 +626,9 @@ mod amd64 {
                     // We assume that relative offsets (for CALL, JMP) and absolute values (CALLF,
                     // JMPF) will be valid, so we don't check immediate operands, only registers.
                     match instruction.operand(0) {
-                        Operand::Register(reg) => return Ok(rip_update(context.get_regspec(reg)?)),
+                        Operand::Register { reg } => {
+                            return Ok(rip_update(context.get_regspec(reg)?))
+                        }
                         other_operand => {
                             // If the operand was some sort of register dereference, try to get the
                             // _actual_ address from the memory list.
@@ -753,39 +755,35 @@ mod amd64 {
         pub fn try_from_operand(op: Operand) -> Option<Self> {
             let mut info = MemoryOperandInfo::default();
             match op {
-                Operand::DisplacementU32(disp) => info.disp = Some(disp as i32 as i64),
-                Operand::DisplacementU64(disp) => info.disp = Some(disp as i64),
-                Operand::RegDeref(base) => {
+                Operand::AbsoluteU32 { addr } => info.disp = Some(addr as i32 as i64),
+                Operand::AbsoluteU64 { addr } => info.disp = Some(addr as i64),
+                Operand::MemDeref { base } => {
                     info.base_reg = Some(base);
                 }
-                Operand::RegDisp(base, disp) => {
+                Operand::Disp { base, disp } => {
                     info.base_reg = Some(base);
                     info.disp = Some(disp.into());
                 }
-                Operand::RegScale(index, scale) => {
+                Operand::MemIndexScale { index, scale } => {
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
                 }
-                Operand::RegIndexBase(base, index) => {
-                    info.base_reg = Some(base);
-                    info.index_reg = Some(index);
-                }
-                Operand::RegIndexBaseDisp(base, index, disp) => {
-                    info.base_reg = Some(base);
-                    info.index_reg = Some(index);
-                    info.disp = Some(disp.into());
-                }
-                Operand::RegScaleDisp(index, scale, disp) => {
+                Operand::MemIndexScaleDisp { index, scale, disp } => {
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
                     info.disp = Some(disp.into());
                 }
-                Operand::RegIndexBaseScale(base, index, scale) => {
+                Operand::MemBaseIndexScale { base, index, scale } => {
                     info.base_reg = Some(base);
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
                 }
-                Operand::RegIndexBaseScaleDisp(base, index, scale, disp) => {
+                Operand::MemBaseIndexScaleDisp {
+                    base,
+                    index,
+                    scale,
+                    disp,
+                } => {
                     info.base_reg = Some(base);
                     info.index_reg = Some(index);
                     info.scale = Some(scale);
