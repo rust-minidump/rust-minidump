@@ -19,7 +19,7 @@ tracing = { version = "0.1.34", features = ["log"] }
 memmap2 = "0.9"
 minidump-common = { version = "0.22.1", path = "../minidump-common" }
 num-traits = "0.2"
-procfs-core = { version = "0.16", default-features = false }
+procfs-core = { version = "0.17", default-features = false }
 range-map = "0.2"
 scroll = "0.12.0"
 thiserror = "1.0.37"
