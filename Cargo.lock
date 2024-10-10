@@ -586,14 +586,14 @@ dependencies = [
 
 [[package]]
 name = "framehop"
-version = "0.12.1"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fd28d2036d4fd99e3629487baca659e5af1c5d554e320168613be79028610fc"
+checksum = "bf36f12e45e344d8ee069ea1d73657a1ff47967f49beb1bfaf562ecc091aab42"
 dependencies = [
  "arrayvec",
  "cfg-if",
  "fallible-iterator",
- "gimli 0.30.0",
+ "gimli 0.31.1",
  "macho-unwind-info",
  "pe-unwind-info",
 ]
@@ -695,6 +695,10 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+dependencies = [
+ "fallible-iterator",
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "heck"
@@ -1330,9 +1334,9 @@ dependencies = [
 
 [[package]]
 name = "pe-unwind-info"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ec3b43050c38ffb9de87e17d874e9956e3a9131b343c9b7b7002597727c3891"
+checksum = "11fe3d7d11dde0fd142bf734ae5d645a4c62ede7c188bccc73dec5082359ff84"
 dependencies = [
  "arrayvec",
  "bitflags",
