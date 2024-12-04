@@ -470,7 +470,7 @@ pub struct CV_INFO_PDB20 {
     pub pdb_file_name: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
+impl scroll::ctx::TryFromCtx<'_, Endian> for CV_INFO_PDB20 {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
@@ -506,7 +506,7 @@ pub struct CV_INFO_PDB70 {
     pub pdb_file_name: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
+impl scroll::ctx::TryFromCtx<'_, Endian> for CV_INFO_PDB70 {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
@@ -1742,7 +1742,7 @@ pub struct XstateFeatureIter<'a> {
     idx: usize,
 }
 
-impl<'a> Iterator for XstateFeatureIter<'a> {
+impl Iterator for XstateFeatureIter<'_> {
     type Item = (usize, XSTATE_FEATURE);
     fn next(&mut self) -> Option<Self::Item> {
         while self.idx < self.info.features.len() {
@@ -2055,7 +2055,7 @@ pub struct MINIDUMP_UTF8_STRING {
     pub buffer: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_UTF8_STRING {
+impl scroll::ctx::TryFromCtx<'_, Endian> for MINIDUMP_UTF8_STRING {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
