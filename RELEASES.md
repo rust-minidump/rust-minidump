@@ -2,6 +2,9 @@
 
 Nothing Yet!
 
+* Dependency updates and no functional changes. The new version number is
+  required because the previous version accidentally introduced some breaking
+  changes to the interface.
 
 # Version 0.22.2 (2024-10-10)
 
