@@ -2,6 +2,11 @@
 
 Nothing Yet!
 
+
+# Version 0.23.0 (2024-12-04)
+
+Nothing Yet!
+
 * Dependency updates and no functional changes. The new version number is
   required because the previous version accidentally introduced some breaking
   changes to the interface.
