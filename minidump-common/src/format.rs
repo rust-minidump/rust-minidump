@@ -323,6 +323,9 @@ pub enum MINIDUMP_STREAM_TYPE {
 
     /// The contents of /proc/self/limits from a Linux system
     MozLinuxLimits = 0x4d7a0003,
+
+    /// Soft errors reported during minidump generation
+    MozSoftErrors = 0x4d7a0004,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
