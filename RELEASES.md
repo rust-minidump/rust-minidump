@@ -1,3 +1,7 @@
+# Unreleased
+
+Nothing Yet!
+
 # Version 0.24.0 (2025-01-03)
 
 * Add MozSoftErrors stream to minidump-common formats
