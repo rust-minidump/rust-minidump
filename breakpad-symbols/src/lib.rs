@@ -180,7 +180,7 @@ fn replace_or_add_extension(filename: &str, match_extension: &str, new_extension
     if bits.len() > 1
         && bits
             .last()
-            .map_or(false, |e| e.to_lowercase() == match_extension)
+            .is_some_and(|e| e.to_lowercase() == match_extension)
     {
         bits.pop();
     }
@@ -485,7 +485,7 @@ impl SymbolSupplier for SimpleSymbolSupplier {
                     }
                 } else if path.is_dir() {
                     let test_path = path.join(lookup.cache_rel.clone());
-                    if fs::metadata(&test_path).ok().map_or(false, |m| m.is_file()) {
+                    if fs::metadata(&test_path).ok().is_some_and(|m| m.is_file()) {
                         trace!("SimpleSymbolSupplier found file {}", test_path.display());
                         return Ok(test_path);
                     }
@@ -1046,7 +1046,7 @@ mod test {
 
     fn write_symbol_file(path: &Path, contents: &[u8]) {
         let dir = path.parent().unwrap();
-        if !fs::metadata(dir).ok().map_or(false, |m| m.is_dir()) {
+        if !fs::metadata(dir).ok().is_some_and(|m| m.is_dir()) {
             fs::create_dir_all(dir).unwrap();
         }
         let mut f = File::create(path).unwrap();
