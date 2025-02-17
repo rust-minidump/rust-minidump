@@ -2,6 +2,11 @@
 
 Nothing Yet!
 
+
+# Version 0.24.1 (2025-02-17)
+
+Nothing Yet!
+
 * Updated the Windows-specific error codes with the ones from
   version 10.0.26100 of the Windows SDK.
 * Bumped the wholesym dependency to version 0.8.0 and bumped several other
