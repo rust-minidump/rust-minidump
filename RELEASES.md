@@ -2,6 +2,11 @@
 
 Nothing Yet!
 
+* Updated the Windows-specific error codes with the ones from
+  version 10.0.26100 of the Windows SDK.
+* Bumped the wholesym dependency to version 0.8.0 and bumped several other
+  dependencies while avoiding major duplications.
+
 # Version 0.24.0 (2025-01-03)
 
 * Add MozSoftErrors stream to minidump-common formats
