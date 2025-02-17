@@ -22,7 +22,7 @@ num-traits = "0.2"
 procfs-core = { version = "0.17", default-features = false }
 range-map = "0.2"
 scroll = "0.12.0"
-thiserror = "1.0.37"
+thiserror = "2"
 time = { version = "0.3.34", features = ["formatting"] }
 uuid = "1.0.0"
 
