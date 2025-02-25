@@ -99,3 +99,47 @@ Unimplemented streams encountered:
 Stream 0x47670006 LinuxCmdLine (Google Extension) @ 0x00005018
 Stream 0x47670008 LinuxAuxv (Google Extension) @ 0x00005658
 Stream 0x4767000a LinuxDsoDebug (Google Extension) @ 0x00006758
+
+Soft errors were encountered when minidump was written:
+[
+  {
+    "InitErrors": [
+      {
+        "StopProcessFailed": {
+          "Stop": "EPERM"
+        }
+      },
+      {
+        "FillMissingAuxvInfoErrors": [
+          "InvalidFormat"
+        ]
+      },
+      {
+        "EnumerateThreadsErrors": [
+          {
+            "ReadThreadNameFailed": "Custom {\n    kind: Other,\n    error: \"testing requested failure reading thread name\",\n}"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "SuspendThreadsErrors": [
+      {
+        "PtraceAttachError": [
+          1234,
+          "EPERM"
+        ]
+      }
+    ]
+  },
+  {
+    "WriteSystemInfoErrors": [
+      {
+        "WriteCpuInformationFailed": {
+          "IOError": "Custom {\n    kind: Other,\n    error: \"test requested cpuinfo file failure\",\n}"
+        }
+      }
+    ]
+  }
+]

@@ -503,6 +503,7 @@ pub struct ProcessState {
     pub unimplemented_streams: Vec<MinidumpUnimplementedStream>,
     pub symbol_stats: HashMap<String, SymbolStats>,
     pub linux_memory_map_count: Option<usize>,
+    pub soft_errors: Option<serde_json::Value>,
 }
 
 fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
@@ -857,6 +858,16 @@ Unknown streams encountered:
                 )?;
             }
         }
+
+        if let Some(soft_errors) = self.soft_errors.as_ref() {
+            if soft_errors.as_array().is_some_and(|a| !a.is_empty()) {
+                writeln!(
+                    f,
+                    "\nSoft errors were encountered when minidump was written:"
+                )?;
+                writeln!(f, "{soft_errors:#}")?;
+            }
+        }
         Ok(())
     }
 
@@ -967,6 +978,7 @@ Unknown streams encountered:
                     "unit": limit.1.unit,
                 })).collect::<Vec<_>>()
             })),
+            "soft_errors": self.soft_errors.as_ref(),
             // optional
             "mac_crash_info": self.mac_crash_info.as_ref().map(|info| json!({
                 "num_records": info.len(),

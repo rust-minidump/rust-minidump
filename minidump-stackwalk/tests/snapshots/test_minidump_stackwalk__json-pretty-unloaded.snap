@@ -25,6 +25,7 @@ expression: json_out
   "modules_contains_cert_info": false,
   "pid": null,
   "proc_limits": null,
+  "soft_errors": null,
   "status": "OK",
   "system_info": {
     "cpu_arch": "x86",

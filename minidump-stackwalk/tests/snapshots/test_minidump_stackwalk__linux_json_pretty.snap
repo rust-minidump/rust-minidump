@@ -400,6 +400,48 @@ expression: stdout
   "modules_contains_cert_info": false,
   "pid": 1304,
   "proc_limits": null,
+  "soft_errors": [
+    {
+      "InitErrors": [
+        {
+          "StopProcessFailed": {
+            "Stop": "EPERM"
+          }
+        },
+        {
+          "FillMissingAuxvInfoErrors": [
+            "InvalidFormat"
+          ]
+        },
+        {
+          "EnumerateThreadsErrors": [
+            {
+              "ReadThreadNameFailed": "Custom {\n    kind: Other,\n    error: \"testing requested failure reading thread name\",\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "SuspendThreadsErrors": [
+        {
+          "PtraceAttachError": [
+            1234,
+            "EPERM"
+          ]
+        }
+      ]
+    },
+    {
+      "WriteSystemInfoErrors": [
+        {
+          "WriteCpuInformationFailed": {
+            "IOError": "Custom {\n    kind: Other,\n    error: \"test requested cpuinfo file failure\",\n}"
+          }
+        }
+      ]
+    }
+  ],
   "status": "OK",
   "system_info": {
     "cpu_arch": "amd64",

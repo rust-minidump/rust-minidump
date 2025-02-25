@@ -752,7 +752,8 @@ where
         LinuxProcStatus,
         LinuxCpuInfo,
         LinuxMaps,
-        MozLinuxLimits
+        MozLinuxLimits,
+        MozSoftErrors
     ) {
         if let Ok(contents) = dump.get_raw_stream(stream as u32) {
             print_raw_stream(name, contents, output)?;

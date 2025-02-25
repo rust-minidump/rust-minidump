@@ -307,6 +307,46 @@ Max realtime timeout      unlimited            unlimited            us
     }
 }
 
+const SOFT_ERRORS_INPUT: &str = r#"[
+    {"InitErrors": [
+        {"StopProcessFailed": {"Stop": "EPERM"}}
+    ]},
+    {"SuspendThreadsErrors": [{"PtraceAttachError": [1234, "EPERM"]}]}
+]"#;
+
+#[tokio::test]
+async fn test_soft_errors() {
+    let dump = minimal_minidump().set_soft_errors(SOFT_ERRORS_INPUT);
+    let state = read_synth_dump(dump).await;
+    let soft_errors = state.soft_errors.expect("missing soft error stream");
+    let arr = soft_errors.as_array().expect("expected array");
+    let s = arr
+        .get(0)
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("InitErrors"))
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.get(0))
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("StopProcessFailed"))
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("Stop"))
+        .and_then(|v| v.as_str())
+        .expect("expected InitErrors.StopProcessFailed.Stop == EPERM");
+    assert_eq!(s, "EPERM");
+    let attach_error = arr
+        .get(1)
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("SuspendThreadsErrors"))
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.get(0))
+        .and_then(|v| v.as_object())
+        .and_then(|o| o.get("PtraceAttachError"))
+        .and_then(|v| v.as_array())
+        .expect("expected SuspendThreadsErrors.PtraceAttachError is array");
+    assert_eq!(attach_error[0].as_u64(), Some(1234));
+    assert_eq!(attach_error[1].as_str(), Some("EPERM"));
+}
+
 #[tokio::test]
 async fn test_no_frames() {
     let context = minidump_synth::x86_context(Endian::Little, 0, 0);
