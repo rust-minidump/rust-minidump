@@ -23,7 +23,7 @@ debuginfo-unwind = ["cachemap2", "framehop", "memmap2", "object"]
 http = ["breakpad-symbols/http"]
 
 [dependencies]
-async-trait = "0.1.52"
+async-trait = "0.1.87"
 breakpad-symbols = { version = "0.24.1", path = "../breakpad-symbols" }
 cachemap2 = { version = "0.3.0", optional = true }
 framehop = { version = "0.13", optional = true }
