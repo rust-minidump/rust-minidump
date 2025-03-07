@@ -1,14 +1,14 @@
 [package]
 name = "breakpad-symbols"
 description = "A library for working with Google Breakpad's text-format symbol files."
-version = "0.24.1"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
-license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/rust-minidump/rust-minidump"
-repository = "https://github.com/rust-minidump/rust-minidump"
 exclude = ["testdata/*"]
 edition = "2018"
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [badges]
 travis-ci = { repository = "rust-minidump/rust-minidump" }

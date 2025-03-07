@@ -1,15 +1,15 @@
 [package]
 name = "minidump"
 description = "A parser for the minidump format."
-version = "0.24.1"
 authors = ["Ted Mielczarek <ted@mielczarek.org>"]
-license = "MIT"
-homepage = "https://github.com/rust-minidump/rust-minidump"
-repository = "https://github.com/rust-minidump/rust-minidump"
 keywords = ["breakpad", "symbols", "minidump"]
 categories = ["parsing"]
 readme = "README.md"
 edition = "2018"
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 arbitrary = { version = "1", optional = true, features = ["derive"] }
