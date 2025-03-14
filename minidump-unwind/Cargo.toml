@@ -1,13 +1,13 @@
 [package]
 name = "minidump-unwind"
 description = "A library for producing stack traces from minidump files."
-version = "0.24.1"
 authors = ["Alex Franchuk <afranchuk@mozilla.com>"]
-license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/rust-minidump/rust-minidump"
-repository = "https://github.com/rust-minidump/rust-minidump"
 edition = "2018"
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [badges]
 travis-ci = { repository = "rust-minidump/rust-minidump" }
