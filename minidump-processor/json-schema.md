@@ -689,74 +689,8 @@ anyway.
   // MacOS-specific kernel boot args
   "mac_boot_args": <string>,
 
+  // Soft errors encountered while writing minidump
+  "soft_errors": [ <object> ],
+
 }
 ```
-
-
-
-
-# Schema Change Notes
-
-
-
-
-
-## 0.9.6
-
-**BREAKING CHANGE** (really? right after claiming it's stable?)
-
-`crashing_thread.thread_index` renamed to `crashing_thread.threads_index`
-
-This was actually always supposed to be the name, we just typoed it and didn't notice before publishing. It's soon enough that we'd rather just fix it rather than eternally have two copies of the field. Sorry!
-
-
-## 0.10.0
-
-### sensitive and exploitability fully removed
-
-The top level `sensitive` field and its child `exploitability` field have been removed from the schema since they were already optional and never contained any real output. These features were never implemented, but they were stubbed out and made it into the schema simply because we were emitting these dummy fields.
-
-While the idea of a "sensitive" section that can be stripped for data-security purposes is appealing, in reality it isn't really useful because *lots* of information in this report potentially contains sensitive user information. It's up to your organization to decide who can see which fields.
-
-### evil-json now used uniformly and properly indicated as unstable
-
-The evil_json feature has always been an "ideally temporary" hack for Mozilla's workflow, and has therefore always been defacto unstable, but we didn't have the terminology to refer to this. Now it's properly marked as unstable. Mozilla is free to mess with it however it wants.
-
-The codebase also interchangeably referred to the evil_json feature as both evil_json and raw_json. It is now always evil_json to properly express that this is an evil feature that you should not use unless you are mozilla (and if you are mozilla, you should also stop using it).
-
-This changes the `--raw-json` flag of minidump-stackwalk to `--evil-json`
-
-## code_id casing
-
-`modules[N].code_id` and `unloaded_modules[N].code_id` are now uniformly output as lowercase, as this format is expected by some case-sensitive tools. Previously, the casing would be a seemingly arbitrary casing, because code_id's were getting fed through the machinery for formatting debug_ids (which often contain two values, which are distinguished by UPPERlower).
-
-### Unloaded Modules
-
-Stack frames (`threads.N.frames.N` and `crashing_thread.frames.N`) now have
-an "unloaded_modules" field, which provides all the unloaded modules that intersect
-with that address, and the offsets (equivalent to "module_offset").
-
-Offsets are an array because a module may be unloaded (and reloaded) many times,
-which can result in an unloaded module having several known locations. Absent
-a mechanism to pick the "right" one, we just list them all.
-
-That said, modules *often* reload in the same location, so usually "unloaded_modules"
-will just contain one module with one offset (we deduplicate the offsets).
-
-Currently "unloaded_modules" is only populated if "module" is `null` (indicating
-the frame's address didn't match any known loaded module). This is because
-the "module" signal is to be preferred (and unconditionally computing these
-values would be expensive and noisy). **In the future we may change this, if
-we find there is a significant desire for unloaded_module info even when a
-known loaded module is available.**
-
-Also note that the information we have on unloaded modules
-is fairly limited, so we can't validate them against certificates or use
-them for symbolication. All we can tell you is that a module with the given
-name was at a particular location. Whether it was a fake DLL from a hacker,
-who could say?
-
-# 0.14.0 (not yet released)
-
-* Fixed some typos in the `registers` schema, the actual implementation is unchanged
-* `threads.N.frames.N.inlines` added for inlined frames!
