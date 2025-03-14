@@ -689,6 +689,9 @@ anyway.
   // MacOS-specific kernel boot args
   "mac_boot_args": <string>,
 
+  // Soft errors encountered while writing minidump
+  "soft_errors": [ <object> ],
+
 }
 ```
 

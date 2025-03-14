@@ -1,11 +1,8 @@
 # Unreleased
 
-Nothing Yet!
-
+* Add "soft_errors" to the JSON, human, and dump output formats
 
 # Version 0.24.1 (2025-02-17)
-
-Nothing Yet!
 
 * Updated the Windows-specific error codes with the ones from
   version 10.0.26100 of the Windows SDK.
