@@ -19,20 +19,20 @@ travis-ci = { repository = "rust-minidump/rust-minidump" }
 mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 
 [dependencies]
-clap = { version = "4.5.0", features = ["cargo", "wrap_help", "derive"] }
-indicatif = "0.17.0"
-minidump = { version = "0.24.1", path = "../minidump" }
-minidump-common = { version = "0.24.1", path = "../minidump-common" }
-minidump-processor = { version = "0.24.1", path = "../minidump-processor" }
-minidump-unwind = { version = "0.24.1", path = "../minidump-unwind", features = ["debuginfo", "http"] }
-tokio = { version = "1.12.0", features = ["full"] }
-tracing = { version = "0.1.34", features = ["log"] }
-tracing-subscriber = "0.3.14"
+clap = { workspace = true, features = ["cargo", "wrap_help", "derive"] }
+indicatif = { workspace = true }
+minidump = { workspace = true }
+minidump-common = { workspace = true }
+minidump-processor = { workspace = true }
+minidump-unwind = { workspace = true, features = ["debuginfo", "http"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true, features = ["log"] }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
-insta = "1.20.0"
-minidump-synth = { path = "../minidump-synth" }
-test-assembler = "0.1.6"
+insta = { workspace = true }
+minidump-synth = { workspace = true }
+test-assembler = { workspace = true }
 
 [package.metadata.release]
 pre-release-replacements = [

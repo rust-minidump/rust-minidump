@@ -12,26 +12,26 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-arbitrary = { version = "1", optional = true, features = ["derive"] }
-debugid = "0.8.0"
-encoding_rs = "0.8"
-tracing = { version = "0.1.34", features = ["log"] }
-memmap2 = "0.9"
-minidump-common = { version = "0.24.1", path = "../minidump-common" }
-num-traits = "0.2"
-procfs-core = { version = "0.17", default-features = false }
-range-map = "0.2"
-scroll = "0.12.0"
-thiserror = "2"
-time = { version = "0.3.34", features = ["formatting"] }
-uuid = "1.0.0"
+arbitrary = { workspace = true, optional = true, features = ["derive"] }
+debugid = { workspace = true }
+encoding_rs = { workspace = true }
+tracing = { workspace = true, features = ["log"] }
+memmap2 = { workspace = true }
+minidump-common = { workspace = true }
+num-traits = { workspace = true }
+procfs-core = { workspace = true }
+range-map = { workspace = true }
+scroll = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
-ctor = "0.2"
-env_logger = "0.11.1"
-minidump-synth = { path = "../minidump-synth" }
-test-assembler = "0.1.6"
-doc-comment = "0.3.3"
+ctor = { workspace = true }
+env_logger = { workspace = true }
+minidump-synth = { workspace = true }
+test-assembler = { workspace = true }
+doc-comment = { workspace = true }
 
 [features]
 # This is a hack to get around the fact that namespaced-features aren't yet on stable
