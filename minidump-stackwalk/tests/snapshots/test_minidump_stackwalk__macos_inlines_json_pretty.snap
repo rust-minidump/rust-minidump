@@ -894,6 +894,7 @@ expression: stdout
   "modules_contains_cert_info": false,
   "pid": 80556,
   "proc_limits": null,
+  "soft_errors": null,
   "status": "OK",
   "system_info": {
     "cpu_arch": "amd64",

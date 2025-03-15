@@ -488,6 +488,7 @@ struct MinidumpInfo<'a> {
     handle_data_stream: Option<MinidumpHandleDataStream>,
     exception: Option<MinidumpException<'a>>,
     //exception_details: Option<ExceptionDetails<'a>>,
+    soft_errors: Option<serde_json::Value>,
 }
 
 impl<'a> MinidumpInfo<'a> {
@@ -532,6 +533,7 @@ impl<'a> MinidumpInfo<'a> {
         let _linux_environ = dump.get_stream::<MinidumpLinuxEnviron>().ok();
         let linux_proc_status = dump.get_stream::<MinidumpLinuxProcStatus>().ok();
         let linux_proc_limits = dump.get_stream::<MinidumpLinuxProcLimits>().ok();
+        let soft_errors = dump.get_stream::<MinidumpSoftErrors>().ok();
 
         // Extract everything we care about from linux streams here.
         // We don't eagerly process them in the minidump crate because there's just
@@ -544,6 +546,8 @@ impl<'a> MinidumpInfo<'a> {
         let linux_standard_base = linux_standard_base.map(LinuxStandardBase::from);
         let linux_proc_status = linux_proc_status.map(LinuxProcStatus::from);
         let linux_proc_limits = linux_proc_limits.map(LinuxProcLimits::from);
+        let soft_errors =
+            soft_errors.and_then(|se| serde_json::from_str::<serde_json::Value>(se.as_ref()).ok());
 
         let cpu_info = dump_system_info
             .cpu_info()
@@ -623,6 +627,7 @@ impl<'a> MinidumpInfo<'a> {
             handle_data_stream,
             exception,
             //exception_details: None,
+            soft_errors,
         })
     }
 
@@ -1120,6 +1125,7 @@ impl<'a> MinidumpInfo<'a> {
             unimplemented_streams,
             symbol_stats,
             linux_memory_map_count: self.linux_memory_map_count,
+            soft_errors: self.soft_errors,
         };
 
         // Report the unwalked result

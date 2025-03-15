@@ -501,6 +501,12 @@ pub struct MinidumpLinuxProcLimits<'a> {
     data: &'a [u8],
 }
 
+/// Soft errors encountered by minidump-writer during generation
+#[derive(Default, Debug)]
+pub struct MinidumpSoftErrors<'a> {
+    json_str: &'a str,
+}
+
 /// The reason for a process crash.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CrashReason {
@@ -3914,6 +3920,26 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxProcLimits<'a> {
         _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxProcLimits<'a>, Error> {
         Ok(Self { data: bytes })
+    }
+}
+
+impl<'a> MinidumpStream<'a> for MinidumpSoftErrors<'a> {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::MozSoftErrors as u32;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<MinidumpSoftErrors<'a>, Error> {
+        let json_str = std::str::from_utf8(bytes).map_err(|_| Error::DataError)?;
+        Ok(Self { json_str })
+    }
+}
+
+impl AsRef<str> for MinidumpSoftErrors<'_> {
+    fn as_ref(&self) -> &str {
+        self.json_str
     }
 }
 

@@ -285,6 +285,7 @@ expression: stdout
   "modules_contains_cert_info": true,
   "pid": 3932,
   "proc_limits": null,
+  "soft_errors": null,
   "status": "OK",
   "system_info": {
     "cpu_arch": "x86",
