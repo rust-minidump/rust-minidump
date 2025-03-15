@@ -9,6 +9,6 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-test-assembler = "0.1.5"
-minidump-common = { version = "0.24.1", path = "../minidump-common" }
-scroll = "0.12.0"
+test-assembler = { workspace = true }
+minidump-common = { workspace = true }
+scroll = { workspace = true }
