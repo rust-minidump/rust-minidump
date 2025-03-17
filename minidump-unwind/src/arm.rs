@@ -175,11 +175,14 @@ where
 
     // Breakpad devs found that the first frame of an unwind can be really messed up,
     // and therefore benefits from a longer scan. Let's do it too.
-    let scan_range = if let FrameTrust::Context = args.callee_frame.trust {
-        extended_scan_range
-    } else {
-        default_scan_range
-    };
+    // Additionally, especially with JIT code, using an extended scan range when coming
+    // from a trusted source allows skipping over undetectable JIT frames.
+    let scan_range =
+        if let FrameTrust::Context | FrameTrust::CallFrameInfo = args.callee_frame.trust {
+            extended_scan_range
+        } else {
+            default_scan_range
+        };
 
     for i in 0..scan_range {
         let address_of_pc = last_sp.checked_add(i * POINTER_WIDTH)?;
