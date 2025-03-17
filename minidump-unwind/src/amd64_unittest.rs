@@ -530,6 +530,68 @@ async fn test_scan_with_symbols() {
     }
 }
 
+#[tokio::test]
+async fn test_scan_with_symbols_sandwiched() {
+    // Test which makes sure when entering a section of frames without information,
+    // coming from a frame with high confidence can be scanned over correctly.
+    //
+    // This may happen when going from AOT native frames with unwind information
+    // into JIT compiled frames without unwind information. Those frames should
+    // ideally be all skipped.
+    let (mut f, mut stack, mut expected, expected_valid) = init_cfi_state();
+
+    let return_address = 0x00007500b0000110u64;
+
+    let frame1_rsp = Label::new();
+    let frame2_rsp = Label::new();
+    stack = stack
+        .D64(0x00007400c0005510)
+        .mark(&frame1_rsp)
+        // Frame 2
+        // 4 undetected decently large JIT Frames
+        .append_repeated(0, 256)
+        .D64(0x000090000000000a)
+        .append_repeated(1, 256)
+        .D64(0x00009000000000a0)
+        .append_repeated(2, 256)
+        .D64(0x0000900000000a00)
+        .append_repeated(3, 256)
+        .D64(0x000090000000a000)
+        // JIT Frames end here
+        .D64(0x0000900000000001) // just some
+        .D64(0x0000900000000002) // random values
+        .D64(0x0000900000000003) // on the stack
+        .D64(return_address) // valid return address
+        .mark(&frame2_rsp)
+        .append_repeated(0, 1000);
+
+    expected.set_register("rsp", frame1_rsp.value().unwrap());
+    f.raw.set_register("rip", 0x00007400c0004000);
+
+    let s = f.walk_stack(stack).await;
+
+    {
+        // Frame 0
+        let frame = &s.frames[0];
+        assert_eq!(frame.trust, FrameTrust::Context);
+        assert_eq!(frame.context.valid, MinidumpContextValidity::All);
+    }
+
+    {
+        // Frame 1 - Found with CFI
+        let frame = &s.frames[1];
+        assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+        assert_valid_registers(frame, &expected, &expected_valid);
+    }
+
+    {
+        // Frame 2 - Found by scanning (with all JIT frames skipped)
+        let frame = &s.frames[2];
+        assert_eq!(frame.trust, FrameTrust::Scan);
+        assert_eq!(frame.context.get_register_always("rip"), return_address);
+    }
+}
+
 const CALLEE_SAVE_REGS: &[&str] = &["rip", "rbx", "rbp", "rsp", "r12", "r13", "r14", "r15"];
 
 fn init_cfi_state() -> (TestFixture, Section, CONTEXT_AMD64, MinidumpContextValidity) {
@@ -597,29 +659,37 @@ async fn check_cfi(
 
     {
         // Frame 1
-        if let MinidumpContextValidity::Some(ref expected_regs) = expected_valid {
-            let frame = &s.frames[1];
-            let valid = &frame.context.valid;
-            assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
-            if let MinidumpContextValidity::Some(ref which) = valid {
-                assert_eq!(which.len(), expected_regs.len());
-            } else {
-                unreachable!();
-            }
-
-            if let MinidumpRawContext::Amd64(ctx) = &frame.context.raw {
-                for reg in expected_regs {
-                    assert_eq!(
-                        ctx.get_register(reg, valid),
-                        expected.get_register(reg, &expected_valid),
-                        "{reg} registers didn't match!"
-                    );
-                }
-                return;
-            }
-        }
+        let frame = &s.frames[1];
+        assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+        assert_valid_registers(frame, &expected, &expected_valid);
     }
-    unreachable!();
+}
+
+fn assert_valid_registers(
+    frame: &StackFrame,
+    expected: &CONTEXT_AMD64,
+    expected_valid: &MinidumpContextValidity,
+) {
+    let valid = &frame.context.valid;
+
+    let MinidumpContextValidity::Some(ref expected_regs) = expected_valid else {
+        unreachable!();
+    };
+    let MinidumpContextValidity::Some(ref which) = valid else {
+        unreachable!();
+    };
+
+    assert_eq!(which.len(), expected_regs.len());
+    let MinidumpRawContext::Amd64(ctx) = &frame.context.raw else {
+        unreachable!()
+    };
+    for reg in expected_regs {
+        assert_eq!(
+            ctx.get_register(reg, valid),
+            expected.get_register(reg, expected_valid),
+            "{reg} registers didn't match!"
+        );
+    }
 }
 
 #[tokio::test]
