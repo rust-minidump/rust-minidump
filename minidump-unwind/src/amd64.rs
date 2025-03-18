@@ -77,7 +77,7 @@ fn callee_forwarded_regs(valid: &MinidumpContextValidity) -> HashSet<&'static st
     }
 }
 
-async fn get_caller_by_frame_pointer<P>(
+fn get_caller_by_frame_pointer<P>(
     ctx: &CONTEXT_AMD64,
     args: &GetCallerFrameArgs<'_, P>,
 ) -> Option<StackFrame>
@@ -188,9 +188,10 @@ where
         _ => resolve(0, 0)?,
     };
 
-    println!(
+    trace!(
         "frame pointer seems valid -- caller_ip: 0x{:016x}, caller_sp: 0x{:016x}",
-        caller_ip, caller_sp,
+        caller_ip,
+        caller_sp,
     );
 
     let caller_ctx = CONTEXT_AMD64 {
@@ -423,11 +424,9 @@ where
         frame = get_caller_by_cfi(ctx, args).await;
     }
     if frame.is_none() {
-        println!("START FP");
-        frame = get_caller_by_frame_pointer(ctx, args).await;
+        frame = get_caller_by_frame_pointer(ctx, args);
     }
     if frame.is_none() {
-        println!("START SCAN");
         frame = get_caller_by_scan(ctx, args).await;
     }
     let mut frame = frame?;
