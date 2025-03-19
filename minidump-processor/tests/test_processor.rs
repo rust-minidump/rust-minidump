@@ -321,11 +321,11 @@ async fn test_soft_errors() {
     let soft_errors = state.soft_errors.expect("missing soft error stream");
     let arr = soft_errors.as_array().expect("expected array");
     let s = arr
-        .get(0)
+        .first()
         .and_then(|v| v.as_object())
         .and_then(|o| o.get("InitErrors"))
         .and_then(|v| v.as_array())
-        .and_then(|a| a.get(0))
+        .and_then(|a| a.first())
         .and_then(|v| v.as_object())
         .and_then(|o| o.get("StopProcessFailed"))
         .and_then(|v| v.as_object())
@@ -338,7 +338,7 @@ async fn test_soft_errors() {
         .and_then(|v| v.as_object())
         .and_then(|o| o.get("SuspendThreadsErrors"))
         .and_then(|v| v.as_array())
-        .and_then(|a| a.get(0))
+        .and_then(|a| a.first())
         .and_then(|v| v.as_object())
         .and_then(|o| o.get("PtraceAttachError"))
         .and_then(|v| v.as_array())
