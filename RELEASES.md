@@ -1,6 +1,7 @@
 # Unreleased
 
 * Add "soft_errors" to the JSON, human, and dump output formats
+* Updated the wholesym crate to version 0.8.1 to pick up demangling improvements
 
 # Version 0.24.1 (2025-02-17)
 
