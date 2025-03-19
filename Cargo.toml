@@ -17,7 +17,7 @@ resolver = "2"
 license = "MIT"
 homepage = "https://github.com/rust-minidump/rust-minidump"
 repository = "https://github.com/rust-minidump/rust-minidump"
-version = "0.24.1"
+version = "0.25.0"
 
 [workspace.metadata.release]
 shared-version = true
