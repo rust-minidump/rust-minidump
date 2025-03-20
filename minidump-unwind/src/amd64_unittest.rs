@@ -217,16 +217,141 @@ async fn test_windows_rbp_scan() {
     {
         // To avoid reusing locals by mistake
         let f1 = &s.frames[1];
-        assert_eq!(f1.trust, FrameTrust::Scan);
+        assert_eq!(f1.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
             assert!(which.contains("rip"));
             assert!(which.contains("rsp"));
+            assert!(which.contains("rbp"));
         } else {
             unreachable!();
         }
         if let MinidumpRawContext::Amd64(ctx) = &f1.context.raw {
             assert_eq!(ctx.rip, return_address);
             assert_eq!(ctx.rsp, frame1_sp.value().unwrap());
+            assert_eq!(ctx.rbp, frame1_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_windows_rbp_scan_large_frames() {
+    let mut f = TestFixture::new();
+    f.system_info.os = Os::Windows;
+
+    let mut stack = Section::new();
+    let stack_start = 0x8000000080000000;
+    stack.start().set_const(stack_start);
+
+    let frame0_rbp = Label::new();
+    let frame1_sp = Label::new();
+    let frame1_rbp = Label::new();
+    let frame1_rip = 0x00007500b0000110;
+    let frame2_sp = Label::new();
+    let frame2_rbp = Label::new();
+    let frame2_rip = 0x00007500b0000120;
+    let frame3_sp = Label::new();
+    let frame3_rbp = Label::new();
+    let frame3_rip = 0x00007500b0000130;
+
+    stack = stack
+        // frame 0
+        .append_repeated(1, 16) // space
+        .D64(0x00007500b0000000) // junk
+        .mark(&frame0_rbp)
+        .D64(&frame1_rbp) // caller-pushed %rbp
+        .D64(frame1_rip) // actual return address
+        // frame 1
+        .mark(&frame1_sp)
+        .append_repeated(2, 16) // body of frame 1
+        .mark(&frame1_rbp) // rbp is 16 bytes off from the return address
+        .D64(0x00000000000000a)
+        .D64(0x00000000000000b)
+        .D64(&frame2_rbp) // caller pushed %rbp
+        .D64(frame2_rip)
+        // Frame 2
+        .mark(&frame2_sp)
+        .append_repeated(0, 512) // very large body of frame 2
+        .mark(&frame2_rbp) // %rbp is in the middle of the frame
+        .append_repeated(0, 240) // maximum distance of %rbp to top of stack
+        .D64(&frame3_rbp) // caller pushed %rbp
+        .D64(frame3_rip)
+        // Frame 3
+        .mark(&frame3_sp)
+        .mark(&frame3_rbp) // end of stack
+        .D64(0);
+
+    f.raw.rip = 0x00007400c0000200;
+    f.raw.rbp = frame0_rbp.value().unwrap();
+    f.raw.rsp = stack.start().value().unwrap();
+
+    let s = f.walk_stack(stack).await;
+
+    assert_eq!(s.frames.len(), 4);
+    {
+        let f0 = &s.frames[0];
+        assert_eq!(f0.trust, FrameTrust::Context);
+        assert_eq!(f0.context.valid, MinidumpContextValidity::All);
+        if let MinidumpRawContext::Amd64(ctx) = &f0.context.raw {
+            assert_eq!(ctx.rbp, frame0_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        let f1 = &s.frames[1];
+        assert_eq!(f1.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = f1.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+            assert!(which.contains("rbp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::Amd64(ctx) = &f1.context.raw {
+            assert_eq!(ctx.rip, frame1_rip);
+            assert_eq!(ctx.rsp, frame1_sp.value().unwrap());
+            assert_eq!(ctx.rbp, frame1_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        let f2 = &s.frames[2];
+        assert_eq!(f2.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = f2.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+            assert!(which.contains("rbp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::Amd64(ctx) = &f2.context.raw {
+            assert_eq!(ctx.rip, frame2_rip);
+            assert_eq!(ctx.rsp, frame2_sp.value().unwrap());
+            assert_eq!(ctx.rbp, frame2_rbp.value().unwrap());
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        let f3 = &s.frames[3];
+        assert_eq!(f3.trust, FrameTrust::FramePointer);
+        if let MinidumpContextValidity::Some(ref which) = f3.context.valid {
+            assert!(which.contains("rip"));
+            assert!(which.contains("rsp"));
+            assert!(which.contains("rbp"));
+        } else {
+            unreachable!();
+        }
+        if let MinidumpRawContext::Amd64(ctx) = &f3.context.raw {
+            assert_eq!(ctx.rip, frame3_rip);
+            assert_eq!(ctx.rsp, frame3_sp.value().unwrap());
+            assert_eq!(ctx.rbp, frame3_rbp.value().unwrap());
         } else {
             unreachable!();
         }
