@@ -2,6 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use debugid::{CodeId, DebugId};
+use minidump::process_state::{FileSystemState, MemoryState};
 use minidump::system_info::{Cpu, Os};
 use minidump::*;
 use minidump_common::format as md;
@@ -201,6 +202,51 @@ fn test_crashpad_info() {
     assert_eq!(module.list_annotations, vec!["abort() called".to_owned()]);
     assert!(module.simple_annotations.is_empty());
     assert!(module.annotation_objects.is_empty());
+}
+
+#[test]
+fn test_stability_report() {
+    let path = get_test_minidump_path("stability-report.dmp");
+    let dump = Minidump::read_path(&path).unwrap();
+    let stability_report = dump.get_stream::<StabilityReport>().unwrap();
+
+    let process_states = stability_report.process_states.get(0).unwrap();
+    assert_eq!(process_states.process_id, Some(15212));
+
+    assert_eq!(
+        process_states.memory_state,
+        Some(MemoryState {
+            windows_memory: Some(process_state::memory_state::WindowsMemory {
+                process_peak_pagefile_usage: Some(10778),
+                process_peak_workingset_size: Some(20550),
+                process_private_usage: Some(10767),
+                process_allocation_attempt: None,
+            })
+        })
+    );
+
+    assert_eq!(
+        process_states.file_system_state,
+        Some(FileSystemState {
+            posix_file_system_state: None,
+            windows_file_system_state: Some(
+                process_state::file_system_state::WindowsFileSystemState {
+                    process_handle_count: Some(302),
+                }
+            )
+        })
+    );
+
+    assert_eq!(
+        stability_report.system_memory_state,
+        Some(SystemMemoryState {
+            windows_memory: Some(system_memory_state::WindowsMemory {
+                system_commit_limit: Some(6483743),
+                system_commit_remaining: Some(3532245),
+                system_handle_count: Some(119009),
+            })
+        })
+    );
 }
 
 #[test]

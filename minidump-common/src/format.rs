@@ -309,6 +309,10 @@ pub enum MINIDUMP_STREAM_TYPE {
     /// See [`MINIDUMP_CRASHPAD_INFO`].
     CrashpadInfoStream = 0x43500001,
 
+    /// Chromium stability report stream
+    /// https://source.chromium.org/chromium/chromium/src/+/main:components/stability_report/
+    StabilityReportStream = 0x4b6b0002,
+
     /// Data from the __DATA,__crash_info section of every module which contains
     /// one that has useful data. Only available on macOS. 0x4D7A = "Mz".
     ///
