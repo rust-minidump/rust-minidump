@@ -407,12 +407,14 @@ pub use scroll::Endian;
 mod context;
 mod iostuff;
 mod minidump;
+mod stability_report;
 
 pub use minidump_common::format;
 pub use minidump_common::traits::Module;
 
 pub use crate::iostuff::Readable;
 pub use crate::minidump::*;
+pub use crate::stability_report::*;
 
 pub mod strings;
 pub mod system_info;

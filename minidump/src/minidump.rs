@@ -6,6 +6,7 @@ use memmap2::Mmap;
 use num_traits::FromPrimitive;
 use procfs_core::prelude::*;
 use procfs_core::process::{MMPermissions, MemoryMap, MemoryMaps};
+use prost::Message;
 use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{Pread, BE, LE};
 use std::borrow::Cow;
@@ -27,6 +28,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 pub use crate::context::*;
+use crate::stability_report::StabilityReport;
 use crate::strings::*;
 use crate::system_info::{Cpu, Os, PointerWidth};
 use minidump_common::errors::{self as err};
@@ -5342,6 +5344,19 @@ impl MinidumpCrashpadInfo {
         writeln!(f)?;
 
         Ok(())
+    }
+}
+
+impl<'a> MinidumpStream<'a> for StabilityReport {
+    const STREAM_TYPE: u32 = MINIDUMP_STREAM_TYPE::StabilityReportStream as u32;
+
+    fn read(
+        bytes: &'a [u8],
+        _all: &'a [u8],
+        _endian: scroll::Endian,
+        _system_info: Option<&MinidumpSystemInfo>,
+    ) -> Result<Self, Error> {
+        StabilityReport::decode(bytes).map_err(|_| Error::DataError)
     }
 }
 
