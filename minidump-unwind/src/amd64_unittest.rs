@@ -561,7 +561,7 @@ fn assert_valid_registers(
     for reg in expected_regs {
         assert_eq!(
             ctx.get_register(reg, valid),
-            expected.get_register(reg, &expected_valid),
+            expected.get_register(reg, expected_valid),
             "{reg} registers didn't match!"
         );
     }
