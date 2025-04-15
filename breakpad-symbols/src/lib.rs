@@ -16,7 +16,7 @@
 //! # Examples
 //!
 //! ```
-//! # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+//! // std::env::set_current_dir::(env!("CARGO_MANIFEST_DIR"));
 //! use breakpad_symbols::{SimpleSymbolSupplier, Symbolizer, SimpleFrame, SimpleModule};
 //! use debugid::DebugId;
 //! use std::path::PathBuf;
@@ -771,7 +771,7 @@ impl Symbolizer {
     /// # Examples
     ///
     /// ```
-    /// # std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+    /// // std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
     /// use std::str::FromStr;
     /// use debugid::DebugId;
     /// use breakpad_symbols::{SimpleSymbolSupplier,Symbolizer,SimpleFrame,SimpleModule};
