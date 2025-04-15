@@ -189,7 +189,7 @@ dependencies = [
  "debugid",
  "futures-util",
  "minidump-common",
- "nom",
+ "nom 8.0.0",
  "range-map",
  "reqwest",
  "tempfile",
@@ -1379,6 +1379,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nom"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1982,7 +1991,7 @@ dependencies = [
  "macho-unwind-info",
  "memchr",
  "msvc-demangler",
- "nom",
+ "nom 7.1.3",
  "object",
  "pdb-addr2line",
  "rangemap",
