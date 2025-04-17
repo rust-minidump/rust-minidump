@@ -1226,6 +1226,7 @@ dependencies = [
  "minidump-synth",
  "num-traits",
  "procfs-core",
+ "prost",
  "range-map",
  "scroll",
  "test-assembler",
@@ -1604,6 +1605,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
 dependencies = [
  "bytes",
+ "prost-derive",
 ]
 
 [[package]]
