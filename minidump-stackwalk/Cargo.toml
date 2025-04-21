@@ -19,7 +19,7 @@ travis-ci = { repository = "rust-minidump/rust-minidump" }
 mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 
 [dependencies]
-clap = { version = "4.5.0", features = ["cargo", "wrap_help", "derive"] }
+clap = { version = "4.5.37", features = ["cargo", "wrap_help", "derive"] }
 indicatif = "0.17.0"
 minidump = { version = "0.25.0", path = "../minidump" }
 minidump-common = { version = "0.25.0", path = "../minidump-common" }
