@@ -392,6 +392,16 @@
 //!
 //!
 //!
+//! ### Protobuf Streams
+//!
+//! A stream encoded as a protobuf message.
+//!
+//! There is currently only one stream that uses this format:
+//!
+//! * [`StabilityReport`][]
+//!
+//!
+//!
 //! [MINIDUMP_TYPE]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ne-minidumpapiset-minidump_type
 //! [minidump]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680369%28v=vs.85%29.aspx
 //! [minidumpwritedump]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680360%28v=vs.85%29.aspx

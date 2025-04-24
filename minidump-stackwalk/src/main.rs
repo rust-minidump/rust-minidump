@@ -728,6 +728,9 @@ where
     if let Ok(mac_bootargs) = dump.get_stream::<MinidumpMacBootargs>() {
         mac_bootargs.print(output)?;
     }
+    if let Ok(stability_report) = dump.get_stream::<StabilityReport>() {
+        stability_report.print(output)?;
+    }
 
     // Handle Linux streams that are just a dump of some system "file".
     macro_rules! streams {

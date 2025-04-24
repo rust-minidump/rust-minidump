@@ -5360,6 +5360,94 @@ impl<'a> MinidumpStream<'a> for StabilityReport {
     }
 }
 
+impl StabilityReport {
+    pub fn print<T: std::io::Write>(&self, f: &mut T) -> std::io::Result<()> {
+        writeln!(f, "StabilityReport")?;
+        for (index, process_state) in self.process_states.iter().enumerate() {
+            if let Some(process_id) = process_state.process_id {
+                writeln!(f, "  process_state[{index}].process_id = {process_id}",)?;
+            }
+
+            if let Some(memory_state) = &process_state.memory_state {
+                if let Some(windows_memory) = &memory_state.windows_memory {
+                    if let Some(process_private_usage) = &windows_memory.process_private_usage {
+                        writeln!(
+                            f,
+                            "  process_state[{index}].memory_state.process_private_usage = {process_private_usage}",
+                        )?;
+                    }
+                    if let Some(process_peak_workingset_size) =
+                        &windows_memory.process_peak_workingset_size
+                    {
+                        writeln!(
+                            f,
+                            "  process_state[{index}].memory_state.process_peak_workingset_size = {process_peak_workingset_size}",
+                        )?;
+                    }
+                    if let Some(process_peak_pagefile_usage) =
+                        &windows_memory.process_peak_pagefile_usage
+                    {
+                        writeln!(
+                            f,
+                            "  process_state[{index}].memory_state.process_peak_pagefile_usage = {process_peak_pagefile_usage}",
+                        )?;
+                    }
+                    if let Some(process_allocation_attempt) =
+                        &windows_memory.process_allocation_attempt
+                    {
+                        writeln!(
+                            f,
+                            "  process_state[{index}].memory_state.process_allocation_attempt = {process_allocation_attempt}",
+                        )?;
+                    }
+                }
+            }
+            if let Some(file_system_state) = &process_state.file_system_state {
+                if let Some(posix_file_system_state) = &file_system_state.posix_file_system_state {
+                    if let Some(open_file_descriptors) =
+                        posix_file_system_state.open_file_descriptors
+                    {
+                        writeln!(
+                            f,
+                            "  file_system_state.posix_file_system_state.open_file_descriptors = {open_file_descriptors}",
+                        )?;
+                    }
+                }
+                if let Some(windows_file_system_state) =
+                    &file_system_state.windows_file_system_state
+                {
+                    if let Some(process_handle_count) =
+                        &windows_file_system_state.process_handle_count
+                    {
+                        writeln!(
+                            f,
+                            "  file_system_state.windows_file_system_state.process_handle_count = {process_handle_count}",
+                        )?;
+                    }
+                }
+            }
+        }
+
+        if let Some(system_memory_state) = &self.system_memory_state {
+            if let Some(windows_memory) = &system_memory_state.windows_memory {
+                if let Some(system_commit_limit) = &windows_memory.system_commit_limit {
+                    writeln!(f, "  system_memory_state.windows_memory.system_commit_limit = {system_commit_limit}",)?;
+                }
+                if let Some(system_commit_remaining) = &windows_memory.system_commit_remaining {
+                    writeln!(
+                        f,
+                        "  system_memory_state.windows_memory.system_commit_remaining = {system_commit_remaining}",
+                    )?;
+                }
+                if let Some(system_handle_count) = &windows_memory.system_handle_count {
+                    writeln!(f, "  system_memory_state.windows_memory.system_handle_count = {system_handle_count}",)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// An index into the contents of a memory-mapped minidump.
 pub type MmapMinidump = Minidump<'static, Mmap>;
 

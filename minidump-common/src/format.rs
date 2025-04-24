@@ -310,7 +310,7 @@ pub enum MINIDUMP_STREAM_TYPE {
     CrashpadInfoStream = 0x43500001,
 
     /// Chromium stability report stream
-    /// https://source.chromium.org/chromium/chromium/src/+/main:components/stability_report/
+    /// <https://source.chromium.org/chromium/chromium/src/+/main:components/stability_report/>
     StabilityReportStream = 0x4b6b0002,
 
     /// Data from the __DATA,__crash_info section of every module which contains
