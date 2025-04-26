@@ -7304,6 +7304,62 @@ mod test {
     }
 
     #[test]
+    fn test_stability_report() {
+        let stability_report_stream = SimpleStream {
+            stream_type: MINIDUMP_STREAM_TYPE::StabilityReportStream as u32,
+            // This data was copied from a real stability report.
+            section: Section::with_endian(Endian::Little).append_bytes(&[
+                18, 24, 24, 236, 118, 34, 12, 10, 10, 8, 143, 84, 16, 198, 160, 1, 24, 154, 84, 58,
+                5, 18, 3, 8, 174, 2, 58, 16, 10, 14, 8, 159, 222, 139, 3, 16, 213, 203, 215, 1, 24,
+                225, 161, 7,
+            ]),
+        };
+
+        let dump = SynthMinidump::with_endian(Endian::Little).add_stream(stability_report_stream);
+
+        let dump = read_synth_dump(dump).unwrap();
+        let stability_report = dump.get_stream::<StabilityReport>().unwrap();
+
+        let process_states = stability_report.process_states.get(0).unwrap();
+        assert_eq!(process_states.process_id, Some(15212));
+
+        assert_eq!(
+            process_states.memory_state,
+            Some(crate::process_state::MemoryState {
+                windows_memory: Some(crate::process_state::memory_state::WindowsMemory {
+                    process_peak_pagefile_usage: Some(10778),
+                    process_peak_workingset_size: Some(20550),
+                    process_private_usage: Some(10767),
+                    process_allocation_attempt: None,
+                })
+            })
+        );
+
+        assert_eq!(
+            process_states.file_system_state,
+            Some(crate::process_state::FileSystemState {
+                posix_file_system_state: None,
+                windows_file_system_state: Some(
+                    crate::process_state::file_system_state::WindowsFileSystemState {
+                        process_handle_count: Some(302),
+                    }
+                )
+            })
+        );
+
+        assert_eq!(
+            stability_report.system_memory_state,
+            Some(crate::SystemMemoryState {
+                windows_memory: Some(crate::system_memory_state::WindowsMemory {
+                    system_commit_limit: Some(6483743),
+                    system_commit_remaining: Some(3532245),
+                    system_handle_count: Some(119009),
+                })
+            })
+        );
+    }
+
+    #[test]
     fn test_exception_x86() {
         // Defaults to x86
         let system_info = SystemInfo::new(Endian::Little);
