@@ -7320,7 +7320,7 @@ mod test {
         let dump = read_synth_dump(dump).unwrap();
         let stability_report = dump.get_stream::<StabilityReport>().unwrap();
 
-        let process_states = stability_report.process_states.get(0).unwrap();
+        let process_states = stability_report.process_states.first().unwrap();
         assert_eq!(process_states.process_id, Some(15212));
 
         assert_eq!(
