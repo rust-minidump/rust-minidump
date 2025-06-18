@@ -150,7 +150,7 @@ impl Module for SimpleModule {
     fn size(&self) -> u64 {
         self.size.unwrap_or(0)
     }
-    fn code_file(&self) -> Cow<str> {
+    fn code_file(&self) -> Cow<'_, str> {
         self.code_file
             .as_ref()
             .map_or(Cow::from(""), |s| Cow::Borrowed(&s[..]))
@@ -158,13 +158,13 @@ impl Module for SimpleModule {
     fn code_identifier(&self) -> Option<CodeId> {
         self.code_identifier.as_ref().cloned()
     }
-    fn debug_file(&self) -> Option<Cow<str>> {
+    fn debug_file(&self) -> Option<Cow<'_, str>> {
         self.debug_file.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
     fn debug_identifier(&self) -> Option<DebugId> {
         self.debug_id
     }
-    fn version(&self) -> Option<Cow<str>> {
+    fn version(&self) -> Option<Cow<'_, str>> {
         self.version.as_ref().map(|s| Cow::Borrowed(&s[..]))
     }
 }

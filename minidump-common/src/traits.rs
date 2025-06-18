@@ -14,7 +14,7 @@ pub trait Module {
     /// The size of the code module.
     fn size(&self) -> u64;
     /// The path or file name that the code module was loaded from.
-    fn code_file(&self) -> Cow<str>;
+    fn code_file(&self) -> Cow<'_, str>;
     /// An identifying string used to discriminate between multiple versions and
     /// builds of the same code module.  This may contain a uuid, timestamp,
     /// version number, or any combination of this or other information, in an
@@ -26,7 +26,7 @@ pub trait Module {
     /// this will be different from code_file.  If debugging information is
     /// stored in the code module itself (possibly prior to stripping), this
     /// will be the same as code_file.
-    fn debug_file(&self) -> Option<Cow<str>>;
+    fn debug_file(&self) -> Option<Cow<'_, str>>;
     /// An identifying string similar to code_identifier, but identifies a
     /// specific version and build of the associated debug file.  This may be
     /// the same as code_identifier when the debug_file and code_file are
@@ -34,7 +34,7 @@ pub trait Module {
     /// debug and code files.
     fn debug_identifier(&self) -> Option<DebugId>;
     /// A human-readable representation of the code module's version.
-    fn version(&self) -> Option<Cow<str>>;
+    fn version(&self) -> Option<Cow<'_, str>>;
 }
 
 /// Implement Module for 2-tuples of (&str, DebugId) for convenience.
@@ -46,13 +46,13 @@ impl Module for (&str, DebugId) {
     fn size(&self) -> u64 {
         0
     }
-    fn code_file(&self) -> Cow<str> {
+    fn code_file(&self) -> Cow<'_, str> {
         Cow::Borrowed("")
     }
     fn code_identifier(&self) -> Option<CodeId> {
         None
     }
-    fn debug_file(&self) -> Option<Cow<str>> {
+    fn debug_file(&self) -> Option<Cow<'_, str>> {
         let &(file, _id) = self;
         Some(Cow::Borrowed(file))
     }
@@ -60,7 +60,7 @@ impl Module for (&str, DebugId) {
         let &(_file, id) = self;
         Some(id)
     }
-    fn version(&self) -> Option<Cow<str>> {
+    fn version(&self) -> Option<Cow<'_, str>> {
         None
     }
 }
