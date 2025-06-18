@@ -39,7 +39,7 @@ impl LinuxOsStr {
     }
 
     /// Converts to a utf8 string lossily (uses the usual std lossy algorithm).
-    pub fn to_string_lossy(&self) -> Cow<str> {
+    pub fn to_string_lossy(&self) -> Cow<'_, str> {
         // Ok so this is the end of the line for dancing around and acting
         // like we can just be fine with Linux OS strings being arbitrary bags
         // of bytes. We need some way to print this value in a reasonable way,

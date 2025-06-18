@@ -1432,7 +1432,7 @@ impl<'a> MinidumpStream<'a> for MinidumpThreadNames {
 }
 
 impl MinidumpThreadNames {
-    pub fn get_name(&self, thread_id: u32) -> Option<Cow<str>> {
+    pub fn get_name(&self, thread_id: u32) -> Option<Cow<'_, str>> {
         self.names
             .get(&thread_id)
             .map(|name| Cow::Borrowed(&**name))
@@ -2729,7 +2729,7 @@ impl<'a> UnifiedMemoryInfoList<'a> {
     }
 
     /// Return a `MinidumpMemory` containing memory at `address`, if one exists.
-    pub fn memory_info_at_address(&self, address: u64) -> Option<UnifiedMemoryInfo> {
+    pub fn memory_info_at_address(&self, address: u64) -> Option<UnifiedMemoryInfo<'_>> {
         match self {
             Self::Info(info) => info
                 .memory_info_at_address(address)
@@ -2741,7 +2741,7 @@ impl<'a> UnifiedMemoryInfoList<'a> {
     }
 
     /// Iterate over the memory regions in the order contained in the minidump.
-    pub fn iter(&self) -> impl Iterator<Item = UnifiedMemoryInfo> {
+    pub fn iter(&self) -> impl Iterator<Item = UnifiedMemoryInfo<'_>> {
         // Use `flat_map` and `chain` to create a unified stream of the two types
         // (only one of which will conatin any values). Note that we are using
         // the fact that `Option` can be iterated (producing 1 to 0 values).
@@ -2758,7 +2758,7 @@ impl<'a> UnifiedMemoryInfoList<'a> {
     }
 
     /// Iterate over the memory regions in order by memory address.
-    pub fn by_addr(&self) -> impl Iterator<Item = UnifiedMemoryInfo> {
+    pub fn by_addr(&self) -> impl Iterator<Item = UnifiedMemoryInfo<'_>> {
         let info = self
             .info()
             .into_iter()
@@ -2843,7 +2843,7 @@ impl<'a> MinidumpThread<'a> {
         &self,
         system_info: &MinidumpSystemInfo,
         misc: Option<&MinidumpMiscInfo>,
-    ) -> Option<Cow<MinidumpContext>> {
+    ) -> Option<Cow<'_, MinidumpContext>> {
         MinidumpContext::read(self.context?, self.endian, system_info, misc)
             .ok()
             .map(Cow::Owned)
@@ -3372,12 +3372,12 @@ impl MinidumpSystemInfo {
     /// - Windows: Returns the the name of the Service Pack.
     /// - macOS: Returns the product build number.
     /// - Linux: Returns the contents of `uname -srvmo`.
-    pub fn csd_version(&self) -> Option<Cow<str>> {
+    pub fn csd_version(&self) -> Option<Cow<'_, str>> {
         self.csd_version.as_deref().map(Cow::Borrowed)
     }
 
     /// Returns a string describing the cpu's vendor and model.
-    pub fn cpu_info(&self) -> Option<Cow<str>> {
+    pub fn cpu_info(&self) -> Option<Cow<'_, str>> {
         self.cpu_info.as_deref().map(Cow::Borrowed)
     }
 

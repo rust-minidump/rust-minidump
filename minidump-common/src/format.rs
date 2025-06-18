@@ -1737,7 +1737,7 @@ impl Default for XSTATE_CONFIG_FEATURE_MSC_INFO {
 
 impl XSTATE_CONFIG_FEATURE_MSC_INFO {
     /// Gets an iterator of all the enabled features.
-    pub fn iter(&self) -> XstateFeatureIter {
+    pub fn iter(&self) -> XstateFeatureIter<'_> {
         XstateFeatureIter { info: self, idx: 0 }
     }
 }
