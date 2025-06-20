@@ -10,5 +10,5 @@ repository.workspace = true
 
 [dependencies]
 test-assembler = "0.1.5"
-minidump-common = { version = "0.25.0", path = "../minidump-common" }
+minidump-common = { version = "0.26.0", path = "../minidump-common" }
 scroll = "0.12.0"

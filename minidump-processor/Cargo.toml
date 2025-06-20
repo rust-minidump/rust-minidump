@@ -25,12 +25,12 @@ mozilla_cab_symbols = ["breakpad-symbols/mozilla_cab_symbols"]
 
 [dependencies]
 async-trait = "0.1.52"
-breakpad-symbols = { version = "0.25.0", path = "../breakpad-symbols" }
+breakpad-symbols = { version = "0.26.0", path = "../breakpad-symbols" }
 debugid = "0.8.0"
 futures-util = "0.3.25"
-minidump = { version = "0.25.0", path = "../minidump" }
-minidump-common = { version = "0.25.0", path = "../minidump-common" }
-minidump-unwind = { version = "0.25.0", path = "../minidump-unwind" }
+minidump = { version = "0.26.0", path = "../minidump" }
+minidump-common = { version = "0.26.0", path = "../minidump-common" }
+minidump-unwind = { version = "0.26.0", path = "../minidump-unwind" }
 scroll = "0.12.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
