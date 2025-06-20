@@ -28,7 +28,7 @@ uuid = "1.0.0"
 prost = "0.13"
 
 [dev-dependencies]
-ctor = "0.2"
+ctor = "0.4"
 env_logger = "0.11.1"
 minidump-synth = { path = "../minidump-synth" }
 test-assembler = "0.1.6"
