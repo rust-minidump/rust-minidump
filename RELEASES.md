@@ -1,7 +1,7 @@
 # Unreleased
 
-Nothing Yet!
-
+* Add support for parsing and printing Chromium stability report streams
+* Implement frame-pointer scanning in 64-bit Windows minidumps
 
 # Version 0.25.0 (2025-03-19)
 
