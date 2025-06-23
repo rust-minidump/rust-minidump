@@ -2560,7 +2560,7 @@ impl<'a> MinidumpStream<'a> for MinidumpLinuxMaps<'a> {
         _system_info: Option<&MinidumpSystemInfo>,
     ) -> Result<MinidumpLinuxMaps<'a>, Error> {
         let maps = MemoryMaps::from_read(std::io::Cursor::new(bytes)).map_err(|e| {
-            tracing::error!("linux memory map read error: {e}");
+            tracing::warn!("linux memory map read error: {e}");
             Error::StreamReadFailure
         })?;
 
