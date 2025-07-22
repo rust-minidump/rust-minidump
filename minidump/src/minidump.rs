@@ -3122,7 +3122,7 @@ impl MinidumpThreadInfoList {
             self.thread_infos.len()
         )?;
         for (i, thread_info) in self.thread_infos.iter().enumerate() {
-            writeln!(f, "thread info[{}]", i)?;
+            writeln!(f, "thread info[{i}]")?;
             thread_info.print(f)?;
         }
         Ok(())

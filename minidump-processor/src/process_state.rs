@@ -674,7 +674,7 @@ impl ProcessState {
             if !crash_info.inconsistencies.is_empty() {
                 writeln!(f, "Crash is inconsistent:")?;
                 for inconsistency in &crash_info.inconsistencies {
-                    writeln!(f, "  {}", inconsistency)?;
+                    writeln!(f, "  {inconsistency}")?;
                 }
             }
         } else {
@@ -733,7 +733,7 @@ impl ProcessState {
         writeln!(f)?;
 
         if let Some(linux_memory_map_count) = self.linux_memory_map_count {
-            writeln!(f, "Linux memory map count: {}", linux_memory_map_count)?;
+            writeln!(f, "Linux memory map count: {linux_memory_map_count}")?;
             writeln!(f)?;
         }
 
