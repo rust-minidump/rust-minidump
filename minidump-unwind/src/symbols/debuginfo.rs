@@ -146,7 +146,7 @@ trait SymbolInterface {
     ) -> Result<(), FillSymbolError>;
 }
 
-/// A SymbolInterface that always returns `Ok(())` without doing anything.
+/// A SymbolInterface that always returns `Err(FillSymbolError {})` without doing anything.
 struct NoSymbols;
 
 #[async_trait]
@@ -156,7 +156,7 @@ impl SymbolInterface for NoSymbols {
         _module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        Ok(())
+        Err(FillSymbolError {})
     }
 }
 
