@@ -9,7 +9,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfbe277e56a376000877090da837660b4427aad530e3028d44e0bffe4f89a1c1"
 dependencies = [
  "fallible-iterator",
- "gimli",
+ "gimli 0.31.1",
 ]
 
 [[package]]
@@ -617,14 +617,14 @@ dependencies = [
 
 [[package]]
 name = "framehop"
-version = "0.13.3"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09a5a3f0acb82df800ca3aa50c0d60d286c5d13d4cfc3114b3a9663f13b032fe"
+checksum = "78a7d65f75e837647bf8b1594ad3b559a929ee9a58d956d9f46999749957b6b9"
 dependencies = [
  "arrayvec",
  "cfg-if",
  "fallible-iterator",
- "gimli",
+ "gimli 0.32.0",
  "macho-unwind-info",
  "pe-unwind-info",
 ]
@@ -732,6 +732,16 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+dependencies = [
+ "fallible-iterator",
+ "stable_deref_trait",
+]
+
+[[package]]
+name = "gimli"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93563d740bc9ef04104f9ed6f86f1e3275c2cdafb95664e26584b9ca807a8ffe"
 dependencies = [
  "fallible-iterator",
  "stable_deref_trait",
@@ -1501,9 +1511,9 @@ dependencies = [
 
 [[package]]
 name = "pe-unwind-info"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "500fa4cdeacd98997c5865e3d0d1cb8fe7e9d7d75ecc775e07989a433a9a9a59"
+checksum = "97f6fccfd2d9d2df765ca23ff85fe5cc437fb0e6d3e164e4d3cbe09d14780c93"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -1956,7 +1966,7 @@ dependencies = [
  "debugid",
  "elsa",
  "flate2",
- "gimli",
+ "gimli 0.31.1",
  "linux-perf-data",
  "lzma-rs",
  "macho-unwind-info",
