@@ -53,7 +53,7 @@ use serde_json::Value;
 async fn main() -> Result<(), ()> {
     // Read the minidump
     let dump = Minidump::read_path("../testdata/test.dmp").map_err(|_| ())?;
- 
+
     // Configure the symbolizer and processor
     let symbols_urls = vec![String::from("https://symbols.totallyrealwebsite.org")];
     let symbols_paths = vec![];
@@ -61,7 +61,7 @@ async fn main() -> Result<(), ()> {
     symbols_cache.push("minidump-cache");
     let symbols_tmp = std::env::temp_dir();
     let timeout = std::time::Duration::from_secs(1000);
- 
+
     // Use ProcessorOptions for detailed configuration
     let options = ProcessorOptions::default();
 
@@ -73,13 +73,13 @@ async fn main() -> Result<(), ()> {
         symbols_tmp,
         timeout,
     ));
- 
+
     let state = minidump_processor::process_minidump_with_options(&dump, &provider, options)
         .await
         .map_err(|_| ())?;
 
     // Write the JSON output to an arbitrary writer (here, a Vec).
-    // This is currently preferred because this output is more stable 
+    // This is currently preferred because this output is more stable
     // than the contents of ProcessState.
     let mut json_output = Vec::new();
     state.print_json(&mut json_output, false).map_err(|_| ())?;
