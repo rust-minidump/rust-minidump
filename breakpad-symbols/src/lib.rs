@@ -1019,6 +1019,19 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_empty_debug_file_breakpad_sym_lookup() {
+        // Test module with empty debug_file name
+        let m = SimpleModule {
+            debug_file: Some("".to_string()),
+            code_file: Some("foo.dll".to_string()),
+            debug_id: DebugId::from_str("abcd1234-0000-0000-0000-abcd12345678-a").ok(),
+            ..SimpleModule::default()
+        };
+
+        assert_eq!(&breakpad_sym_lookup(&m).unwrap().debug_file, "foo.dll.sym");
+    }
+
+    #[tokio::test]
     async fn test_code_info_breakpad_sym_lookup() {
         // Test normal data
         let m = SimpleModule {
