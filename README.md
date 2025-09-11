@@ -1,4 +1,4 @@
-![Rust CI](https://github.com/rust-minidump/rust-minidump/workflows/Rust%20CI/badge.svg?branch=main)
+[![Rust CI](https://github.com/rust-minidump/rust-minidump/actions/workflows/ci.yml/badge.svg)](https://github.com/rust-minidump/rust-minidump/actions/workflows/ci.yml)
 
 # Overview
 
