@@ -204,8 +204,6 @@ pub struct FileLookup {
 /// `<debug filename>/<debug identifier>/<debug filename>.sym`. If
 /// `debug filename` ends with *.pdb* the leaf filename will have that
 /// removed.
-/// `extension` is the expected extension for the symbol filename, generally
-/// *sym* if Breakpad text format symbols are expected.
 ///
 /// The debug filename and debug identifier can be found in the
 /// [first line][module_line] of the symbol file output by the dump_syms tool.
