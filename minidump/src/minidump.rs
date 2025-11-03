@@ -712,7 +712,7 @@ fn location_slice<'a>(
 fn read_string_utf16(offset: &mut usize, bytes: &[u8], endian: scroll::Endian) -> Option<String> {
     let u: u32 = bytes.gread_with(offset, endian).ok()?;
     let size = u as usize;
-    if size % 2 != 0 || (*offset + size) > bytes.len() {
+    if !size.is_multiple_of(2) || (*offset + size) > bytes.len() {
         return None;
     }
     let encoding = match endian {

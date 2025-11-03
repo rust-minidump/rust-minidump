@@ -447,7 +447,7 @@ pub fn unpack_cabinet_file(
 
     // And swap it into the cache
     temp.persist_noclobber(&final_cache_path)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     Ok(final_cache_path)
 }
