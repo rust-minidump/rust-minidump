@@ -1780,18 +1780,21 @@ impl MinidumpHandleDescriptor {
         offset: usize,
         ctx: HandleDescriptorContext,
     ) -> Option<MinidumpHandleObjectInformation> {
-        if offset != 0 {
-            ctx.bytes
-                .pread_with::<md::MINIDUMP_HANDLE_OBJECT_INFORMATION>(offset, ctx.endianess)
-                .ok()
-                .map(|raw| MinidumpHandleObjectInformation {
-                    raw: raw.clone(),
-                    info_type: md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE::from_u32(raw.info_type)
-                        .unwrap(),
-                })
-        } else {
-            None
+        if offset == 0 {
+            return None;
         }
+
+        ctx.bytes
+            .pread_with::<md::MINIDUMP_HANDLE_OBJECT_INFORMATION>(offset, ctx.endianess)
+            .ok()
+            .and_then(|raw| {
+                Some(MinidumpHandleObjectInformation {
+                    raw: raw.clone(),
+                    info_type: md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE::from_u32(
+                        raw.info_type,
+                    )?,
+                })
+            })
     }
 }
 
