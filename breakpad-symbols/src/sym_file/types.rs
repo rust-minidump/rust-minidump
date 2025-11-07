@@ -5,7 +5,7 @@ use range_map::{Range, RangeMap};
 use std::collections::HashMap;
 
 /// A publicly visible linker symbol.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct PublicSymbol {
     /// The symbol's address relative to the module's load address.
     ///
@@ -244,7 +244,7 @@ impl StackInfoWin {
 }
 
 /// A parsed .sym file containing debug symbols.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SymbolFile {
     pub module_id: String,
     pub debug_file: String,

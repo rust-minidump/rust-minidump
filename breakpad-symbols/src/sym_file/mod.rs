@@ -531,13 +531,18 @@ impl SymbolFile {
 mod test {
     use super::*;
     use std::ffi::OsStr;
-    fn test_symbolfile_from_file(rel_path: &str) {
-        let mut path = std::env::current_dir().unwrap();
+
+    fn load_symbolfile_from_file(rel_path: &str) -> SymbolFile {
+        let mut path = std::env::current_dir().expect("failed to get current dir");
         if path.file_name() == Some(OsStr::new("rust-minidump")) {
             path.push("breakpad-symbols");
         }
         path.push(rel_path);
-        let sym = SymbolFile::from_file(&path).unwrap();
+        SymbolFile::from_file(&path).expect("failed to load symbol file")
+    }
+
+    fn test_symbolfile_from_file(rel_path: &str) {
+        let sym = load_symbolfile_from_file(rel_path);
         assert_eq!(sym.files.len(), 6661);
         assert_eq!(sym.publics.len(), 5);
         assert_eq!(sym.find_nearest_public(0x9b07).unwrap().name, "_NLG_Return");
@@ -624,5 +629,35 @@ FUNC 1000 30 10 another func
 1000 30 7 53
 ",
         );
+    }
+
+    #[test]
+    fn test_symbolfile_clone_lf() {
+        let sym = load_symbolfile_from_file(
+            "testdata/symbols/test_app.pdb/5A9832E5287241C1838ED98914E9B7FF1/test_app.sym",
+        );
+        assert_eq!(sym, sym.clone());
+    }
+
+    #[test]
+    fn test_symbolfile_clone_crlf() {
+        let sym = load_symbolfile_from_file(
+            "testdata/symbols/test_app.pdb/5A9832E5287241C1838ED98914E9B7FF1/test_app.sym",
+        );
+        assert_eq!(sym, sym.clone());
+    }
+
+    #[test]
+    fn test_symbolfile_clone_bytes() {
+        let sym = SymbolFile::from_bytes(
+            b"MODULE Linux x86 ffff0000 bar
+FILE 53 bar.c
+PUBLIC 1234 10 some public
+FUNC 1000 30 10 another func
+1000 30 7 53
+",
+        )
+        .expect("parse bytes");
+        assert_eq!(sym, sym.clone());
     }
 }
