@@ -642,7 +642,7 @@ FUNC 1000 30 10 another func
     #[test]
     fn test_symbolfile_clone_crlf() {
         let sym = load_symbolfile_from_file(
-            "testdata/symbols/test_app.pdb/5A9832E5287241C1838ED98914E9B7FF1/test_app.sym",
+            "testdata/symbols/test_app.pdb/6A9832E5287241C1838ED98914E9B7FF1/test_app.sym",
         );
         assert_eq!(sym, sym.clone());
     }
