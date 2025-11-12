@@ -20,7 +20,7 @@ mozilla_cab_symbols = ["minidump-processor/mozilla_cab_symbols"]
 
 [dependencies]
 clap = { version = "4.5.0", features = ["cargo", "wrap_help", "derive"] }
-indicatif = "0.17.0"
+indicatif = "0.18.3"
 minidump = { version = "0.26.1", path = "../minidump" }
 minidump-common = { version = "0.26.1", path = "../minidump-common" }
 minidump-processor = { version = "0.26.1", path = "../minidump-processor" }
