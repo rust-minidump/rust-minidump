@@ -32,7 +32,7 @@ memmap2 = { version = "0.9", optional = true }
 minidump = { version = "0.26.1", path = "../minidump" }
 minidump-common = { version = "0.26.1", path = "../minidump-common" }
 object = { version = "0.36", default-features = false, features = ["read"], optional = true }
-scroll = "0.12.0"
+scroll = "0.13.0"
 tracing = { version = "0.1.34", features = ["log"] }
 wholesym = { version = "0.8", optional = true }
 
