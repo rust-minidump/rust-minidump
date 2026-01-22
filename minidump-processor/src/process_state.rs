@@ -1055,6 +1055,9 @@ Unknown streams encountered:
                 })
             }).collect::<Vec<_>>(),
             "pid": self.process_id,
+            "process_uptime": self.process_create_time.map(|time| {
+                self.time.duration_since(time).unwrap_or_default().as_secs()
+            }),
             "thread_count": self.threads.len(),
             "threads": self.threads.iter().map(|thread| json!({
                 "frame_count": thread.frames.len(),
