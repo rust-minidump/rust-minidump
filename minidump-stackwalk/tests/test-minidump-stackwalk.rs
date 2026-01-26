@@ -16,7 +16,6 @@
 // the env as `CARGO_BIN_EXE_<name>`.
 
 use minidump_synth::*;
-use serde_json;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
@@ -907,7 +906,9 @@ fn test_process_uptime() {
     assert_eq!(stderr, "");
 
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let process_uptime = json.get("process_uptime").expect("process_uptime field should exist");
+    let process_uptime = json
+        .get("process_uptime")
+        .expect("process_uptime field should exist");
     assert!(
         process_uptime.is_u64(),
         "process_uptime should be a number for full-dump.dmp, got: {:?}",
@@ -934,7 +935,9 @@ fn test_process_uptime() {
     assert_eq!(stderr, "");
 
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
-    let process_uptime = json.get("process_uptime").expect("process_uptime field should exist");
+    let process_uptime = json
+        .get("process_uptime")
+        .expect("process_uptime field should exist");
     assert!(
         process_uptime.is_null(),
         "process_uptime should be null for linux-mini.dmp, got: {:?}",
