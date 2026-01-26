@@ -400,6 +400,7 @@ expression: stdout
   "modules_contains_cert_info": false,
   "pid": 1304,
   "proc_limits": null,
+  "process_uptime": null,
   "soft_errors": [
     {
       "InitErrors": [

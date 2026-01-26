@@ -16,6 +16,7 @@
 // the env as `CARGO_BIN_EXE_<name>`.
 
 use minidump_synth::*;
+use serde_json;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
@@ -884,4 +885,59 @@ fn test_linux_human() {
     assert!(output.status.success());
     insta::assert_snapshot!(stdout);
     assert_eq!(stderr, "");
+}
+
+#[test]
+fn test_process_uptime() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+
+    // Test that full-dump.dmp has process_uptime populated (should be a number)
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("../testdata/full-dump.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(stderr, "");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let process_uptime = json.get("process_uptime").expect("process_uptime field should exist");
+    assert!(
+        process_uptime.is_u64(),
+        "process_uptime should be a number for full-dump.dmp, got: {:?}",
+        process_uptime
+    );
+    assert!(
+        process_uptime.as_u64().unwrap() > 0,
+        "process_uptime should be greater than 0 for full-dump.dmp"
+    );
+
+    // Test that linux-mini.dmp has process_uptime as null (process creation time not available)
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("../testdata/linux-mini.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(stderr, "");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let process_uptime = json.get("process_uptime").expect("process_uptime field should exist");
+    assert!(
+        process_uptime.is_null(),
+        "process_uptime should be null for linux-mini.dmp, got: {:?}",
+        process_uptime
+    );
 }

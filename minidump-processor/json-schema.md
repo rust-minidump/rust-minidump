@@ -93,7 +93,12 @@ anyway.
   // Crashing Process' id
   "pid": <u32>,
 
-
+  // How long the process had been running before the minidump was generated.
+  //
+  // This is calculated as the difference between the minidump timestamp
+  // and the process creation time. Will be `null` if the process creation
+  // time is not available in the minidump.
+  "process_uptime": <u64>, // seconds
 
 
 

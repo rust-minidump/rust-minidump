@@ -32,6 +32,7 @@ tracing-subscriber = "0.3.14"
 [dev-dependencies]
 insta = "1.20.0"
 minidump-synth = { path = "../minidump-synth" }
+serde_json = "1.0"
 test-assembler = "0.1.6"
 
 [package.metadata.release]

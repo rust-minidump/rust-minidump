@@ -1301,6 +1301,7 @@ dependencies = [
  "minidump-processor",
  "minidump-synth",
  "minidump-unwind",
+ "serde_json",
  "test-assembler",
  "tokio",
  "tracing",
