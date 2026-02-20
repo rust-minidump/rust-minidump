@@ -175,7 +175,7 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
                     .collect::<Vec<String>>()
             })
             .filter_map(|m| {
-                let u = m
+                let unit = m
                     .get(3)
                     .map(|u| u.trim().to_owned())
                     .unwrap_or_else(|| "n/a".to_owned());
@@ -184,7 +184,7 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
                 let lim = LinuxProcLimit {
                     soft: parse_limit(m.get(1)?),
                     hard: parse_limit(m.get(2)?),
-                    unit: u,
+                    unit,
                 };
 
                 Some((name, lim))
