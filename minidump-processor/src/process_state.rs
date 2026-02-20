@@ -174,21 +174,20 @@ impl From<MinidumpLinuxProcLimits<'_>> for LinuxProcLimits {
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
             })
-            .map(|m| {
-                let u = if m.len() == 3 {
-                    "n/a".to_string()
-                } else {
-                    m[3].trim().to_string()
-                };
+            .filter_map(|m| {
+                let u = m
+                    .get(3)
+                    .map(|u| u.trim().to_owned())
+                    .unwrap_or_else(|| "n/a".to_owned());
 
-                let name = m[0].trim().to_string();
+                let name = m.first()?.trim().to_owned();
                 let lim = LinuxProcLimit {
-                    soft: parse_limit(&m[1]),
-                    hard: parse_limit(&m[2]),
+                    soft: parse_limit(m.get(1)?),
+                    hard: parse_limit(m.get(2)?),
                     unit: u,
                 };
 
-                (name, lim)
+                Some((name, lim))
             })
             .collect();
 
