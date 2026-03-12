@@ -1244,7 +1244,7 @@ dependencies = [
  "procfs-core",
  "prost 0.14.1",
  "range-map",
- "scroll",
+ "scroll 0.13.0",
  "test-assembler",
  "thiserror",
  "time",
@@ -1262,7 +1262,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "range-map",
- "scroll",
+ "scroll 0.13.0",
  "smart-default",
 ]
 
@@ -1279,7 +1279,7 @@ dependencies = [
  "minidump-common",
  "minidump-synth",
  "minidump-unwind",
- "scroll",
+ "scroll 0.13.0",
  "serde",
  "serde_json",
  "test-assembler",
@@ -1313,7 +1313,7 @@ name = "minidump-synth"
 version = "0.26.1"
 dependencies = [
  "minidump-common",
- "scroll",
+ "scroll 0.13.0",
  "test-assembler",
 ]
 
@@ -1331,7 +1331,7 @@ dependencies = [
  "minidump",
  "minidump-common",
  "object",
- "scroll",
+ "scroll 0.13.0",
  "test-assembler",
  "tokio",
  "tracing",
@@ -1511,7 +1511,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "266b8733697ccc3aa405a9b2cf485a42746ad1cf73d3b0497b79b24f9e874a71"
 dependencies = [
  "fallible-iterator",
- "scroll",
+ "scroll 0.12.0",
  "uuid",
 ]
 
@@ -2032,15 +2032,21 @@ name = "scroll"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ab8598aa408498679922eff7fa985c25d58a90771bd6be794434c5277eab1a6"
+
+[[package]]
+name = "scroll"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1257cd4248b4132760d6524d6dda4e053bc648c9070b960929bf50cfb1e7add"
 dependencies = [
  "scroll_derive",
 ]
 
 [[package]]
 name = "scroll_derive"
-version = "0.12.1"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1783eabc414609e28a5ba76aee5ddd52199f7107a0b24c2e9746a1ecc34a683d"
+checksum = "ed76efe62313ab6610570951494bdaa81568026e0318eaa55f167de70eeea67d"
 dependencies = [
  "proc-macro2",
  "quote",
