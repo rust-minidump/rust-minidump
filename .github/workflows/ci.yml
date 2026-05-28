@@ -141,3 +141,12 @@ jobs:
         with:
           command: test
           args: --workspace --all-features --examples --bins
+
+      # This has to be done on a per-crate basis because minidump-stackwalk depends on
+      # minidump-processor's default features.
+      - uses: actions-rs/cargo@v1
+        env:
+          PWD: ${{ env.GITHUB_WORKSPACE }}
+        with:
+          command: test
+          args: -p minidump-processor --no-default-features --all-targets
