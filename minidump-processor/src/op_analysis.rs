@@ -90,6 +90,36 @@ pub struct MemoryAccessList {
     pub accesses: Vec<MemoryAccess>,
 }
 
+impl MemoryAccessList {
+    /// Check if an access with a given address and type is on the list
+    pub fn contains_access(&self, address: u64, access_type: MemoryAccessType) -> bool {
+        self.iter().any(|access| {
+            let Some(size) = access.size else {
+                // We don't care about the rare case where access size is unknown
+                return false;
+            };
+            let lower_bound = access.address_info.address;
+            let (upper_bound, overflowed) =
+                access.address_info.address.overflowing_add(size as u64);
+            access.access_type == access_type
+                && match overflowed {
+                    true => lower_bound <= address || address < upper_bound,
+                    false => lower_bound <= address && address < upper_bound,
+                }
+        })
+    }
+
+    /// Get an iterator of the memory access vector
+    pub fn iter(&self) -> std::slice::Iter<'_, MemoryAccess> {
+        self.accesses.iter()
+    }
+
+    /// Check if there is any memory access in the list
+    pub fn is_empty(&self) -> bool {
+        self.accesses.is_empty()
+    }
+}
+
 /// Details about a memory access performed by an instruction
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct MemoryAccess {
@@ -379,34 +409,6 @@ mod amd64 {
                 access_list.add_underivable_opcode_accesses(instruction, context)?;
             }
             Ok(access_list)
-        }
-
-        /// Check if an access with a given address and type is on the list
-        pub fn contains_access(&self, address: u64, access_type: MemoryAccessType) -> bool {
-            self.iter().any(|access| {
-                let Some(size) = access.size else {
-                    // We don't care about the rare case where access size is unknown
-                    return false;
-                };
-                let lower_bound = access.address_info.address;
-                let (upper_bound, overflowed) =
-                    access.address_info.address.overflowing_add(size as u64);
-                access.access_type == access_type
-                    && match overflowed {
-                        true => lower_bound <= address || address < upper_bound,
-                        false => lower_bound <= address && address < upper_bound,
-                    }
-            })
-        }
-
-        /// Get an iterator of the memory access vector
-        pub fn iter(&self) -> std::slice::Iter<'_, MemoryAccess> {
-            self.accesses.iter()
-        }
-
-        /// Check if there is any memory access in the list
-        pub fn is_empty(&self) -> bool {
-            self.accesses.is_empty()
         }
 
         fn add_derivable_opcode_accesses(
