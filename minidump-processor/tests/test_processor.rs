@@ -475,6 +475,7 @@ async fn test_bit_flip_arm64() {
         .is_empty());
 }
 
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
 #[tokio::test]
 async fn test_guard_pages() {
     let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x81000);
