@@ -131,12 +131,11 @@ where
     // sp := fp + ptr*2
     // fp := *fp
     //
-    // Note that although we push lr, we don't restore lr. That's because lr is just our
-    // return address, and is therefore essentially a "saved" pc. lr is caller-saved *and*
-    // automatically overwritten by every CALL, so the callee (the frame we're unwinding right now)
-    // has no business ever knowing it, let alone restoring it. lr is generally just saved
-    // immediately and then used as a free general purpose register, and therefore will generally
-    // contain random garbage unrelated to unwinding.
+    // We also recover the caller's lr from its frame record when possible. lr is
+    // caller-saved and generally volatile while a function is running, but a
+    // non-leaf caller's frame record preserves the lr value it had on entry.
+    // Keeping that value valid lets later CFI rows like `.ra: x30` at a function
+    // entry recover the next caller.
     //
     //
     // # Leaf Functions
@@ -195,6 +194,14 @@ where
     };
     let caller_fp = ptr_auth_strip(args.modules, caller_fp);
     let caller_pc = ptr_auth_strip(args.modules, caller_pc);
+    let caller_lr = if caller_fp == 0 {
+        None
+    } else {
+        caller_fp
+            .checked_add(POINTER_WIDTH)
+            .and_then(|caller_lr_addr| args.stack_memory.get_memory_at_address(caller_lr_addr))
+            .map(|caller_lr| ptr_auth_strip(args.modules, caller_lr))
+    };
 
     // Don't accept obviously wrong instruction pointers.
     if is_non_canonical(caller_pc) {
@@ -214,11 +221,17 @@ where
     caller_ctx.set_register(PROGRAM_COUNTER, caller_pc);
     caller_ctx.set_register(FRAME_POINTER, caller_fp);
     caller_ctx.set_register(STACK_POINTER, caller_sp);
+    if let Some(caller_lr) = caller_lr {
+        caller_ctx.set_register(LINK_REGISTER, caller_lr);
+    }
 
     let mut valid = HashSet::new();
     valid.insert(PROGRAM_COUNTER);
     valid.insert(FRAME_POINTER);
     valid.insert(STACK_POINTER);
+    if caller_lr.is_some() {
+        valid.insert(LINK_REGISTER);
+    }
 
     let context = MinidumpContext {
         raw: MinidumpRawContext::Arm64(caller_ctx),
@@ -451,15 +464,20 @@ where
 
     let sp = frame.context.get_stack_pointer();
     let last_sp = ctx.get_register_always("sp");
-    if sp <= last_sp {
-        // Arm leaf functions may not actually touch the stack (thanks
-        // to the link register allowing you to "push" the return address
-        // to a register), so we need to permit the stack pointer to not
-        // change for the first frame of the unwind. After that we need
-        // more strict validation to avoid infinite loops.
-        let is_leaf = args.callee_frame.trust == FrameTrust::Context && sp == last_sp;
-        if !is_leaf {
-            trace!("stack pointer went backwards, assuming unwind complete");
+    if sp < last_sp {
+        trace!("stack pointer went backwards, assuming unwind complete");
+        return None;
+    }
+    if sp == last_sp {
+        // Arm leaf functions and function-entry CFI may leave sp unchanged.
+        // Require the instruction pointer to change so this allowance cannot
+        // trivially repeat the same frame forever.
+        let caller_pc = frame.context.get_instruction_pointer();
+        let callee_pc = ctx.get_register_always(PROGRAM_COUNTER);
+        let is_context_leaf = args.callee_frame.trust == FrameTrust::Context;
+        let is_cfi_entry = frame.trust == FrameTrust::CallFrameInfo;
+        if caller_pc == callee_pc || !(is_context_leaf || is_cfi_entry) {
+            trace!("stack pointer did not advance, assuming unwind complete");
             return None;
         }
     }

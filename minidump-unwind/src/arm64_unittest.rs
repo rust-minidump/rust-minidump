@@ -408,7 +408,7 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -423,6 +423,7 @@ async fn test_frame_pointer() {
                 ctx.get_register("fp", valid).unwrap(),
                 frame1_fp.value().unwrap()
             );
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), return_address2);
         } else {
             unreachable!();
         }
@@ -434,7 +435,7 @@ async fn test_frame_pointer() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -448,6 +449,110 @@ async fn test_frame_pointer() {
             assert_eq!(
                 ctx.get_register("fp", valid).unwrap(),
                 frame2_fp.value().unwrap()
+            );
+            assert_eq!(ctx.get_register("lr", valid).unwrap(), 0);
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_frame_pointer_preserves_lr_for_entry_cfi() {
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let frame0_fp = Label::new();
+    let frame1_sp = Label::new();
+    let frame1_fp = Label::new();
+    let caller_resume_address = 0x40002004u64;
+    let caller_instruction = caller_resume_address - 4;
+    let grandcaller_resume_address = 0x50000104u64;
+    let grandcaller_instruction = grandcaller_resume_address - 4;
+
+    stack = stack
+        // frame 0 unwinds by frame pointer into frame 1.
+        .append_repeated(0, 64)
+        .mark(&frame0_fp)
+        .D64(&frame1_fp)
+        .D64(caller_resume_address)
+        .mark(&frame1_sp)
+        // frame 1's frame record preserves the lr it had on entry.
+        .append_repeated(0, 64)
+        .mark(&frame1_fp)
+        .D64(0)
+        .D64(grandcaller_resume_address)
+        .append_repeated(0, 64);
+
+    f.raw.set_register("pc", 0x40001010);
+    f.raw.set_register("fp", frame0_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+    f.raw.set_register("lr", 0x1fe0fe10);
+
+    f.add_symbols(
+        String::from("module1"),
+        [
+            "FUNC 1000 100 10 callee\n",
+            "FUNC 2000 100 10 caller\n",
+            "STACK CFI INIT 2000 100 .cfa: sp 0 + .ra: x30\n",
+        ]
+        .concat(),
+    );
+    f.add_symbols(
+        String::from("module2"),
+        [
+            "FUNC 100 100 10 grandcaller\n",
+            "STACK CFI INIT 100 100 .cfa: 0 .ra: 0\n",
+        ]
+        .concat(),
+    );
+
+    let s = f.walk_stack(stack).await;
+    assert_eq!(s.frames.len(), 3);
+
+    {
+        let frame = &s.frames[1];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::FramePointer);
+        assert_eq!(frame.instruction, caller_instruction);
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(
+                ctx.get_register("pc", valid).unwrap(),
+                caller_resume_address
+            );
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame1_fp.value().unwrap()
+            );
+            assert_eq!(
+                ctx.get_register("lr", valid).unwrap(),
+                grandcaller_resume_address
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    {
+        let frame = &s.frames[2];
+        let valid = &frame.context.valid;
+        assert_eq!(frame.trust, FrameTrust::CallFrameInfo);
+        assert_eq!(frame.instruction, grandcaller_instruction);
+
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(
+                ctx.get_register("pc", valid).unwrap(),
+                grandcaller_resume_address
+            );
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_sp.value().unwrap()
             );
         } else {
             unreachable!();
@@ -516,7 +621,7 @@ async fn test_frame_pointer_stackless_leaf() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -595,7 +700,7 @@ async fn test_frame_pointer_stackful_leaf() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -689,7 +794,7 @@ async fn test_frame_pointer_ptr_auth_strip() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -715,7 +820,7 @@ async fn test_frame_pointer_ptr_auth_strip() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
@@ -1335,7 +1440,7 @@ async fn test_frame_pointer_infinite_equality() {
         let valid = &frame.context.valid;
         assert_eq!(frame.trust, FrameTrust::FramePointer);
         if let MinidumpContextValidity::Some(ref which) = valid {
-            assert_eq!(which.len(), 3);
+            assert_eq!(which.len(), 4);
         } else {
             unreachable!();
         }
