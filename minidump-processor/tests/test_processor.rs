@@ -549,3 +549,76 @@ async fn test_guard_pages() {
     assert_eq!(access_list.accesses[0].address_info.address, 0x81000);
     assert!(access_list.accesses[0].address_info.is_likely_guard_page);
 }
+
+// Test cross-page boundary access: base address is valid but access crosses into invalid page.
+// With the new code that uses the actual access address from memory operations,
+// bitflip detection correctly identifies this as a non-bitflip (boundary crossing) crash.
+#[cfg_attr(
+    not(feature = "disasm_amd64"),
+    ignore = "requires disassembly for access size"
+)]
+#[tokio::test]
+async fn test_no_bit_flip_cross_page_boundary() {
+    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0xfff9);
+
+    // `mov rax, [rsp]`: an eight-byte read through rsp at 0xfff9
+    // This crosses from 0xfff9-0xffff (valid) into 0x10000+ (invalid)
+    let memory = Memory::with_section(
+        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
+        0x2000,
+    );
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
+
+    // Heap region [0x0, 0x10000) - one page
+    let heap_info = MemoryInfo::new(
+        Endian::Little,
+        0x0,
+        0x0,
+        0,
+        0x10000,
+        0,
+        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
+        0,
+    );
+
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
+        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
+    );
+
+    let context_label = context.file_offset();
+    let context_size = context.file_size();
+
+    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    // Fault occurs at the invalid page (0x10000), but access base was at 0xfff9 (valid)
+    ex.exception_record.exception_address = 0x10000;
+    ex.thread_context = (
+        context_size.value().unwrap() as u32,
+        context_label.value().unwrap() as u32,
+    );
+
+    let dump = dump
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add_memory(memory)
+        .add_memory(stack)
+        .add_memory_info(heap_info);
+
+    let state = read_synth_dump(dump).await;
+
+    let bit_flips = state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips;
+
+    // No bitflips should be detected because the access address (0xfff9) is valid.
+    // The segfault is from crossing a page boundary, not a bitflip.
+    assert!(
+        bit_flips.is_empty(),
+        "expected no bit flips for valid access address crossing page boundary"
+    );
+}

@@ -751,8 +751,20 @@ impl<'a> MinidumpInfo<'a> {
         };
         if let Some((address, bit_range)) = bit_flip_address {
             let memory_op = MemoryOperation::from_crash_reason(&info.reason);
+            let access = info.memory_access_list.as_ref().and_then(|list| {
+                list.iter().find(|access| {
+                    let size = access.size.unwrap_or_default();
+                    let base = access.address_info.address;
+                    (base..base.saturating_add(size as u64)).contains(&info.address.0)
+                })
+            });
+
+            // If we have a crashing memory access, use the base address for
+            // bitflip heuristics, as the exception address would just be a
+            // derivative of it.
+            let access_address = access.map(|a| a.address_info.address).unwrap_or(address);
             info.possible_bit_flips = bitflip::try_bit_flips(
-                address,
+                access_address,
                 None,
                 bit_range,
                 exception_details.context.as_deref(),
