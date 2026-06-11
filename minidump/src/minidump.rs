@@ -4347,16 +4347,15 @@ impl CrashReason {
                     }
                 }
             }
-            CrashReason::WindowsNtStatus(err::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN) => {
+            CrashReason::WindowsNtStatus(err::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN)
                 // STATUS_STACK_BUFFER_OVERRUN are caused by __fastfail()
                 // invocations and the fast-fail code is stored in
                 // exception_information[0].
-                if record.number_parameters >= 1 {
+                if record.number_parameters >= 1 => {
                     // The status code is 32-bits wide, ignore the upper 32 bits
                     let fast_fail = info[0] & 0xffff_ffff;
                     reason = CrashReason::WindowsStackBufferOverrun(fast_fail);
                 }
-            }
             _ => {
                 // Do nothing interesting
             }
@@ -5817,7 +5816,7 @@ where
             self.header.flags,
         )?;
         let mut streams = self.streams.iter().collect::<Vec<_>>();
-        streams.sort_by(|&(&_, &(a, _)), &(&_, &(b, _))| a.cmp(&b));
+        streams.sort_by_key(|&(&_, &(a, _))| a);
         for &(_, &(i, ref stream)) in streams.iter() {
             write!(
                 f,
@@ -5836,7 +5835,7 @@ MDRawDirectory
             )?;
         }
         writeln!(f, "Streams:")?;
-        streams.sort_by(|&(&a, &(_, _)), &(&b, &(_, _))| a.cmp(&b));
+        streams.sort_by_key(|&(&a, &(_, _))| a);
         for (_, &(i, ref stream)) in streams {
             writeln!(
                 f,

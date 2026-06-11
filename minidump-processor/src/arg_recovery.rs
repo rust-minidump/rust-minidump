@@ -212,11 +212,9 @@ fn parse_x86_arg_list(func_name: &str) -> Option<(CallingConvention, Vec<&str>)>
                             return None;
                         }
                     }
-                    ',' => {
-                        if template_depth == 0 && paren_depth == 0 {
-                            args.push(arg_list[arg_start..idx].trim());
-                            arg_start = idx + 1;
-                        }
+                    ',' if template_depth == 0 && paren_depth == 0 => {
+                        args.push(arg_list[arg_start..idx].trim());
+                        arg_start = idx + 1;
                     }
                     _ => {}
                 }
