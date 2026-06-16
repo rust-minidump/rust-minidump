@@ -16,11 +16,12 @@
 
 #![deny(missing_docs)]
 
-use minidump::{MinidumpContext, MinidumpRawContext, UnifiedMemory};
+use minidump::{MinidumpContext, UnifiedMemory};
 use std::collections::BTreeSet;
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
+#[cfg_attr(not(feature = "disasm_amd64"), expect(dead_code))]
 pub enum OpAnalysisError {
     /// CPU architecture not available (or not enabled by current feature set)
     #[error("unsupported CPU architecture")]
@@ -206,17 +207,22 @@ pub fn analyze_thread_context(
     memory_list: &minidump::UnifiedMemoryList,
     stack_memory: Option<UnifiedMemory>,
 ) -> Result<OpAnalysis, OpAnalysisError> {
-    let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
-
     match context.raw {
         #[cfg(feature = "disasm_amd64")]
-        MinidumpRawContext::Amd64(_) => self::amd64::analyze_instruction(
-            context,
-            instruction_bytes,
-            Some(memory_list),
-            stack_memory,
-        ),
-        _ => Err(OpAnalysisError::UnsupportedCpuArch),
+        minidump::MinidumpRawContext::Amd64(_) => {
+            let instruction_bytes = get_thread_instruction_bytes(context, memory_list)?;
+            self::amd64::analyze_instruction(
+                context,
+                instruction_bytes,
+                Some(memory_list),
+                stack_memory,
+            )
+        }
+        _ => {
+            _ = memory_list;
+            _ = stack_memory;
+            Err(OpAnalysisError::UnsupportedCpuArch)
+        }
     }
 }
 
@@ -228,6 +234,7 @@ pub fn analyze_thread_context(
 /// # Errors
 ///
 /// This may fail if there are no bytes at the instruction pointer.
+#[cfg(feature = "disasm_amd64")]
 fn get_thread_instruction_bytes<'a>(
     context: &MinidumpContext,
     memory_list: &'a minidump::UnifiedMemoryList<'a>,
