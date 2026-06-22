@@ -622,3 +622,71 @@ async fn test_no_bit_flip_cross_page_boundary() {
         "expected no bit flips for valid access address crossing page boundary"
     );
 }
+
+// Test an obvious off-by-one: the faulting access lands just past the end of a valid mapping,
+// closer than the size of the access itself. It should not produce any possible bitflip.
+#[cfg_attr(
+    not(feature = "disasm_amd64"),
+    ignore = "requires disassembly for access size"
+)]
+#[tokio::test]
+async fn test_no_bit_flip_obvious_off_by_one() {
+    // rip = 0x2000, rsp = 0x90001 (the access base, just past the end of the heap region below)
+    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x90001);
+
+    // `mov rax, [rsp]`: an eight-byte read through rsp at 0x90001.
+    let memory = Memory::with_section(
+        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
+        0x2000,
+    );
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
+
+    // Heap region [0x80000, 0x90000) - one page. Its inclusive end is 0x8ffff, so the access at
+    // 0x90001 is only two bytes past the mapping, well within the eight-byte access size.
+    let heap_info = MemoryInfo::new(
+        Endian::Little,
+        0x80000,
+        0x80000,
+        0,
+        0x10000,
+        0,
+        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
+        0,
+    );
+
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
+        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
+    );
+
+    let context_label = context.file_offset();
+    let context_size = context.file_size();
+
+    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    // The fault is within the (invalid) access range [0x90001, 0x90009).
+    ex.exception_record.exception_address = 0x90001;
+    ex.thread_context = (
+        context_size.value().unwrap() as u32,
+        context_label.value().unwrap() as u32,
+    );
+
+    let dump = dump
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add_memory(memory)
+        .add_memory(stack)
+        .add_memory_info(heap_info);
+
+    let state = read_synth_dump(dump).await;
+
+    let bit_flips = state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips;
+
+    assert!(bit_flips.is_empty());
+}

@@ -763,6 +763,10 @@ impl<'a> MinidumpInfo<'a> {
             // bitflip heuristics, as the exception address would just be a
             // derivative of it.
             let access_address = access.map(|a| a.address_info.address).unwrap_or(address);
+            // The size of the access that actually faulted, used to gauge whether the crash looks
+            // like an off-by-one rather than a bit flip.
+            let memory_access_size = access.and_then(|a| a.size);
+
             info.possible_bit_flips = bitflip::try_bit_flips(
                 access_address,
                 None,
@@ -770,6 +774,7 @@ impl<'a> MinidumpInfo<'a> {
                 exception_details.context.as_deref(),
                 &self.memory_info,
                 memory_op,
+                memory_access_size,
             );
 
             // If we have an exception context, we can check the registers involved in the
@@ -788,6 +793,7 @@ impl<'a> MinidumpInfo<'a> {
                             // the base address, possibly combined with some offset, is still in
                             // the same memory region).
                             memory_op,
+                            memory_access_size,
                         ));
                     }
                 }
@@ -1508,6 +1514,7 @@ mod bitflip {
         exception_context: Option<&MinidumpContext>,
         memory_info: &UnifiedMemoryInfoList,
         memory_operation: MemoryOperation,
+        memory_access_size: Option<u8>,
     ) -> Vec<PossibleBitFlip> {
         let mut addresses = Vec::new();
         // If the address maps to valid memory, don't do anything else.
@@ -1515,6 +1522,18 @@ mod bitflip {
             if memory_operation.is_possibly_allowed_for(&mi) {
                 return addresses;
             }
+        }
+
+        // The address does not map to accessible memory. Measure how far it is from the nearest
+        // allocation: a fault landing right next to one is more likely an off-by-one than a bit
+        // flip (see `BitFlipDetails::confidence`).
+        let distance_to_closest_mapping =
+            distance_to_closest_mapping(address, memory_operation, memory_info);
+
+        // Quick check for obvious off-by-one
+        match (distance_to_closest_mapping, memory_access_size) {
+            (Some(distance), Some(access)) if distance < access as u64 => return addresses,
+            _ => (),
         }
 
         let create_possible_address = |new_address: u64| {
@@ -1542,5 +1561,27 @@ mod bitflip {
         }
 
         addresses
+    }
+
+    /// Return the distance from `address` to the nearest accessible (allocated) memory region, in
+    /// either direction, or `None` if there are no accessible regions.
+    fn distance_to_closest_mapping(
+        address: u64,
+        operation: MemoryOperation,
+        memory_info: &UnifiedMemoryInfoList,
+    ) -> Option<u64> {
+        memory_info
+            .by_addr()
+            .filter(|r| operation.is_possibly_allowed_for(r))
+            .filter_map(|region| {
+                let range = region.memory_range()?;
+                // `memory_range` has an inclusive end.
+                Some(if address < range.start {
+                    range.start - address
+                } else {
+                    address.saturating_sub(range.end)
+                })
+            })
+            .min()
     }
 }
