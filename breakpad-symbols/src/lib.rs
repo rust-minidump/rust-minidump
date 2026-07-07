@@ -603,6 +603,9 @@ pub trait FrameWalker {
     fn set_cfa(&mut self, val: u64) -> Option<()>;
     /// Set whatever registers in the caller should be set based on the return address (e.g. rip).
     fn set_ra(&mut self, val: u64) -> Option<()>;
+    /// Report where the CFI rule range covering the instruction begins
+    /// (the `STACK CFI INIT` row's start address).
+    fn set_cfi_rules_start_address(&mut self, _addr: Option<u64>) {}
 }
 
 /// A simple implementation of `FrameSymbolizer` that just holds data.

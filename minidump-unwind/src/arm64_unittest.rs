@@ -561,6 +561,119 @@ async fn test_frame_pointer_preserves_lr_for_entry_cfi() {
 }
 
 #[tokio::test]
+async fn test_frame_pointer_lr_whole_function_leaf_cfi() {
+    // Mirrors macOS symbol files, where CFI is derived from compact unwind
+    // info: every function is covered by exactly one whole-function row with
+    // no prologue deltas. Stackless-leaf encodings (and merged adjacent stub
+    // ranges from `CompactUnwindOp::None`, e.g. syscall stubs in
+    // libsystem_kernel.dylib) produce rows like:
+    //
+    //     STACK CFI INIT 2000 100 .cfa: sp .ra: x30
+    //
+    let mut f = TestFixture::new();
+    let mut stack = Section::new();
+    stack.start().set_const(0x80000000);
+
+    let frame0_fp = Label::new();
+    let frame1_fp = Label::new();
+    let frame2_fp = Label::new();
+    let frame3_fp = Label::new();
+    // All return addresses are mid-function: the whole-function rows apply at
+    // every offset, not just at the entry point.
+    let return_address1 = 0x40002044u64;
+    let return_address2 = 0x40003044u64;
+    let return_address3 = 0x40004044u64;
+
+    stack = stack
+        // frame 0 (callee): no CFI coverage, unwinds by frame pointer.
+        .append_repeated(0, 64)
+        .mark(&frame0_fp)
+        .D64(&frame1_fp)
+        .D64(return_address1)
+        // frame 1 (merged_stub): a normal frame covered by a bogus
+        // whole-function stackless-leaf row.
+        .append_repeated(0, 64)
+        .mark(&frame1_fp)
+        .D64(&frame2_fp)
+        .D64(return_address2)
+        // frame 2 (frame_caller): honest frame-based CFI.
+        .append_repeated(0, 64)
+        .mark(&frame2_fp)
+        .D64(&frame3_fp)
+        .D64(return_address3)
+        // frame 3 (outer): end of the chain.
+        .append_repeated(0, 64)
+        .mark(&frame3_fp)
+        .D64(0)
+        .D64(0)
+        .append_repeated(0, 64);
+
+    f.raw.set_register("pc", 0x40001010);
+    f.raw.set_register("fp", frame0_fp.value().unwrap());
+    f.raw.set_register("sp", stack.start().value().unwrap());
+    f.raw.set_register("lr", 0x1fe0fe10);
+
+    f.add_symbols(
+        String::from("module1"),
+        [
+            "FUNC 1000 100 10 callee\n",
+            "FUNC 2000 100 10 merged_stub\n",
+            "STACK CFI INIT 2000 100 .cfa: sp .ra: x30\n",
+            "FUNC 3000 100 10 frame_caller\n",
+            "STACK CFI INIT 3000 100 .cfa: x29 16 + x29: .cfa -16 + ^ .ra: .cfa -8 + ^\n",
+            "FUNC 4000 100 10 outer\n",
+            "STACK CFI INIT 4000 100 .cfa: x29 16 + x29: .cfa -16 + ^ .ra: .cfa -8 + ^\n",
+        ]
+        .concat(),
+    );
+
+    let s = f.walk_stack(stack).await;
+
+    let pcs: Vec<u64> = s
+        .frames
+        .iter()
+        .map(|frame| frame.context.get_instruction_pointer())
+        .collect();
+    assert_eq!(
+        pcs,
+        vec![
+            0x40001010,
+            return_address1,
+            return_address2,
+            return_address3
+        ],
+        "each caller must appear exactly once"
+    );
+
+    assert_eq!(s.frames[0].trust, FrameTrust::Context);
+    assert_eq!(s.frames[1].trust, FrameTrust::FramePointer);
+    // merged_stub's leaf row must not evaluate mid-function; frame-pointer
+    // unwinding derives the caller from merged_stub's own frame record.
+    assert_eq!(s.frames[2].trust, FrameTrust::FramePointer);
+    assert_eq!(s.frames[3].trust, FrameTrust::CallFrameInfo);
+
+    {
+        let frame = &s.frames[2];
+        let valid = &frame.context.valid;
+        if let MinidumpRawContext::Arm64(ctx) = &frame.context.raw {
+            assert_eq!(ctx.get_register("pc", valid).unwrap(), return_address2);
+            // sp must advance past merged_stub's frame record; the leaf row
+            // would have left it unchanged.
+            assert_eq!(
+                ctx.get_register("sp", valid).unwrap(),
+                frame1_fp.value().unwrap() + 16
+            );
+            assert_eq!(
+                ctx.get_register("fp", valid).unwrap(),
+                frame2_fp.value().unwrap()
+            );
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+#[tokio::test]
 async fn test_frame_pointer_stackless_leaf() {
     // Same as test_frame_pointer but frame0 is a stackless leaf.
     //

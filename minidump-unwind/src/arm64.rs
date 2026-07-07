@@ -37,6 +37,7 @@ where
     let _last_sp = ctx.get_register(STACK_POINTER, args.valid())?;
 
     let mut stack_walker = CfiStackWalker::from_ctx_and_args(ctx, args, callee_forwarded_regs)?;
+    stack_walker.callee_lr_is_heuristic = args.callee_frame.trust == FrameTrust::FramePointer;
 
     args.symbol_provider
         .walk_frame(stack_walker.module, &mut stack_walker)

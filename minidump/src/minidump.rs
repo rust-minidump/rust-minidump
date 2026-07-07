@@ -4313,7 +4313,9 @@ impl CrashReason {
 
         // Refine the output for error codes that have more info
         match reason {
-            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION) => {
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_ACCESS_VIOLATION)
+                if record.number_parameters >= 1 =>
+            {
                 // For EXCEPTION_ACCESS_VIOLATION, Windows puts the address that
                 // caused the fault in exception_information[1].
                 // exception_information[0] is 0 if the violation was caused by
@@ -4321,14 +4323,14 @@ impl CrashReason {
                 // and 8 if this was a data execution violation.
                 // This information is useful in addition to the code address, which
                 // will be present in the crash thread's instruction field anyway.
-                if record.number_parameters >= 1 {
-                    // NOTE: address := info[1];
-                    if let Some(ty) = err::ExceptionCodeWindowsAccessType::from_u64(info[0]) {
-                        reason = CrashReason::WindowsAccessViolation(ty);
-                    }
+                // NOTE: address := info[1];
+                if let Some(ty) = err::ExceptionCodeWindowsAccessType::from_u64(info[0]) {
+                    reason = CrashReason::WindowsAccessViolation(ty);
                 }
             }
-            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR) => {
+            CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_IN_PAGE_ERROR)
+                if record.number_parameters >= 3 =>
+            {
                 // For EXCEPTION_IN_PAGE_ERROR, Windows puts the address that
                 // caused the fault in exception_information[1].
                 // exception_information[0] is 0 if the violation was caused by
@@ -4338,13 +4340,11 @@ impl CrashReason {
                 // which is the explanation for why this error occured.
                 // This information is useful in addition to the code address, which
                 // will be present in the crash thread's instruction field anyway.
-                if record.number_parameters >= 3 {
-                    // NOTE: address := info[1];
-                    // The status code is 32-bits wide, ignore the upper 32 bits
-                    let nt_status = info[2] & 0xffff_ffff;
-                    if let Some(ty) = err::ExceptionCodeWindowsInPageErrorType::from_u64(info[0]) {
-                        reason = CrashReason::WindowsInPageError(ty, nt_status);
-                    }
+                // NOTE: address := info[1];
+                // The status code is 32-bits wide, ignore the upper 32 bits
+                let nt_status = info[2] & 0xffff_ffff;
+                if let Some(ty) = err::ExceptionCodeWindowsInPageErrorType::from_u64(info[0]) {
+                    reason = CrashReason::WindowsInPageError(ty, nt_status);
                 }
             }
             CrashReason::WindowsNtStatus(err::NtStatusWindows::STATUS_STACK_BUFFER_OVERRUN)
