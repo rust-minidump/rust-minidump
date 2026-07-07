@@ -514,7 +514,13 @@ impl SymbolFile {
                     count += 1;
                 }
 
-                walker::walk_with_stack_cfi(&info.init, &info.add_rules[0..count], walker)
+                walker.set_cfi_rules_start_address(Some(module.base_address() + info.init.address));
+                let result =
+                    walker::walk_with_stack_cfi(&info.init, &info.add_rules[0..count], walker);
+                // Reset even on failure so the address cannot leak into
+                // another provider's evaluation.
+                walker.set_cfi_rules_start_address(None);
+                result
             } else {
                 None
             }

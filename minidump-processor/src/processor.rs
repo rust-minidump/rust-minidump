@@ -867,27 +867,25 @@ impl<'a> MinidumpInfo<'a> {
             CrashReason::MacArithmeticPpc(MacArithPpc::EXC_PPC_ZERO_DIVIDE)
             | CrashReason::MacArithmeticX86(MacArithX86::EXC_I386_DIV)
             | CrashReason::LinuxSigfpe(LinuxSigfpe::FPE_INTDIV)
-            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO) => {
+            | CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_INT_DIVIDE_BY_ZERO)
                 if exception_details
                     .info
                     .instruction_properties
                     .as_ref()
-                    .is_some_and(|p| !p.is_division)
-                {
-                    inconsistencies.push(Inconsistency::IntDivByZeroNotPossible);
-                }
+                    .is_some_and(|p| !p.is_division) =>
+            {
+                inconsistencies.push(Inconsistency::IntDivByZeroNotPossible);
             }
 
             CrashReason::WindowsGeneral(ExceptionCodeWindows::EXCEPTION_PRIV_INSTRUCTION)
-            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION) => {
+            | CrashReason::WindowsNtStatus(NtStatusWindows::STATUS_PRIVILEGED_INSTRUCTION)
                 if exception_details
                     .info
                     .instruction_properties
                     .as_ref()
-                    .is_some_and(|p| !p.is_privileged)
-                {
-                    inconsistencies.push(Inconsistency::PrivInstructionCrashWithoutPrivInstruction);
-                }
+                    .is_some_and(|p| !p.is_privileged) =>
+            {
+                inconsistencies.push(Inconsistency::PrivInstructionCrashWithoutPrivInstruction);
             }
 
             CrashReason::WindowsAccessViolation(WinAccess::READ) => {
