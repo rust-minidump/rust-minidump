@@ -401,7 +401,7 @@ impl CallStack {
                     if output.chars().count() + next.chars().count() > 80 {
                         // Flush the buffer.
                         writeln!(f, " {output}")?;
-                        output.truncate(0);
+                        output.clear();
                     }
                     output.push_str(&next);
                 }
