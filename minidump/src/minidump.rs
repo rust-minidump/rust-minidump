@@ -2668,11 +2668,11 @@ impl MinidumpLinuxMapInfo<'_> {
     }
 
     pub fn memory_range(&self) -> Option<Range<u64>> {
-        // final address is inclusive afaik
-        if self.map.address.0 > self.map.address.1 {
+        // final address turns out to be exclusive
+        if self.map.address.0 >= self.map.address.1 {
             return None;
         }
-        Some(Range::new(self.map.address.0, self.map.address.1))
+        Some(Range::new(self.map.address.0, self.map.address.1 - 1))
     }
 
     /// Whether this memory range was readable.
@@ -6238,7 +6238,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Path("/usr/lib64/libtdb1.so".into()));
 
             assert!(
@@ -6257,7 +6257,7 @@ mod test {
             assert_eq!(map.map.address.1, 0xffffffffff601000);
             assert_eq!(
                 map.memory_range(),
-                Some(Range::new(0xffffffffff600000, 0xffffffffff601000))
+                Some(Range::new(0xffffffffff600000, 0xffffffffff600fff))
             );
             assert_eq!(
                 map.map.pathname,
@@ -6277,7 +6277,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Stack);
             assert!(map.map.perms == MMPermissions::NONE);
         }
@@ -6288,7 +6288,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, TStack(1234567));
             assert!(map.map.perms == MMPermissions::NONE);
         }
@@ -6299,7 +6299,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Heap);
             assert!(map.map.perms == MMPermissions::NONE);
         }
@@ -6310,7 +6310,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Vdso);
             assert!(
                 map.map.perms
@@ -6324,7 +6324,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Other("asdfasd".into()));
             assert!(
                 map.map.perms
@@ -6338,7 +6338,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Anonymous);
             assert!(map.map.perms == MMPermissions::READ);
         }
@@ -6350,7 +6350,7 @@ mod test {
 
             assert_eq!(map.map.address.0, 0x10a00);
             assert_eq!(map.map.address.1, 0x10b00);
-            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10b00)));
+            assert_eq!(map.memory_range(), Some(Range::new(0x10a00, 0x10aff)));
             assert_eq!(map.map.pathname, Anonymous);
             assert!(map.map.perms == MMPermissions::NONE);
         }
@@ -6366,12 +6366,12 @@ mod test {
         }
 
         {
-            // Equal ranges are valid
+            // Equal ranges are 0-sized.
             let map = parse(b"fffff-fffff --- 10bac9000 fd:05 1196511  ");
 
             assert_eq!(map.map.address.0, 0xfffff);
             assert_eq!(map.map.address.1, 0xfffff);
-            assert_eq!(map.memory_range(), Some(Range::new(0xfffff, 0xfffff)));
+            assert_eq!(map.memory_range(), None);
         }
 
         {
@@ -6400,6 +6400,35 @@ mod test {
             let map = maybe_parse(b"10a00-10b00 r-xp 10bac9000 fd:05 1196511 [stack:a10]");
             assert!(map.is_none());
         }
+    }
+
+    #[test]
+    fn test_linux_maps_contiguous_lookup() {
+        // Ensure mappings in a run of contiguous regions stay resolvable.
+        let maps = MinidumpLinuxMaps::from_regions(vec![
+            MinidumpLinuxMapInfo::from_line(b"10a00-10b00 r-xp 0 fd:05 1 ").unwrap(),
+            MinidumpLinuxMapInfo::from_line(b"10b00-10c00 rw-p 0 fd:05 2 ").unwrap(),
+            MinidumpLinuxMapInfo::from_line(b"10c00-10d00 r--p 0 fd:05 3 ").unwrap(),
+        ]);
+
+        // Cursory sanity checks
+        assert_eq!(maps.memory_map_count(), 3);
+        for addr in [0x10a00, 0x10aff, 0x10b00, 0x10c50, 0x10cff] {
+            assert!(maps.memory_info_at_address(addr).is_some());
+        }
+
+        // Boundaries are correctly mapped.
+        assert_eq!(
+            maps.memory_info_at_address(0x10b00).unwrap().map.address.0,
+            0x10b00
+        );
+        assert_eq!(
+            maps.memory_info_at_address(0x10aff).unwrap().map.address.0,
+            0x10a00
+        );
+
+        // Outer address is unbound
+        assert!(maps.memory_info_at_address(0x10d00).is_none());
     }
 
     #[test]
