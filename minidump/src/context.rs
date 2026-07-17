@@ -30,6 +30,7 @@ pub enum MinidumpRawContext {
     Arm64(md::CONTEXT_ARM64),
     OldArm64(md::CONTEXT_ARM64_OLD),
     Mips(md::CONTEXT_MIPS),
+    Riscv64(md::CONTEXT_RISCV64),
 }
 
 /// Generic over the specifics of a CPU context.
@@ -988,6 +989,101 @@ impl CpuContext for md::CONTEXT_SPARC {
     }
 }
 
+impl CpuContext for md::CONTEXT_RISCV64 {
+    type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &[
+        "pc", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4",
+        "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4",
+        "t5", "t6",
+    ];
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match reg {
+            "pc" => self.pc,
+            "ra" => self.ra,
+            "sp" => self.sp,
+            "gp" => self.gp,
+            "tp" => self.tp,
+            "t0" => self.t0,
+            "t1" => self.t1,
+            "t2" => self.t2,
+            "s0" => self.s0,
+            "s1" => self.s1,
+            "a0" => self.a0,
+            "a1" => self.a1,
+            "a2" => self.a2,
+            "a3" => self.a3,
+            "a4" => self.a4,
+            "a5" => self.a5,
+            "a6" => self.a6,
+            "a7" => self.a7,
+            "s2" => self.s2,
+            "s3" => self.s3,
+            "s4" => self.s4,
+            "s5" => self.s5,
+            "s6" => self.s6,
+            "s7" => self.s7,
+            "s8" => self.s8,
+            "s9" => self.s9,
+            "s10" => self.s10,
+            "s11" => self.s11,
+            "t3" => self.t3,
+            "t4" => self.t4,
+            "t5" => self.t5,
+            "t6" => self.t6,
+            _ => unreachable!("Invalid risc-v register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        match reg {
+            "pc" => self.pc = val,
+            "ra" => self.ra = val,
+            "sp" => self.sp = val,
+            "gp" => self.gp = val,
+            "tp" => self.tp = val,
+            "t0" => self.t0 = val,
+            "t1" => self.t1 = val,
+            "t2" => self.t2 = val,
+            "s0" => self.s0 = val,
+            "s1" => self.s1 = val,
+            "a0" => self.a0 = val,
+            "a1" => self.a1 = val,
+            "a2" => self.a2 = val,
+            "a3" => self.a3 = val,
+            "a4" => self.a4 = val,
+            "a5" => self.a5 = val,
+            "a6" => self.a6 = val,
+            "a7" => self.a7 = val,
+            "s2" => self.s2 = val,
+            "s3" => self.s3 = val,
+            "s4" => self.s4 = val,
+            "s5" => self.s5 = val,
+            "s6" => self.s6 = val,
+            "s7" => self.s7 = val,
+            "s8" => self.s8 = val,
+            "s9" => self.s9 = val,
+            "s10" => self.s10 = val,
+            "s11" => self.s11 = val,
+            "t3" => self.t3 = val,
+            "t4" => self.t4 = val,
+            "t5" => self.t5 = val,
+            "t6" => self.t6 = val,
+            _ => return None,
+        }
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
 /// Information about which registers are valid in a `MinidumpContext`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MinidumpContextValidity {
@@ -1173,6 +1269,18 @@ impl MinidumpContext {
                     Err(ContextError::ReadFailure)
                 }
             }
+            Some(PROCESSOR_ARCHITECTURE_RISCV64) => {
+                let ctx: md::CONTEXT_RISCV64 = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
+                if flags == ContextFlagsCpu::CONTEXT_RISCV64 {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Riscv64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
             _ => Err(ContextError::UnknownCpuContext),
         }
     }
@@ -1190,6 +1298,7 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.pc,
             MinidumpRawContext::X86(ref ctx) => ctx.eip as u64,
             MinidumpRawContext::Mips(ref ctx) => ctx.epc,
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.pc,
         }
     }
 
@@ -1214,6 +1323,7 @@ impl MinidumpContext {
             MinidumpRawContext::Mips(ref ctx) => {
                 ctx.iregs[md::MipsRegisterNumbers::StackPointer as usize]
             }
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.sp,
         }
     }
 
@@ -1228,6 +1338,7 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.get_register_always(reg),
             MinidumpRawContext::X86(ref ctx) => ctx.get_register_always(reg).into(),
             MinidumpRawContext::Mips(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.get_register_always(reg),
         }
     }
 
@@ -1242,6 +1353,7 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv64(ctx) => ctx.register_is_valid(reg, &self.valid),
         };
 
         if valid {
@@ -1262,6 +1374,7 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::X86(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Mips(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.format_register(reg),
         }
     }
 
@@ -1276,6 +1389,7 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(_) => md::CONTEXT_SPARC::REGISTERS,
             MinidumpRawContext::X86(_) => md::CONTEXT_X86::REGISTERS,
             MinidumpRawContext::Mips(_) => md::CONTEXT_MIPS::REGISTERS,
+            MinidumpRawContext::Riscv64(_) => md::CONTEXT_RISCV64::REGISTERS,
         }
     }
 
@@ -1299,6 +1413,7 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv64(ctx) => ctx.register_is_valid(reg, &self.valid),
         })
     }
 
@@ -1318,6 +1433,7 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => get(ctx),
             MinidumpRawContext::OldArm64(ctx) => get(ctx),
             MinidumpRawContext::Mips(ctx) => get(ctx),
+            MinidumpRawContext::Riscv64(ctx) => get(ctx),
         }
     }
 
@@ -1611,6 +1727,77 @@ impl MinidumpContext {
                         raw.iregs[*reg as usize]
                     )?;
                 }
+            }
+            MinidumpRawContext::Riscv64(ref raw) => {
+                write!(
+                    f,
+                    r#"CONTEXT_RISCV64
+  context_flags = {:#x}
+  ra            = {:#x}
+  sp            = {:#x}
+  gp            = {:#x}
+  tp            = {:#x}
+  t0            = {:#x}
+  t1            = {:#x}
+  t2            = {:#x}
+  s0            = {:#x}
+  s1            = {:#x}
+  a0            = {:#x}
+  a1            = {:#x}
+  a2            = {:#x}
+  a3            = {:#x}
+  a4            = {:#x}
+  a5            = {:#x}
+  a6            = {:#x}
+  a7            = {:#x}
+  s2            = {:#x}
+  s3            = {:#x}
+  s4            = {:#x}
+  s5            = {:#x}
+  s6            = {:#x}
+  s7            = {:#x}
+  s8            = {:#x}
+  s9            = {:#x}
+  s10           = {:#x}
+  s11           = {:#x}
+  t3            = {:#x}
+  t4            = {:#x}
+  t5            = {:#x}
+  t6            = {:#x}
+"#,
+                    raw.context_flags,
+                    raw.ra,
+                    raw.sp,
+                    raw.gp,
+                    raw.tp,
+                    raw.t0,
+                    raw.t1,
+                    raw.t2,
+                    raw.s0,
+                    raw.s1,
+                    raw.a0,
+                    raw.a1,
+                    raw.a2,
+                    raw.a3,
+                    raw.a4,
+                    raw.a5,
+                    raw.a6,
+                    raw.a7,
+                    raw.s2,
+                    raw.s3,
+                    raw.s4,
+                    raw.s5,
+                    raw.s6,
+                    raw.s7,
+                    raw.s8,
+                    raw.s9,
+                    raw.s10,
+                    raw.s11,
+                    raw.t3,
+                    raw.t4,
+                    raw.t5,
+                    raw.t6,
+                )?;
             }
         }
         Ok(())
