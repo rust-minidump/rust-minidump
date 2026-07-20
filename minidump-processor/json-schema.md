@@ -182,7 +182,12 @@ anyway.
            /// How many registers containing values near the bit-flip-corrected address.
            /// This is only set for corrected addresses which are sufficiently
            /// high to avoid false positives with (likely) low values.
-           "nearby_registers": <u32>
+           "nearby_registers": <u32>,
+           /// The size of the faulting memory access, if known.
+           "memory_access_size": <u8|null>,
+           /// The distance in bytes to the nearest accessible memory region,
+           /// if known.
+           "distance_to_closest_mapping": <u64|null>
         },
         /// The calculated confidence value in the bit-flip-corrected address.
         "confidence": <f32>,

@@ -23,7 +23,9 @@ expression: stdout
         "address": "0x0000000000400045",
         "confidence": 0.25,
         "details": {
+          "distance_to_closest_mapping": 4194235,
           "is_null": false,
+          "memory_access_size": 4,
           "nearby_registers": 0,
           "poison_registers": false,
           "was_low": false,
