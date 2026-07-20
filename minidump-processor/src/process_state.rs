@@ -382,6 +382,10 @@ const NEARBY_REGISTER_DISTANCE: u64 = 1 << 12;
 /// The cutoff for addresses considered "low".
 const LOW_ADDRESS_CUTOFF: u64 = NEARBY_REGISTER_DISTANCE * 2;
 
+/// The confidence score under which we should just disregard the
+/// address as a potential bitflip.
+const LOW_CONFIDENCE_CUTOFF: f32 = 0.05;
+
 /// Inputs to the bit-flip heuristics.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
@@ -500,6 +504,12 @@ impl PossibleBitFlip {
             details,
             confidence,
         }
+    }
+
+    /// Whether the confidence clears the threshold below which a candidate should be disregarded
+    /// as a potential bit flip.
+    pub fn is_plausible(&self) -> bool {
+        self.confidence.is_some_and(|c| c >= LOW_CONFIDENCE_CUTOFF)
     }
 
     /// Deprecated in favour of `from_heuristics`. Note that in order to keep compatibility

@@ -1541,11 +1541,11 @@ mod bitflip {
             .memory_access_size(memory_access_size);
 
         let mut create_possible_address = |new_address: u64| {
-            addresses.push(PossibleBitFlip::from_heuristics(
-                new_address,
-                source_register,
-                &heuristics,
-            ));
+            let address =
+                PossibleBitFlip::from_heuristics(new_address, source_register, &heuristics);
+            if address.is_plausible() {
+                addresses.push(address);
+            }
         };
 
         for i in bit_range.range() {
