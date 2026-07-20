@@ -1480,7 +1480,7 @@ pub mod memory_operation {
 mod bitflip {
     use super::*;
     use crate::memory_operation::MemoryOperation;
-    use crate::PossibleBitFlip;
+    use crate::{BitFlipHeuristics, PossibleBitFlip};
 
     /// The bit range over which to check bit flips.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1523,8 +1523,8 @@ mod bitflip {
         }
 
         // The address does not map to accessible memory. Measure how far it is from the nearest
-        // allocation: a fault landing right next to one is more likely an off-by-one than a bit
-        // flip (see `BitFlipDetails::confidence`).
+        // allocation: a fault landing within a few access-widths of one is more likely an
+        // off-by-one than a bit flip (see `BitFlipDetails::confidence`).
         let distance_to_closest_mapping =
             distance_to_closest_mapping(address, memory_operation, memory_info);
 
@@ -1534,14 +1534,18 @@ mod bitflip {
             _ => (),
         }
 
-        let create_possible_address = |new_address: u64| {
-            let mut ret = PossibleBitFlip::new(new_address, source_register);
-            ret.calculate_heuristics(
-                address,
-                bit_range == BitRange::Amd64NonCanonical,
-                exception_context,
-            );
-            ret
+        let heuristics = BitFlipHeuristics::new(address)
+            .non_canonical(bit_range == BitRange::Amd64NonCanonical)
+            .context(exception_context)
+            .distance_to_closest_mapping(distance_to_closest_mapping)
+            .memory_access_size(memory_access_size);
+
+        let mut create_possible_address = |new_address: u64| {
+            let address =
+                PossibleBitFlip::from_heuristics(new_address, source_register, &heuristics);
+            if address.is_plausible() {
+                addresses.push(address);
+            }
         };
 
         for i in bit_range.range() {
@@ -1549,11 +1553,11 @@ mod bitflip {
             // If the possible address is NULL, we assume that this was the originally intended address
             // and some logic error has occurred (e.g. a NULL check went the wrong way).
             if possible_address == 0 {
-                addresses.push(create_possible_address(possible_address));
+                create_possible_address(possible_address);
             }
             if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
                 if memory_operation.is_possibly_allowed_for(&mi) {
-                    addresses.push(create_possible_address(possible_address))
+                    create_possible_address(possible_address);
                 }
             }
         }

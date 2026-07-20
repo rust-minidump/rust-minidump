@@ -7,7 +7,7 @@ use minidump::{
     Module,
 };
 use minidump_common::format::MemoryProtection;
-use minidump_processor::{Limit, LinuxStandardBase, ProcessState};
+use minidump_processor::{BitFlipDetails, Limit, LinuxStandardBase, ProcessState};
 use minidump_unwind::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
@@ -409,7 +409,16 @@ async fn test_bit_flip() {
     assert_eq!(bit_flips.len(), 1);
     let bf = bit_flips.into_iter().next().unwrap();
     assert_eq!(bf.address.0, 0x80000);
-    assert_eq!(bf.details, Default::default());
+    // The faulting address sits past the region, so its distance is recorded. The access size is
+    // unknown here (no disassembly), so the off-by-one detractor stays inert and no other
+    // heuristic fires.
+    assert_eq!(
+        bf.details,
+        BitFlipDetails {
+            distance_to_closest_mapping: Some(1017),
+            ..Default::default()
+        }
+    );
 }
 
 #[tokio::test]
@@ -689,4 +698,97 @@ async fn test_no_bit_flip_obvious_off_by_one() {
         .possible_bit_flips;
 
     assert!(bit_flips.is_empty());
+}
+
+// A crash that lands a few access-widths past the end of an allocation looks more like an
+// off-by-one than a bit flip, so the bit-flip confidence is reduced (towards zero) the closer the
+// fault is to the allocation, measured in units of the access size.
+#[cfg_attr(
+    not(feature = "disasm_amd64"),
+    ignore = "requires disassembly for access size"
+)]
+#[tokio::test]
+async fn test_bit_flip_off_by_one_detractor() {
+    // rip points at the code below; rsp is the faulting access base. It sits 65 bytes (a bit over
+    // eight 8-byte elements) past the end of the heap region, and a single flipped bit (bit 16)
+    // corrects it back into that region (0x90040 ^ 0x10000 == 0x80040).
+    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x90040);
+
+    // `mov rax, [rsp]`: an eight-byte read through rsp.
+    let memory = Memory::with_section(
+        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
+        0x2000,
+    );
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
+    // An accessible 64KiB heap region [0x80000, 0x90000); its last valid byte is 0x8ffff.
+    let heap_info = MemoryInfo::new(
+        Endian::Little,
+        0x80000,
+        0x80000,
+        0,
+        0x10000,
+        0,
+        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
+        0,
+    );
+
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
+        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
+    );
+
+    let context_label = context.file_offset();
+    let context_size = context.file_size();
+
+    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    ex.exception_record.exception_address = 0x90040;
+    ex.thread_context = (
+        context_size.value().unwrap() as u32,
+        context_label.value().unwrap() as u32,
+    );
+
+    let dump = dump
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add_memory(memory)
+        .add_memory(stack)
+        .add_memory_info(heap_info);
+
+    let state = read_synth_dump(dump).await;
+
+    let bit_flips = state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips;
+
+    assert!(!bit_flips.is_empty());
+    let corrected = bit_flips
+        .iter()
+        .find(|bf| bf.address.0 == 0x80040)
+        .expect("expected a bit-flip candidate correcting to 0x80040");
+    assert_eq!(corrected.details.memory_access_size, Some(8));
+    // 0x90040 - 0x8ffff == 65 bytes past the end of the heap region.
+    assert_eq!(corrected.details.distance_to_closest_mapping, Some(65));
+
+    // The off-by-one detractor reduces the baseline confidence following a square-root falloff,
+    // with the distance measured in access-size units ("elements"):
+    // baseline (0.25) * sqrt((elements - 1) / (OFF_BY_ONE_ELEMENTS - 1)), elements = distance/size.
+    let expected = 0.25_f32 * ((65.0_f32 / 8.0 - 1.0) / (64.0 - 1.0)).sqrt();
+    let confidence = corrected.confidence.expect("missing confidence");
+    assert!(confidence > 0.0, "confidence should be reduced but nonzero");
+    assert!(
+        confidence < 0.25,
+        "confidence {} should be below the baseline",
+        confidence
+    );
+    assert!(
+        (confidence - expected).abs() < 1e-5,
+        "confidence {} != expected {}",
+        confidence,
+        expected
+    );
 }

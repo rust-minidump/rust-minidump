@@ -267,6 +267,10 @@ pub struct BitFlipDetails {
     ///
     /// This may indicate that a bit flip _didn't_ occur, and instead there was a UAF.
     pub poison_registers: bool,
+    /// The size of the faulting memory access, if known.
+    pub memory_access_size: Option<u8>,
+    /// The distance to the nearest accessible memory region, if known.
+    pub distance_to_closest_mapping: Option<u64>,
 }
 
 mod confidence {
@@ -299,6 +303,25 @@ mod confidence {
     // Detractors
     pub const POISON: f32 = MEDIUM;
     pub const ORIGINAL_LOW: f32 = MEDIUM;
+
+    /// Number of elements (= "size of memory access") after which we don't consider the access
+    /// a likely off-by-one.
+    const OFF_BY_ONE_ELEMENTS: f32 = 64.0;
+
+    /// A multiplicative detractor reflecting how likely the crash is an off-by-one rather than a
+    /// bit flip, based off the distance to the nearest mapping and the size of the access itself.
+    pub fn off_by_one(distance: u64, access_size: u64) -> f32 {
+        let elements = distance as f32 / access_size as f32;
+        // Within one element of a mapping: we're confident it's an off-by-one.
+        if elements <= 1.0 {
+            0.0
+        } else if elements >= OFF_BY_ONE_ELEMENTS {
+            1.0
+        } else {
+            // sqrt() because most overruns are very near the mapping.
+            ((elements - 1.0) / (OFF_BY_ONE_ELEMENTS - 1.0)).sqrt()
+        }
+    }
 }
 
 impl BitFlipDetails {
@@ -330,6 +353,12 @@ impl BitFlipDetails {
         if self.poison_registers {
             ret *= POISON;
         }
+
+        if let (Some(distance), Some(access_size)) =
+            (self.distance_to_closest_mapping, self.memory_access_size)
+        {
+            ret *= off_by_one(distance, access_size as u64);
+        }
         ret
     }
 }
@@ -353,29 +382,68 @@ const NEARBY_REGISTER_DISTANCE: u64 = 1 << 12;
 /// The cutoff for addresses considered "low".
 const LOW_ADDRESS_CUTOFF: u64 = NEARBY_REGISTER_DISTANCE * 2;
 
-impl PossibleBitFlip {
-    pub fn new(address: u64, source_register: Option<&'static str>) -> Self {
-        PossibleBitFlip {
-            address: address.into(),
-            source_register,
-            details: Default::default(),
-            confidence: None,
+/// The confidence score under which we should just disregard the
+/// address as a potential bitflip.
+const LOW_CONFIDENCE_CUTOFF: f32 = 0.05;
+
+/// Inputs to the bit-flip heuristics.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct BitFlipHeuristics<'a> {
+    original_address: u64,
+    was_non_canonical: bool,
+    context: Option<&'a MinidumpContext>,
+    distance_to_closest_mapping: Option<u64>,
+    memory_access_size: Option<u8>,
+}
+
+impl<'a> BitFlipHeuristics<'a> {
+    /// Start from the faulting (original, un-corrected) address. All other signals default to
+    /// "unknown".
+    pub fn new(original_address: u64) -> Self {
+        Self {
+            original_address,
+            ..Default::default()
         }
     }
 
-    pub fn calculate_heuristics(
-        &mut self,
-        original_address: u64,
-        was_non_canonical: bool,
-        context: Option<&MinidumpContext>,
-    ) {
-        self.details.is_null = self.address.0 == 0;
-        self.details.was_low = self.details.is_null && original_address <= LOW_ADDRESS_CUTOFF;
-        self.details.was_non_canonical = was_non_canonical;
+    /// The bit flip would have caused a non-canonical address access.
+    pub fn non_canonical(mut self, was_non_canonical: bool) -> Self {
+        self.was_non_canonical = was_non_canonical;
+        self
+    }
 
-        self.details.nearby_registers = 0;
-        self.details.poison_registers = false;
-        if let Some(context) = context {
+    /// The crash minidump context
+    pub fn context(mut self, context: Option<&'a MinidumpContext>) -> Self {
+        self.context = context;
+        self
+    }
+
+    /// The distance from the faulting address to the nearest accessible memory region.
+    pub fn distance_to_closest_mapping(mut self, distance: Option<u64>) -> Self {
+        self.distance_to_closest_mapping = distance;
+        self
+    }
+
+    /// The size of the faulting memory access.
+    pub fn memory_access_size(mut self, size: Option<u8>) -> Self {
+        self.memory_access_size = size;
+        self
+    }
+
+    /// Evaluate the heuristics for a specific corrected (candidate) address, producing the
+    /// [`BitFlipDetails`] from which a confidence is derived.
+    fn evaluate(&self, candidate_address: u64) -> BitFlipDetails {
+        let mut details = BitFlipDetails {
+            is_null: candidate_address == 0,
+            was_non_canonical: self.was_non_canonical,
+            memory_access_size: self.memory_access_size,
+            distance_to_closest_mapping: self.distance_to_closest_mapping,
+            ..Default::default()
+        };
+        details.was_low = details.is_null && self.original_address <= LOW_ADDRESS_CUTOFF;
+
+        if let Some(context) = self.context {
             let register_size = context.register_size();
 
             let is_repeated = match register_size {
@@ -390,16 +458,16 @@ impl PossibleBitFlip {
 
             // Don't calculate nearby registers for low addresses, there will be a high false
             // positive rate.
-            let should_calculate_nearby_registers = self.address.0 > LOW_ADDRESS_CUTOFF;
+            let should_calculate_nearby_registers = candidate_address > LOW_ADDRESS_CUTOFF;
 
             for (_, addr) in context.valid_registers() {
                 if should_calculate_nearby_registers
-                    && self.address.0.abs_diff(addr) <= NEARBY_REGISTER_DISTANCE
+                    && candidate_address.abs_diff(addr) <= NEARBY_REGISTER_DISTANCE
                 {
-                    self.details.nearby_registers += 1;
+                    details.nearby_registers += 1;
                 }
 
-                if !self.details.poison_registers && is_repeated(addr) {
+                if !details.poison_registers && is_repeated(addr) {
                     // Poison patterns from
                     // https://searchfox.org/mozilla-central/rev/3002762e41363de8ee9ca80196d55e79651bcb6b/js/src/util/Poison.h#52
                     //
@@ -409,7 +477,7 @@ impl PossibleBitFlip {
                     match (addr & 0xff) as u8 {
                         0x2b | 0x2d | 0x2f | 0x49 | 0x4b | 0x4d | 0x4f | 0x6b | 0x8b | 0x9b
                         | 0x9f | 0xa5 | 0xbb | 0xcc | 0xcd | 0xce | 0xdb | 0xe5 => {
-                            self.details.poison_registers = true;
+                            details.poison_registers = true;
                         }
                         _ => (),
                     }
@@ -417,7 +485,56 @@ impl PossibleBitFlip {
             }
         }
 
-        self.confidence = Some(self.details.confidence());
+        details
+    }
+}
+
+impl PossibleBitFlip {
+    /// Analyze a candidate (corrected) address against the given heuristics.
+    pub fn from_heuristics(
+        address: u64,
+        source_register: Option<&'static str>,
+        heuristics: &BitFlipHeuristics<'_>,
+    ) -> Self {
+        let details = heuristics.evaluate(address);
+        let confidence = Some(details.confidence());
+        PossibleBitFlip {
+            address: address.into(),
+            source_register,
+            details,
+            confidence,
+        }
+    }
+
+    /// Whether the confidence clears the threshold below which a candidate should be disregarded
+    /// as a potential bit flip.
+    pub fn is_plausible(&self) -> bool {
+        self.confidence.is_some_and(|c| c >= LOW_CONFIDENCE_CUTOFF)
+    }
+
+    /// Deprecated in favour of `from_heuristics`. Note that in order to keep compatibility
+    /// the confidence field is emptied out and needs to be computed separately.
+    #[deprecated(note = "use `from_heuristics`")]
+    pub fn new(address: u64, source_register: Option<&'static str>) -> Self {
+        // Delegate to the canonical path, but drop the computed confidence: the legacy two-phase
+        // contract leaves it `None` until a subsequent `calculate_heuristics` call fills it in.
+        let mut bit_flip =
+            Self::from_heuristics(address, source_register, &BitFlipHeuristics::new(address));
+        bit_flip.confidence = None;
+        bit_flip
+    }
+
+    #[deprecated(note = "`confidence` is now populated directly in `from_heuristics`")]
+    pub fn calculate_heuristics(
+        &mut self,
+        original_address: u64,
+        was_non_canonical: bool,
+        context: Option<&MinidumpContext>,
+    ) {
+        let heuristics = BitFlipHeuristics::new(original_address)
+            .non_canonical(was_non_canonical)
+            .context(context);
+        *self = Self::from_heuristics(self.address.0, self.source_register, &heuristics);
     }
 }
 
@@ -1174,5 +1291,34 @@ Unknown streams encountered:
         SERIALIZATION_CONTEXT.with(|ctx| {
             ctx.borrow_mut().pointer_width = Some(self.system_info.cpu.pointer_width());
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::confidence::off_by_one;
+
+    #[test]
+    fn off_by_one_factor() {
+        // Within one element of a mapping: definitely an off-by-one, zero confidence.
+        assert_eq!(off_by_one(0, 8), 0.0);
+        assert_eq!(off_by_one(8, 8), 0.0);
+
+        // At or beyond the element window (64 elements): too far to be a plausible off-by-one.
+        assert_eq!(off_by_one(64 * 8, 8), 1.0);
+        assert_eq!(off_by_one(100 * 8, 8), 1.0);
+
+        // The window is measured in elements, not bytes: the same 64-byte distance is an
+        // off-by-one for an 8-byte access (8 elements) but not for a 1-byte access (64 elements).
+        assert_eq!(off_by_one(64, 1), 1.0);
+        assert!(off_by_one(64, 8) < 1.0);
+
+        // In between, the factor ramps up following a square-root curve, so it recovers quickly.
+        let mid = off_by_one(80, 8); // 10 elements
+        assert!(mid > 0.0 && mid < 1.0);
+        let expected = ((80.0_f32 / 8.0 - 1.0) / (64.0 - 1.0)).sqrt();
+        assert!((mid - expected).abs() < 1e-6);
+        // Square-root (concave) means the factor is larger than the equivalent linear ramp.
+        assert!(mid > (80.0 / 8.0 - 1.0) / (64.0 - 1.0));
     }
 }
