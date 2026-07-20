@@ -267,6 +267,10 @@ pub struct BitFlipDetails {
     ///
     /// This may indicate that a bit flip _didn't_ occur, and instead there was a UAF.
     pub poison_registers: bool,
+    /// The size of the faulting memory access, if known.
+    pub memory_access_size: Option<u8>,
+    /// The distance to the nearest accessible memory region, if known.
+    pub distance_to_closest_mapping: Option<u64>,
 }
 
 mod confidence {
@@ -299,6 +303,25 @@ mod confidence {
     // Detractors
     pub const POISON: f32 = MEDIUM;
     pub const ORIGINAL_LOW: f32 = MEDIUM;
+
+    /// Number of elements (= "size of memory access") after which we don't consider the access
+    /// a likely off-by-one.
+    const OFF_BY_ONE_ELEMENTS: f32 = 64.0;
+
+    /// A multiplicative detractor reflecting how likely the crash is an off-by-one rather than a
+    /// bit flip, based off the distance to the nearest mapping and the size of the access itself.
+    pub fn off_by_one(distance: u64, access_size: u64) -> f32 {
+        let elements = distance as f32 / access_size as f32;
+        // Within one element of a mapping: we're confident it's an off-by-one.
+        if elements <= 1.0 {
+            0.0
+        } else if elements >= OFF_BY_ONE_ELEMENTS {
+            1.0
+        } else {
+            // sqrt() because most overruns are very near the mapping.
+            ((elements - 1.0) / (OFF_BY_ONE_ELEMENTS - 1.0)).sqrt()
+        }
+    }
 }
 
 impl BitFlipDetails {
@@ -330,6 +353,12 @@ impl BitFlipDetails {
         if self.poison_registers {
             ret *= POISON;
         }
+
+        if let (Some(distance), Some(access_size)) =
+            (self.distance_to_closest_mapping, self.memory_access_size)
+        {
+            ret *= off_by_one(distance, access_size as u64);
+        }
         ret
     }
 }
@@ -360,6 +389,8 @@ pub struct BitFlipHeuristics<'a> {
     original_address: u64,
     was_non_canonical: bool,
     context: Option<&'a MinidumpContext>,
+    distance_to_closest_mapping: Option<u64>,
+    memory_access_size: Option<u8>,
 }
 
 impl<'a> BitFlipHeuristics<'a> {
@@ -384,12 +415,26 @@ impl<'a> BitFlipHeuristics<'a> {
         self
     }
 
+    /// The distance from the faulting address to the nearest accessible memory region.
+    pub fn distance_to_closest_mapping(mut self, distance: Option<u64>) -> Self {
+        self.distance_to_closest_mapping = distance;
+        self
+    }
+
+    /// The size of the faulting memory access.
+    pub fn memory_access_size(mut self, size: Option<u8>) -> Self {
+        self.memory_access_size = size;
+        self
+    }
+
     /// Evaluate the heuristics for a specific corrected (candidate) address, producing the
     /// [`BitFlipDetails`] from which a confidence is derived.
     fn evaluate(&self, candidate_address: u64) -> BitFlipDetails {
         let mut details = BitFlipDetails {
             is_null: candidate_address == 0,
             was_non_canonical: self.was_non_canonical,
+            memory_access_size: self.memory_access_size,
+            distance_to_closest_mapping: self.distance_to_closest_mapping,
             ..Default::default()
         };
         details.was_low = details.is_null && self.original_address <= LOW_ADDRESS_CUTOFF;
@@ -1236,5 +1281,34 @@ Unknown streams encountered:
         SERIALIZATION_CONTEXT.with(|ctx| {
             ctx.borrow_mut().pointer_width = Some(self.system_info.cpu.pointer_width());
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::confidence::off_by_one;
+
+    #[test]
+    fn off_by_one_factor() {
+        // Within one element of a mapping: definitely an off-by-one, zero confidence.
+        assert_eq!(off_by_one(0, 8), 0.0);
+        assert_eq!(off_by_one(8, 8), 0.0);
+
+        // At or beyond the element window (64 elements): too far to be a plausible off-by-one.
+        assert_eq!(off_by_one(64 * 8, 8), 1.0);
+        assert_eq!(off_by_one(100 * 8, 8), 1.0);
+
+        // The window is measured in elements, not bytes: the same 64-byte distance is an
+        // off-by-one for an 8-byte access (8 elements) but not for a 1-byte access (64 elements).
+        assert_eq!(off_by_one(64, 1), 1.0);
+        assert!(off_by_one(64, 8) < 1.0);
+
+        // In between, the factor ramps up following a square-root curve, so it recovers quickly.
+        let mid = off_by_one(80, 8); // 10 elements
+        assert!(mid > 0.0 && mid < 1.0);
+        let expected = ((80.0_f32 / 8.0 - 1.0) / (64.0 - 1.0)).sqrt();
+        assert!((mid - expected).abs() < 1e-6);
+        // Square-root (concave) means the factor is larger than the equivalent linear ramp.
+        assert!(mid > (80.0 / 8.0 - 1.0) / (64.0 - 1.0));
     }
 }

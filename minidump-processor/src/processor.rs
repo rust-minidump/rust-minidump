@@ -1523,8 +1523,8 @@ mod bitflip {
         }
 
         // The address does not map to accessible memory. Measure how far it is from the nearest
-        // allocation: a fault landing right next to one is more likely an off-by-one than a bit
-        // flip (see `BitFlipDetails::confidence`).
+        // allocation: a fault landing within a few access-widths of one is more likely an
+        // off-by-one than a bit flip (see `BitFlipDetails::confidence`).
         let distance_to_closest_mapping =
             distance_to_closest_mapping(address, memory_operation, memory_info);
 
@@ -1536,7 +1536,9 @@ mod bitflip {
 
         let heuristics = BitFlipHeuristics::new(address)
             .non_canonical(bit_range == BitRange::Amd64NonCanonical)
-            .context(exception_context);
+            .context(exception_context)
+            .distance_to_closest_mapping(distance_to_closest_mapping)
+            .memory_access_size(memory_access_size);
 
         let mut create_possible_address = |new_address: u64| {
             addresses.push(PossibleBitFlip::from_heuristics(
