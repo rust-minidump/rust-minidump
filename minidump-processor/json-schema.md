@@ -218,6 +218,32 @@ anyway.
 
 
 
+  // Crashpad-specific metadata and annotations, if present in the minidump.
+  "crashpad_info": {
+    "version": <u32>,
+    "report_id": <string>,
+    "client_id": <string>,
+    "simple_annotations": {
+      <string>: <string>
+    },
+    "module_list": [
+      {
+        "minidump_module_list_index": <u32>,
+        "version": <u32>,
+        "list_annotations": [<string>],
+        "simple_annotations": {
+          <string>: <string>
+        },
+        "annotation_objects": {
+          <string>: <string>
+        }
+      }
+    ]
+  }, // crashpad_info
+
+
+
+
 
 
 

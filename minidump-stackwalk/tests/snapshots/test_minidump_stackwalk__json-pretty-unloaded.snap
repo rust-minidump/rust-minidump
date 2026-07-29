@@ -15,6 +15,7 @@ expression: json_out
     "possible_bit_flips": null,
     "type": null
   },
+  "crashpad_info": null,
   "handles": null,
   "linux_memory_map_count": null,
   "lsb_release": null,

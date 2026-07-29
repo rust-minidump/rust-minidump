@@ -274,6 +274,7 @@ expression: stdout
     "thread_name": null,
     "threads_index": 0
   },
+  "crashpad_info": null,
   "handles": null,
   "linux_memory_map_count": 35,
   "lsb_release": {
