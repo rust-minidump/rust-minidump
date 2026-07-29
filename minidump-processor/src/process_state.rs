@@ -5,7 +5,7 @@
 
 use std::borrow::{Borrow, Cow};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::io::prelude::*;
 use std::time::SystemTime;
@@ -490,6 +490,7 @@ pub struct ProcessState {
     pub linux_proc_limits: Option<LinuxProcLimits>,
     pub mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     pub mac_boot_args: Option<MinidumpMacBootargs>,
+    pub crashpad_info: Option<CrashpadInfo>,
     /// The modules that were loaded into the process represented by the
     /// `ProcessState`.
     pub modules: MinidumpModuleList,
@@ -503,6 +504,66 @@ pub struct ProcessState {
     pub symbol_stats: HashMap<String, SymbolStats>,
     pub linux_memory_map_count: Option<usize>,
     pub soft_errors: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrashpadInfo {
+    pub version: u32,
+    pub report_id: String,
+    pub client_id: String,
+    pub simple_annotations: BTreeMap<String, String>,
+    pub module_list: Vec<CrashpadModuleInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrashpadModuleInfo {
+    pub minidump_module_list_index: usize,
+    pub version: u32,
+    pub list_annotations: Vec<String>,
+    pub simple_annotations: BTreeMap<String, String>,
+    pub annotation_objects: BTreeMap<String, String>,
+}
+
+impl From<MinidumpCrashpadInfo> for CrashpadInfo {
+    fn from(info: MinidumpCrashpadInfo) -> Self {
+        Self {
+            version: info.raw.version,
+            report_id: info.raw.report_id.to_string(),
+            client_id: info.raw.client_id.to_string(),
+            simple_annotations: info.simple_annotations,
+            module_list: info
+                .module_list
+                .into_iter()
+                .map(CrashpadModuleInfo::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<MinidumpModuleCrashpadInfo> for CrashpadModuleInfo {
+    fn from(info: MinidumpModuleCrashpadInfo) -> Self {
+        Self {
+            minidump_module_list_index: info.module_index,
+            version: info.raw.version,
+            list_annotations: info.list_annotations,
+            simple_annotations: info.simple_annotations,
+            annotation_objects: info
+                .annotation_objects
+                .into_iter()
+                .map(|(name, value)| (name, crashpad_annotation_value(value)))
+                .collect(),
+        }
+    }
+}
+
+fn crashpad_annotation_value(annotation: MinidumpAnnotation) -> String {
+    match annotation {
+        MinidumpAnnotation::Invalid => "<invalid>".to_owned(),
+        MinidumpAnnotation::String(value) => value,
+        MinidumpAnnotation::UserDefined(_) => "<user defined>".to_owned(),
+        MinidumpAnnotation::Unsupported(_) => "<unsupported>".to_owned(),
+        _ => "<unsupported>".to_owned(),
+    }
 }
 
 fn json_registers(ctx: &MinidumpContext) -> serde_json::Value {
@@ -996,6 +1057,8 @@ Unknown streams encountered:
             })),
             // optional
             "mac_boot_args": self.mac_boot_args.as_ref().map(|info| info.bootargs.as_ref()),
+            // optional
+            "crashpad_info": self.crashpad_info,
 
             // optional
             "linux_memory_map_count": self.linux_memory_map_count,

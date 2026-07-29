@@ -96,6 +96,36 @@ fn test_json() {
 }
 
 #[test]
+fn test_json_crashpad_info() {
+    let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
+    let output = Command::new(bin)
+        .arg("--json")
+        .arg("--pretty")
+        .arg("../testdata/simple-crashpad.dmp")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let crashpad_info = &json["crashpad_info"];
+
+    assert!(output.status.success());
+    assert_eq!(stderr, "");
+    assert_eq!(
+        crashpad_info["report_id"],
+        "42f9de72-518a-43dd-97d7-8ddc328d3662"
+    );
+    assert_eq!(crashpad_info["simple_annotations"]["hello"], "world");
+    assert_eq!(
+        crashpad_info["module_list"][0]["list_annotations"][0],
+        "abort() called"
+    );
+}
+
+#[test]
 fn test_json_pretty() {
     let bin = env!("CARGO_BIN_EXE_minidump-stackwalk");
     let output = Command::new(bin)

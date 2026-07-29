@@ -225,6 +225,7 @@ expression: stdout
     "thread_name": "main",
     "threads_index": 0
   },
+  "crashpad_info": null,
   "handles": null,
   "linux_memory_map_count": null,
   "lsb_release": null,

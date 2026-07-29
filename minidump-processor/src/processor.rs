@@ -14,7 +14,7 @@ use minidump_unwind::{
 };
 
 use crate::op_analysis::MemoryAddressInfo;
-use crate::process_state::{LinuxStandardBase, ProcessState};
+use crate::process_state::{CrashpadInfo, LinuxStandardBase, ProcessState};
 use crate::{
     arg_recovery, evil, AdjustedAddress, CrashInconsistency, LinuxProcLimits, LinuxProcStatus,
 };
@@ -473,6 +473,7 @@ struct MinidumpInfo<'a> {
     system_info: SystemInfo,
     mac_crash_info: Option<Vec<RawMacCrashInfo>>,
     mac_boot_args: Option<MinidumpMacBootargs>,
+    crashpad_info: Option<CrashpadInfo>,
     misc_info: Option<MinidumpMiscInfo>,
     dump_thread_id: Option<u32>,
     requesting_thread_id: Option<u32>,
@@ -570,6 +571,11 @@ impl<'a> MinidumpInfo<'a> {
 
         let mac_boot_args = dump.get_stream::<MinidumpMacBootargs>().ok();
 
+        let crashpad_info = dump
+            .get_stream::<MinidumpCrashpadInfo>()
+            .ok()
+            .map(CrashpadInfo::from);
+
         let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
         // If Breakpad info exists in dump, get dump and requesting thread ids.
         let breakpad_info = dump.get_stream::<MinidumpBreakpadInfo>();
@@ -612,6 +618,7 @@ impl<'a> MinidumpInfo<'a> {
             system_info,
             mac_crash_info,
             mac_boot_args,
+            crashpad_info,
             misc_info,
             dump_thread_id,
             requesting_thread_id,
@@ -1133,6 +1140,7 @@ impl<'a> MinidumpInfo<'a> {
             linux_proc_limits: self.linux_proc_limits,
             mac_crash_info: self.mac_crash_info,
             mac_boot_args: self.mac_boot_args,
+            crashpad_info: self.crashpad_info,
             threads,
             modules: self.modules,
             unloaded_modules: self.unloaded_modules,
