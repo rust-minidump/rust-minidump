@@ -220,12 +220,12 @@ pub enum ExceptionCodeMacArithmeticX86Type {
 #[repr(u32)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug, FromPrimitive)]
 pub enum ExceptionCodeMacSoftwareType {
+    SIGSYS = 0x00010000u32,
     SIGABRT = 0x00010002u32,
     UNCAUGHT_NS_EXCEPTION = 0xDEADC0DE,
     EXC_PPC_TRAP = 0x00000001,
     EXC_PPC_MIGRATE = 0x00010100,
     // Breakpad also defines these doesn't use them for Software crashes
-    // SIGSYS  = 0x00010000,
     // SIGPIPE = 0x00010001,
 }
 
