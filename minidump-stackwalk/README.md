@@ -328,6 +328,12 @@ This is an experimental feature, which currently only shows up in --human output
 
 Use debug information from local files referred to by the minidump, if present.
 
+#### `--no-symbolication`
+
+Disable symbolication: only perform stack unwinding.
+
+This still requires symbol servers (since symbol files provide unwinding information) or local debug info to be available.
+
 #### `--symbols-url <SYMBOLS_URL>`
 
 base URL from which URLs to symbol files can be constructed

@@ -1,7 +1,7 @@
 # Unreleased
 
-Nothing Yet!
-
+* Add a `--no-symbolication` flag to the `minidump-stackwalk` program.
+* Add a `NoSymbolication` wrapper to `minidump-unwind`.
 
 # Version 0.27.0 (2026-08-11)
 
