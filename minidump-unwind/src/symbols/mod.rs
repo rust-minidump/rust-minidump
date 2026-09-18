@@ -293,6 +293,42 @@ impl SymbolProvider for Symbolizer {
     }
 }
 
+/// A `SymbolProvider` wrapper which disables symbolication for the given `SymbolProvider`.
+///
+/// Only frame walking will occur.
+pub struct NoSymbolication<S>(pub S);
+
+#[async_trait]
+impl<S: SymbolProvider + Sync> SymbolProvider for NoSymbolication<S> {
+    async fn fill_symbol(
+        &self,
+        _module: &(dyn Module + Sync),
+        _frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> Result<(), FillSymbolError> {
+        Err(FillSymbolError {})
+    }
+    async fn walk_frame(
+        &self,
+        module: &(dyn Module + Sync),
+        walker: &mut (dyn FrameWalker + Send),
+    ) -> Option<()> {
+        self.0.walk_frame(module, walker).await
+    }
+    async fn get_file_path(
+        &self,
+        module: &(dyn Module + Sync),
+        file_kind: FileKind,
+    ) -> Result<PathBuf, FileError> {
+        self.0.get_file_path(module, file_kind).await
+    }
+    fn stats(&self) -> HashMap<String, SymbolStats> {
+        self.0.stats()
+    }
+    fn pending_stats(&self) -> PendingSymbolStats {
+        self.0.pending_stats()
+    }
+}
+
 /// Gets a SymbolSupplier that looks up symbols by path or with urls.
 ///
 /// * `symbols_paths` is a list of paths to check for symbol files. Paths

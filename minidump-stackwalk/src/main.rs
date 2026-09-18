@@ -17,7 +17,7 @@ use minidump_processor::{
 };
 use minidump_unwind::{
     debuginfo::DebugInfoSymbolProvider, http_symbol_supplier, simple_symbol_supplier,
-    MultiSymbolProvider, SymbolProvider, Symbolizer,
+    MultiSymbolProvider, NoSymbolication, SymbolProvider, SymbolSupplier, Symbolizer,
 };
 
 use clap::{
@@ -200,6 +200,13 @@ struct Cli {
     /// Use debug information from local files referred to by the minidump, if present.
     #[arg(long)]
     use_local_debuginfo: bool,
+
+    /// Disable symbolication: only perform stack unwinding.
+    ///
+    /// This still requires symbol servers (since symbol files provide unwinding information) or
+    /// local debug info to be available.
+    #[arg(long)]
+    no_symbolication: bool,
 
     /// base URL from which URLs to symbol files can be constructed
     ///
@@ -427,6 +434,8 @@ async fn main_result() -> std::io::Result<()> {
 
             let modules = dump.get_stream::<MinidumpModuleList>().unwrap_or_default();
 
+            let no_symbolication = cli.no_symbolication;
+
             if cli.use_local_debuginfo {
                 let system_info = match dump.get_stream::<MinidumpSystemInfo>() {
                     Err(e) => {
@@ -436,22 +445,41 @@ async fn main_result() -> std::io::Result<()> {
                     Ok(s) => s,
                 };
                 provider.add(Box::new(
-                    DebugInfoSymbolProvider::new(&system_info, &modules).await,
+                    DebugInfoSymbolProvider::builder()
+                        .symbols(!no_symbolication)
+                        .build(&system_info, &modules)
+                        .await,
                 ));
             }
 
+            struct CreateSymbolizer {
+                no_symbolication: bool,
+            }
+            impl CreateSymbolizer {
+                pub fn create(
+                    &self,
+                    supplier: impl SymbolSupplier + Send + Sync + 'static,
+                ) -> Box<dyn SymbolProvider + Send + Sync + 'static> {
+                    if self.no_symbolication {
+                        Box::new(NoSymbolication(Symbolizer::new(supplier)))
+                    } else {
+                        Box::new(Symbolizer::new(supplier))
+                    }
+                }
+            }
+
+            let create_symbolizer = CreateSymbolizer { no_symbolication };
+
             if !cli.symbols_url.is_empty() {
-                provider.add(Box::new(Symbolizer::new(http_symbol_supplier(
+                provider.add(create_symbolizer.create(http_symbol_supplier(
                     symbols_paths,
                     cli.symbols_url,
                     symbols_cache,
                     symbols_tmp,
                     timeout,
-                ))));
+                )));
             } else if !symbols_paths.is_empty() {
-                provider.add(Box::new(Symbolizer::new(simple_symbol_supplier(
-                    symbols_paths,
-                ))));
+                provider.add(create_symbolizer.create(simple_symbol_supplier(symbols_paths)));
             }
 
             let interactive_ui = processor_stats
