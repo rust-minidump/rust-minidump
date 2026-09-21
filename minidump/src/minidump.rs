@@ -1856,8 +1856,18 @@ impl<'a> TryFromCtx<'a, HandleDescriptorContext<'a>> for MinidumpHandleDescripto
                 while object_info_rva != 0 {
                     if let Some(object_info) = Self::read_object_info(object_info_rva as usize, ctx)
                     {
-                        object_info_rva = object_info.raw.next_info_rva;
-                        object_infos.push(object_info);
+                        if object_info.raw.next_info_rva == 0
+                            || object_info.raw.next_info_rva > object_info_rva
+                        {
+                            object_info_rva = object_info.raw.next_info_rva;
+                            object_infos.push(object_info);
+                        } else {
+                            // We encountered a non-monotonically increasing offset, so bail.
+                            return Err(scroll::Error::BadInput {
+                                size: ctx.fieldsize as usize,
+                                msg: "Bad next_info_rva",
+                            });
+                        }
                     } else {
                         break;
                     }
@@ -7542,6 +7552,65 @@ mod test {
                 .as_ref()
                 .expect("The `object_name` field must be populated"),
             OBJECT_NAME
+        );
+    }
+
+    #[test]
+    fn test_handle_object_info_chain() {
+        const DESCRIPTOR_SIZE: u32 = mem::size_of::<md::MINIDUMP_HANDLE_DESCRIPTOR_2>() as u32;
+        const INFO_SIZE: u32 = mem::size_of::<md::MINIDUMP_HANDLE_OBJECT_INFORMATION>() as u32;
+        const FIRST_INFO_RVA: u32 = DESCRIPTOR_SIZE;
+        const SECOND_INFO_RVA: u32 = FIRST_INFO_RVA + INFO_SIZE;
+
+        // A MINIDUMP_HANDLE_DESCRIPTOR_2 followed by two chained
+        // MINIDUMP_HANDLE_OBJECT_INFORMATION entries, the second of which points
+        // at `second_next_rva`.
+        let build = |last_info_rva: u32| {
+            Section::with_endian(Endian::Little)
+                // MINIDUMP_HANDLE_DESCRIPTOR_2
+                .D64(123) // handle
+                .D32(0) // type_name_rva
+                .D32(0) // object_name_rva
+                .D32(0) // attributes
+                .D32(0) // granted_access
+                .D32(0) // handle_count
+                .D32(0) // pointer_count
+                .D32(FIRST_INFO_RVA) // object_info_rva
+                .D32(0) // reserved0
+                // First MINIDUMP_HANDLE_OBJECT_INFORMATION
+                .D32(SECOND_INFO_RVA) // next_info_rva
+                .D32(md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE::MiniThreadInformation1 as u32)
+                .D32(INFO_SIZE)
+                // Second MINIDUMP_HANDLE_OBJECT_INFORMATION
+                .D32(last_info_rva) // next_info_rva
+                .D32(md::MINIDUMP_HANDLE_OBJECT_INFORMATION_TYPE::MiniThreadInformation1 as u32)
+                .D32(INFO_SIZE)
+                .get_contents()
+                .unwrap()
+        };
+
+        let parse = |bytes: &[u8]| -> Result<MinidumpHandleDescriptor, scroll::Error> {
+            let ctx = HandleDescriptorContext::new(bytes, DESCRIPTOR_SIZE, scroll::Endian::Little);
+            bytes.pread_with::<MinidumpHandleDescriptor>(0, ctx)
+        };
+
+        // A valid chain parses fine.
+        let bytes = build(0);
+        let descriptor = parse(&bytes).unwrap();
+        assert_eq!(descriptor.object_infos.len(), 2);
+
+        // A chain pointing backwards must fail.
+        let bytes = build(FIRST_INFO_RVA);
+        assert!(
+            parse(&bytes).is_err(),
+            "A backwards object info chain must be rejected"
+        );
+
+        // A chain making no proress must also fail.
+        let bytes = build(SECOND_INFO_RVA);
+        assert!(
+            parse(&bytes).is_err(),
+            "A self-referential object info entry must be rejected"
         );
     }
 
