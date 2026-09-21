@@ -125,6 +125,12 @@ anyway.
     // fault.
     "address": <hexstring>,
 
+    // Whether the crash address falls within a guard page.
+    //
+    // This would typically indicate a stack overflow or a buffer overrun.
+    // The field should only be present if true.
+    "fault_in_guard_page": <bool>,
+
     // In certain circumstances, the previous `address` member may report a sub-optimal value
     // for debugging purposes. If instruction analysis is able to successfully determine a
     // more helpful value, it will be reported here.

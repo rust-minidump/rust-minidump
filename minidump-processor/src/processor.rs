@@ -808,9 +808,14 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    /// Check whether memory accesses are accessing likely guard pages.
+    /// Check whether the crashing address and the memory accesses of the crashing instruction
+    /// are accessing likely guard pages.
     pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
-        if let Some(access_list) = &mut exception_details.info.memory_access_list {
+        let info = &mut exception_details.info;
+
+        info.fault_in_guard_page = is_likely_guard_page(info.address.0, &self.memory_info);
+
+        if let Some(access_list) = &mut info.memory_access_list {
             for access in &mut access_list.accesses {
                 access.address_info.is_likely_guard_page =
                     is_likely_guard_page(access.address_info.address, &self.memory_info);
@@ -1211,6 +1216,7 @@ impl crate::ExceptionInfo {
         Self {
             reason,
             address,
+            fault_in_guard_page: false,
             adjusted_address: None,
             instruction_str: None,
             instruction_properties: None,
@@ -1230,6 +1236,7 @@ impl crate::ExceptionInfo {
         Self {
             reason,
             address,
+            fault_in_guard_page: false,
             adjusted_address,
             instruction_str: Some(op_analysis.instruction_str),
             instruction_properties: Some(op_analysis.instruction_properties),
