@@ -574,9 +574,13 @@ async fn test_guard_pages() {
     })
     .await;
 
-    let access_list = state
-        .exception_info
-        .expect("missing exception info")
+    let exception_info = state.exception_info.expect("missing exception info");
+
+    // The crashing address itself is in the guard page, and so is the access the instruction
+    // performs through `rsp`.
+    assert!(exception_info.fault_in_guard_page);
+
+    let access_list = exception_info
         .memory_access_list
         .expect("no memory accesses");
 

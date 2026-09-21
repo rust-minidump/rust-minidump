@@ -210,6 +210,10 @@ pub struct ExceptionInfo {
     /// that caused the fault. For code errors, this will be the address of the
     /// instruction that caused the fault.
     pub address: Address,
+    //  Whether the crash address falls within a guard page.
+    //
+    //  This would typically indicate a stack overflow or a buffer overrun.
+    pub fault_in_guard_page: bool,
     /// In certain circumstances, the previous `address` member may report a sub-optimal value
     /// for debugging purposes. If instruction analysis is able to successfully determine a
     /// more helpful value, it will be reported here.
@@ -777,6 +781,10 @@ impl ProcessState {
                 writeln!(f, "Crash address: {}", crash_info.address)?;
             }
 
+            if crash_info.fault_in_guard_page {
+                writeln!(f, "    This address falls in a likely guard page.")?;
+            }
+
             if let Some(ref crashing_instruction_str) = crash_info.instruction_str {
                 writeln!(f, "Crashing instruction: `{crashing_instruction_str}`")?;
             }
@@ -1307,6 +1315,15 @@ Unknown streams encountered:
                 "object_name": handle.object_name
             })).collect::<Vec<_>>()),
         });
+
+        // Only add the `fault_in_guard_page` field when it is affirmative.
+        if self
+            .exception_info
+            .as_ref()
+            .is_some_and(|info| info.fault_in_guard_page)
+        {
+            output["crash_info"]["fault_in_guard_page"] = true.into();
+        }
 
         if let Some(requesting_thread) = self.requesting_thread {
             // Copy the crashing thread into a top-level "crashing_thread" field and:
