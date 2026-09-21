@@ -453,8 +453,8 @@ where
     let mut exception_details = info.get_exception_details();
 
     if let Some(details) = &mut exception_details {
-        info.check_for_bitflips(details);
         info.check_for_guard_pages(details);
+        info.check_for_bitflips(details);
         info.check_for_crash_inconsistencies(details);
     }
     info.into_process_state(dump, symbol_provider, exception_details)
@@ -741,6 +741,13 @@ impl<'a> MinidumpInfo<'a> {
 
         use bitflip::BitRange;
         use memory_operation::MemoryOperation;
+
+        // The odds of hitting a guard page rather than unmapped memory after a bitflip are
+        // exceedingly low!
+        if info.fault_in_guard_page {
+            return;
+        }
+
         let bit_flip_address = match &info.adjusted_address {
             // Use the non canonical address if present.
             Some(AdjustedAddress::NonCanonical(v)) => Some((v.0, BitRange::Amd64NonCanonical)),
@@ -1536,6 +1543,13 @@ mod bitflip {
             if memory_operation.is_possibly_allowed_for(&mi) {
                 return addresses;
             }
+        }
+
+        // An address in a guard page might not be valid per se but is very unlikely to be this
+        // value by accident, either because of a bug or because of edge cases such as
+        // one-past-the-end pointers.
+        if is_likely_guard_page(address, memory_info) {
+            return addresses;
         }
 
         // The address does not map to accessible memory. Measure how far it is from the nearest

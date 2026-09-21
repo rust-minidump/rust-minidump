@@ -589,6 +589,66 @@ async fn test_guard_pages() {
     assert!(access_list.accesses[0].address_info.is_likely_guard_page);
 }
 
+// Guard page bit-flip test regions: a guard page at 0x181000, its mapped
+// neighbour below, and a valid region a single flipped bit from the guard page
+const GUARD_PAGE_REGIONS: &[Region] = &[
+    Region {
+        base: 0x81000,
+        size: 4096,
+        protection: MemoryProtection::PAGE_READWRITE,
+    },
+    // Only exec access, so that it is accessible without triggering the off-by-one detection.
+    Region {
+        base: 0x180000,
+        size: 4096,
+        protection: MemoryProtection::PAGE_EXECUTE,
+    },
+    Region {
+        base: 0x181000,
+        size: 4096,
+        protection: NO_ACCESS,
+    },
+];
+
+// A crash in a guard page is self-explanatory, trying to find a "corrected" address through a
+// bitflip would very likely succeed but would be a false-positive, so it should be skipped.
+#[tokio::test]
+async fn test_no_bit_flip_guard_page() {
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x181000,
+        instruction: MOV_AL_RSP,
+        fault_address: 0x181000,
+        mapped_regions: GUARD_PAGE_REGIONS,
+    })
+    .await;
+
+    let exception_info = state.exception_info.expect("missing exception info");
+
+    assert!(exception_info.fault_in_guard_page);
+    assert!(exception_info.possible_bit_flips.is_empty());
+}
+
+// A register holding an address inside a guard page must not produce bit-flip candidates.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_no_bit_flip_from_guard_page_register() {
+    let state = amd64_fault_dump(Amd64Crash {
+        // The first byte of the guard page, read through `rsp` by the instruction.
+        rsp: 0x181000,
+        instruction: MOV_AL_RSP,
+        // Unmapped, and not a guard page, so the crash itself is still a bit-flip candidate.
+        fault_address: 0x281000,
+        mapped_regions: GUARD_PAGE_REGIONS,
+    })
+    .await;
+
+    let bit_flips = bit_flips(state);
+    assert_eq!(bit_flips.len(), 1);
+    assert_eq!(bit_flips[0].address.0, 0x81000);
+    // The surviving candidate is the one from the faulting address, not from `rsp`.
+    assert_eq!(bit_flips[0].source_register, None);
+}
+
 // Test cross-page boundary access: base address is valid but access crosses into invalid page.
 // With the new code that uses the actual access address from memory operations,
 // bitflip detection correctly identifies this as a non-bitflip (boundary crossing) crash.
