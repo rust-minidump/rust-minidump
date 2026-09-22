@@ -7,7 +7,7 @@ use minidump::{
     Module,
 };
 use minidump_common::format::MemoryProtection;
-use minidump_processor::{BitFlipDetails, Limit, LinuxStandardBase, ProcessState};
+use minidump_processor::{BitFlipDetails, Limit, LinuxStandardBase, PossibleBitFlip, ProcessState};
 use minidump_unwind::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
@@ -155,6 +155,85 @@ async fn read_synth_dump(dump: SynthMinidump) -> ProcessState {
         .await
         .unwrap()
 }
+
+/// `mov rax, [rsp]`: an eight-byte read.
+const MOV_RAX_RSP: &[u8] = &[0x48, 0x8b, 0x04, 0x24];
+
+/// `mov al, [rsp]`: a one-byte read.
+const MOV_AL_RSP: &[u8] = &[0x8a, 0x04, 0x24];
+
+/// Where `Amd64Crash::code` is mapped, and so the value of rip.
+const CODE_ADDRESS: u64 = 0x2000;
+
+/// An entry of the memory info list.
+struct Region {
+    base: u64,
+    size: u64,
+    protection: MemoryProtection,
+}
+
+/// A single-threaded amd64 crash.
+struct Amd64Crash<'a> {
+    rsp: u64,
+    instruction: &'a [u8],
+    fault_address: u64,
+    mapped_regions: &'a [Region],
+}
+
+/// Create a dump for a simple crash with a faulting address.
+async fn amd64_fault_dump(crash: Amd64Crash<'_>) -> ProcessState {
+    let context = minidump_synth::amd64_context(Endian::Little, CODE_ADDRESS, crash.rsp);
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+
+    // Adding the context to the dump is what resolves these labels.
+    let context_size = context.file_size();
+    let context_label = context.file_offset();
+    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    ex.exception_record.exception_address = crash.fault_address;
+    ex.thread_context = (
+        context_size.value().unwrap() as u32,
+        context_label.value().unwrap() as u32,
+    );
+
+    let mut dump = dump
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(SystemInfo::new(Endian::Little).set_processor_architecture(
+            minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
+        ))
+        .add_memory(Memory::with_section(
+            Section::with_endian(Endian::Little).append_bytes(crash.instruction),
+            CODE_ADDRESS,
+        ))
+        .add_memory(stack);
+    for region in crash.mapped_regions {
+        dump = dump.add_memory_info(MemoryInfo::new(
+            Endian::Little,
+            region.base,
+            region.base,
+            /* allocation_protection */ 0,
+            region.size,
+            /* state */ 0,
+            region.protection.bits(),
+            /* ty */ 0,
+        ));
+    }
+    read_synth_dump(dump).await
+}
+
+fn bit_flips(state: ProcessState) -> Vec<PossibleBitFlip> {
+    state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips
+}
+
+const RWX: MemoryProtection = MemoryProtection::PAGE_EXECUTE_READWRITE;
+const NO_ACCESS: MemoryProtection = MemoryProtection::PAGE_NOACCESS;
 
 #[tokio::test]
 async fn test_linux_cpu_info() {
@@ -401,10 +480,7 @@ async fn test_bit_flip() {
 
     let state = read_synth_dump(dump).await;
 
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
+    let bit_flips = bit_flips(state);
 
     assert_eq!(bit_flips.len(), 1);
     let bf = bit_flips.into_iter().next().unwrap();
@@ -445,11 +521,7 @@ async fn test_no_bit_flip_32bit() {
 
     let state = read_synth_dump(dump).await;
 
-    assert!(state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips
-        .is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 // Remove this once issue #863 is fixed.
@@ -477,86 +549,104 @@ async fn test_bit_flip_arm64() {
 
     let state = read_synth_dump(dump).await;
 
-    assert!(state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips
-        .is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 #[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
 #[tokio::test]
 async fn test_guard_pages() {
-    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x81000);
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x81000,
+        instruction: MOV_AL_RSP,
+        fault_address: 0x81000,
+        mapped_regions: &[
+            Region {
+                base: 0x80000,
+                size: 4096,
+                protection: RWX,
+            },
+            Region {
+                base: 0x81000,
+                size: 4096,
+                protection: NO_ACCESS,
+            },
+        ],
+    })
+    .await;
 
-    // The bytes here are the opcode `mov al, [rsp]`. We use rsp only because it's convenient to
-    // set using the `amd64_context` function.
-    let memory = Memory::with_section(
-        Section::with_endian(Endian::Little).append_bytes(&[0x8a, 0x04, 0x24]),
-        0x2000,
-    );
-    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
-    let heap_info = MemoryInfo::new(
-        Endian::Little,
-        0x80000,
-        0x80000,
-        0,
-        4096,
-        0,
-        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
-        0,
-    );
-    let guard_page_info = MemoryInfo::new(
-        Endian::Little,
-        0x81000,
-        0x81000,
-        0,
-        4096,
-        0,
-        MemoryProtection::PAGE_NOACCESS.bits(),
-        0,
-    );
+    let exception_info = state.exception_info.expect("missing exception info");
 
-    let thread = Thread::new(Endian::Little, 1, &stack, &context);
-    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
-        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
-    );
+    // The crashing address itself is in the guard page, and so is the access the instruction
+    // performs through `rsp`.
+    assert!(exception_info.fault_in_guard_page);
 
-    let context_label = context.file_offset();
-    let context_size = context.file_size();
-
-    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
-
-    let mut ex = Exception::new(Endian::Little);
-    ex.thread_id = 1;
-    ex.exception_record.exception_address = 0x81000;
-    // Point the exception context at the main exception context.
-    // This is (size, offset).
-    ex.thread_context = (
-        context_size.value().unwrap() as u32,
-        context_label.value().unwrap() as u32,
-    );
-
-    let dump = dump
-        .add_thread(thread)
-        .add_exception(ex)
-        .add_system_info(system_info)
-        .add_memory(memory)
-        .add_memory(stack)
-        .add_memory_info(heap_info)
-        .add_memory_info(guard_page_info);
-
-    let state = read_synth_dump(dump).await;
-
-    let access_list = state
-        .exception_info
-        .expect("missing exception info")
+    let access_list = exception_info
         .memory_access_list
         .expect("no memory accesses");
 
     assert_eq!(access_list.accesses.len(), 1);
     assert_eq!(access_list.accesses[0].address_info.address, 0x81000);
     assert!(access_list.accesses[0].address_info.is_likely_guard_page);
+}
+
+// Guard page bit-flip test regions: a guard page at 0x181000, its mapped
+// neighbour below, and a valid region a single flipped bit from the guard page
+const GUARD_PAGE_REGIONS: &[Region] = &[
+    Region {
+        base: 0x81000,
+        size: 4096,
+        protection: MemoryProtection::PAGE_READWRITE,
+    },
+    // Only exec access, so that it is accessible without triggering the off-by-one detection.
+    Region {
+        base: 0x180000,
+        size: 4096,
+        protection: MemoryProtection::PAGE_EXECUTE,
+    },
+    Region {
+        base: 0x181000,
+        size: 4096,
+        protection: NO_ACCESS,
+    },
+];
+
+// A crash in a guard page is self-explanatory, trying to find a "corrected" address through a
+// bitflip would very likely succeed but would be a false-positive, so it should be skipped.
+#[tokio::test]
+async fn test_no_bit_flip_guard_page() {
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x181000,
+        instruction: MOV_AL_RSP,
+        fault_address: 0x181000,
+        mapped_regions: GUARD_PAGE_REGIONS,
+    })
+    .await;
+
+    let exception_info = state.exception_info.expect("missing exception info");
+
+    assert!(exception_info.fault_in_guard_page);
+    assert!(exception_info.possible_bit_flips.is_empty());
+}
+
+// A register holding an address inside a guard page must not produce bit-flip candidates.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_no_bit_flip_from_guard_page_register() {
+    let state = amd64_fault_dump(Amd64Crash {
+        // The first byte of the guard page, read through `rsp` by the instruction.
+        rsp: 0x181000,
+        instruction: MOV_AL_RSP,
+        // Unmapped, and not a guard page, so the crash itself is still a bit-flip candidate.
+        fault_address: 0x281000,
+        mapped_regions: GUARD_PAGE_REGIONS,
+    })
+    .await;
+
+    let bit_flips = bit_flips(state);
+    assert_eq!(bit_flips.len(), 1);
+    assert_eq!(bit_flips[0].address.0, 0x81000);
+    // The surviving candidate is the one from the faulting address, not from `rsp`.
+    assert_eq!(bit_flips[0].source_register, None);
 }
 
 // Test cross-page boundary access: base address is valid but access crosses into invalid page.
@@ -568,66 +658,23 @@ async fn test_guard_pages() {
 )]
 #[tokio::test]
 async fn test_no_bit_flip_cross_page_boundary() {
-    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0xfff9);
+    // The access base 0xfff9 is valid; the eight-byte read crosses out of the region at 0x10000.
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0xfff9,
+        instruction: MOV_RAX_RSP,
+        fault_address: 0x10000,
+        mapped_regions: &[Region {
+            base: 0x0,
+            size: 0x10000,
+            protection: RWX,
+        }],
+    })
+    .await;
 
-    // `mov rax, [rsp]`: an eight-byte read through rsp at 0xfff9
-    // This crosses from 0xfff9-0xffff (valid) into 0x10000+ (invalid)
-    let memory = Memory::with_section(
-        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
-        0x2000,
-    );
-    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
-
-    // Heap region [0x0, 0x10000) - one page
-    let heap_info = MemoryInfo::new(
-        Endian::Little,
-        0x0,
-        0x0,
-        0,
-        0x10000,
-        0,
-        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
-        0,
-    );
-
-    let thread = Thread::new(Endian::Little, 1, &stack, &context);
-    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
-        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
-    );
-
-    let context_label = context.file_offset();
-    let context_size = context.file_size();
-
-    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
-
-    let mut ex = Exception::new(Endian::Little);
-    ex.thread_id = 1;
-    // Fault occurs at the invalid page (0x10000), but access base was at 0xfff9 (valid)
-    ex.exception_record.exception_address = 0x10000;
-    ex.thread_context = (
-        context_size.value().unwrap() as u32,
-        context_label.value().unwrap() as u32,
-    );
-
-    let dump = dump
-        .add_thread(thread)
-        .add_exception(ex)
-        .add_system_info(system_info)
-        .add_memory(memory)
-        .add_memory(stack)
-        .add_memory_info(heap_info);
-
-    let state = read_synth_dump(dump).await;
-
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
-
-    // No bitflips should be detected because the access address (0xfff9) is valid.
-    // The segfault is from crossing a page boundary, not a bitflip.
+    // No bitflips should be detected because the access address (0xfff9) is valid. The segfault is
+    // from crossing a page boundary, not a bitflip.
     assert!(
-        bit_flips.is_empty(),
+        bit_flips(state).is_empty(),
         "expected no bit flips for valid access address crossing page boundary"
     );
 }
@@ -640,64 +687,21 @@ async fn test_no_bit_flip_cross_page_boundary() {
 )]
 #[tokio::test]
 async fn test_no_bit_flip_obvious_off_by_one() {
-    // rip = 0x2000, rsp = 0x90001 (the access base, just past the end of the heap region below)
-    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x90001);
+    // The region's inclusive end is 0x8ffff, so the access at 0x90001 is only two bytes past the
+    // mapping, well within the eight-byte access size.
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x90001,
+        instruction: MOV_RAX_RSP,
+        fault_address: 0x90001,
+        mapped_regions: &[Region {
+            base: 0x80000,
+            size: 0x10000,
+            protection: RWX,
+        }],
+    })
+    .await;
 
-    // `mov rax, [rsp]`: an eight-byte read through rsp at 0x90001.
-    let memory = Memory::with_section(
-        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
-        0x2000,
-    );
-    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
-
-    // Heap region [0x80000, 0x90000) - one page. Its inclusive end is 0x8ffff, so the access at
-    // 0x90001 is only two bytes past the mapping, well within the eight-byte access size.
-    let heap_info = MemoryInfo::new(
-        Endian::Little,
-        0x80000,
-        0x80000,
-        0,
-        0x10000,
-        0,
-        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
-        0,
-    );
-
-    let thread = Thread::new(Endian::Little, 1, &stack, &context);
-    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
-        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
-    );
-
-    let context_label = context.file_offset();
-    let context_size = context.file_size();
-
-    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
-
-    let mut ex = Exception::new(Endian::Little);
-    ex.thread_id = 1;
-    // The fault is within the (invalid) access range [0x90001, 0x90009).
-    ex.exception_record.exception_address = 0x90001;
-    ex.thread_context = (
-        context_size.value().unwrap() as u32,
-        context_label.value().unwrap() as u32,
-    );
-
-    let dump = dump
-        .add_thread(thread)
-        .add_exception(ex)
-        .add_system_info(system_info)
-        .add_memory(memory)
-        .add_memory(stack)
-        .add_memory_info(heap_info);
-
-    let state = read_synth_dump(dump).await;
-
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
-
-    assert!(bit_flips.is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 // A crash that lands a few access-widths past the end of an allocation looks more like an
@@ -709,61 +713,20 @@ async fn test_no_bit_flip_obvious_off_by_one() {
 )]
 #[tokio::test]
 async fn test_bit_flip_off_by_one_detractor() {
-    // rip points at the code below; rsp is the faulting access base. It sits 65 bytes (a bit over
-    // eight 8-byte elements) past the end of the heap region, and a single flipped bit (bit 16)
-    // corrects it back into that region (0x90040 ^ 0x10000 == 0x80040).
-    let context = minidump_synth::amd64_context(Endian::Little, 0x2000, 0x90040);
-
-    // `mov rax, [rsp]`: an eight-byte read through rsp.
-    let memory = Memory::with_section(
-        Section::with_endian(Endian::Little).append_bytes(&[0x48, 0x8b, 0x04, 0x24]),
-        0x2000,
-    );
-    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
-    // An accessible 64KiB heap region [0x80000, 0x90000); its last valid byte is 0x8ffff.
-    let heap_info = MemoryInfo::new(
-        Endian::Little,
-        0x80000,
-        0x80000,
-        0,
-        0x10000,
-        0,
-        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
-        0,
-    );
-
-    let thread = Thread::new(Endian::Little, 1, &stack, &context);
-    let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
-        minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
-    );
-
-    let context_label = context.file_offset();
-    let context_size = context.file_size();
-
-    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
-
-    let mut ex = Exception::new(Endian::Little);
-    ex.thread_id = 1;
-    ex.exception_record.exception_address = 0x90040;
-    ex.thread_context = (
-        context_size.value().unwrap() as u32,
-        context_label.value().unwrap() as u32,
-    );
-
-    let dump = dump
-        .add_thread(thread)
-        .add_exception(ex)
-        .add_system_info(system_info)
-        .add_memory(memory)
-        .add_memory(stack)
-        .add_memory_info(heap_info);
-
-    let state = read_synth_dump(dump).await;
-
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
+    // rsp sits 65 bytes (a bit over eight 8-byte elements) past the end of the region, and a single
+    // flipped bit (bit 16) corrects it back into it (0x90040 ^ 0x10000 == 0x80040).
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x90040,
+        instruction: MOV_RAX_RSP,
+        fault_address: 0x90040,
+        mapped_regions: &[Region {
+            base: 0x80000,
+            size: 0x10000,
+            protection: RWX,
+        }],
+    })
+    .await;
+    let bit_flips = bit_flips(state);
 
     assert!(!bit_flips.is_empty());
     let corrected = bit_flips

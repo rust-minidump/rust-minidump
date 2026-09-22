@@ -453,8 +453,8 @@ where
     let mut exception_details = info.get_exception_details();
 
     if let Some(details) = &mut exception_details {
-        info.check_for_bitflips(details);
         info.check_for_guard_pages(details);
+        info.check_for_bitflips(details);
         info.check_for_crash_inconsistencies(details);
     }
     info.into_process_state(dump, symbol_provider, exception_details)
@@ -741,6 +741,13 @@ impl<'a> MinidumpInfo<'a> {
 
         use bitflip::BitRange;
         use memory_operation::MemoryOperation;
+
+        // The odds of hitting a guard page rather than unmapped memory after a bitflip are
+        // exceedingly low!
+        if info.fault_in_guard_page {
+            return;
+        }
+
         let bit_flip_address = match &info.adjusted_address {
             // Use the non canonical address if present.
             Some(AdjustedAddress::NonCanonical(v)) => Some((v.0, BitRange::Amd64NonCanonical)),
@@ -808,53 +815,17 @@ impl<'a> MinidumpInfo<'a> {
         }
     }
 
-    /// Check whether memory accesses are accessing likely guard pages.
+    /// Check whether the crashing address and the memory accesses of the crashing instruction
+    /// are accessing likely guard pages.
     pub fn check_for_guard_pages(&self, exception_details: &mut ExceptionDetails<'a>) {
-        const GUARD_MEMORY_MAX_SIZE: u64 = 2 << 14;
+        let info = &mut exception_details.info;
 
-        if let Some(access_list) = &mut exception_details.info.memory_access_list {
+        info.fault_in_guard_page = is_likely_guard_page(info.address.0, &self.memory_info);
+
+        if let Some(access_list) = &mut info.memory_access_list {
             for access in &mut access_list.accesses {
-                let Some(info) = self
-                    .memory_info
-                    .memory_info_at_address(access.address_info.address)
-                else {
-                    continue;
-                };
-                let Some(range) = info.memory_range() else {
-                    continue;
-                };
-
-                fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
-                    range.is_readable() || range.is_writable() || range.is_executable()
-                }
-
-                let is_adjacent_to_accessible_memory = || {
-                    for region in self.memory_info.by_addr() {
-                        let Some(other_range) = region.memory_range() else {
-                            continue;
-                        };
-                        if other_range.end + 1 == range.start && is_accessible(&region) {
-                            return true;
-                        }
-                        if range.end + 1 == other_range.start {
-                            // At this point we won't encounter any other relevant regions as we're
-                            // iterating by address, so return.
-                            return is_accessible(&region);
-                        }
-                    }
-                    false
-                };
-
-                // As a heuristic, we consider any mapped memory to be a guard page if it:
-                // * has no permissions,
-                // * is less than `GUARD_MEMORY_MAX_SIZE`, and
-                // * is adjacent to a region with permissions.
-                if !is_accessible(&info)
-                    && range.end - range.start < GUARD_MEMORY_MAX_SIZE
-                    && is_adjacent_to_accessible_memory()
-                {
-                    access.address_info.is_likely_guard_page = true;
-                }
+                access.address_info.is_likely_guard_page =
+                    is_likely_guard_page(access.address_info.address, &self.memory_info);
             }
         }
     }
@@ -1252,6 +1223,7 @@ impl crate::ExceptionInfo {
         Self {
             reason,
             address,
+            fault_in_guard_page: false,
             adjusted_address: None,
             instruction_str: None,
             instruction_properties: None,
@@ -1271,6 +1243,7 @@ impl crate::ExceptionInfo {
         Self {
             reason,
             address,
+            fault_in_guard_page: false,
             adjusted_address,
             instruction_str: Some(op_analysis.instruction_str),
             instruction_properties: Some(op_analysis.instruction_properties),
@@ -1424,6 +1397,48 @@ fn try_detect_null_pointer_in_disguise(
     None
 }
 
+const GUARD_MEMORY_MAX_SIZE: u64 = 2 << 14;
+
+/// Heuristically determine whether `address` falls in a guard page.
+///
+/// We consider any mapped memory to be a guard page if it:
+/// * has no permissions,
+/// * is less than `GUARD_MEMORY_MAX_SIZE`, and
+/// * is adjacent to a region with permissions.
+fn is_likely_guard_page(address: u64, memory_info: &UnifiedMemoryInfoList) -> bool {
+    let Some(info) = memory_info.memory_info_at_address(address) else {
+        return false;
+    };
+    let Some(range) = info.memory_range() else {
+        return false;
+    };
+
+    fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
+        range.is_readable() || range.is_writable() || range.is_executable()
+    }
+
+    let is_adjacent_to_accessible_memory = || {
+        for region in memory_info.by_addr() {
+            let Some(other_range) = region.memory_range() else {
+                continue;
+            };
+            if other_range.end + 1 == range.start && is_accessible(&region) {
+                return true;
+            }
+            if range.end + 1 == other_range.start {
+                // At this point we won't encounter any other relevant regions as we're
+                // iterating by address, so return.
+                return is_accessible(&region);
+            }
+        }
+        false
+    };
+
+    !is_accessible(&info)
+        && range.end - range.start < GUARD_MEMORY_MAX_SIZE
+        && is_adjacent_to_accessible_memory()
+}
+
 pub mod memory_operation {
     use super::*;
 
@@ -1528,6 +1543,13 @@ mod bitflip {
             if memory_operation.is_possibly_allowed_for(&mi) {
                 return addresses;
             }
+        }
+
+        // An address in a guard page might not be valid per se but is very unlikely to be this
+        // value by accident, either because of a bug or because of edge cases such as
+        // one-past-the-end pointers.
+        if is_likely_guard_page(address, memory_info) {
+            return addresses;
         }
 
         // The address does not map to accessible memory. Measure how far it is from the nearest
