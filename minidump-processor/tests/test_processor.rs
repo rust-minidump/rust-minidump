@@ -459,7 +459,16 @@ async fn test_bit_flip() {
     let context = minidump_synth::amd64_context(Endian::Little, 0, 0);
 
     let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
-    let heap_info = MemoryInfo::new(Endian::Little, 0x80000, 0x80000, 0, 8, 0, 0, 0);
+    let heap_info = MemoryInfo::new(
+        Endian::Little,
+        0x80000,
+        0x80000,
+        0,
+        8,
+        0,
+        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
+        0,
+    );
 
     let thread = Thread::new(Endian::Little, 1, &stack, &context);
     let system_info = SystemInfo::new(Endian::Little).set_processor_architecture(
@@ -689,5 +698,38 @@ async fn test_bit_flip_off_by_one_detractor() {
         "confidence {} != expected {}",
         confidence,
         expected
+    );
+}
+
+// A single-bit correction landing in a guard page is not a plausible bit flip: the process couldn't
+// have accessed that address either.
+#[tokio::test]
+async fn test_no_bit_flip_into_inaccessible_page() {
+    // RSP is a bitflip away from the guard page, but we're expecting that candidate to be dropped
+    // because it's not a valid target.
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0x30000,
+        instruction: MOV_RAX_RSP,
+        fault_address: 0x30000,
+        mapped_regions: &[
+            Region {
+                base: 0x70000,
+                size: 0x1000,
+                protection: NO_ACCESS,
+            },
+            Region {
+                base: 0x300000,
+                size: 0x10000,
+                protection: RWX,
+            },
+        ],
+    })
+    .await;
+
+    let bit_flips = bit_flips(state);
+    assert!(
+        bit_flips.is_empty(),
+        "no candidate should be proposed in a region with no permissions, got {:?}",
+        bit_flips
     );
 }
