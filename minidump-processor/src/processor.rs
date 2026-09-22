@@ -1456,26 +1456,27 @@ pub mod memory_operation {
             }
         }
 
-        /// Return whether this memory operation is possibily allowed in the given memory region.
-        /// If operation is `Undetermined`, this method returns true.
-        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
-            match self {
-                Self::Undetermined => true,
+        /// Return whether this memory operation is allowed in the given memory region, or `None`
+        /// if the operation could not be determined.
+        pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> Option<bool> {
+            Some(match self {
+                Self::Undetermined => return None,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-            }
+            })
+        }
+
+        /// Return whether this memory operation is possibily allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns true.
+        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+            self.allowed_for(memory_info).unwrap_or(true)
         }
 
         /// Return whether this memory operation is definitely allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns false.
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
-            match self {
-                Self::Undetermined => false,
-                Self::Read => memory_info.is_readable(),
-                Self::Write => memory_info.is_writable(),
-                Self::Execute => memory_info.is_executable(),
-            }
+            self.allowed_for(memory_info).unwrap_or(false)
         }
     }
 }
