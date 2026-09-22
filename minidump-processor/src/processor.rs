@@ -824,22 +824,18 @@ impl<'a> MinidumpInfo<'a> {
                     continue;
                 };
 
-                fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
-                    range.is_readable() || range.is_writable() || range.is_executable()
-                }
-
                 let is_adjacent_to_accessible_memory = || {
                     for region in self.memory_info.by_addr() {
                         let Some(other_range) = region.memory_range() else {
                             continue;
                         };
-                        if other_range.end + 1 == range.start && is_accessible(&region) {
+                        if other_range.end + 1 == range.start && region.is_accessible() {
                             return true;
                         }
                         if range.end + 1 == other_range.start {
                             // At this point we won't encounter any other relevant regions as we're
                             // iterating by address, so return.
-                            return is_accessible(&region);
+                            return region.is_accessible();
                         }
                     }
                     false
@@ -849,7 +845,7 @@ impl<'a> MinidumpInfo<'a> {
                 // * has no permissions,
                 // * is less than `GUARD_MEMORY_MAX_SIZE`, and
                 // * is adjacent to a region with permissions.
-                if !is_accessible(&info)
+                if !info.is_accessible()
                     && range.end - range.start < GUARD_MEMORY_MAX_SIZE
                     && is_adjacent_to_accessible_memory()
                 {
