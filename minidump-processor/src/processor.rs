@@ -1561,13 +1561,20 @@ mod bitflip {
                 create_possible_address(possible_address);
             }
             if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if memory_operation.is_possibly_allowed_for(&mi) {
+                if could_have_accessed(memory_operation, &mi) {
                     create_possible_address(possible_address);
                 }
             }
         }
 
         addresses
+    }
+
+    /// Whether the operation is plausible memory access-wise.
+    fn could_have_accessed(operation: MemoryOperation, memory_info: &UnifiedMemoryInfo) -> bool {
+        operation
+            .allowed_for(memory_info)
+            .unwrap_or_else(|| memory_info.is_accessible())
     }
 
     /// Return the distance from `address` to the nearest accessible (allocated) memory region, in
@@ -1579,7 +1586,7 @@ mod bitflip {
     ) -> Option<u64> {
         memory_info
             .by_addr()
-            .filter(|r| operation.is_possibly_allowed_for(r))
+            .filter(|r| could_have_accessed(operation, r))
             .filter_map(|region| {
                 let range = region.memory_range()?;
                 // `memory_range` has an inclusive end.
