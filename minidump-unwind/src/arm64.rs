@@ -437,11 +437,23 @@ where
 {
     // .await doesn't like closures, so don't use Option chaining
     let mut frame = None;
-    if frame.is_none() {
-        frame = get_caller_by_cfi(ctx, args).await;
-    }
-    if frame.is_none() {
-        frame = get_caller_by_frame_pointer(ctx, args);
+    match args.symbol_provider.unwind_strategy() {
+        UnwindStrategy::CfiFirst => {
+            if frame.is_none() {
+                frame = get_caller_by_cfi(ctx, args).await;
+            }
+            if frame.is_none() {
+                frame = get_caller_by_frame_pointer(ctx, args);
+            }
+        }
+        UnwindStrategy::FramePointerFirst => {
+            if frame.is_none() {
+                frame = get_caller_by_frame_pointer(ctx, args);
+            }
+            if frame.is_none() {
+                frame = get_caller_by_cfi(ctx, args).await;
+            }
+        }
     }
     if frame.is_none() {
         frame = get_caller_by_scan(ctx, args).await;
