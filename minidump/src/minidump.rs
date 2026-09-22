@@ -2839,6 +2839,11 @@ impl UnifiedMemoryInfo<'_> {
         /// Whether this memory range was executable.
         pub fn is_executable(&self) -> bool;
     }
+
+    /// Whether this memory range had any permissions at all.
+    pub fn is_accessible(&self) -> bool {
+        self.is_readable() || self.is_writable() || self.is_executable()
+    }
 }
 
 impl<'a> MinidumpThread<'a> {
