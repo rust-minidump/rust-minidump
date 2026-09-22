@@ -7,7 +7,7 @@ use minidump::{
     Module,
 };
 use minidump_common::format::MemoryProtection;
-use minidump_processor::{BitFlipDetails, Limit, LinuxStandardBase, ProcessState};
+use minidump_processor::{BitFlipDetails, Limit, LinuxStandardBase, PossibleBitFlip, ProcessState};
 use minidump_unwind::{simple_symbol_supplier, CallStackInfo, FrameTrust, Symbolizer};
 use std::path::{Path, PathBuf};
 
@@ -223,6 +223,13 @@ async fn amd64_fault_dump(crash: Amd64Crash<'_>) -> ProcessState {
         ));
     }
     read_synth_dump(dump).await
+}
+
+fn bit_flips(state: ProcessState) -> Vec<PossibleBitFlip> {
+    state
+        .exception_info
+        .expect("missing exception info")
+        .possible_bit_flips
 }
 
 const RWX: MemoryProtection = MemoryProtection::PAGE_EXECUTE_READWRITE;
@@ -473,10 +480,7 @@ async fn test_bit_flip() {
 
     let state = read_synth_dump(dump).await;
 
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
+    let bit_flips = bit_flips(state);
 
     assert_eq!(bit_flips.len(), 1);
     let bf = bit_flips.into_iter().next().unwrap();
@@ -517,11 +521,7 @@ async fn test_no_bit_flip_32bit() {
 
     let state = read_synth_dump(dump).await;
 
-    assert!(state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips
-        .is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 // Remove this once issue #863 is fixed.
@@ -549,11 +549,7 @@ async fn test_bit_flip_arm64() {
 
     let state = read_synth_dump(dump).await;
 
-    assert!(state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips
-        .is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 #[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
@@ -614,11 +610,7 @@ async fn test_no_bit_flip_cross_page_boundary() {
     // No bitflips should be detected because the access address (0xfff9) is valid. The segfault is
     // from crossing a page boundary, not a bitflip.
     assert!(
-        state
-            .exception_info
-            .expect("missing exception info")
-            .possible_bit_flips
-            .is_empty(),
+        bit_flips(state).is_empty(),
         "expected no bit flips for valid access address crossing page boundary"
     );
 }
@@ -645,11 +637,7 @@ async fn test_no_bit_flip_obvious_off_by_one() {
     })
     .await;
 
-    assert!(state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips
-        .is_empty());
+    assert!(bit_flips(state).is_empty());
 }
 
 // A crash that lands a few access-widths past the end of an allocation looks more like an
@@ -674,10 +662,7 @@ async fn test_bit_flip_off_by_one_detractor() {
         }],
     })
     .await;
-    let bit_flips = state
-        .exception_info
-        .expect("missing exception info")
-        .possible_bit_flips;
+    let bit_flips = bit_flips(state);
 
     assert!(!bit_flips.is_empty());
     let corrected = bit_flips
