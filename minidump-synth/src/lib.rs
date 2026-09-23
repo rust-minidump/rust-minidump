@@ -1563,17 +1563,36 @@ pub fn x86_context(endian: Endian, eip: u32, esp: u32) -> Section {
 
 /// Populate a `CONTEXT_AMD64` struct with the given `endian`, `rip`, and `rsp`.
 pub fn amd64_context(endian: Endian, rip: u64, rsp: u64) -> Section {
-    let section = Section::with_endian(endian)
+    amd64_context_with_registers(endian, &[("rip", rip), ("rsp", rsp)])
+}
+
+/// Populate a `CONTEXT_AMD64` struct with the given `endian` and general-purpose `registers`
+/// (`rax` to `r15`, and `rip`), all others being zero.
+pub fn amd64_context_with_registers(endian: Endian, registers: &[(&str, u64)]) -> Section {
+    const REG_NAMES: [&str; 17] = [
+        "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12",
+        "r13", "r14", "r15", "rip",
+    ];
+    let mut values = [0u64; REG_NAMES.len()];
+    for &(name, value) in registers {
+        let idx = REG_NAMES
+            .iter()
+            .position(|&n| n == name)
+            .expect("Unknown register name");
+        values[idx] = value;
+    }
+
+    let mut section = Section::with_endian(endian)
         .append_repeated(0, mem::size_of::<u64>() * 6) // p[1-6]_home
         .D32(0x10001f) // context_flags: CONTEXT_AMD64_ALL
         .D32(0) // mx_csr
         .append_repeated(0, mem::size_of::<u16>() * 6) // cs,ds,es,fs,gs,ss
         .D32(0) // eflags
-        .append_repeated(0, mem::size_of::<u64>() * 6) // dr0,1,2,3,6,7
-        .append_repeated(0, mem::size_of::<u64>() * 4) // rax,rcx,rdx,rbx
-        .D64(rsp)
-        .append_repeated(0, mem::size_of::<u64>() * 11) // rbp-r15
-        .D64(rip)
+        .append_repeated(0, mem::size_of::<u64>() * 6); // dr0,1,2,3,6,7
+    for value in values {
+        section = section.D64(value); // rax-r15, rip
+    }
+    let section = section
         .append_repeated(0, 512) // float_save
         .append_repeated(0, mem::size_of::<u128>() * 26) // vector_register
         .append_repeated(0, mem::size_of::<u64>() * 6); // trailing stuff

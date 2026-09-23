@@ -173,8 +173,10 @@ struct Region {
 }
 
 /// A single-threaded amd64 crash.
+#[derive(Default)]
 struct Amd64Crash<'a> {
     rsp: u64,
+    registers: &'a [(&'a str, u64)],
     instruction: &'a [u8],
     fault_address: u64,
     mapped_regions: &'a [Region],
@@ -182,7 +184,12 @@ struct Amd64Crash<'a> {
 
 /// Create a dump for a simple crash with a faulting address.
 async fn amd64_fault_dump(crash: Amd64Crash<'_>) -> ProcessState {
-    let context = minidump_synth::amd64_context(Endian::Little, CODE_ADDRESS, crash.rsp);
+    let registers: Vec<_> = [("rip", CODE_ADDRESS), ("rsp", crash.rsp)]
+        .iter()
+        .chain(crash.registers)
+        .copied()
+        .collect();
+    let context = minidump_synth::amd64_context_with_registers(Endian::Little, &registers);
     let stack = Memory::with_section(Section::with_endian(Endian::Little), 0x1000);
     let thread = Thread::new(Endian::Little, 1, &stack, &context);
 
@@ -580,6 +587,7 @@ async fn test_guard_pages() {
                 protection: NO_ACCESS,
             },
         ],
+        ..Default::default()
     })
     .await;
 
@@ -613,6 +621,7 @@ async fn test_no_bit_flip_cross_page_boundary() {
             size: 0x10000,
             protection: RWX,
         }],
+        ..Default::default()
     })
     .await;
 
@@ -643,6 +652,7 @@ async fn test_no_bit_flip_obvious_off_by_one() {
             size: 0x10000,
             protection: RWX,
         }],
+        ..Default::default()
     })
     .await;
 
@@ -669,6 +679,7 @@ async fn test_bit_flip_off_by_one_detractor() {
             size: 0x10000,
             protection: RWX,
         }],
+        ..Default::default()
     })
     .await;
     let bit_flips = bit_flips(state);
@@ -723,6 +734,7 @@ async fn test_no_bit_flip_into_inaccessible_page() {
                 protection: RWX,
             },
         ],
+        ..Default::default()
     })
     .await;
 
