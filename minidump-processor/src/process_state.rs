@@ -75,6 +75,10 @@ impl std::fmt::Display for Address {
 
 pub type AddressOffset = Address;
 
+/// The value of a register, which looks like an address but may be
+/// something else.
+pub type RegisterValue = Address;
+
 #[derive(Debug, Clone, Default)]
 pub struct LinuxStandardBase {
     pub id: String,
@@ -250,7 +254,8 @@ pub enum AdjustedAddress {
 pub struct BitFlipDetails {
     /// The bit flip caused a non-canonical address access.
     pub was_non_canonical: bool,
-    /// The corrected address is null.
+    /// The corrected value (either the access pointer or the base value it was computed from)
+    /// is null.
     pub is_null: bool,
     /// The original address was fairly low.
     ///
@@ -367,8 +372,11 @@ impl BitFlipDetails {
 pub struct PossibleBitFlip {
     /// The un-bit-flipped (potentially correct) address.
     pub address: Address,
-    /// The register which held the bit-flipped address, if from a register at all.
+    /// The register holding the flipped bit, if from a register at all.
     pub source_register: Option<&'static str>,
+    /// The un-bit-flipped value of `source_register`, if it differs from `address`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub corrected_value: Option<RegisterValue>,
     /// Heuristics related to the determination of the bit flip.
     pub details: BitFlipDetails,
     /// A confidence level for the bit flip, derived from the details.
@@ -386,11 +394,109 @@ const LOW_ADDRESS_CUTOFF: u64 = NEARBY_REGISTER_DISTANCE * 2;
 /// address as a potential bitflip.
 const LOW_CONFIDENCE_CUTOFF: f32 = 0.05;
 
+/// The value that might have caused the crash due to a bit flip.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum FlipSource {
+    /// A raw address, e.g. the fault address.
+    Address(u64),
+    /// A register operand of the faulting instruction.
+    Register {
+        name: &'static str,
+        value: u64,
+        role: RegisterRole,
+        /// The faulting address computed from the operand.
+        fault_address: u64,
+    },
+}
+
+/// The role of a register in a `[base + index * scale + disp]` memory operation.
+#[derive(Debug, Clone, Copy)]
+// TODO: index registers aren't analysed yet.
+#[allow(dead_code)]
+pub(crate) enum RegisterRole {
+    /// The register is the base.
+    Base,
+    /// The register is the index, multiplied by `scale`.
+    Index { scale: u8 },
+    /// The register is both the base and the index, e.g. `[rax + rax * 2]`.
+    BaseAndIndex { scale: u8 },
+}
+
+impl FlipSource {
+    pub(crate) fn value(&self) -> u64 {
+        match *self {
+            Self::Address(value) | Self::Register { value, .. } => value,
+        }
+    }
+
+    pub(crate) fn register(&self) -> Option<&'static str> {
+        match *self {
+            Self::Address(_) => None,
+            Self::Register { name, .. } => Some(name),
+        }
+    }
+
+    /// How much the faulting address changes per unit of the value.
+    fn coeff(&self) -> u64 {
+        match *self {
+            // (b+x) + scale*idx + disp = addr + 1*x
+            Self::Address(_)
+            | Self::Register {
+                role: RegisterRole::Base,
+                ..
+            } => 1,
+            // b + scale*(idx+x) + disp = addr + scale*x
+            Self::Register {
+                role: RegisterRole::Index { scale },
+                ..
+            } => scale as u64,
+            // (b+x) + scale*(idx+x) + disp = addr + (1+scale)*x
+            Self::Register {
+                role: RegisterRole::BaseAndIndex { scale },
+                ..
+            } => 1 + scale as u64,
+        }
+    }
+
+    /// Whether the value is used as a pointer.
+    pub(crate) fn is_pointer(&self) -> bool {
+        !matches!(
+            self,
+            Self::Register {
+                role: RegisterRole::Index { .. },
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn corrected_value(&self, bit: u32) -> u64 {
+        self.value() ^ (1 << bit)
+    }
+
+    /// Whether flipping `bit` turns the access into a NULL pointer dereference: the value is a
+    /// pointer which becomes NULL.
+    pub(crate) fn is_null_dereference(&self, bit: u32) -> bool {
+        self.is_pointer() && self.corrected_value(bit) == 0
+    }
+
+    fn fault_address(&self) -> u64 {
+        match *self {
+            Self::Address(fault_address) | Self::Register { fault_address, .. } => fault_address,
+        }
+    }
+
+    /// The faulting address recomputed with `bit` of the value flipped.
+    pub(crate) fn corrected_address(&self, bit: u32) -> u64 {
+        let delta = self.corrected_value(bit).wrapping_sub(self.value());
+        self.fault_address()
+            .wrapping_add(self.coeff().wrapping_mul(delta))
+    }
+}
+
 /// Inputs to the bit-flip heuristics.
-#[derive(Debug, Clone, Default)]
-#[non_exhaustive]
-pub struct BitFlipHeuristics<'a> {
-    original_address: u64,
+#[derive(Debug, Clone)]
+pub(crate) struct BitFlipHeuristics<'a> {
+    source: FlipSource,
     was_non_canonical: bool,
     context: Option<&'a MinidumpContext>,
     distance_to_closest_mapping: Option<u64>,
@@ -398,12 +504,15 @@ pub struct BitFlipHeuristics<'a> {
 }
 
 impl<'a> BitFlipHeuristics<'a> {
-    /// Start from the faulting (original, un-corrected) address. All other signals default to
-    /// "unknown".
-    pub fn new(original_address: u64) -> Self {
+    /// Start from the (original, un-corrected) value in which a bit may have flipped. All other
+    /// signals default to "unknown".
+    pub fn new(source: FlipSource) -> Self {
         Self {
-            original_address,
-            ..Default::default()
+            source,
+            was_non_canonical: false,
+            context: None,
+            distance_to_closest_mapping: None,
+            memory_access_size: None,
         }
     }
 
@@ -431,17 +540,18 @@ impl<'a> BitFlipHeuristics<'a> {
         self
     }
 
-    /// Evaluate the heuristics for a specific corrected (candidate) address, producing the
-    /// [`BitFlipDetails`] from which a confidence is derived.
-    fn evaluate(&self, candidate_address: u64) -> BitFlipDetails {
+    /// Evaluate the heuristics for the candidate obtained by flipping `bit` of the source,
+    /// producing the [`BitFlipDetails`] from which a confidence is derived.
+    fn evaluate(&self, bit: u32) -> BitFlipDetails {
+        let candidate_address = self.source.corrected_address(bit);
         let mut details = BitFlipDetails {
-            is_null: candidate_address == 0,
+            is_null: self.source.is_null_dereference(bit),
             was_non_canonical: self.was_non_canonical,
             memory_access_size: self.memory_access_size,
             distance_to_closest_mapping: self.distance_to_closest_mapping,
             ..Default::default()
         };
-        details.was_low = details.is_null && self.original_address <= LOW_ADDRESS_CUTOFF;
+        details.was_low = details.is_null && self.source.value() <= LOW_ADDRESS_CUTOFF;
 
         if let Some(context) = self.context {
             let register_size = context.register_size();
@@ -490,17 +600,17 @@ impl<'a> BitFlipHeuristics<'a> {
 }
 
 impl PossibleBitFlip {
-    /// Analyze a candidate (corrected) address against the given heuristics.
-    pub fn from_heuristics(
-        address: u64,
-        source_register: Option<&'static str>,
-        heuristics: &BitFlipHeuristics<'_>,
-    ) -> Self {
-        let details = heuristics.evaluate(address);
+    /// Analyze the candidate obtained by flipping `bit` of the heuristics' source.
+    pub(crate) fn from_heuristics(heuristics: &BitFlipHeuristics<'_>, bit: u32) -> Self {
+        let source = &heuristics.source;
+        let address = source.corrected_address(bit);
+        let corrected_value = Some(source.corrected_value(bit)).filter(|&v| v != address);
+        let details = heuristics.evaluate(bit);
         let confidence = Some(details.confidence());
         PossibleBitFlip {
             address: address.into(),
-            source_register,
+            source_register: source.register(),
+            corrected_value: corrected_value.map(Address),
             details,
             confidence,
         }
@@ -510,31 +620,6 @@ impl PossibleBitFlip {
     /// as a potential bit flip.
     pub fn is_plausible(&self) -> bool {
         self.confidence.is_some_and(|c| c >= LOW_CONFIDENCE_CUTOFF)
-    }
-
-    /// Deprecated in favour of `from_heuristics`. Note that in order to keep compatibility
-    /// the confidence field is emptied out and needs to be computed separately.
-    #[deprecated(note = "use `from_heuristics`")]
-    pub fn new(address: u64, source_register: Option<&'static str>) -> Self {
-        // Delegate to the canonical path, but drop the computed confidence: the legacy two-phase
-        // contract leaves it `None` until a subsequent `calculate_heuristics` call fills it in.
-        let mut bit_flip =
-            Self::from_heuristics(address, source_register, &BitFlipHeuristics::new(address));
-        bit_flip.confidence = None;
-        bit_flip
-    }
-
-    #[deprecated(note = "`confidence` is now populated directly in `from_heuristics`")]
-    pub fn calculate_heuristics(
-        &mut self,
-        original_address: u64,
-        was_non_canonical: bool,
-        context: Option<&MinidumpContext>,
-    ) {
-        let heuristics = BitFlipHeuristics::new(original_address)
-            .non_canonical(was_non_canonical)
-            .context(context);
-        *self = Self::from_heuristics(self.address.0, self.source_register, &heuristics);
     }
 }
 
@@ -837,14 +922,15 @@ impl ProcessState {
                         .then_with(|| bf_a.address.cmp(&bf_b.address))
                 });
                 for (idx, (confidence, b)) in bit_flips_with_confidence.iter().enumerate() {
+                    let register = match (b.source_register, b.corrected_value) {
+                        (None, _) => Default::default(),
+                        (Some(name), None) => format!("{name}="),
+                        (Some(name), Some(value)) => format!("{name}={value} -> "),
+                    };
                     writeln!(
                         f,
                         "  {idx}. Valid address: {register}{addr} ({confidence:.3})",
                         addr = b.address,
-                        register = match b.source_register {
-                            None => Default::default(),
-                            Some(name) => format!("{name}="),
-                        }
                     )?;
                 }
             }
