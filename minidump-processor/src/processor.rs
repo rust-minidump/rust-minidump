@@ -762,7 +762,7 @@ impl<'a> MinidumpInfo<'a> {
                 list.iter().find(|access| {
                     let size = access.size.unwrap_or_default();
                     let base = access.address_info.address;
-                    (base..base.saturating_add(size as u64)).contains(&info.address.0)
+                    (base..base.saturating_add(size as u64)).contains(&address)
                 })
             });
 
