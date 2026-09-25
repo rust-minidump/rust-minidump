@@ -10,8 +10,8 @@ use prost::Message;
 use scroll::ctx::{SizeWith, TryFromCtx};
 use scroll::{Pread, BE, LE};
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::{BTreeMap, HashSet};
 use std::convert::TryInto;
 use std::fmt;
 use std::fs::File;
@@ -1852,17 +1852,16 @@ impl<'a> TryFromCtx<'a, HandleDescriptorContext<'a>> for MinidumpHandleDescripto
                 let object_name = Self::read_string(raw.object_name_rva as usize, ctx);
                 let mut object_infos = Vec::<MinidumpHandleObjectInformation>::new();
                 let mut object_info_rva = raw.object_info_rva;
+                let mut visited = HashSet::new();
 
                 while object_info_rva != 0 {
                     if let Some(object_info) = Self::read_object_info(object_info_rva as usize, ctx)
                     {
-                        if object_info.raw.next_info_rva == 0
-                            || object_info.raw.next_info_rva > object_info_rva
-                        {
+                        if visited.insert(object_info.raw.next_info_rva) {
                             object_info_rva = object_info.raw.next_info_rva;
                             object_infos.push(object_info);
                         } else {
-                            // We encountered a non-monotonically increasing offset, so bail.
+                            // We encountered a cycle in the chain, so bail.
                             return Err(scroll::Error::BadInput {
                                 size: ctx.fieldsize as usize,
                                 msg: "Bad next_info_rva",
