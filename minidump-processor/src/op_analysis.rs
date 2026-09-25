@@ -133,6 +133,21 @@ pub struct MemoryAccess {
     pub size: Option<u8>,
     /// The type of the memory access
     pub access_type: MemoryAccessType,
+    /// The memory operand the address was computed from, if the access was explicit
+    pub operand: Option<AddressOperand>,
+}
+
+/// A `[base + index * scale + disp]` memory operand
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AddressOperand {
+    /// The base register, if any
+    pub base: Option<&'static str>,
+    /// The index register, if any
+    pub index: Option<&'static str>,
+    /// The multiplier of the index register
+    pub scale: u8,
+    /// The constant displacement
+    pub disp: i64,
 }
 
 /// Details about update of instruction pointer performed by an instruction
@@ -515,11 +530,14 @@ mod amd64 {
                 }
             };
 
-            if let Some(address_info) = MemoryAddressInfo::try_from_operand(operand, context)? {
+            if let Some(address_info) =
+                MemoryAddressInfo::try_from_operand(operand.clone(), context)?
+            {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
                     access_type,
+                    operand: AddressOperand::try_from_operand(operand),
                 });
             }
 
@@ -542,6 +560,7 @@ mod amd64 {
                     address_info,
                     size: mem_size,
                     access_type,
+                    operand: None,
                 });
             };
 
@@ -596,11 +615,14 @@ mod amd64 {
                 return Ok(());
             }
 
-            if let Some(address_info) = MemoryAddressInfo::try_from_operand(operand, context)? {
+            if let Some(address_info) =
+                MemoryAddressInfo::try_from_operand(operand.clone(), context)?
+            {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
                     access_type: MemoryAccessType::Underivable,
+                    operand: AddressOperand::try_from_operand(operand),
                 });
             }
 
@@ -867,6 +889,18 @@ mod amd64 {
             }
         }
         ret
+    }
+
+    impl AddressOperand {
+        fn try_from_operand(op: Operand) -> Option<Self> {
+            let info = MemoryOperandInfo::try_from_operand(op)?;
+            Some(Self {
+                base: info.base_reg.as_ref().map(RegSpec::name),
+                index: info.index_reg.as_ref().map(RegSpec::name),
+                scale: info.scale.unwrap_or(1),
+                disp: info.disp.unwrap_or(0),
+            })
+        }
     }
 }
 
