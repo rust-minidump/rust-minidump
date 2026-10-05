@@ -760,7 +760,7 @@ impl<'a> MinidumpInfo<'a> {
             let memory_op = MemoryOperation::from_crash_reason(&info.reason);
             let access = info.memory_access_list.as_ref().and_then(|list| {
                 list.iter().find(|access| {
-                    let size = access.size.unwrap_or_default();
+                    let size = access.size.unwrap_or(1);
                     let base = access.address_info.address;
                     (base..base.saturating_add(size as u64)).contains(&address)
                 })
