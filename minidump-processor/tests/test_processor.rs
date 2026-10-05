@@ -162,6 +162,12 @@ const MOV_RAX_RSP: &[u8] = &[0x48, 0x8b, 0x04, 0x24];
 /// `mov al, [rsp]`: a one-byte read.
 const MOV_AL_RSP: &[u8] = &[0x8a, 0x04, 0x24];
 
+/// `mov eax, [rbx + rcx * 4 + 0x4]`: a four-byte read with a base and an index.
+const MOV_EAX_RBX_RCX_4_4: &[u8] = &[0x8b, 0x44, 0x8b, 0x04];
+
+/// `mov eax, [rcx + rcx * 2 + 0x4]`: a four-byte read with the same register as base and index.
+const MOV_EAX_RCX_RCX_2_4: &[u8] = &[0x8b, 0x44, 0x49, 0x04];
+
 /// Where `Amd64Crash::code` is mapped, and so the value of rip.
 const CODE_ADDRESS: u64 = 0x2000;
 
@@ -744,4 +750,98 @@ async fn test_no_bit_flip_into_inaccessible_page() {
         "no candidate should be proposed in a region with no permissions, got {:?}",
         bit_flips
     );
+}
+
+// An index is not a pointer: a power-of-two index flipping to zero is just `array[0]`, not a NULL
+// pointer.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_bit_flip_index_register_not_null() {
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0,
+        registers: &[("rbx", 0x123000), ("rcx", 0x10000)],
+        instruction: MOV_EAX_RBX_RCX_4_4,
+        fault_address: 0x163004,
+        mapped_regions: &[],
+    })
+    .await;
+
+    assert_eq!(bit_flips(state), vec![]);
+}
+
+// A flipped bit in the index moves the effective address by `scale << bit`.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_bit_flip_index_register() {
+    // rcx should have been 0x10, bit 16 flipped: 0x80000 + 0x10010 * 4 + 4 == 0xc0044.
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0,
+        registers: &[("rbx", 0x80000), ("rcx", 0x10010)],
+        instruction: MOV_EAX_RBX_RCX_4_4,
+        fault_address: 0xc0044,
+        mapped_regions: &[Region {
+            base: 0x80000,
+            size: 0x1000,
+            protection: RWX,
+        }],
+    })
+    .await;
+
+    let bf = bit_flips(state)
+        .into_iter()
+        .find(|bf| bf.source_register == Some("rcx"))
+        .expect("expected a candidate from rcx");
+    assert_eq!(bf.address.0, 0x80044);
+    assert_eq!(bf.corrected_value.map(|v| v.0), Some(0x10));
+    assert!(!bf.details.is_null);
+}
+
+// A base register flipped from NULL is a NULL pointer dereference with an offset.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_bit_flip_base_register_null() {
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0,
+        registers: &[("rbx", 1 << 40), ("rcx", 2)],
+        instruction: MOV_EAX_RBX_RCX_4_4,
+        fault_address: (1 << 40) + 0xc,
+        mapped_regions: &[],
+    })
+    .await;
+
+    let bit_flips = bit_flips(state);
+    assert_eq!(bit_flips.len(), 1);
+    let bf = &bit_flips[0];
+    assert_eq!(bf.source_register, Some("rbx"));
+    assert_eq!(bf.address.0, 0xc);
+    assert_eq!(bf.corrected_value.map(|v| v.0), Some(0));
+    assert!(bf.details.is_null);
+    assert!(!bf.details.was_low);
+}
+
+// A register used as both base and index moves the effective address by `(1 + scale)` per unit.
+#[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
+#[tokio::test]
+async fn test_bit_flip_base_and_index_register() {
+    // rcx should have been 0x10000 (bit 20 flipped): 0x110000 * 3 + 4 == 0x330004.
+    let state = amd64_fault_dump(Amd64Crash {
+        rsp: 0,
+        registers: &[("rcx", 0x110000)],
+        instruction: MOV_EAX_RCX_RCX_2_4,
+        fault_address: 0x330004,
+        mapped_regions: &[Region {
+            base: 0x30000,
+            size: 0x1000,
+            protection: RWX,
+        }],
+    })
+    .await;
+
+    // No single bit flip of the address itself reaches the region, and rcx is only tried once.
+    let bit_flips = bit_flips(state);
+    assert_eq!(bit_flips.len(), 1);
+    let bf = &bit_flips[0];
+    assert_eq!(bf.source_register, Some("rcx"));
+    assert_eq!(bf.address.0, 0x30004);
+    assert_eq!(bf.corrected_value.map(|v| v.0), Some(0x10000));
 }

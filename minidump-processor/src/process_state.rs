@@ -411,8 +411,6 @@ pub(crate) enum FlipSource {
 
 /// The role of a register in a `[base + index * scale + disp]` memory operation.
 #[derive(Debug, Clone, Copy)]
-// TODO: index registers aren't analysed yet.
-#[allow(dead_code)]
 pub(crate) enum RegisterRole {
     /// The register is the base.
     Base,
