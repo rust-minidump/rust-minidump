@@ -32,6 +32,8 @@
 //! [crashpad]: https://chromium.googlesource.com/crashpad/crashpad/+/master/README.md
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
+// The Pread (TryFromCtx) derives use redundant names.
+#![allow(clippy::redundant_field_names)]
 
 use std::fmt;
 
