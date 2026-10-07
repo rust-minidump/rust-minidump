@@ -1853,7 +1853,12 @@ impl<'a> TryFromCtx<'a, HandleDescriptorContext<'a>> for MinidumpHandleDescripto
                 let mut object_infos = Vec::<MinidumpHandleObjectInformation>::new();
                 let mut object_info_rva = raw.object_info_rva;
 
+                let mut visited = std::collections::HashSet::new();
                 while object_info_rva != 0 {
+                    if !visited.insert(object_info_rva) {
+                        tracing::warn!("the object info list is circular");
+                        break;
+                    }
                     if let Some(object_info) = Self::read_object_info(object_info_rva as usize, ctx)
                     {
                         object_info_rva = object_info.raw.next_info_rva;
@@ -7628,5 +7633,32 @@ mod test {
                 .to_string(),
             "SIGABRT / SI_TKILL"
         );
+    }
+
+    #[test]
+    fn test_circular_handle_descriptor_object_infos() {
+        let circular_descriptor: &[u8] = &[
+            // MINIDUMP_HANDLE_DESCRIPTOR_2
+            // handle
+            1, 0, 0, 0, 0, 0, 0, 0, // type_name_rva
+            0, 0, 0, 0, // object_name_rva
+            0, 0, 0, 0, // attributes
+            0, 0, 0, 0, // granted_access
+            0, 0, 0, 0, // handle_count
+            0, 0, 0, 0, // pointer_count
+            0, 0, 0, 0, // object_info_rva
+            40, 0, 0, 0, // reserved0
+            0, 0, 0, 0, // MINIDUMP_HANDLE_OBJECT_INFORMATION
+            // next_info_rva
+            40, 0, 0, 0, // info_type
+            0, 0, 0, 0, // size_of_info
+            0, 0, 0, 0,
+        ];
+
+        MinidumpHandleDescriptor::try_from_ctx(
+            circular_descriptor,
+            HandleDescriptorContext::new(circular_descriptor, 40, scroll::Endian::Little),
+        )
+        .expect("failed to parse");
     }
 }
