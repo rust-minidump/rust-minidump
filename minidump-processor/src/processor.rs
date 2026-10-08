@@ -1485,6 +1485,7 @@ pub mod memory_operation {
 mod bitflip {
     use super::*;
     use crate::memory_operation::MemoryOperation;
+    use crate::process_state::{FlipSource, RegisterRole};
     use crate::{BitFlipHeuristics, PossibleBitFlip};
 
     /// The bit range over which to check bit flips.
@@ -1505,6 +1506,16 @@ mod bitflip {
         }
     }
 
+    fn is_accessible(
+        address: u64,
+        memory_operation: MemoryOperation,
+        memory_info: &UnifiedMemoryInfoList,
+    ) -> bool {
+        memory_info
+            .memory_info_at_address(address)
+            .is_some_and(|mi| memory_operation.is_possibly_allowed_for(&mi))
+    }
+
     /// Try to determine whether an address was the result of a flipped bit.
     ///
     /// `memory_operation` represents the memory operation that was occurring at the crashing address
@@ -1521,10 +1532,8 @@ mod bitflip {
     ) -> Vec<PossibleBitFlip> {
         let mut addresses = Vec::new();
         // If the address maps to valid memory, don't do anything else.
-        if let Some(mi) = memory_info.memory_info_at_address(address) {
-            if memory_operation.is_possibly_allowed_for(&mi) {
-                return addresses;
-            }
+        if is_accessible(address, memory_operation, memory_info) {
+            return addresses;
         }
 
         // The address does not map to accessible memory. Measure how far it is from the nearest
@@ -1539,30 +1548,43 @@ mod bitflip {
             _ => (),
         }
 
-        let heuristics = BitFlipHeuristics::new(address)
-            .non_canonical(bit_range == BitRange::Amd64NonCanonical)
-            .context(exception_context)
-            .distance_to_closest_mapping(distance_to_closest_mapping)
-            .memory_access_size(memory_access_size);
+        let sources = [match source_register {
+            Some(name) => FlipSource::Register {
+                name,
+                value: address,
+                role: RegisterRole::Base,
+                fault_address: address,
+            },
+            None => FlipSource::Address(address),
+        }];
 
-        let mut create_possible_address = |new_address: u64| {
-            let address =
-                PossibleBitFlip::from_heuristics(new_address, source_register, &heuristics);
-            if address.is_plausible() {
-                addresses.push(address);
+        for &source in &sources {
+            // A valid pointer is unlikely to be the one with a flipped bit.
+            if source.is_pointer() && is_accessible(source.value(), memory_operation, memory_info) {
+                continue;
             }
-        };
 
-        for i in bit_range.range() {
-            let possible_address = address ^ (1 << i);
-            // If the possible address is NULL, we assume that this was the originally intended address
-            // and some logic error has occurred (e.g. a NULL check went the wrong way).
-            if possible_address == 0 {
-                create_possible_address(possible_address);
-            }
-            if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if could_have_accessed(memory_operation, &mi) {
-                    create_possible_address(possible_address);
+            let heuristics = BitFlipHeuristics::new(source)
+                .non_canonical(bit_range == BitRange::Amd64NonCanonical)
+                .context(exception_context)
+                .distance_to_closest_mapping(distance_to_closest_mapping)
+                .memory_access_size(memory_access_size);
+
+            for i in bit_range.range() {
+                // If the corrected pointer is NULL, we assume that this was the originally
+                // intended value and some logic error has occurred (e.g. a NULL check went the
+                // wrong way).
+                if !source.is_null_dereference(i)
+                    && !memory_info
+                        .memory_info_at_address(source.corrected_address(i))
+                        .is_some_and(|mi| could_have_accessed(memory_operation, &mi))
+                {
+                    continue;
+                }
+
+                let bit_flip = PossibleBitFlip::from_heuristics(&heuristics, i);
+                if bit_flip.is_plausible() {
+                    addresses.push(bit_flip);
                 }
             }
         }
