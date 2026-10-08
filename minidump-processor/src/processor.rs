@@ -824,22 +824,18 @@ impl<'a> MinidumpInfo<'a> {
                     continue;
                 };
 
-                fn is_accessible(range: &UnifiedMemoryInfo) -> bool {
-                    range.is_readable() || range.is_writable() || range.is_executable()
-                }
-
                 let is_adjacent_to_accessible_memory = || {
                     for region in self.memory_info.by_addr() {
                         let Some(other_range) = region.memory_range() else {
                             continue;
                         };
-                        if other_range.end + 1 == range.start && is_accessible(&region) {
+                        if other_range.end + 1 == range.start && region.is_accessible() {
                             return true;
                         }
                         if range.end + 1 == other_range.start {
                             // At this point we won't encounter any other relevant regions as we're
                             // iterating by address, so return.
-                            return is_accessible(&region);
+                            return region.is_accessible();
                         }
                     }
                     false
@@ -849,7 +845,7 @@ impl<'a> MinidumpInfo<'a> {
                 // * has no permissions,
                 // * is less than `GUARD_MEMORY_MAX_SIZE`, and
                 // * is adjacent to a region with permissions.
-                if !is_accessible(&info)
+                if !info.is_accessible()
                     && range.end - range.start < GUARD_MEMORY_MAX_SIZE
                     && is_adjacent_to_accessible_memory()
                 {
@@ -1460,26 +1456,27 @@ pub mod memory_operation {
             }
         }
 
-        /// Return whether this memory operation is possibily allowed in the given memory region.
-        /// If operation is `Undetermined`, this method returns true.
-        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
-            match self {
-                Self::Undetermined => true,
+        /// Return whether this memory operation is allowed in the given memory region, or `None`
+        /// if the operation could not be determined.
+        pub fn allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> Option<bool> {
+            Some(match self {
+                Self::Undetermined => return None,
                 Self::Read => memory_info.is_readable(),
                 Self::Write => memory_info.is_writable(),
                 Self::Execute => memory_info.is_executable(),
-            }
+            })
+        }
+
+        /// Return whether this memory operation is possibily allowed in the given memory region.
+        /// If operation is `Undetermined`, this method returns true.
+        pub fn is_possibly_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
+            self.allowed_for(memory_info).unwrap_or(true)
         }
 
         /// Return whether this memory operation is definitely allowed in the given memory region.
         /// If operation is `Undetermined`, this method returns false.
         pub fn is_allowed_for(&self, memory_info: &UnifiedMemoryInfo) -> bool {
-            match self {
-                Self::Undetermined => false,
-                Self::Read => memory_info.is_readable(),
-                Self::Write => memory_info.is_writable(),
-                Self::Execute => memory_info.is_executable(),
-            }
+            self.allowed_for(memory_info).unwrap_or(false)
         }
     }
 }
@@ -1564,13 +1561,20 @@ mod bitflip {
                 create_possible_address(possible_address);
             }
             if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if memory_operation.is_possibly_allowed_for(&mi) {
+                if could_have_accessed(memory_operation, &mi) {
                     create_possible_address(possible_address);
                 }
             }
         }
 
         addresses
+    }
+
+    /// Whether the operation is plausible memory access-wise.
+    fn could_have_accessed(operation: MemoryOperation, memory_info: &UnifiedMemoryInfo) -> bool {
+        operation
+            .allowed_for(memory_info)
+            .unwrap_or_else(|| memory_info.is_accessible())
     }
 
     /// Return the distance from `address` to the nearest accessible (allocated) memory region, in
@@ -1582,7 +1586,7 @@ mod bitflip {
     ) -> Option<u64> {
         memory_info
             .by_addr()
-            .filter(|r| operation.is_possibly_allowed_for(r))
+            .filter(|r| could_have_accessed(operation, r))
             .filter_map(|region| {
                 let range = region.memory_range()?;
                 // `memory_range` has an inclusive end.
