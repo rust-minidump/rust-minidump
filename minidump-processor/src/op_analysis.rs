@@ -17,7 +17,6 @@
 #![deny(missing_docs)]
 
 use minidump::{MinidumpContext, UnifiedMemory};
-use std::collections::BTreeSet;
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
@@ -63,8 +62,6 @@ pub struct OpAnalysis {
     /// could not be determined, while `Some(NoUpdate)` means it was successfully determined
     /// that the instruction doesn't update instruction pointer
     pub instruction_pointer_update: Option<InstructionPointerUpdate>,
-    /// A list of all registers which were used by this instruction.
-    pub registers: BTreeSet<&'static str>,
 }
 
 /// A list of booleans representing properties of instructions related to possible crash reasons
@@ -301,14 +298,11 @@ mod amd64 {
         .ok()
         .flatten();
 
-        let registers = get_registers(decoded_instruction);
-
         Ok(OpAnalysis {
             instruction_str,
             instruction_properties,
             memory_access_list,
             instruction_pointer_update,
-            registers,
         })
     }
 
@@ -874,21 +868,6 @@ mod amd64 {
             self.get_register(regspec.name())
                 .ok_or(OpAnalysisError::RegisterInvalid)
         }
-    }
-
-    fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
-        let mut ret = BTreeSet::new();
-        for op in 0..i.operand_count() {
-            if let Some(reginfo) = MemoryOperandInfo::try_from_operand(i.operand(op)) {
-                if let Some(reg) = reginfo.base_reg {
-                    ret.insert(reg.name());
-                }
-                if let Some(reg) = reginfo.index_reg {
-                    ret.insert(reg.name());
-                }
-            }
-        }
-        ret
     }
 
     impl AddressOperand {

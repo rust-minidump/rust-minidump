@@ -165,12 +165,14 @@ anyway.
     /// wanted to access, but which were changed by a bit-flip.
     "possible_bit_flips": [
       {
+        /// The address the instruction would have accessed without the bit-flip.
         "address": <hexstring>,
         /// Flags related to the calculation of confidence in a bit-flip.
         "details": {
            /// Whether the original address was non-canonical.
            "was_non_canonical": <bool>,
-           /// Whether the bit-flipped address is null.
+           /// The corrected value (either the access pointer or the base value
+           /// it was computed from) is null.
            "is_null": <bool>,
            /// Whether the original address was fairly low.
            /// This is only set if `is_null` is true, and may indicate that a
@@ -191,9 +193,11 @@ anyway.
         },
         /// The calculated confidence value in the bit-flip-corrected address.
         "confidence": <f32>,
-        /// The source register from which the address was retrieved, or `null` if there was no
+        /// The register holding the flipped bit, or `null` if there was no
         /// source register (e.g. the address was the crashing address).
-        "source_register": <string>
+        "source_register": <string>,
+        /// The corrected value of `source_register`. Only present if it differs from `address`.
+        "corrected_value": <hexstring>
       }
     ],
     
