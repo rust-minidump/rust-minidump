@@ -45,7 +45,7 @@ impl<P> GetCallerFrameArgs<'_, P> {
 
 mod impl_prelude {
     pub(crate) use super::{
-        CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider,
+        CfiStackWalker, FrameTrust, GetCallerFrameArgs, StackFrame, SymbolProvider, UnwindStrategy,
     };
 }
 

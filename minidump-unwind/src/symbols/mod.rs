@@ -61,6 +61,25 @@ pub use breakpad_symbols::{
 #[cfg(feature = "debuginfo-unwind")]
 pub mod debuginfo;
 
+/// Controls the order in which per-frame unwind methods are attempted.
+///
+/// Stack scanning is always tried last, regardless of strategy, since it is
+/// the least reliable of the three and only ever used when neither of the
+/// other two methods produced a usable frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UnwindStrategy {
+    /// Try CFI (call frame information, e.g. `.eh_frame`/`.debug_frame`) first,
+    /// falling back to the frame pointer chain if CFI is unavailable or does
+    /// not cover the current instruction. This is the historical default.
+    #[default]
+    CfiFirst,
+    /// Try the frame pointer chain first, falling back to CFI. This mirrors
+    /// what debuggers like GDB do by default, and can produce more reliable
+    /// unwinds for binaries built with frame pointers preserved
+    /// (e.g. `-fno-omit-frame-pointer`) when CFI is present but inaccurate.
+    FramePointerFirst,
+}
+
 /// The [`SymbolProvider`] is the main extension point for minidump processing.
 ///
 /// It is primarily used by the `process_minidump` function to do stack
@@ -143,6 +162,13 @@ pub trait SymbolProvider {
     fn pending_stats(&self) -> PendingSymbolStats {
         PendingSymbolStats::default()
     }
+
+    /// The [`UnwindStrategy`] to use when walking frames with this provider.
+    ///
+    /// Defaults to [`UnwindStrategy::CfiFirst`], the historical behavior.
+    fn unwind_strategy(&self) -> UnwindStrategy {
+        UnwindStrategy::CfiFirst
+    }
 }
 
 #[async_trait]
@@ -177,6 +203,10 @@ impl SymbolProvider for &(dyn SymbolProvider + Sync) {
 
     fn pending_stats(&self) -> PendingSymbolStats {
         (*self).pending_stats()
+    }
+
+    fn unwind_strategy(&self) -> UnwindStrategy {
+        (*self).unwind_strategy()
     }
 }
 
