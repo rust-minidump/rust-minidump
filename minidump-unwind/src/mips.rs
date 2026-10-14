@@ -206,6 +206,8 @@ where
     super::instruction_seems_valid_by_symbols(instruction, modules, symbol_provider).await
 }
 
+// NOTE: MIPS has no frame-pointer-based unwinder, so `UnwindStrategy` has no
+// effect here; CFI is always tried first, then stack scanning.
 pub async fn get_caller_frame<P>(
     ctx: &MipsContext,
     args: &GetCallerFrameArgs<'_, P>,
