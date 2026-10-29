@@ -642,6 +642,7 @@ async fn test_no_bit_flip_guard_page() {
         instruction: MOV_AL_RSP,
         fault_address: 0x181000,
         mapped_regions: GUARD_PAGE_REGIONS,
+        ..Default::default()
     })
     .await;
 
@@ -662,6 +663,7 @@ async fn test_no_bit_flip_from_guard_page_register() {
         // Unmapped, and not a guard page, so the crash itself is still a bit-flip candidate.
         fault_address: 0x281000,
         mapped_regions: GUARD_PAGE_REGIONS,
+        ..Default::default()
     })
     .await;
 
