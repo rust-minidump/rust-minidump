@@ -655,7 +655,6 @@ impl<'a> MinidumpInfo<'a> {
         let context = exception.context(&self.dump_system_info, self.misc_info.as_ref());
 
         let mut exception_info: Option<crate::ExceptionInfo> = None;
-        let mut instruction_registers: BTreeSet<&'static str> = Default::default();
 
         // If we have a context, we can attempt to analyze the crashing thread's instructions
         if let Some(context) = context.as_ref() {
@@ -695,7 +694,6 @@ impl<'a> MinidumpInfo<'a> {
                             .map(|addr| AdjustedAddress::NonCanonical(addr.into()))
                         });
 
-                    instruction_registers.clone_from(&op_analysis.registers);
                     exception_info = Some(crate::ExceptionInfo::with_op_analysis(
                         reason,
                         address.into(),
@@ -712,11 +710,7 @@ impl<'a> MinidumpInfo<'a> {
         let info =
             exception_info.unwrap_or_else(|| crate::ExceptionInfo::new(reason, address.into()));
 
-        Some(ExceptionDetails {
-            info,
-            context,
-            instruction_registers,
-        })
+        Some(ExceptionDetails { info, context })
     }
 
     /// Check for bit-flips of the exception address/instruction.
@@ -767,7 +761,7 @@ impl<'a> MinidumpInfo<'a> {
             let memory_op = MemoryOperation::from_crash_reason(&info.reason);
             let access = info.memory_access_list.as_ref().and_then(|list| {
                 list.iter().find(|access| {
-                    let size = access.size.unwrap_or_default();
+                    let size = access.size.unwrap_or(1);
                     let base = access.address_info.address;
                     (base..base.saturating_add(size as u64)).contains(&address)
                 })
@@ -783,35 +777,13 @@ impl<'a> MinidumpInfo<'a> {
 
             info.possible_bit_flips = bitflip::try_bit_flips(
                 access_address,
-                None,
+                access.and_then(|a| a.operand),
                 bit_range,
                 exception_details.context.as_deref(),
                 &self.memory_info,
                 memory_op,
                 memory_access_size,
             );
-
-            // If we have an exception context, we can check the registers involved in the
-            // crashing instruction.
-            if let Some(context) = exception_details.context.as_deref() {
-                for reg in &exception_details.instruction_registers {
-                    if let Some(address) = context.get_register(reg) {
-                        info.possible_bit_flips.extend(bitflip::try_bit_flips(
-                            address,
-                            Some(reg),
-                            bit_range,
-                            Some(context),
-                            &self.memory_info,
-                            // We assume that a register that is causing a crash due to a flipped
-                            // bit has the same memory operation as the crash (i.e. we assume that
-                            // the base address, possibly combined with some offset, is still in
-                            // the same memory region).
-                            memory_op,
-                            memory_access_size,
-                        ));
-                    }
-                }
-            }
         }
     }
 
@@ -1258,7 +1230,6 @@ impl crate::ExceptionInfo {
 struct ExceptionDetails<'a> {
     info: crate::ExceptionInfo,
     context: Option<std::borrow::Cow<'a, MinidumpContext>>,
-    instruction_registers: BTreeSet<&'static str>,
 }
 
 /// If a non-canonical access caused a crash, return the real address
@@ -1500,6 +1471,8 @@ pub mod memory_operation {
 mod bitflip {
     use super::*;
     use crate::memory_operation::MemoryOperation;
+    use crate::op_analysis::AddressOperand;
+    use crate::process_state::{FlipSource, RegisterRole};
     use crate::{BitFlipHeuristics, PossibleBitFlip};
 
     /// The bit range over which to check bit flips.
@@ -1520,14 +1493,58 @@ mod bitflip {
         }
     }
 
-    /// Try to determine whether an address was the result of a flipped bit.
+    fn is_accessible(
+        address: u64,
+        memory_operation: MemoryOperation,
+        memory_info: &UnifiedMemoryInfoList,
+    ) -> bool {
+        memory_info
+            .memory_info_at_address(address)
+            .is_some_and(|mi| memory_operation.is_possibly_allowed_for(&mi))
+    }
+
+    /// The values the faulting `address` was computed from: the address itself, and the registers
+    /// of `operand` whose values are known from `context`.
+    fn flip_sources(
+        address: u64,
+        operand: Option<AddressOperand>,
+        context: Option<&MinidumpContext>,
+    ) -> Vec<FlipSource> {
+        let registers = operand.map_or([None, None], |operand| {
+            let scale = operand.scale;
+            match (operand.base, operand.index) {
+                // e.g. `[rax + rax * 2]`: a single register, contributing to both terms.
+                (Some(base), Some(index)) if base == index => {
+                    [Some((base, RegisterRole::BaseAndIndex { scale })), None]
+                }
+                (base, index) => [
+                    base.map(|name| (name, RegisterRole::Base)),
+                    index.map(|name| (name, RegisterRole::Index { scale })),
+                ],
+            }
+        });
+
+        std::iter::once(FlipSource::Address(address))
+            .chain(registers.iter().flatten().filter_map(|&(name, role)| {
+                Some(FlipSource::Register {
+                    name,
+                    value: context?.get_register(name)?,
+                    role,
+                    fault_address: address,
+                })
+            }))
+            .collect()
+    }
+
+    /// Try to determine whether an address was the result of a flipped bit, either in the address
+    /// itself or in one of the registers of the memory `operand` it was computed from.
     ///
     /// `memory_operation` represents the memory operation that was occurring at the crashing address
     /// (read/write/exec). If left as `Undetermined`, all memory operations are considered allowed.
     /// Otherwise, specify one of the operations that was occurring.
     pub fn try_bit_flips(
         address: u64,
-        source_register: Option<&'static str>,
+        operand: Option<AddressOperand>,
         bit_range: BitRange,
         exception_context: Option<&MinidumpContext>,
         memory_info: &UnifiedMemoryInfoList,
@@ -1536,10 +1553,8 @@ mod bitflip {
     ) -> Vec<PossibleBitFlip> {
         let mut addresses = Vec::new();
         // If the address maps to valid memory, don't do anything else.
-        if let Some(mi) = memory_info.memory_info_at_address(address) {
-            if memory_operation.is_possibly_allowed_for(&mi) {
-                return addresses;
-            }
+        if is_accessible(address, memory_operation, memory_info) {
+            return addresses;
         }
 
         // An address in a guard page might not be valid per se but is very unlikely to be this
@@ -1561,30 +1576,33 @@ mod bitflip {
             _ => (),
         }
 
-        let heuristics = BitFlipHeuristics::new(address)
-            .non_canonical(bit_range == BitRange::Amd64NonCanonical)
-            .context(exception_context)
-            .distance_to_closest_mapping(distance_to_closest_mapping)
-            .memory_access_size(memory_access_size);
-
-        let mut create_possible_address = |new_address: u64| {
-            let address =
-                PossibleBitFlip::from_heuristics(new_address, source_register, &heuristics);
-            if address.is_plausible() {
-                addresses.push(address);
+        for source in flip_sources(address, operand, exception_context) {
+            // A valid pointer is unlikely to be the one with a flipped bit.
+            if source.is_pointer() && is_accessible(source.value(), memory_operation, memory_info) {
+                continue;
             }
-        };
 
-        for i in bit_range.range() {
-            let possible_address = address ^ (1 << i);
-            // If the possible address is NULL, we assume that this was the originally intended address
-            // and some logic error has occurred (e.g. a NULL check went the wrong way).
-            if possible_address == 0 {
-                create_possible_address(possible_address);
-            }
-            if let Some(mi) = memory_info.memory_info_at_address(possible_address) {
-                if could_have_accessed(memory_operation, &mi) {
-                    create_possible_address(possible_address);
+            let heuristics = BitFlipHeuristics::new(source)
+                .non_canonical(bit_range == BitRange::Amd64NonCanonical)
+                .context(exception_context)
+                .distance_to_closest_mapping(distance_to_closest_mapping)
+                .memory_access_size(memory_access_size);
+
+            for i in bit_range.range() {
+                // If the corrected pointer is NULL, we assume that this was the originally
+                // intended value and some logic error has occurred (e.g. a NULL check went the
+                // wrong way).
+                if !source.is_null_dereference(i)
+                    && !memory_info
+                        .memory_info_at_address(source.corrected_address(i))
+                        .is_some_and(|mi| could_have_accessed(memory_operation, &mi))
+                {
+                    continue;
+                }
+
+                let bit_flip = PossibleBitFlip::from_heuristics(&heuristics, i);
+                if bit_flip.is_plausible() {
+                    addresses.push(bit_flip);
                 }
             }
         }

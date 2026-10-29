@@ -17,7 +17,6 @@
 #![deny(missing_docs)]
 
 use minidump::{MinidumpContext, UnifiedMemory};
-use std::collections::BTreeSet;
 
 /// Error type for the functions in this module
 #[derive(Debug, thiserror::Error)]
@@ -63,8 +62,6 @@ pub struct OpAnalysis {
     /// could not be determined, while `Some(NoUpdate)` means it was successfully determined
     /// that the instruction doesn't update instruction pointer
     pub instruction_pointer_update: Option<InstructionPointerUpdate>,
-    /// A list of all registers which were used by this instruction.
-    pub registers: BTreeSet<&'static str>,
 }
 
 /// A list of booleans representing properties of instructions related to possible crash reasons
@@ -133,6 +130,21 @@ pub struct MemoryAccess {
     pub size: Option<u8>,
     /// The type of the memory access
     pub access_type: MemoryAccessType,
+    /// The memory operand the address was computed from, if the access was explicit
+    pub operand: Option<AddressOperand>,
+}
+
+/// A `[base + index * scale + disp]` memory operand
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AddressOperand {
+    /// The base register, if any
+    pub base: Option<&'static str>,
+    /// The index register, if any
+    pub index: Option<&'static str>,
+    /// The multiplier of the index register
+    pub scale: u8,
+    /// The constant displacement
+    pub disp: i64,
 }
 
 /// Details about update of instruction pointer performed by an instruction
@@ -286,14 +298,11 @@ mod amd64 {
         .ok()
         .flatten();
 
-        let registers = get_registers(decoded_instruction);
-
         Ok(OpAnalysis {
             instruction_str,
             instruction_properties,
             memory_access_list,
             instruction_pointer_update,
-            registers,
         })
     }
 
@@ -515,11 +524,14 @@ mod amd64 {
                 }
             };
 
-            if let Some(address_info) = MemoryAddressInfo::try_from_operand(operand, context)? {
+            if let Some(address_info) =
+                MemoryAddressInfo::try_from_operand(operand.clone(), context)?
+            {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
                     access_type,
+                    operand: AddressOperand::try_from_operand(operand),
                 });
             }
 
@@ -542,6 +554,7 @@ mod amd64 {
                     address_info,
                     size: mem_size,
                     access_type,
+                    operand: None,
                 });
             };
 
@@ -596,11 +609,14 @@ mod amd64 {
                 return Ok(());
             }
 
-            if let Some(address_info) = MemoryAddressInfo::try_from_operand(operand, context)? {
+            if let Some(address_info) =
+                MemoryAddressInfo::try_from_operand(operand.clone(), context)?
+            {
                 self.accesses.push(MemoryAccess {
                     address_info,
                     size: mem_size,
                     access_type: MemoryAccessType::Underivable,
+                    operand: AddressOperand::try_from_operand(operand),
                 });
             }
 
@@ -854,19 +870,16 @@ mod amd64 {
         }
     }
 
-    fn get_registers(i: Instruction) -> BTreeSet<&'static str> {
-        let mut ret = BTreeSet::new();
-        for op in 0..i.operand_count() {
-            if let Some(reginfo) = MemoryOperandInfo::try_from_operand(i.operand(op)) {
-                if let Some(reg) = reginfo.base_reg {
-                    ret.insert(reg.name());
-                }
-                if let Some(reg) = reginfo.index_reg {
-                    ret.insert(reg.name());
-                }
-            }
+    impl AddressOperand {
+        fn try_from_operand(op: Operand) -> Option<Self> {
+            let info = MemoryOperandInfo::try_from_operand(op)?;
+            Some(Self {
+                base: info.base_reg.as_ref().map(RegSpec::name),
+                index: info.index_reg.as_ref().map(RegSpec::name),
+                scale: info.scale.unwrap_or(1),
+                disp: info.disp.unwrap_or(0),
+            })
         }
-        ret
     }
 }
 
