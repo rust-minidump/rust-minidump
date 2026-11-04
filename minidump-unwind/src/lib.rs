@@ -517,8 +517,8 @@ impl CallStack {
             if let Some(args) = &frame.arguments {
                 use MinidumpRawContext::*;
                 let pointer_width = match &frame.context.raw {
-                    X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) => 4,
-                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) => 8,
+                    X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) | Riscv(_) => 4,
+                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) | Riscv64(_) => 8,
                 };
 
                 let cc_summary = match args.calling_convention {
