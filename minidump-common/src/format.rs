@@ -788,7 +788,8 @@ bitflags! {
     /// CPU type values in the `context_flags` member of `CONTEXT_` structs
     ///
     /// This applies to the [`CONTEXT_ARM`], [`CONTEXT_PPC`], [`CONTEXT_MIPS`],
-    /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`] and
+    /// [`CONTEXT_AMD64`], [`CONTEXT_ARM64`], [`CONTEXT_PPC64`], [`CONTEXT_SPARC`],
+    /// [`CONTEXT_RISCV`], [`CONTEXT_RISCV64`] and
     /// [`CONTEXT_ARM64_OLD`] structs.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ContextFlagsCpu: u32 {
@@ -810,6 +811,8 @@ bitflags! {
         const CONTEXT_MIPS64 = 0x80000;
         const CONTEXT_PPC = 0x20000000;
         const CONTEXT_PPC64 = 0x1000000;
+        const CONTEXT_RISCV = 0x00800000;
+        const CONTEXT_RISCV64 = 0x08000000;
         const CONTEXT_SPARC = 0x10000000;
         const CONTEXT_X86 = 0x10000;
     }
@@ -915,6 +918,34 @@ bitflags! {
         const CONTEXT_ARM_DEBUG_REGISTERS = 0x00000008 | ContextFlagsCpu::CONTEXT_ARM.bits();
         const CONTEXT_ARM_FULL = Self::CONTEXT_ARM_CONTROL.bits() | Self::CONTEXT_ARM_INTEGER.bits() | Self::CONTEXT_ARM_FLOATING_POINT.bits();
         const CONTEXT_ARM_ALL = Self::CONTEXT_ARM_FULL.bits() | Self::CONTEXT_ARM_DEBUG_REGISTERS.bits();
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_RISCV.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ContextFlagsRiscv: u32 {
+        // Yes, breakpad never defined CONTROL for this context
+
+        /// pc and x1-x31
+        const CONTEXT_RISCV_INTEGER = 0x00000001 | ContextFlagsCpu::CONTEXT_RISCV.bits();
+        /// f0-f31 and fcsr
+        const CONTEXT_RISCV_FLOATING_POINT = 0x00000002 | ContextFlagsCpu::CONTEXT_RISCV.bits();
+        const CONTEXT_RISCV_FULL = Self::CONTEXT_RISCV_INTEGER.bits() | Self::CONTEXT_RISCV_FLOATING_POINT.bits();
+    }
+}
+
+bitflags! {
+    /// Flags available for use in [`CONTEXT_RISCV64.context_flags`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct ContextFlagsRiscv64: u32 {
+        // Yes, breakpad never defined CONTROL for this context
+
+        /// pc and x1-x31
+        const CONTEXT_RISCV64_INTEGER = 0x00000001 | ContextFlagsCpu::CONTEXT_RISCV64.bits();
+        /// f0-f31 and fcsr
+        const CONTEXT_RISCV64_FLOATING_POINT = 0x00000002 | ContextFlagsCpu::CONTEXT_RISCV64.bits();
+        const CONTEXT_RISCV64_FULL = Self::CONTEXT_RISCV64_INTEGER.bits() | Self::CONTEXT_RISCV64_FLOATING_POINT.bits();
     }
 }
 
@@ -1253,6 +1284,69 @@ impl MipsRegisterNumbers {
     }
 }
 
+/// A RISCV (rv32) CPU context
+///
+/// This is a Breakpad extension, as there is no definition of `CONTEXT` for RISCV in WinNT.h.
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct CONTEXT_RISCV {
+    pub context_flags: u32,
+    /// Reserved by the format; the ecosystem's writers leave it zeroed.
+    pub version: u32,
+    /// `[pc, ra, sp, gp, tp, t0, t1, t2, s0, s1, a0-a7, s2-s11, t3-t6]`.
+    ///
+    /// Slot 0 holds the program counter, not the hardwired-zero `x0`:
+    /// breakpad's RISCV register numbering co-opts `x0`'s DWARF number for
+    /// the pc, matching this context's split of a pc plus the 31 general
+    /// registers. See [RiscvRegisterNumbers][].
+    pub iregs: [u32; 32],
+    /// Floating point registers `[f0, f1, ..., f31]`. Breakpad only supports
+    /// RISCV with 32-bit floating point.
+    pub fpregs: [u32; 32],
+    pub fcsr: u32,
+}
+
+/// Offsets into [`CONTEXT_RISCV::iregs`] for registers with a dedicated or conventional purpose
+#[repr(usize)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum RiscvRegisterNumbers {
+    ProgramCounter = 0,
+    ReturnAddress = 1,
+    StackPointer = 2,
+}
+
+impl RiscvRegisterNumbers {
+    pub const fn name(self) -> &'static str {
+        match self {
+            RiscvRegisterNumbers::ProgramCounter => "pc",
+            RiscvRegisterNumbers::ReturnAddress => "ra",
+            RiscvRegisterNumbers::StackPointer => "sp",
+        }
+    }
+}
+
+/// A RISCV (rv64) CPU context
+///
+/// This is a Breakpad extension, as there is no definition of `CONTEXT` for RISCV64 in WinNT.h.
+#[derive(Debug, Default, Clone, Pread, Pwrite, SizeWith)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub struct CONTEXT_RISCV64 {
+    pub context_flags: u32,
+    /// Reserved by the format; the ecosystem's writers leave it zeroed.
+    pub version: u32,
+    /// `[pc, ra, sp, gp, tp, t0, t1, t2, s0, s1, a0-a7, s2-s11, t3-t6]`.
+    ///
+    /// Slot 0 holds the program counter, not the hardwired-zero `x0`:
+    /// breakpad's RISCV register numbering co-opts `x0`'s DWARF number for
+    /// the pc, matching this context's split of a pc plus the 31 general
+    /// registers. See [RiscvRegisterNumbers][].
+    pub iregs: [u64; 32],
+    /// Floating point registers `[f0, f1, ..., f31]`. Breakpad only supports
+    /// RISCV64 with 64-bit floating point.
+    pub fpregs: [u64; 32],
+    pub fcsr: u32,
+}
+
 /// PPC floating point state
 #[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -1516,6 +1610,10 @@ pub enum ProcessorArchitecture {
     PROCESSOR_ARCHITECTURE_ARM64_OLD = 0x8003,
     /// Breakpad-defined value for MIPS64
     PROCESSOR_ARCHITECTURE_MIPS64 = 0x8004,
+    /// Breakpad-defined value for RISCV
+    PROCESSOR_ARCHITECTURE_RISCV = 0x8005,
+    /// Breakpad-defined value for RISCV64
+    PROCESSOR_ARCHITECTURE_RISCV64 = 0x8006,
     PROCESSOR_ARCHITECTURE_UNKNOWN = 0xffff,
 }
 
