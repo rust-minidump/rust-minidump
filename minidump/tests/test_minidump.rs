@@ -2,7 +2,7 @@
 // file at the top-level directory of this distribution.
 
 use debugid::{CodeId, DebugId};
-use minidump::system_info::{Cpu, Os};
+use minidump::system_info::{Cpu, Os, PointerWidth};
 use minidump::*;
 use minidump_common::format as md;
 use num_traits::cast::FromPrimitive;
@@ -374,4 +374,112 @@ fn test_full_dump_memory() {
     assert_eq!(blocks[2].base_address, 0x9897D0D000);
     assert_eq!(blocks[2].size, 0x3000);
     assert_eq!(blocks[2].bytes[0..8], [0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+fn synth_context_dump(arch: u16, context: test_assembler::Section) -> Minidump<'static, Vec<u8>> {
+    use minidump_synth::{DumpSection, Exception, Memory, SynthMinidump, SystemInfo, Thread};
+    use test_assembler::Endian;
+
+    let stack = Memory::with_section(
+        test_assembler::Section::with_endian(Endian::Little),
+        0x8000_0000,
+    );
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+
+    // Adding the context to the dump is what resolves these labels.
+    let context_size = context.file_size();
+    let context_label = context.file_offset();
+    let dump = SynthMinidump::with_endian(Endian::Little).add(context);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    ex.exception_record.exception_address = 0x4000;
+    ex.thread_context = (
+        context_size.value().unwrap() as u32,
+        context_label.value().unwrap() as u32,
+    );
+
+    let dump = dump
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(SystemInfo::new(Endian::Little).set_processor_architecture(arch))
+        .add_memory(stack);
+
+    Minidump::read(dump.finish().unwrap()).unwrap()
+}
+
+#[test]
+fn test_context_riscv() {
+    let pc = 0x4000_c123;
+    let sp = 0x8000_1000;
+    let dump = synth_context_dump(
+        md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_RISCV as u16,
+        minidump_synth::riscv_context(test_assembler::Endian::Little, pc, sp),
+    );
+
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+    assert_eq!(system_info.cpu, Cpu::Riscv);
+    assert_eq!(system_info.cpu.pointer_width(), PointerWidth::Bits32);
+
+    let exception = dump.get_stream::<MinidumpException>().unwrap();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+    if let Some(ctx) = exception
+        .context(&system_info, misc_info.as_ref())
+        .as_deref()
+    {
+        assert_eq!(ctx.get_instruction_pointer(), u64::from(pc));
+        assert_eq!(ctx.get_stack_pointer(), u64::from(sp));
+        assert_eq!(ctx.get_register("pc"), Some(u64::from(pc)));
+        assert_eq!(ctx.get_register("sp"), Some(u64::from(sp)));
+        assert_eq!(ctx.get_register("zero"), None);
+        assert_eq!(ctx.get_register("x1"), None);
+        if let MinidumpRawContext::Riscv(raw) = &ctx.raw {
+            assert_eq!(
+                raw.context_flags,
+                md::ContextFlagsCpu::CONTEXT_RISCV.bits()
+                    | md::ContextFlagsRiscv::CONTEXT_RISCV_INTEGER.bits()
+            );
+        } else {
+            panic!("Wrong context type");
+        }
+    } else {
+        panic!("Missing context");
+    }
+}
+
+#[test]
+fn test_context_riscv64() {
+    let pc = 0x1200_0040_0100;
+    let sp = 0x8000_0000_1000;
+    let dump = synth_context_dump(
+        md::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_RISCV64 as u16,
+        minidump_synth::riscv64_context(test_assembler::Endian::Little, pc, sp),
+    );
+
+    let system_info = dump.get_stream::<MinidumpSystemInfo>().unwrap();
+    assert_eq!(system_info.cpu, Cpu::Riscv64);
+    assert_eq!(system_info.cpu.pointer_width(), PointerWidth::Bits64);
+
+    let exception = dump.get_stream::<MinidumpException>().unwrap();
+    let misc_info = dump.get_stream::<MinidumpMiscInfo>().ok();
+    if let Some(ctx) = exception
+        .context(&system_info, misc_info.as_ref())
+        .as_deref()
+    {
+        assert_eq!(ctx.get_instruction_pointer(), pc);
+        assert_eq!(ctx.get_stack_pointer(), sp);
+        assert_eq!(ctx.get_register("pc"), Some(pc));
+        assert_eq!(ctx.get_register("sp"), Some(sp));
+        if let MinidumpRawContext::Riscv64(raw) = &ctx.raw {
+            assert_eq!(
+                raw.context_flags,
+                md::ContextFlagsCpu::CONTEXT_RISCV64.bits()
+                    | md::ContextFlagsRiscv64::CONTEXT_RISCV64_INTEGER.bits()
+            );
+        } else {
+            panic!("Wrong context type");
+        }
+    } else {
+        panic!("Missing context");
+    }
 }

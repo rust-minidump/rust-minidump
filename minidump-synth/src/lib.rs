@@ -1619,6 +1619,34 @@ pub fn arm64_context(endian: Endian, pc: u64, sp: u64) -> Section {
     section
 }
 
+pub fn riscv_context(endian: Endian, pc: u32, sp: u32) -> Section {
+    let section = Section::with_endian(endian)
+        .D32(md::ContextFlagsRiscv::CONTEXT_RISCV_INTEGER.bits()) // context_flags
+        .D32(0) // version
+        .D32(pc) // iregs[0] (pc)
+        .D32(0) // ra
+        .D32(sp) // sp
+        .append_repeated(0, mem::size_of::<u32>() * 29) // remaining iregs[gp, tp, t0, ..., t6]
+        .append_repeated(0, mem::size_of::<u32>() * 32) // fpregs[f0, f1, ..., f31]
+        .D32(0); // fcsr
+    assert_eq!(section.size(), md::CONTEXT_RISCV::size_with(&LE) as u64);
+    section
+}
+
+pub fn riscv64_context(endian: Endian, pc: u64, sp: u64) -> Section {
+    let section = Section::with_endian(endian)
+        .D32(md::ContextFlagsRiscv64::CONTEXT_RISCV64_INTEGER.bits()) // context_flags
+        .D32(0) // version
+        .D64(pc) // iregs[0] (pc)
+        .D64(0) // ra
+        .D64(sp) // sp
+        .append_repeated(0, mem::size_of::<u64>() * 29) // remaining iregs[gp, tp, t0, ..., t6]
+        .append_repeated(0, mem::size_of::<u64>() * 32) // fpregs[f0, f1, ..., f31]
+        .D32(0); // fcsr
+    assert_eq!(section.size(), md::CONTEXT_RISCV64::size_with(&LE) as u64);
+    section
+}
+
 pub struct SectionRef {
     section: Section,
     data_section: Section,
