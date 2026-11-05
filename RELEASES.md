@@ -2,6 +2,7 @@
 
 * Add a `--no-symbolication` flag to the `minidump-stackwalk` program.
 * Add a `NoSymbolication` wrapper to `minidump-unwind`.
+* Skip bit-flip detection for Linux SIGSYS crashes, whose exception address is not a memory address.
 
 # Version 0.27.0 (2026-08-11)
 
