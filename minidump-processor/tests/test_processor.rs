@@ -574,6 +574,52 @@ async fn test_bit_flip_arm64() {
     assert!(bit_flips(state).is_empty());
 }
 
+// The exception address of a seccomp SIGSYS crash holds a syscall number rather than a memory
+// address, so bit-flip detection must be skipped even though 0x80400 would otherwise yield a
+// candidate (see test_bit_flip).
+#[tokio::test]
+async fn test_no_bit_flip_linux_sigsys() {
+    let context = minidump_synth::amd64_context(Endian::Little, 0, 0);
+
+    let stack = Memory::with_section(Section::with_endian(Endian::Little), 0);
+    let heap_info = MemoryInfo::new(
+        Endian::Little,
+        0x80000,
+        0x80000,
+        0,
+        8,
+        0,
+        MemoryProtection::PAGE_EXECUTE_READWRITE.bits(),
+        0,
+    );
+
+    let thread = Thread::new(Endian::Little, 1, &stack, &context);
+    let system_info = SystemInfo::new(Endian::Little)
+        .set_processor_architecture(
+            minidump_common::format::ProcessorArchitecture::PROCESSOR_ARCHITECTURE_AMD64 as u16,
+        )
+        .set_platform_id(minidump_common::format::PlatformId::Linux as u32);
+
+    let mut ex = Exception::new(Endian::Little);
+    ex.thread_id = 1;
+    ex.exception_record.exception_address = 0x80400;
+    ex.exception_record.exception_code = minidump_common::errors::ExceptionCodeLinux::SIGSYS as u32;
+    ex.exception_record.exception_flags =
+        minidump_common::errors::ExceptionCodeLinuxSigsysKind::SYS_SECCOMP as u32;
+
+    let dump = SynthMinidump::with_endian(Endian::Little)
+        .add_thread(thread)
+        .add_exception(ex)
+        .add_system_info(system_info)
+        .add(context)
+        .add_memory(stack)
+        .add_memory_info(heap_info);
+
+    let state = read_synth_dump(dump).await;
+
+    assert!(bit_flips(state).is_empty());
+}
+
 #[cfg_attr(not(feature = "disasm_amd64"), ignore = "requires disassembly")]
 #[tokio::test]
 async fn test_guard_pages() {

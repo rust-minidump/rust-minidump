@@ -731,6 +731,18 @@ impl<'a> MinidumpInfo<'a> {
             return;
         }
 
+        // Do not check for bit-flips on Linux SIGSYS crashes. The exception address of a
+        // SIGSYS is not a faulting memory access: Firefox's seccomp sandbox stores the
+        // number of the rejected syscall there, so it sits close to NULL and any bit-flip
+        // candidate derived from it is a false positive.
+        if matches!(
+            exception_details.info.reason,
+            CrashReason::LinuxSigsys(_)
+                | CrashReason::LinuxGeneral(minidump_common::errors::ExceptionCodeLinux::SIGSYS, _)
+        ) {
+            return;
+        }
+
         let info = &mut exception_details.info;
 
         use bitflip::BitRange;
