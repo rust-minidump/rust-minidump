@@ -1,5 +1,7 @@
 # Unreleased
 
+* Add support for the RISC-V (rv32 and rv64) CPU architectures: context
+  parsing, stack walking via CFI and stack scanning, and symbolication.
 * Add a `--no-symbolication` flag to the `minidump-stackwalk` program.
 * Add a `NoSymbolication` wrapper to `minidump-unwind`.
 

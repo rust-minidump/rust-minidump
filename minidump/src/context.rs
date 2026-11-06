@@ -30,6 +30,8 @@ pub enum MinidumpRawContext {
     Arm64(md::CONTEXT_ARM64),
     OldArm64(md::CONTEXT_ARM64_OLD),
     Mips(md::CONTEXT_MIPS),
+    Riscv(md::CONTEXT_RISCV),
+    Riscv64(md::CONTEXT_RISCV64),
 }
 
 /// Generic over the specifics of a CPU context.
@@ -880,6 +882,68 @@ impl CpuContext for md::CONTEXT_MIPS {
     }
 }
 
+/// The RISCV register names, in [`md::CONTEXT_RISCV::iregs`] slot order:
+/// the program counter in slot 0, then `x1`-`x31` by ABI name.
+const RISCV_REGISTERS: [&str; 32] = [
+    "pc", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+    "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5",
+    "t6",
+];
+
+impl CpuContext for md::CONTEXT_RISCV {
+    type Register = u32;
+
+    const REGISTERS: &'static [&'static str] = &RISCV_REGISTERS;
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match RISCV_REGISTERS.iter().position(|name| *name == reg) {
+            Some(slot) => self.iregs[slot],
+            None => unreachable!("Invalid riscv register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        let slot = RISCV_REGISTERS.iter().position(|name| *name == reg)?;
+        self.iregs[slot] = val;
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
+impl CpuContext for md::CONTEXT_RISCV64 {
+    type Register = u64;
+
+    const REGISTERS: &'static [&'static str] = &RISCV_REGISTERS;
+
+    fn get_register_always(&self, reg: &str) -> Self::Register {
+        match RISCV_REGISTERS.iter().position(|name| *name == reg) {
+            Some(slot) => self.iregs[slot],
+            None => unreachable!("Invalid riscv64 register! {}", reg),
+        }
+    }
+
+    fn set_register(&mut self, reg: &str, val: Self::Register) -> Option<()> {
+        let slot = RISCV_REGISTERS.iter().position(|name| *name == reg)?;
+        self.iregs[slot] = val;
+        Some(())
+    }
+
+    fn stack_pointer_register_name(&self) -> &'static str {
+        "sp"
+    }
+
+    fn instruction_pointer_register_name(&self) -> &'static str {
+        "pc"
+    }
+}
+
 impl CpuContext for md::CONTEXT_SPARC {
     type Register = u64;
 
@@ -1173,6 +1237,30 @@ impl MinidumpContext {
                     Err(ContextError::ReadFailure)
                 }
             }
+            Some(PROCESSOR_ARCHITECTURE_RISCV) => {
+                let ctx: md::CONTEXT_RISCV = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
+                if flags == ContextFlagsCpu::CONTEXT_RISCV {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Riscv(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
+            Some(PROCESSOR_ARCHITECTURE_RISCV64) => {
+                let ctx: md::CONTEXT_RISCV64 = bytes
+                    .gread_with(&mut offset, endian)
+                    .or(Err(ContextError::ReadFailure))?;
+
+                let flags = ContextFlagsCpu::from_flags(ctx.context_flags);
+                if flags == ContextFlagsCpu::CONTEXT_RISCV64 {
+                    Ok(MinidumpContext::from_raw(MinidumpRawContext::Riscv64(ctx)))
+                } else {
+                    Err(ContextError::ReadFailure)
+                }
+            }
             _ => Err(ContextError::UnknownCpuContext),
         }
     }
@@ -1190,6 +1278,12 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.pc,
             MinidumpRawContext::X86(ref ctx) => ctx.eip as u64,
             MinidumpRawContext::Mips(ref ctx) => ctx.epc,
+            MinidumpRawContext::Riscv(ref ctx) => {
+                ctx.iregs[md::RiscvRegisterNumbers::ProgramCounter as usize] as u64
+            }
+            MinidumpRawContext::Riscv64(ref ctx) => {
+                ctx.iregs[md::RiscvRegisterNumbers::ProgramCounter as usize]
+            }
         }
     }
 
@@ -1214,6 +1308,12 @@ impl MinidumpContext {
             MinidumpRawContext::Mips(ref ctx) => {
                 ctx.iregs[md::MipsRegisterNumbers::StackPointer as usize]
             }
+            MinidumpRawContext::Riscv(ref ctx) => {
+                ctx.iregs[md::RiscvRegisterNumbers::StackPointer as usize] as u64
+            }
+            MinidumpRawContext::Riscv64(ref ctx) => {
+                ctx.iregs[md::RiscvRegisterNumbers::StackPointer as usize]
+            }
         }
     }
 
@@ -1228,6 +1328,8 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.get_register_always(reg),
             MinidumpRawContext::X86(ref ctx) => ctx.get_register_always(reg).into(),
             MinidumpRawContext::Mips(ref ctx) => ctx.get_register_always(reg),
+            MinidumpRawContext::Riscv(ref ctx) => ctx.get_register_always(reg).into(),
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.get_register_always(reg),
         }
     }
 
@@ -1242,6 +1344,8 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv64(ctx) => ctx.register_is_valid(reg, &self.valid),
         };
 
         if valid {
@@ -1262,6 +1366,8 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::X86(ref ctx) => ctx.format_register(reg),
             MinidumpRawContext::Mips(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::Riscv(ref ctx) => ctx.format_register(reg),
+            MinidumpRawContext::Riscv64(ref ctx) => ctx.format_register(reg),
         }
     }
 
@@ -1276,6 +1382,8 @@ impl MinidumpContext {
             MinidumpRawContext::Sparc(_) => md::CONTEXT_SPARC::REGISTERS,
             MinidumpRawContext::X86(_) => md::CONTEXT_X86::REGISTERS,
             MinidumpRawContext::Mips(_) => md::CONTEXT_MIPS::REGISTERS,
+            MinidumpRawContext::Riscv(_) => md::CONTEXT_RISCV::REGISTERS,
+            MinidumpRawContext::Riscv64(_) => md::CONTEXT_RISCV64::REGISTERS,
         }
     }
 
@@ -1299,6 +1407,8 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::OldArm64(ctx) => ctx.register_is_valid(reg, &self.valid),
             MinidumpRawContext::Mips(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv(ctx) => ctx.register_is_valid(reg, &self.valid),
+            MinidumpRawContext::Riscv64(ctx) => ctx.register_is_valid(reg, &self.valid),
         })
     }
 
@@ -1318,6 +1428,8 @@ impl MinidumpContext {
             MinidumpRawContext::Arm64(ctx) => get(ctx),
             MinidumpRawContext::OldArm64(ctx) => get(ctx),
             MinidumpRawContext::Mips(ctx) => get(ctx),
+            MinidumpRawContext::Riscv(ctx) => get(ctx),
+            MinidumpRawContext::Riscv64(ctx) => get(ctx),
         }
     }
 
@@ -1612,6 +1724,40 @@ impl MinidumpContext {
                     )?;
                 }
             }
+            MinidumpRawContext::Riscv(ref raw) => {
+                write!(
+                    f,
+                    r#"CONTEXT_RISCV
+  context_flags       = {:#x}
+  version             = {:#x}
+"#,
+                    raw.context_flags, raw.version
+                )?;
+                for (name, reg) in RISCV_REGISTERS.iter().zip(raw.iregs.iter()) {
+                    writeln!(f, "  {:<18} = {:#x}", name, reg)?;
+                }
+                for (i, reg) in raw.fpregs.iter().enumerate() {
+                    writeln!(f, "  f{i:<2} = {:#x}", reg)?;
+                }
+                writeln!(f, "  fcsr                = {:#x}", raw.fcsr)?;
+            }
+            MinidumpRawContext::Riscv64(ref raw) => {
+                write!(
+                    f,
+                    r#"CONTEXT_RISCV64
+  context_flags       = {:#x}
+  version             = {:#x}
+"#,
+                    raw.context_flags, raw.version
+                )?;
+                for (name, reg) in RISCV_REGISTERS.iter().zip(raw.iregs.iter()) {
+                    writeln!(f, "  {:<18} = {:#x}", name, reg)?;
+                }
+                for (i, reg) in raw.fpregs.iter().enumerate() {
+                    writeln!(f, "  f{i:<2} = {:#x}", reg)?;
+                }
+                writeln!(f, "  fcsr                = {:#x}", raw.fcsr)?;
+            }
         }
         Ok(())
     }
@@ -1645,5 +1791,20 @@ mod tests {
         assert_eq!(context.memoize_register("x29"), Some("fp"));
         assert_eq!(context.memoize_register("fp"), Some("fp"));
         assert_eq!(context.memoize_register("foo"), None);
+    }
+
+    #[test]
+    /// Smoke test for the RISCV register vocabulary.
+    fn test_memoize_riscv() {
+        let context = md::CONTEXT_RISCV::default();
+        assert_eq!(context.memoize_register("pc"), Some("pc"));
+        assert_eq!(context.memoize_register("ra"), Some("ra"));
+        assert_eq!(context.memoize_register("s0"), Some("s0"));
+        assert_eq!(context.memoize_register("s11"), Some("s11"));
+        assert_eq!(context.memoize_register("zero"), None);
+        assert_eq!(context.memoize_register("x1"), None);
+        let context64 = md::CONTEXT_RISCV64::default();
+        assert_eq!(context64.memoize_register("pc"), Some("pc"));
+        assert_eq!(context64.memoize_register("foo"), None);
     }
 }

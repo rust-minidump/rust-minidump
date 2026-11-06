@@ -11,6 +11,7 @@ mod arm;
 mod arm64;
 mod arm64_old;
 mod mips;
+mod riscv;
 pub mod symbols;
 pub mod system_info;
 mod x86;
@@ -517,8 +518,8 @@ impl CallStack {
             if let Some(args) = &frame.arguments {
                 use MinidumpRawContext::*;
                 let pointer_width = match &frame.context.raw {
-                    X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) => 4,
-                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) => 8,
+                    X86(_) | Ppc(_) | Sparc(_) | Arm(_) | Mips(_) | Riscv(_) => 4,
+                    Ppc64(_) | Amd64(_) | Arm64(_) | OldArm64(_) | Riscv64(_) => 8,
                 };
 
                 let cc_summary = match args.calling_convention {
@@ -686,6 +687,8 @@ where
         MinidumpRawContext::Amd64(ref ctx) => amd64::get_caller_frame(ctx, args).await,
         MinidumpRawContext::X86(ref ctx) => x86::get_caller_frame(ctx, args).await,
         MinidumpRawContext::Mips(ref ctx) => mips::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::Riscv(ref ctx) => riscv::get_caller_frame(ctx, args).await,
+        MinidumpRawContext::Riscv64(ref ctx) => riscv::get_caller_frame64(ctx, args).await,
         _ => None,
     }
 }
@@ -909,5 +912,7 @@ mod amd64_unittest;
 mod arm64_unittest;
 #[cfg(test)]
 mod arm_unittest;
+#[cfg(test)]
+mod riscv_unittest;
 #[cfg(test)]
 mod x86_unittest;
