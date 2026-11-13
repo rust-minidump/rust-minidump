@@ -200,7 +200,7 @@ async fn test_scan_first_frame() {
         .append_repeated(0, 16) // space
         .D32(0x40090000) // junk that's not
         .D32(0x60000000) // a return address
-        .append_repeated(0, 96) // more space
+        .append_repeated(0, 256) // more space, past the default scan range
         .D32(return_address1) // actual return address
         // frame 1
         .mark(&frame1_sp)
