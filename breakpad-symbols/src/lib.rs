@@ -6,8 +6,8 @@
 //!
 //! See the [walker][] module for documentation on CFI evaluation.
 //!
-//! The highest-level API provided by this crate is to use the
-//! [`Symbolizer`][symbolizer] struct.
+//! The highest-level API provided by this crate is to use the [`Symbolizer`]
+//! struct.
 //!
 //! [breakpad]: https://chromium.googlesource.com/breakpad/breakpad/+/master/
 //! [symbolfiles]: https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/symbol_files.md
@@ -717,9 +717,9 @@ impl<T, E> CachedAsyncResult<T, E> {
 /// including caching so that symbols for a given module are only loaded once.
 ///
 /// Call [`Symbolizer::new`][new] to instantiate a `Symbolizer`. A Symbolizer
-/// requires a [`SymbolSupplier`][supplier] to locate symbols. If you have
-/// symbols on disk in the [customary directory layout][breakpad_sym_lookup], a
-/// [`SimpleSymbolSupplier`][simple] will work.
+/// requires a [`SymbolSupplier`] to locate symbols. If you have symbols on disk
+/// in the [customary directory layout][breakpad_sym_lookup], a
+/// [`SimpleSymbolSupplier`] will work.
 ///
 /// Use [`get_symbol_at_address`][get_symbol] or [`fill_symbol`][fill_symbol] to
 /// do symbol lookup.
@@ -776,8 +776,8 @@ impl Symbolizer {
 
     /// Fill symbol information in `frame` using the instruction address
     /// from `frame`, and the module information from `module`. If you're not
-    /// using a minidump module, you can use [`SimpleModule`][simplemodule] and
-    /// [`SimpleFrame`][simpleframe].
+    /// using a minidump module, you can use [`SimpleModule`] and
+    /// [`SimpleFrame`].
     ///
     /// An Error indicates that no symbols could be found for the relevant
     /// module.
