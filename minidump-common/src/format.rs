@@ -61,11 +61,11 @@ pub const MINIDUMP_VERSION: u32 = 42899;
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_header
 #[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_HEADER {
-    /// This should be [`MINIDUMP_SIGNATURE`][signature].
+    /// This should be [`MINIDUMP_SIGNATURE`].
     ///
     /// [signature]: constant.MINIDUMP_SIGNATURE.html
     pub signature: u32,
-    /// This should be [`MINIDUMP_VERSION`][version].
+    /// This should be [`MINIDUMP_VERSION`].
     ///
     /// [version]: constant.MINIDUMP_VERSION.html
     pub version: u32,
@@ -73,7 +73,7 @@ pub struct MINIDUMP_HEADER {
     pub stream_count: u32,
     /// The offset to the stream directory within the minidump. This usually points
     /// to immediately after the header. The stream directory is an array containing
-    /// `stream_count` [`MINIDUMP_DIRECTORY`][dir] entries.
+    /// `stream_count` [`MINIDUMP_DIRECTORY`] entries.
     ///
     /// [dir]: struct.MINIDUMP_DIRECTORY.html
     pub stream_directory_rva: RVA,
@@ -138,7 +138,7 @@ pub struct MINIDUMP_MEMORY_DESCRIPTOR64 {
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_directory
 #[derive(Debug, Clone, Default, Pread, Pwrite, SizeWith)]
 pub struct MINIDUMP_DIRECTORY {
-    /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`][ty] for known stream types,
+    /// This is usually one of the values in [`MINIDUMP_STREAM_TYPE`] for known stream types,
     /// but user streams can have arbitrary values.
     ///
     /// [ty]: enum.MINIDUMP_STREAM_TYPE.html
@@ -370,10 +370,10 @@ pub struct MINIDUMP_MODULE {
     pub version_info: VS_FIXEDFILEINFO,
     /// The location of a CodeView record describing debug information for this module.
     ///
-    /// This should be one of [`CV_INFO_PDB70`][pdb70], [`CV_INFO_PDB20`][pdb20], or
-    /// [`CV_INFO_ELF`][elf]. `PDB70` is the most common in practice, describing a standalone PDB
-    /// file by way of GUID, age, and PDB filename, and `ELF` is a Breakpad extension for
-    /// describing ELF modules with Build IDs.
+    /// This should be one of [`CV_INFO_PDB70`], [`CV_INFO_PDB20`], or
+    /// [`CV_INFO_ELF`]. `PDB70` is the most common in practice, describing a
+    /// standalone PDB file by way of GUID, age, and PDB filename, and `ELF` is
+    /// a Breakpad extension for describing ELF modules with Build IDs.
     ///
     /// See [Matching Debug Information][dbg] for more information.
     ///

@@ -4983,11 +4983,17 @@ impl<'a> MinidumpException<'a> {
             self.raw.exception_record.exception_address,
             self.raw.exception_record.number_parameters,
         )?;
-        for i in 0..self.raw.exception_record.number_parameters as usize {
+        for (i, ei) in self
+            .raw
+            .exception_record
+            .exception_information
+            .iter()
+            .enumerate()
+            .take(self.raw.exception_record.number_parameters as usize)
+        {
             writeln!(
                 f,
-                "  exception_record.exception_information[{:2}] = {:#x}",
-                i, self.raw.exception_record.exception_information[i]
+                "  exception_record.exception_information[{i:2}] = {ei:#x}",
             )?;
         }
         write!(
